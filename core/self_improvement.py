@@ -8,6 +8,7 @@ responsibility so a bad model response cannot mutate the repository by itself.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Iterable
 
 from .agent_runtime import RuntimeReport
@@ -93,9 +94,23 @@ class SelfImprovementEngine:
                 f"development required {report.repair_attempts} repair attempt(s)",
             ))
         if report.failed_task_id and report.error:
-            detail = str(report.error).replace("\x00", "").strip()[:_MAX_SIGNAL_DETAIL_CHARS]
-            if detail:
-                new.append(ImprovementSignal("failure", report.failed_task_id, detail))
+            raw = str(report.error).casefold()
+            if "pytest" in raw or "test failed" in raw:
+                code = "development failure observed: pytest"
+            elif "timeout" in raw or "timed out" in raw:
+                code = "development failure observed: timeout"
+            elif "importerror" in raw or "modulenotfounderror" in raw:
+                code = "development failure observed: import"
+            elif "assertion" in raw:
+                code = "development failure observed: assertion"
+            elif "blocked" in raw or "hold" in raw:
+                code = "development failure observed: blocked"
+            else:
+                code = "development failure observed: runtime"
+            task_id = report.failed_task_id
+            if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}", task_id):
+                task_id = None
+            new.append(ImprovementSignal("failure", task_id, code))
         for signal in new:
             self._signals.append(signal)
         if len(self._signals) > self.max_signals:
