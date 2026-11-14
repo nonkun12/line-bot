@@ -26,10 +26,10 @@ def test_filter_queue_keeps_only_exact_registered_deterministic_tasks(tmp_path):
     output = tmp_path / "free-queue.json"
     report = tmp_path / "report.json"
     _write_queue(source, [
-        _task(),
-        _task("review-coverage-gap-unregistered", ["tests/test_project_registry.py"]),
+        _task("router-regression-english-casefold"),
         _task("review-coverage-gap-703fa3c06b", ["tests/test_project_registry.py"]),
-        _task("router-regression-english-casefold", ["tests/test_recovery_ai.py"]),
+        _task("model-backed-task", ["tests/test_project_registry.py"]),
+        _task("router-regression-whitespace", ["tests/test_recovery_ai.py"]),
     ])
 
     result = filter_queue(source, output, report)
