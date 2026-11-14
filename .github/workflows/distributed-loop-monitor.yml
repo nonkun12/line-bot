@@ -36,8 +36,8 @@ jobs:
         id: actions
         continue-on-error: true
         run: |
-          set -u
-          if gh api --paginate --slurp "repos/$REPOSITORY/actions/runs?per_page=100" --jq '{"workflow_runs": [.[].workflow_runs[]]}' > /tmp/monitor-runs.json; then
+          set -euo pipefail
+          if gh api --paginate --slurp "repos/$REPOSITORY/actions/runs?per_page=100" > /tmp/monitor-runs.json; then
             echo "collected=true" >> "$GITHUB_OUTPUT"
           else
             printf '%s\n' '{}' > /tmp/monitor-runs.json
