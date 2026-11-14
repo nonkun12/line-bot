@@ -220,10 +220,9 @@ def evaluate(
     # Queue eligibility and independent human approval require separate, authoritative
     # evidence. This monitor does not infer approval from task catalog fields or labels.
     checks["queue_and_approval"] = {
-        "status": "BLOCKED",
-        "detail": "Queue eligibility and independent human approval evidence are not supplied to this monitor",
+        "status": "NOT_EVALUATED",
+        "detail": "Queue eligibility and independent human approval require a separate authoritative gate; this monitor does not grant execution permission",
     }
-    reasons.append("Queue eligibility and independent human approval are not verified")
 
     if runs_ok:
         active = [
@@ -264,7 +263,7 @@ def evaluate(
         "failure_reason": "; ".join(dict.fromkeys(reasons)) or None,
         "limitations": [
             "A PASS is health evidence only and never authorizes task execution.",
-            "Queue eligibility and independent human approval are currently not evaluated; overall status remains BLOCKED.",
+            "Queue eligibility and independent human approval are not evaluated by this health monitor and must be enforced by a separate execution gate.",
             "The 24-hour state-age ceiling is a conservative monitoring guard, not a verified normal writer cadence.",
             "GitHub scheduled events may be delayed or skipped; this report does not imply a missed run succeeded.",
         ],
