@@ -7,6 +7,7 @@ on:
       - "scripts/autonomous_task_refill.py"
       - "tests/test_autonomous_task_refill.py"
       - "tests/test_rust_task_selector_shadow.py"
+      - "tests/benchmark_rust_task_selector.py"
       - ".github/workflows/rust-task-selector.yml"
   push:
     branches:
@@ -42,3 +43,7 @@ jobs:
           python-version: "3.12"
       - name: Run Python-Rust selector shadow parity
         run: python -m unittest discover -s tests -p test_rust_task_selector_shadow.py
+      - name: Build optimized Rust selector for benchmark
+        run: cargo +stable build --release --manifest-path rust/task-selector/Cargo.toml --bin orca-task-selector
+      - name: Benchmark Python vs Rust subprocess bridge
+        run: python tests/benchmark_rust_task_selector.py
