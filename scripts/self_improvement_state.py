@@ -15,10 +15,24 @@ MAX_RECORDS = 200
 _ALLOWED_KINDS = {"success", "repair", "failure"}
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
 _SAFE_DETAIL = {
+    "success": {"task passed or verified no-change"},
+    "repair": {"development required repair attempts"},
+    "failure": {
+        "development failure observed",
+        "development failure observed: pytest",
+        "development failure observed: timeout",
+        "development failure observed: import",
+        "development failure observed: assertion",
+        "development failure observed: blocked",
+        "development failure observed: runtime",
+    },
+}
+_SAFE_GENERIC_DETAIL = {
     "success": "task passed or verified no-change",
     "repair": "development required repair attempts",
     "failure": "development failure observed",
 }
+_SAFE_PATTERN_CODES = set().union(*_SAFE_DETAIL.values())
 _MEMORY_OUTCOMES = {"PASS", "FAIL", "BLOCKED"}
 _MEMORY_CAUSE = {
     "PASS": "development gate passed",
@@ -64,7 +78,10 @@ def sanitize_records(records: object) -> list[dict[str, object]]:
                 "improvements": _MEMORY_IMPROVEMENTS[outcome],
                 "next_action": _MEMORY_NEXT_ACTION[outcome],
                 "target_path": "",
-                "recurring_patterns": [],
+                "recurring_patterns": [
+                    value for value in row.get("recurring_patterns", [])
+                    if isinstance(value, str) and value in _SAFE_PATTERN_CODES
+                ] if isinstance(row.get("recurring_patterns", []), list) else [],
             }
             if cycle_id is not None:
                 safe_memory["cycle_id"] = cycle_id
@@ -81,7 +98,7 @@ def sanitize_records(records: object) -> list[dict[str, object]]:
         safe.append({
             "kind": kind,
             "task_id": task_id,
-            "detail": _SAFE_DETAIL[kind],
+            "detail": row.get("detail") if row.get("detail") in _SAFE_DETAIL[kind] else _SAFE_GENERIC_DETAIL[kind],
         })
     return safe[-MAX_RECORDS:]
 
@@ -140,7 +157,7 @@ def validate_durable_history(records: object) -> list[dict[str, object]]:
             not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id)
         ):
             raise ValueError("self-improvement task ID is invalid")
-        if detail != _SAFE_DETAIL[kind]:
+        if detail not in _SAFE_DETAIL[kind]:
             raise ValueError("self-improvement signal detail is invalid")
         validated.append({"kind": kind, "task_id": task_id, "detail": detail})
     return validated
@@ -150,13 +167,17 @@ def read_jsonl(path: Path) -> list[dict[str, object]]:
     if not path.exists():
         return []
     rows: list[dict[str, object]] = []
-    for line in path.read_text(encoding="utf-8").splitlines()[-MAX_RECORDS:]:
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
         try:
             row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(row, dict):
-            rows.append(row)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"self-improvement JSONL is corrupt at line {line_number}") from exc
+        if not isinstance(row, dict):
+            raise ValueError(f"self-improvement JSONL row is invalid at line {line_number}")
+        rows.append(row)
+    return rows[-MAX_RECORDS:]
     return rows
 
 
