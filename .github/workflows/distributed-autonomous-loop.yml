@@ -1086,10 +1086,36 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Skip optional Google Sheets ledger in free-only mode
+      - name: Record explicit Google Sheets skip evidence in free-only mode
         id: sheets
-        if: ${{ env.AUTONOMOUS_FREE_MODE != 'true' }}
-        run: echo "Google Sheets is disabled; GitHub summaries and retained artifacts are authoritative."
+        if: always()
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          if os.getenv("AUTONOMOUS_FREE_MODE") == "true":
+              result = "SKIPPED_FREE_MODE"
+          else:
+              # This workflow is intentionally free-only. Any unexpected mode
+              # is not silently treated as a successful external ledger write.
+              result = "BLOCKED_UNSUPPORTED_MODE"
+          Path("/tmp/distributed-sheets-log-result.json").write_text(
+              json.dumps({
+                  "run_id": os.getenv("RUN_ID", ""),
+                  "task_id": "",
+                  "result": result,
+                  "reason": "free_only_mode" if result == "SKIPPED_FREE_MODE" else "unsupported_mode",
+              }, ensure_ascii=False) + "\\n",
+              encoding="utf-8",
+          )
+          print(f"Google Sheets ledger result: {result}")
+          if result != "SKIPPED_FREE_MODE":
+              raise SystemExit(1)
+          PY
 
       - name: Build final distributed loop report
         if: always()
