@@ -56,6 +56,7 @@ def main_run(**overrides):
         "status": "in_progress",
         "conclusion": None,
         "created_at": "2026-11-13T23:59:00Z",
+        "run_started_at": "2026-11-13T23:59:00Z",
     }
     run.update(overrides)
     return run
@@ -342,10 +343,51 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
 
     def test_stale_in_progress_run_blocks(self):
-        running = main_run(status="in_progress", created_at="2026-11-13T22:00:00Z")
+        running = main_run(status="in_progress", created_at="2026-11-13T22:00:00Z", run_started_at="2026-11-13T22:00:00Z")
         activity = self.evaluate(runs={"workflow_runs": [running]})["checks"]["main_loop_activity"]
         self.assertEqual(activity["outcome"], "STALE_IN_PROGRESS")
         self.assertEqual(activity["status"], "BLOCKED")
+
+    def test_future_created_at_blocks(self):
+        future = main_run(created_at="2026-11-14T00:10:00Z")
+        activity = self.evaluate(runs={"workflow_runs": [future]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "BLOCKED")
+        self.assertEqual(activity["outcome"], "UNVERIFIED")
+        self.assertIn("created_at is too far in the future", activity["detail"])
+
+    def test_future_run_started_at_blocks(self):
+        future = main_run(run_started_at="2026-11-14T00:10:00Z")
+        activity = self.evaluate(runs={"workflow_runs": [future]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "BLOCKED")
+        self.assertIn("run_started_at is too far in the future", activity["detail"])
+
+    def test_missing_or_invalid_run_started_at_blocks_in_progress(self):
+        for value in (None, "not-a-timestamp"):
+            with self.subTest(value=value):
+                run = main_run(run_started_at=value)
+                activity = self.evaluate(runs={"workflow_runs": [run]})["checks"]["main_loop_activity"]
+                self.assertEqual(activity["status"], "BLOCKED")
+                self.assertEqual(activity["outcome"], "UNVERIFIED")
+                self.assertIn("run_started_at", activity["detail"])
+
+    def test_long_queue_wait_does_not_make_recently_started_run_stale(self):
+        run = main_run(
+            created_at="2026-11-13T22:00:00Z",
+            run_started_at="2026-11-13T23:59:00Z",
+        )
+        activity = self.evaluate(runs={"workflow_runs": [run]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "PASS")
+        self.assertEqual(activity["outcome"], "ACTIVE")
+
+    def test_run_started_more_than_fifty_minutes_ago_blocks(self):
+        run = main_run(
+            created_at="2026-11-13T23:00:00Z",
+            run_started_at="2026-11-13T22:59:59Z",
+        )
+        activity = self.evaluate(runs={"workflow_runs": [run]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "BLOCKED")
+        self.assertEqual(activity["outcome"], "STALE_IN_PROGRESS")
+        self.assertIn("active for 3601s", activity["detail"])
 
     def test_completed_run_without_conclusion_blocks(self):
         incomplete = main_run(status="completed", conclusion=None)
