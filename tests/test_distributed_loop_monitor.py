@@ -202,11 +202,9 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertEqual(self.evaluate(state=state)["status"], "BLOCKED")
 
     def test_active_main_run_is_identified_by_fixed_workflow_id_not_name(self):
-        runs = {"workflow_runs": [{
-            "workflow_id": 357086091,
-            "name": "Renamed workflow must still be identified by ID",
-            "status": "in_progress",
-        }]}
+        runs = {"workflow_runs": [
+            main_run(name="Renamed workflow must still be identified by ID")
+        ]}
         report = self.evaluate(runs=runs)
         activity = report["checks"]["main_loop_activity"]
         self.assertEqual(report["status"], "PASS")
@@ -225,14 +223,12 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertIs(report["dispatch_allowed"], False)
 
     def test_completed_main_run_is_not_reported_as_active(self):
-        runs = {"workflow_runs": [{
-            "workflow_id": 357086091,
-            "status": "completed",
-            "conclusion": "success",
-        }]}
+        runs = {"workflow_runs": [
+            main_run(status="completed", conclusion="success", created_at="2026-11-13T23:58:00Z")
+        ]}
         activity = self.evaluate(runs=runs)["checks"]["main_loop_activity"]
-        self.assertEqual(activity["status"], "INFO")
-        self.assertEqual(activity["outcome"], "NO_CHANGE")
+        self.assertEqual(activity["status"], "PASS")
+        self.assertEqual(activity["outcome"], "WORKFLOW_SUCCESS")
         self.assertEqual(activity["active_run_count"], 0)
 
     def test_unrelated_active_workflow_is_not_counted_as_main_loop(self):
