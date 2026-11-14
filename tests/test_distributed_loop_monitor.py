@@ -341,6 +341,19 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertEqual(activity["outcome"], "UNVERIFIED")
 
 
+    def test_stale_in_progress_run_blocks(self):
+        running = main_run(status="in_progress", created_at="2026-11-13T22:00:00Z")
+        activity = self.evaluate(runs={"workflow_runs": [running]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["outcome"], "STALE_IN_PROGRESS")
+        self.assertEqual(activity["status"], "BLOCKED")
+
+    def test_completed_run_without_conclusion_blocks(self):
+        incomplete = main_run(status="completed", conclusion=None)
+        activity = self.evaluate(runs={"workflow_runs": [incomplete]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["outcome"], "FAILED")
+        self.assertEqual(activity["status"], "BLOCKED")
+
+
 if __name__ == "__main__":
     unittest.main()
 
