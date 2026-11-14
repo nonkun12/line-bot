@@ -1,103 +1,19 @@
 name: Continuous Distributed Loop
 
-# Chain Job AI continues only after verified PASS, Control Tower authorization,
-# and durable completion evidence. Empty queues, NO_CHANGE, HOLD/FAIL, missing
-# evidence, kill switch, and the depth limit all stop the chain.
+# Automatic recursive dispatch is disabled during consolidation.
+# This workflow remains available only for a manual status check.
 on:
-  # Manual-only during consolidation; automatic recursive dispatch is disabled.
   workflow_dispatch:
 
 permissions:
-  actions: read
   contents: read
 
-concurrency:
-  group: continuous-distributed-loop
-  cancel-in-progress: false
-
 jobs:
-  continue-after-verified-pass:
-    if: github.event.workflow_run.conclusion == 'success'
+  manual-status:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 1
     steps:
-      - name: Checkout Chain Job AI decision code
-        uses: actions/checkout@v4
-        with:
-          ref: main
-
-      - name: Download source-run evidence
-        id: evidence
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      - name: Explain the current stop condition
         run: |
-          set -euo pipefail
-          mkdir -p evidence
-          gh run download "$SOURCE_RUN_ID" --repo "$REPOSITORY" \
-            --name "minimal-autonomous-loop-$SOURCE_RUN_ID" --dir evidence
-          test -s evidence/minimal-autonomous-loop.jsonl
-          test -s evidence/autonomous-loop-state.json
-
-      - name: Chain Job AI verifies evidence and decides continuation
-        id: gate
-        if: always()
-        env:
-          EVIDENCE_DOWNLOAD_OUTCOME: ${{ steps.evidence.outcome }}
-          RUN_DISPLAY_TITLE: ${{ github.event.workflow_run.display_title }}
-          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH }}
-        run: |
-          set -euo pipefail
-          python scripts/chain_job_ai.py \
-            --artifact-dir evidence \
-            --run-name "$RUN_DISPLAY_TITLE" \
-            --conclusion "$RUN_CONCLUSION" \
-            --evidence-download-outcome "$EVIDENCE_DOWNLOAD_OUTCOME" \
-            --kill-switch "$KILL_SWITCH" \
-            --max-depth 12 \
-            --github-output "$GITHUB_OUTPUT"
-
-      - name: Avoid duplicate dispatch while another loop is queued or running
-        id: active
-        if: steps.gate.outputs.continue == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          GATE_DEPTH: ${{ steps.gate.outputs.depth }}
-        run: |
-          set -euo pipefail
-          depth="$GATE_DEPTH"
-          if ! [[ "$depth" =~ ^[0-9]+$ ]]; then
-            echo "Continuation depth missing or invalid; fail closed." >&2
-            exit 1
-          fi
-          active="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=20" \
-            --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
-          if [ "$active" -gt 0 ]; then
-            echo "dispatch=false" >> "$GITHUB_OUTPUT"
-            echo "CONTINUATION_STOP=another_loop_is_active"
-          else
-            echo "dispatch=true" >> "$GITHUB_OUTPUT"
-            echo "next_depth=$((depth + 1))" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Dispatch the next bounded loop
-        if: steps.gate.outputs.continue == 'true' && steps.active.outputs.dispatch == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          gh workflow run distributed-autonomous-loop.yml \
-            --repo "$REPOSITORY" --ref main \
-            -f max_tasks=1 \
-            -f continuation_depth="${{ steps.active.outputs.next_depth }}"
-          echo "CONTINUATION_DISPATCHED max_tasks=1"
-
-      - name: Explain why continuation stopped
-        if: always() && steps.gate.outputs.continue != 'true'
-        run: |
-          echo "Chain Job AI stopped continuation; only verified PASS plus Control Tower and durable completion evidence can authorize another bounded job."
+          echo "Automatic continuation is disabled."
+          echo "A future activation requires verified worker, budget, approval, STOP, and independent-review gates."
