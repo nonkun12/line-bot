@@ -3,6 +3,79 @@ run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || 
 
 on:
   workflow_dispatch:
+    inputs:
+      max_tasks:
+        description: 'Manual run task limit (1–4 tasks; all safety gates still apply)'
+        required: false
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+      request_id:
+        description: 'Optional correlation ID for a LINE-queued request'
+        required: false
+        default: ''
+        type: string
+      continuation_depth:
+        description: 'Internal continuation counter; the loop continues only while every cycle passes safety gates and tasks remain'
+        required: false
+        default: '0'
+        type: string
+      mode:
+        description: 'Run mode'
+        required: false
+        default: 'normal'
+        type: choice
+        options:
+          - 'normal'
+          - 'obsidian_incident'
+      incident_category:
+        description: 'Allowlisted Obsidian incident category'
+        required: false
+        default: 'vault_write_failed'
+        type: choice
+        options:
+          - 'local_job_failed'
+          - 'vault_write_failed'
+      incident_detail:
+        description: 'Allowlisted exception class (not raw error text)'
+        required: false
+        default: 'PermissionError'
+        type: choice
+        options:
+          - 'OSError'
+          - 'PermissionError'
+          - 'FileNotFoundError'
+          - 'IsADirectoryError'
+          - 'NotADirectoryError'
+          - 'RuntimeError'
+          - 'ValueError'
+          - 'TypeError'
+          - 'KeyError'
+          - 'AttributeError'
+          - 'UnicodeDecodeError'
+      incident_job_id:
+        description: 'Numeric Obsidian job ID; no note content'
+        required: false
+        type: string
+      resume_task_id:
+        description: 'Resume exactly one held task after its cause is fixed'
+        required: false
+        default: ''
+        type: string
+      confirm_cause_fixed:
+        description: 'Confirm that the selected task failure cause has been fixed'
+        required: false
+        default: false
+        type: boolean
+      confirm_resume_review:
+        description: 'Confirm that the resumed task has been reviewed and may re-enter the queue'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   actions: write
