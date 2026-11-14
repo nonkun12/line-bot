@@ -1083,7 +1083,7 @@ jobs:
 
       - name: Skip optional Google Sheets ledger in free-only mode
         id: sheets
-        if: false
+        if: ${{ env.AUTONOMOUS_FREE_MODE != 'true' }}
         run: echo "Google Sheets is disabled; GitHub summaries and retained artifacts are authoritative."
 
       - name: Build final distributed loop report
