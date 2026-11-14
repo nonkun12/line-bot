@@ -174,7 +174,7 @@ class GitHubStateInitializerTests(unittest.TestCase):
 
     def test_concurrent_initializer_cannot_force_ref_update(self):
         responses = [
-            {"object": {"sha": self.ref}}, None,
+            {"object": {"sha": self.ref}},
             {"tree": {"sha": self.tree}}, {"sha": self.blob},
             {"sha": self.tree}, {"sha": self.commit},
         ]
