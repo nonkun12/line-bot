@@ -131,6 +131,11 @@ def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) 
             if (run_started - now).total_seconds() > MAX_FUTURE_CLOCK_SKEW_SECONDS:
                 errors.append(f"Main LOOP run {run_id} run_started_at is too far in the future")
                 continue
+            if (created - run_started).total_seconds() > MAX_FUTURE_CLOCK_SKEW_SECONDS:
+                errors.append(
+                    f"Main LOOP run {run_id} run_started_at is earlier than created_at beyond clock-skew tolerance"
+                )
+                continue
         if not isinstance(item.get("event"), str) or not item["event"].strip():
             errors.append(f"Main LOOP run {run_id} has missing or invalid event")
             continue
@@ -143,9 +148,11 @@ def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) 
             continue
         previous = normalized.get(run_id)
         if previous is not None and attempt == previous["run_attempt"]:
-            if (item.get("status"), item.get("conclusion"), item.get("updated_at")) != (
-                previous.get("status"), previous.get("conclusion"), previous.get("updated_at")
-            ):
+            identity_fields = (
+                "workflow_id", "run_number", "event", "status", "conclusion",
+                "created_at", "run_started_at", "updated_at",
+            )
+            if any(item.get(field) != previous.get(field) for field in identity_fields):
                 errors.append(f"Main LOOP run {run_id} has conflicting records for the same attempt")
                 continue
         if previous is None or attempt > previous["run_attempt"]:
