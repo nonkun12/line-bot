@@ -70,7 +70,7 @@ def test_workflow_never_completes_zero_task_empty_queue():
 
 def test_workflow_state_is_not_advanced_for_empty_queue():
     workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    persist = workflow[workflow.index("- name: Persist completed task state"):workflow.index("- name: Record distributed run result to Google Sheets")]
+    persist = workflow[workflow.index("- name: Persist completed task state"):workflow.index("- name: Skip optional Google Sheets ledger in free-only mode")]
     assert "autonomous-loop-not-run" in persist
     assert "state unchanged" in persist
 
@@ -170,9 +170,10 @@ def test_consistent_no_change_summary_is_accepted(monkeypatch, tmp_path):
 
 def test_not_run_does_not_fabricate_task_identity_or_instruction():
     workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    assert "if status == 'NOT_RUN':" in workflow
-    assert "os.environ['AUTONOMOUS_TASK_ID'] = ''" in workflow
-    assert "Queue exhausted; no task executed; replenish the task queue." in workflow
+    report = workflow[workflow.index("- name: Build final distributed loop report"):workflow.index("- name: Wake Render before LINE final report")]
+    assert 'if [ "$result" = "NOT_RUN" ]; then' in report
+    assert "(NOT_RUN: タスクは1件も実行されていません。" in report
+    assert "AUTONOMOUS_TASK_ID" not in report
 
 
 
