@@ -1,0 +1,54 @@
+name: LINE Service Hourly Health Check
+
+on:
+  schedule:
+    # Read-only service liveness probe; separate from user-triggered development.
+    - cron: "57 * * * *"
+      timezone: "Asia/Tokyo"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/line-service-hourly-health.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: line-service-hourly-health
+  cancel-in-progress: false
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe public LINE service health endpoint
+        id: probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error \
+            --connect-timeout 10 --max-time 20 \
+            --retry 2 --retry-delay 5 \
+            https://line-bot-yvea.onrender.com/health)"
+          printf '%s\n' "$response" > line-health-response.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          response = json.loads(Path("line-health-response.json").read_text(encoding="utf-8"))
+          if not isinstance(response, dict) or response.get("ok") is not True:
+              raise SystemExit("LINE_HEALTH_CHECK=FAIL invalid_health_payload")
+          print("LINE_HEALTH_CHECK=PASS")
+          print("LINE_HEALTH_ENDPOINT=/health")
+          print("LINE_HEALTH_PAYLOAD_VALID=true")
+          PY
+
+      - name: Upload sanitized health evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: line-service-health-${{ github.run_id }}
+          path: line-health-response.json
+          if-no-files-found: ignore
+          retention-days: 14
