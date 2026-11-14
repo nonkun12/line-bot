@@ -55,7 +55,8 @@ def test_legacy_nightly_worker_is_retired_without_paid_provider_or_schedule():
     assert "schedule:" not in text
     assert "secrets.GROQ_API_KEY" not in text
     assert "GROQ_API_KEY:" not in text
-    assert "Google Sheets" not in text
+    assert "GOOGLE_SHEETS_" not in text
+    assert "record_autonomous_run" not in text
     assert "Slack" not in text
     assert "Legacy Autonomous Worker" in text
 
@@ -103,7 +104,7 @@ def test_autonomous_workflow_supports_explicit_on_demand_push_trigger():
     assert "push:" in event_block
     assert "branches:" in event_block
     assert "- main" in event_block
-    assert "schedule:" in event_block
+    assert "schedule:" not in event_block
     assert "workflow_dispatch:" in event_block
     assert "[run-autonomous-loop]" in text
     assert "github.event_name != 'push'" in text
