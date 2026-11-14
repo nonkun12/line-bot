@@ -32,3 +32,10 @@ def test_distributed_loop_keeps_no_deterministic_work_fail_closed():
     assert "eligible_deterministic_count" in text
     assert "model-backed tasks are excluded in free-only mode" in text
     assert "BLOCKED:" in text
+
+
+def test_distributed_loop_requires_manual_opt_in_before_creating_candidate_issues():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "create_review_issues:" in text
+    assert "default: false" in text
+    assert "inputs.create_review_issues == true" in text
