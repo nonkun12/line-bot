@@ -310,6 +310,19 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertEqual(activity["outcome"], "UNVERIFIED")
         self.assertIn("conflicting records", activity["detail"])
 
+    def test_older_attempt_conflict_is_detected_after_newer_attempt(self):
+        first_attempt = main_run(id=252, run_attempt=1, run_number=10)
+        newer_attempt = main_run(id=252, run_attempt=2, run_number=10)
+        conflicting_old_attempt = main_run(
+            id=252, run_attempt=1, run_number=11,
+        )
+        activity = self.evaluate(runs={"workflow_runs": [
+            first_attempt, newer_attempt, conflicting_old_attempt
+        ]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "BLOCKED")
+        self.assertEqual(activity["outcome"], "UNVERIFIED")
+        self.assertIn("conflicting records", activity["detail"])
+
     def test_same_attempt_conflicting_run_number_blocks(self):
         first = main_run(id=251, run_number=10)
         conflicting = main_run(id=251, run_number=11)
