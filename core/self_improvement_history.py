@@ -175,18 +175,19 @@ class SelfImprovementHistory:
                 not isinstance(cycle_id, str) or not re.fullmatch(r"[0-9]{1,20}", cycle_id)
             ):
                 raise ValueError(f"cycle memory ID is invalid at line {line_number}")
-            if outcome not in _MEMORY_CAUSES:
+            if not isinstance(outcome, str) or outcome not in _MEMORY_CAUSES:
                 raise ValueError(f"cycle memory outcome is invalid at line {line_number}")
             # v1 memory could contain exception text and arbitrary paths. Keep
             # only the verified outcome; do not infer a more specific cause.
             if (
                 row.get("cause") != _MEMORY_CAUSES[outcome]
                 or row.get("target_path") != ""
+                or not isinstance(row.get("next_action"), str)
                 or row.get("next_action") not in _MEMORY_NEXT_ACTIONS
                 or not isinstance(row.get("improvements"), list)
-                or any(item not in _MEMORY_IMPROVEMENTS for item in row["improvements"])
+                or any(not isinstance(item, str) or item not in _MEMORY_IMPROVEMENTS for item in row["improvements"])
                 or not isinstance(row.get("recurring_patterns"), list)
-                or any(item not in _SAFE_PATTERN_CODES for item in row["recurring_patterns"])
+                or any(not isinstance(item, str) or item not in _SAFE_PATTERN_CODES for item in row["recurring_patterns"])
             ):
                 return {
                     "record_type": "cycle_memory",
@@ -203,25 +204,25 @@ class SelfImprovementHistory:
                 }
             normalized = dict(row)
             normalized["cause"] = _MEMORY_CAUSES[outcome]
-            normalized["improvements"] = list(row["improvements"]) if isinstance(row.get("improvements"), list) and all(item in _MEMORY_IMPROVEMENTS for item in row["improvements"]) else []
-            normalized["next_action"] = row["next_action"] if row.get("next_action") in _MEMORY_NEXT_ACTIONS else (
+            normalized["improvements"] = list(row["improvements"]) if isinstance(row.get("improvements"), list) and all(isinstance(item, str) and item in _MEMORY_IMPROVEMENTS for item in row["improvements"]) else []
+            normalized["next_action"] = row["next_action"] if isinstance(row.get("next_action"), str) and row.get("next_action") in _MEMORY_NEXT_ACTIONS else (
                 "continue bounded development loop after review" if outcome == "PASS"
                 else "require evidence and safety review before resume" if outcome == "BLOCKED"
                 else "review failure evidence before another attempt"
             )
             normalized["target_path"] = ""
-            normalized["recurring_patterns"] = list(row["recurring_patterns"]) if isinstance(row.get("recurring_patterns"), list) and all(item in _SAFE_PATTERN_CODES for item in row["recurring_patterns"]) else []
+            normalized["recurring_patterns"] = list(row["recurring_patterns"]) if isinstance(row.get("recurring_patterns"), list) and all(isinstance(item, str) and item in _SAFE_PATTERN_CODES for item in row["recurring_patterns"]) else []
             return normalized
 
         if set(row) != {"kind", "task_id", "detail"}:
             raise ValueError(f"self-improvement signal schema is invalid at line {line_number}")
         kind = row.get("kind")
-        if kind not in _SAFE_DETAILS:
+        if not isinstance(kind, str) or kind not in _SAFE_DETAILS:
             raise ValueError(f"self-improvement signal kind is invalid at line {line_number}")
         detail = row.get("detail")
         # Existing v1 free-text details are deliberately downgraded to a
         # generic category. Only new, exact allowlisted codes retain detail.
-        safe_detail = detail if detail in _SAFE_DETAILS[kind] else _legacy_detail(kind)
+        safe_detail = detail if isinstance(detail, str) and detail in _SAFE_DETAILS[kind] else _legacy_detail(kind)
         return {"kind": kind, "task_id": _safe_task_id(row.get("task_id")), "detail": safe_detail}
 
     def _atomic_write(self, records: list[dict[str, object]]) -> None:
