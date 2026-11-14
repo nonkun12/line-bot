@@ -31,6 +31,11 @@ on:
         required: false
         default: '0'
         type: string
+      create_review_issues:
+        description: 'Explicitly allow creation of review-only candidate issues (default: disabled)'
+        required: false
+        default: false
+        type: boolean
       mode:
         description: 'Run mode'
         required: false
@@ -469,7 +474,7 @@ jobs:
           fi
 
       - name: Create bounded review-only task issues from analyzer findings
-        if: success() && env.TRIGGER_MODE == 'normal'
+        if: ${{ success() && env.TRIGGER_MODE == 'normal' && github.event_name == 'workflow_dispatch' && inputs.create_review_issues == true }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
