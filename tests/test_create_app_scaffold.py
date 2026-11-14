@@ -2,14 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from scripts.create_app_scaffold import create_app, is_new_app_request, render_index, safe_slug
+from scripts.create_app_scaffold import create_app, has_new_app_intent, is_new_app_request, render_index, safe_slug
 
 
 @pytest.mark.parametrize("instruction", [
-    "TODO管理Webアプリを作って",
-    "新しいアプリを開発して",
-    "create a new app",
-    "build a new web app",
+    "アプリ開発: TODO管理Webアプリを作って",
+    "アプリ開発: 新しいアプリを開発して",
+    "アプリ開発: create a new app",
+    "アプリ開発: build a new web app",
 ])
 def test_explicit_new_app_requests_are_detected(instruction):
     assert is_new_app_request(instruction)
@@ -17,6 +17,8 @@ def test_explicit_new_app_requests_are_detected(instruction):
 
 @pytest.mark.parametrize("instruction", [
     "既存アプリの通知機能を改善して",
+    "TODO管理Webアプリを作って",
+    "create a new app",
     "天気機能を改善して",
     "",
 ])
@@ -24,14 +26,19 @@ def test_maintenance_requests_stay_on_normal_workflow(instruction):
     assert not is_new_app_request(instruction)
 
 
+def test_new_app_intent_without_prefix_is_detected_but_not_routed():
+    assert has_new_app_intent("TODO管理Webアプリを作って")
+    assert not is_new_app_request("TODO管理Webアプリを作って")
+
+
 def test_slug_is_path_safe_for_japanese_and_traversal_text():
-    slug = safe_slug("../../ 新しいアプリ", "run/123")
+    slug = safe_slug("アプリ開発: ../../ 新しいアプリ", "run/123")
     assert slug == "app-run123"
     assert "/" not in slug and "\\" not in slug and ".." not in slug
 
 
 def test_create_app_writes_functional_starter_only_under_generated_root(tmp_path):
-    paths = create_app("TODO管理Webアプリを作って", root=tmp_path, run_id="42")
+    paths = create_app("アプリ開発: TODO管理Webアプリを作って", root=tmp_path, run_id="42")
     assert [p.relative_to(tmp_path).as_posix() for p in paths] == [
         "apps/generated/todo-web/index.html",
         "apps/generated/todo-web/README.md",
@@ -51,10 +58,10 @@ def test_title_is_html_escaped():
 
 
 def test_existing_app_is_never_overwritten(tmp_path):
-    paths = create_app("TODO管理Webアプリを作って", root=tmp_path, run_id="42")
+    paths = create_app("アプリ開発: TODO管理Webアプリを作って", root=tmp_path, run_id="42")
     paths[0].write_text("keep", encoding="utf-8")
     with pytest.raises(FileExistsError):
-        create_app("TODO管理Webアプリを作って", root=tmp_path, run_id="42")
+        create_app("アプリ開発: TODO管理Webアプリを作って", root=tmp_path, run_id="42")
     assert paths[0].read_text(encoding="utf-8") == "keep"
 
 
@@ -71,6 +78,6 @@ def test_symlinked_generated_root_cannot_escape_repository(tmp_path):
     (root / "apps").mkdir()
     (root / "apps" / "generated").symlink_to(outside, target_is_directory=True)
     with pytest.raises(ValueError, match="outside the allowed root"):
-        create_app("TODO管理Webアプリを作って", root=root, run_id="42")
+        create_app("アプリ開発: TODO管理Webアプリを作って", root=root, run_id="42")
     assert not list(outside.iterdir())
 
