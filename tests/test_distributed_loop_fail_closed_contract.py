@@ -46,7 +46,12 @@ def test_held_catalog_exhaustion_is_blocked_not_misreported_as_queue_empty():
     assert 'catalog_exhausted_review_pending:' in workflow
     assert 'blocked_detail="$(cat /tmp/autonomous-loop-held-tasks)"' in workflow
     assert "free_only_no_deterministic_tasks" in workflow
-    assert "action = 'review_held_tasks'" in workflow
+    # Held tasks are not auto-released. Re-entry requires the explicit resume
+    # request validator plus both cause-fixed and reviewed confirmations.
+    assert "- name: Resume one explicitly approved held task" in workflow
+    assert "--queue .github/autonomous-loop-task-catalog.json" in workflow
+    assert "--cause-fixed" in workflow
+    assert "confirm_resume_review" in workflow
 
 
 def test_held_task_resume_uses_reviewed_catalog_not_only_tracked_queue():
