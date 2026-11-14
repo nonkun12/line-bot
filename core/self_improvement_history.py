@@ -201,6 +201,7 @@ class SelfImprovementHistory:
                     ),
                     "target_path": "",
                     "recurring_patterns": [],
+                    **({"cycle_id": cycle_id} if isinstance(cycle_id, str) else {}),
                 }
             normalized = dict(row)
             normalized["cause"] = _MEMORY_CAUSES[outcome]
