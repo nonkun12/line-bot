@@ -29,10 +29,6 @@ on:
         default: "2"
         type: choice
         options: ["1", "2", "3"]
-  schedule:
-    # Hourly independent Creator-Critic review; offset from the main loop.
-    - cron: "37 * * * *"
-      timezone: "Asia/Tokyo"
 
 permissions:
   contents: read
