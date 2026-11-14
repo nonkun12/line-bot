@@ -80,24 +80,32 @@ def run_self_improvement_cycle(
     outcome = "PASS" if report.success and report.integration_ready else "FAIL"
     if report.error and "blocked" in report.error.casefold():
         outcome = "BLOCKED"
-    cause = (report.error or report.failed_task_id or "development gate passed")[:1200]
+    cause = (
+        "development gate passed" if outcome == "PASS"
+        else "development cycle blocked" if outcome == "BLOCKED"
+        else "development cycle failed"
+    )
     improvements = tuple(
-        f"{proposal.title}: {proposal.rationale}"[:1200]
-        for proposal in proposals[:3]
+        "review recurring development failure" for _ in proposals[:3]
+    ) or (
+        ("retain verified outcome for next cycle",) if outcome == "PASS"
+        else ("resolve safety or evidence block before retry",) if outcome == "BLOCKED"
+        else ("review recurring development failure",) if outcome == "FAIL"
+        else ()
     )
     if approved:
-        next_action = "review approved self-improvement handoff before execution"
+        next_action = "review failure evidence before another attempt"
     elif proposals:
-        next_action = "review generated self-improvement proposal before execution"
+        next_action = "review failure evidence before another attempt"
     else:
-        next_action = "carry validated outcome into the next bounded development loop"
+        next_action = "continue bounded development loop after review"
     memory = SelfImprovementMemoryRecord(
         outcome=outcome,
         cause=cause,
         improvements=improvements,
         next_action=next_action,
-        target_path=", ".join(target_paths)[:1200],
-        recurring_patterns=tuple(pattern.key[:1200] for pattern in analysis.recurring_patterns[:5]),
+        target_path="",
+        recurring_patterns=tuple(pattern.key for pattern in analysis.recurring_patterns[:5] if pattern.key in {"task passed or verified no-change", "development required repair attempts", "development failure observed", "development failure observed: pytest", "development failure observed: timeout", "development failure observed: import", "development failure observed: assertion", "development failure observed: blocked", "development failure observed: runtime"}),
     )
     history.append_memory(memory)
 
