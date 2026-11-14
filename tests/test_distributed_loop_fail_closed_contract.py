@@ -44,7 +44,8 @@ def test_held_catalog_exhaustion_is_blocked_not_misreported_as_queue_empty():
     assert 'eligible == 0 and isinstance(held, list) and held' in workflow
     assert 'catalog_exhausted_held:' in workflow
     assert 'catalog_exhausted_review_pending:' in workflow
-    assert "reason = held_reason" in workflow
+    assert 'blocked_detail="$(cat /tmp/autonomous-loop-held-tasks)"' in workflow
+    assert "free_only_no_deterministic_tasks" in workflow
     assert "action = 'review_held_tasks'" in workflow
 
 
