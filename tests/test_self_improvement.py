@@ -42,6 +42,17 @@ def test_signal_buffer_is_bounded() -> None:
     assert len(engine.signals) == 2
 
 
+def test_failure_signal_does_not_persist_raw_exception() -> None:
+    engine = SelfImprovementEngine()
+    signals = engine.observe(RuntimeReport(
+        (), failed_task_id="task-1",
+        error="pytest failed: token=secret /Users/private/project",
+    ))
+    assert signals[0].detail == "development failure observed: pytest"
+    assert "secret" not in signals[0].detail
+    assert "/Users" not in signals[0].detail
+
+
 def test_summary_is_compact_and_deterministic() -> None:
     engine = SelfImprovementEngine()
     signals = engine.observe(RuntimeReport((), failed_task_id="t1", error="timeout"))
