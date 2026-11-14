@@ -77,10 +77,12 @@ jobs:
           print(json.dumps({
               "captured_at": now,
               "run_id": os.environ["RUN_ID"],
+              "source": "github_actions",
+              "observation_type": "workflow_execution",
               "tasks": [{"task_id": task_id, "status": status, "stage": "completed" if status in {"PASS", "NO_CHANGE"} else "reported", "stream_key": "side_core_vocabulary"}],
               "dispatches": [],
               "workers": [],
-              "streams": [{"key": "side_core_vocabulary", "label": "英単語コア語彙", "kind": "side", "status": "observed", "task_count": 1, "dispatch_count": 0, "worker_count": 0, "evidence": "matched_runtime_records"}],
+              "streams": [{"key": "side_core_vocabulary", "label": "英単語コア語彙", "kind": "side", "status": "reported", "task_count": 1, "dispatch_count": 0, "worker_count": 0, "evidence": "workflow_self_report"}],
           }, ensure_ascii=False))
           PY
           python -m scripts.orca_status_publisher --input /tmp/english-core-vocabulary-orca.json

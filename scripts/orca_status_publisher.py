@@ -46,7 +46,13 @@ def validate_snapshot(payload: object) -> dict:
         raise ValueError("snapshot timestamp is in the future")
     if age > 300:
         raise ValueError("snapshot is older than 300 seconds")
-    clean = {"captured_at": captured.isoformat(), "run_id": str(payload.get("run_id") or "")[:100]}
+    source = payload.get("source", "legacy_unverified")
+    observation_type = payload.get("observation_type", "unverified")
+    allowed_provenance = {("orca_collector", "runtime_observation"), ("github_actions", "workflow_execution"), ("legacy_unverified", "unverified")}
+    if (source, observation_type) not in allowed_provenance:
+        raise ValueError("invalid evidence provenance")
+    clean = {"captured_at": captured.isoformat(), "run_id": str(payload.get("run_id") or "")[:100],
+             "source": source, "observation_type": observation_type}
     for group in GROUPS:
         items = payload.get(group, [])
         if not isinstance(items, list) or len(items) > MAX_ITEMS_PER_GROUP:
@@ -68,7 +74,7 @@ def validate_snapshot(payload: object) -> dict:
         clean["streams"].append({
             "key": item["key"], "label": str(item.get("label") or "")[:80],
             "kind": "main" if item.get("kind") == "main" else "side",
-            "status": "observed" if item.get("status") == "observed" else "unknown",
+            "status": "observed" if item.get("status") == "observed" and source == "orca_collector" else ("reported" if item.get("status") in {"observed", "reported"} and source == "github_actions" else "unknown"),
             "task_count": max(0, min(int(item.get("task_count", 0)), 100)),
             "dispatch_count": max(0, min(int(item.get("dispatch_count", 0)), 100)),
             "worker_count": max(0, min(int(item.get("worker_count", 0)), 100)),

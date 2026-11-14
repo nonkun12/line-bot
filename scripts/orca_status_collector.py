@@ -129,6 +129,8 @@ def collect_snapshot(terminal_handle: str) -> dict[str, Any]:
         dispatches.append(safe)
     return {
         "captured_at": datetime.now(timezone.utc).isoformat(),
+        "source": "orca_collector",
+        "observation_type": "runtime_observation",
         "run_id": str(task_result.get("runId") or "")[:100],
         "tasks": tasks, "dispatches": dispatches, "workers": workers,
         "streams": build_streams(tasks, dispatches, workers),

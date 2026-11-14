@@ -40,6 +40,30 @@ def test_validate_snapshot_rejects_bad_collection_and_stream_shapes():
     with pytest.raises(ValueError): validate_snapshot(data)
 
 
+
+def test_workflow_self_report_is_preserved_as_reported_not_observed():
+    data = payload()
+    data["source"] = "github_actions"
+    data["observation_type"] = "workflow_execution"
+    data["streams"][0]["status"] = "observed"
+    clean = validate_snapshot(data)
+    assert clean["source"] == "github_actions"
+    assert clean["observation_type"] == "workflow_execution"
+    assert clean["streams"][0]["status"] == "reported"
+
+
+@pytest.mark.parametrize("source,observation_type", [
+    ("github_actions", "runtime_observation"),
+    ("orca_collector", "workflow_execution"),
+    ("unknown", "unverified"),
+])
+def test_validate_snapshot_rejects_mismatched_or_unknown_provenance(source, observation_type):
+    data = payload()
+    data["source"] = source
+    data["observation_type"] = observation_type
+    with pytest.raises(ValueError, match="invalid evidence provenance"):
+        validate_snapshot(data)
+
 def test_publish_snapshot_signs_sanitized_payload_and_posts_https():
     data = payload()
     captured = {}

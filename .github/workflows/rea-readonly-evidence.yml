@@ -1,0 +1,105 @@
+name: REA read-only evidence scan
+
+on:
+  pull_request:
+    paths:
+      - "scripts/rea_readonly_scanner.py"
+      - "tests/test_rea_readonly_scanner.py"
+      - "cloudflare/**"
+      - "config.py"
+      - "core/orca_task_approval.py"
+      - "core/orca_task_intake.py"
+      - ".github/workflows/**"
+      - "routes/**"
+      - "scripts/**"
+      - "tests/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rea-readonly-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  rea-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PR merge snapshot
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Run REA scanner contract tests
+        run: python -m unittest discover -s tests -p 'test_rea_readonly_scanner.py'
+
+      - name: Generate SHA-bound REA report
+        id: rea
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          set +e
+          python -m scripts.rea_readonly_scanner --repo-root . > $RUNNER_TEMP/rea-report.json
+          scan_rc=$?
+          set -e
+          echo "REA scanner exit code: $scan_rc (0=PASS, 1=FINDINGS, 2=BLOCKED)"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          report_path = Path(os.environ["RUNNER_TEMP"]) / "rea-report.json"
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          report["pull_request_head_sha"] = os.environ["PR_HEAD_SHA"]
+          report["pull_request_base_sha"] = os.environ["PR_BASE_SHA"]
+          report_path.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"status={report.get('status', 'BLOCKED')}\n")
+              output.write(f"target_sha={report.get('target_sha', '')}\n")
+              output.write(f"pr_head_sha={report.get('pull_request_head_sha', '')}\n")
+              output.write(f"coverage={report.get('coverage', 'INCOMPLETE')}\n")
+              output.write(f"reason_code={report.get('reason_code', '')}\n")
+          print(json.dumps({
+              "status": report.get("status"),
+              "target_sha": report.get("target_sha"),
+              "pull_request_head_sha": report.get("pull_request_head_sha"),
+              "coverage": report.get("coverage"),
+              "files_scanned": report.get("files_scanned"),
+              "findings_count": report.get("findings_count"),
+              "evidence_sha256": report.get("evidence_sha256"),
+          }, sort_keys=True))
+          PY
+
+      - name: Upload REA evidence artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: rea-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/rea-report.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Summarize REA result
+        if: always()
+        env:
+          REA_STATUS: ${{ steps.rea.outputs.status }}
+          REA_SHA: ${{ steps.rea.outputs.target_sha }}
+          PR_HEAD_SHA: ${{ steps.rea.outputs.pr_head_sha }}
+          REA_COVERAGE: ${{ steps.rea.outputs.coverage }}
+          REA_REASON: ${{ steps.rea.outputs.reason_code }}
+        run: |
+          {
+            echo "### REA read-only scan"
+            echo "- Result: $REA_STATUS"
+            echo "- Scanned tree SHA: $REA_SHA"
+            echo "- PR head SHA: $PR_HEAD_SHA"
+            echo "- Coverage: $REA_COVERAGE"
+            echo "- Block reason: $REA_REASON"
+            echo "- Evidence-only: no approval, patch, merge, or deployment authority."
+          } >> "$GITHUB_STEP_SUMMARY"

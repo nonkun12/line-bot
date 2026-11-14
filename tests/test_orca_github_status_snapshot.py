@@ -1,7 +1,7 @@
 from scripts.orca_github_status_snapshot import build_snapshot
 
 
-def test_cloud_snapshot_marks_only_explicitly_attributed_streams_observed():
+def test_cloud_snapshot_marks_workflow_attribution_as_reported_not_runtime_observed():
     payload = build_snapshot(
         [
             {"task_id": "task-a", "status": "PASS", "stream_key": "side_task_supply"},
@@ -12,15 +12,17 @@ def test_cloud_snapshot_marks_only_explicitly_attributed_streams_observed():
         "2026-11-05T10:00:00+00:00",
     )
     streams = {item["key"]: item for item in payload["streams"]}
-    assert streams["side_task_supply"]["status"] == "observed"
+    assert streams["side_task_supply"]["status"] == "reported"
     assert streams["side_task_supply"]["task_count"] == 1
-    assert streams["side_task_supply"]["evidence"] == "matched_runtime_records"
+    assert streams["side_task_supply"]["evidence"] == "workflow_self_report"
     assert streams["side_self_improvement"]["status"] == "unknown"
     assert streams["side_line_full_control"]["status"] == "unknown"
     assert streams["side_media_ai"]["status"] == "unknown"
     assert streams["side_core_vocabulary"]["status"] == "unknown"
     assert payload["tasks"][1]["status"] == "FAIL"
     assert payload["dispatches"][0]["status"] == "BLOCKED"
+    assert payload["source"] == "github_actions"
+    assert payload["observation_type"] == "workflow_execution"
 
 
 def test_cloud_snapshot_does_not_invent_stream_attribution_for_unmapped_task():
@@ -59,6 +61,6 @@ def test_cloud_snapshot_attributes_core_vocabulary_only_with_explicit_stream_met
         "2026-11-05T12:00:00+00:00",
     )
     streams = {item["key"]: item for item in payload["streams"]}
-    assert streams["side_core_vocabulary"]["status"] == "observed"
+    assert streams["side_core_vocabulary"]["status"] == "reported"
     assert streams["side_core_vocabulary"]["task_count"] == 1
     assert payload["tasks"][0]["stream_key"] == "side_core_vocabulary"

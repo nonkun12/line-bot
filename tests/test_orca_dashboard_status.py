@@ -34,6 +34,7 @@ def post_snapshot(client, payload):
 
 def snapshot(**overrides):
     data = {"captured_at": datetime.now(timezone.utc).isoformat(), "run_id": "run-1",
+            "source": "orca_collector", "observation_type": "runtime_observation",
             "tasks": [{"id": "t1", "status": "running", "prompt": "PRIVATE"}],
             "dispatches": [{"id": "d1", "status": "ready", "payload": "PRIVATE"}],
             "workers": [{"id": "w1", "status": "live", "argv": ["SECRET"]}],
@@ -63,6 +64,8 @@ def test_orca_status_accepts_signed_snapshot_and_redacts_unlisted_fields(orca_cl
     assert "prompt" not in body["tasks"][0] and "payload" not in body["dispatches"][0]
     assert "argv" not in body["workers"][0]
     assert body["streams"][0]["status"] == "observed"
+    assert body["source"] == "orca_collector"
+    assert body["observation_type"] == "runtime_observation"
     assert [item["key"] for item in body["streams"]] == ["main_star_night", "side_media_ai", "side_core_vocabulary"]
 
 
@@ -97,3 +100,25 @@ def test_dashboard_loop_lists_all_five_development_streams(orca_client):
     assert response.status_code == 200
     keys = [item["key"] for item in response.get_json()["loop"]["streams"]]
     assert keys == ["main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control", "side_core_vocabulary"]
+
+
+def test_workflow_self_report_is_not_runtime_observation(orca_client):
+    payload = snapshot(source="github_actions", observation_type="workflow_execution")
+    assert post_snapshot(orca_client, payload).status_code == 200
+    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
+    body = read.get_json()
+    assert body["source"] == "github_actions"
+    assert body["observation_type"] == "workflow_execution"
+    assert body["streams"][0]["status"] == "reported"
+    assert body["streams"][0]["evidence"] == "workflow_self_report"
+
+
+def test_legacy_provenance_is_not_promoted_to_observed(orca_client):
+    payload = snapshot()
+    payload.pop("source")
+    payload.pop("observation_type")
+    assert post_snapshot(orca_client, payload).status_code == 200
+    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
+    body = read.get_json()
+    assert body["source"] == "legacy_unverified"
+    assert body["streams"][0]["status"] == "unknown"
