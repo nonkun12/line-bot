@@ -70,7 +70,7 @@ def test_workflow_never_completes_zero_task_empty_queue():
 
 def test_workflow_state_is_not_advanced_for_empty_queue():
     workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    persist = workflow[workflow.index("- name: Persist completed task state"):workflow.index("- name: Skip optional Google Sheets ledger in free-only mode")]
+    persist = workflow[workflow.index("- name: Persist completed task state"):workflow.index("- name: Record explicit Google Sheets skip evidence in free-only mode")]
     assert "autonomous-loop-not-run" in persist
     assert "state unchanged" in persist
 
