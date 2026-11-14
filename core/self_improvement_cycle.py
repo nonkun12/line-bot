@@ -93,9 +93,9 @@ def run_self_improvement_cycle(
         else ("review recurring development failure",) if outcome == "FAIL"
         else ()
     )
-    if approved:
-        next_action = "review failure evidence before another attempt"
-    elif proposals:
+    if outcome == "BLOCKED":
+        next_action = "require evidence and safety review before resume"
+    elif outcome == "FAIL":
         next_action = "review failure evidence before another attempt"
     else:
         next_action = "continue bounded development loop after review"
