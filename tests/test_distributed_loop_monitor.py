@@ -2,6 +2,10 @@ import base64
 import hashlib
 import json
 import unittest
+import os
+import sys
+import tempfile
+from unittest.mock import patch
 
 from scripts.distributed_loop_monitor import evaluate
 
@@ -56,6 +60,33 @@ class DistributedLoopMonitorTests(unittest.TestCase):
             state_meta=valid_meta(response) if meta is None else meta,
             state_response=response,
         )
+
+    def test_blocked_main_writes_report_and_returns_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runs_path = f"{directory}/runs.json"
+            state_path = f"{directory}/state.json"
+            meta_path = f"{directory}/meta.json"
+            output_path = f"{directory}/report.json"
+            with open(runs_path, "w", encoding="utf-8") as handle:
+                json.dump({}, handle)
+            with open(state_path, "w", encoding="utf-8") as handle:
+                json.dump({}, handle)
+            with open(meta_path, "w", encoding="utf-8") as handle:
+                json.dump({}, handle)
+            argv = [
+                "distributed_loop_monitor.py",
+                "--runs-json", runs_path,
+                "--state-json", state_path,
+                "--state-meta-json", meta_path,
+                "--output", output_path,
+            ]
+            with patch.object(sys, "argv", argv), patch.dict(os.environ, {"GITHUB_SHA": "a" * 40}):
+                from scripts.distributed_loop_monitor import main
+                self.assertEqual(main(), 1)
+            with open(output_path, encoding="utf-8") as handle:
+                report = json.load(handle)
+            self.assertEqual(report["status"], "BLOCKED")
+            self.assertIs(report["dispatch_allowed"], False)
 
     def test_valid_state_provenance_passes_but_never_dispatches(self):
         report = self.evaluate()
