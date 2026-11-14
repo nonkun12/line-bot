@@ -59,7 +59,7 @@ jobs:
           TASK_ID: ${{ inputs.task_id }}
         run: |
           set -euo pipefail
-          python scripts/confirm_recovery_resume_review.py \
+          PYTHONPATH="$GITHUB_WORKSPACE${PYTHONPATH:+:$PYTHONPATH}" python scripts/confirm_recovery_resume_review.py \
             --state-file /tmp/recovery-review-state/.autonomous-loop-state.json \
             --task-id "$TASK_ID"
 
