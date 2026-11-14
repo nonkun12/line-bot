@@ -1109,7 +1109,7 @@ jobs:
                   "task_id": "",
                   "result": result,
                   "reason": "free_only_mode" if result == "SKIPPED_FREE_MODE" else "unsupported_mode",
-              }, ensure_ascii=False) + "\\n",
+              }, ensure_ascii=False) + "\n",
               encoding="utf-8",
           )
           print(f"Google Sheets ledger result: {result}")
