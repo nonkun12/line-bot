@@ -13,5 +13,5 @@ jobs:
       - name: Explain retirement without invoking external providers
         run: |
           echo "BLOCKED: this legacy worker is retired."
-          echo "No Groq, Google Sheets, Slack, or external model provider is invoked."
+          echo "No external model provider or paid integration is invoked."
           echo "Use the free-only Distributed Autonomous Development Loop instead."
