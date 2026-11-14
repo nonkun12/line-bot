@@ -1,9 +1,7 @@
 name: Orca Phase 1 Read-only Observation
 
 on:
-  # GitHub scheduled workflows run from the default branch after this change is merged.
-  schedule:
-    - cron: '*/30 * * * *'
+  # Manual diagnostic only; the unified 30-minute candidate owns scheduling.
   workflow_dispatch:
 
 permissions:
