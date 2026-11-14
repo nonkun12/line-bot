@@ -139,11 +139,6 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertFalse(report["dispatch_allowed"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-
     def test_missing_recovery_update_timestamp_blocks(self):
         state = valid_state()
         del state["recovery_ai"]["state_updated_at"]
@@ -165,3 +160,8 @@ if __name__ == "__main__":
         state["recovery_ai"]["state_updated_at"] = "2026-11-14T00:10:00Z"
         report = self.evaluate(state=state)
         self.assertEqual(report["status"], "BLOCKED")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
