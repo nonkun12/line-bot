@@ -571,6 +571,30 @@ jobs:
           fi
           exit "$loop_rc"
 
+      - name: Record distributed AI task handoffs
+        id: distributed_ai_ledger
+        if: ${{ always() && steps.run_task.conclusion != 'skipped' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          queue_path="${AUTONOMOUS_LOOP_TASK_QUEUE:-/tmp/autonomous-loop-runtime-queue.json}"
+          python -m scripts.distributed_ai_event_ledger \
+            --queue "$queue_path" \
+            --results /tmp/minimal-autonomous-loop.jsonl \
+            --output artifacts/distributed-ai/events.jsonl \
+            --run-id "$GITHUB_RUN_ID" \
+            | tee /tmp/distributed-ai-ledger-summary.json
+          cat /tmp/distributed-ai-ledger-summary.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload distributed AI handoff ledger
+        if: ${{ always() && steps.distributed_ai_ledger.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributed-ai-event-ledger-${{ github.run_id }}
+          path: artifacts/distributed-ai/events.jsonl
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Maintenance AI read-only failure triage
         id: maintenance_ai
         if: ${{ always() && steps.run_task.conclusion != 'skipped' }}
