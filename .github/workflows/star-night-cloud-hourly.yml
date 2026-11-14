@@ -28,7 +28,72 @@ jobs:
         run: python -m pytest -q tests/test_star_night_hourly_candidate.py tests/test_star_night_game_state.py
       - name: Build hourly candidate
         run: python -m scripts.star_night_hourly_candidate --output-dir "artifacts/star-night-${GITHUB_RUN_ID}" --render-animatic
-      - name: Upload candidate bundle
+      - name: Generate watchable preview poster
+        run: |
+          ffmpeg -y -hide_banner -loglevel error \
+            -ss 7 -i "artifacts/star-night-${GITHUB_RUN_ID}/star-night-episode-01-animatic.mp4" \
+            -frames:v 1 -q:v 2 "artifacts/star-night-${GITHUB_RUN_ID}/preview-poster.jpg"
+      - name: Write review summary
+        env:
+          ARTIFACT_DIR: artifacts/star-night-${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["ARTIFACT_DIR"])
+          manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+          critic = json.loads((root / "critic_review.json").read_text(encoding="utf-8"))
+          task = json.loads((root / "hourly_task.json").read_text(encoding="utf-8"))
+          lines = [
+              "# STAR-NIGHT preview",
+              "",
+              f"- Run: [{os.environ['RUN_URL']}]({os.environ['RUN_URL']})",
+              f"- Focus: {task.get('focus', 'unknown')}",
+              f"- Critic: **{critic.get('status', 'UNKNOWN')}** (structural checks only)",
+              f"- Video: {manifest.get('video_render_status', 'unknown')}",
+              "- Duration: 15 seconds",
+              "- Review state: candidate only; no canon update or publication",
+              "",
+              "## Downloadable artifacts",
+              "- Video preview: star-night-video-<run_id>",
+              "- Music preview: star-night-audio-<run_id>",
+              "- Poster/storyboard: star-night-poster-<run_id>",
+              "- Complete editable bundle: star-night-hourly-<run_id>",
+              "",
+              "Artifacts are retained for 14 days. Download the video artifact to watch the MP4; download the audio artifact to listen to the WAV.",
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+              handle.write("\n".join(lines) + "\n")
+          PY
+      - name: Upload standalone video preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: star-night-video-${{ github.run_id }}
+          path: artifacts/star-night-${{ github.run_id }}/star-night-episode-01-animatic.mp4
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload standalone music preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: star-night-audio-${{ github.run_id }}
+          path: |
+            artifacts/star-night-${{ github.run_id }}/original_music.wav
+            artifacts/star-night-${{ github.run_id }}/original_music.mid
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload poster and storyboard preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: star-night-poster-${{ github.run_id }}
+          path: |
+            artifacts/star-night-${{ github.run_id }}/preview-poster.jpg
+            artifacts/star-night-${{ github.run_id }}/animatic_frames/*.png
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload complete editable candidate bundle
         uses: actions/upload-artifact@v4
         with:
           name: star-night-hourly-${{ github.run_id }}
