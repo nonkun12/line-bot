@@ -1,7 +1,9 @@
 name: Orca Phase 1 Read-only Observation
 
 on:
-  # Manual-only; this new workflow is not installed on main yet.
+  # GitHub scheduled workflows run from the default branch after this change is merged.
+  schedule:
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 permissions:
