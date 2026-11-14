@@ -16,6 +16,8 @@ pub struct Candidate {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SelectionError {
     EmptyTaskId,
+    InvalidTaskId(String),
+    InvalidLimit,
     DuplicateTaskId(String),
 }
 
@@ -24,11 +26,21 @@ pub enum SelectionError {
 /// Ordering matches Python refill: descending history score, then reviewed
 /// catalog order. The function is pure and has no external side effects.
 pub fn select(candidates: &[Candidate], limit: usize) -> Result<Vec<String>, SelectionError> {
+    if !(1..=4).contains(&limit) {
+        return Err(SelectionError::InvalidLimit);
+    }
     let mut seen = HashSet::with_capacity(candidates.len());
 
     for candidate in candidates {
         if candidate.id.trim().is_empty() {
             return Err(SelectionError::EmptyTaskId);
+        }
+        let bytes = candidate.id.as_bytes();
+        let valid = (3..=100).contains(&bytes.len())
+            && (bytes[0].is_ascii_lowercase() || bytes[0].is_ascii_digit())
+            && bytes[1..].iter().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'.' || *b == b'_' || *b == b'-');
+        if !valid {
+            return Err(SelectionError::InvalidTaskId(candidate.id.clone()));
         }
         if !seen.insert(candidate.id.as_str()) {
             return Err(SelectionError::DuplicateTaskId(candidate.id.clone()));
@@ -104,6 +116,27 @@ mod tests {
         let tasks = vec![candidate("task-a", 2, 0, true), candidate("task-b", 1, 1, true)];
         assert!(select(&tasks, 0).unwrap().is_empty());
         assert_eq!(select(&tasks, 1).unwrap(), vec!["task-a"]);
+    }
+
+    #[test]
+    fn rejects_limits_outside_python_contract() {
+        let tasks = vec![candidate("task-a", 2, 0, true)];
+        assert_eq!(select(&tasks, 0), Err(SelectionError::InvalidLimit));
+        assert_eq!(select(&tasks, 5), Err(SelectionError::InvalidLimit));
+    }
+
+    #[test]
+    fn rejects_ids_outside_python_contract() {
+        for id in ["ab", "UPPER", "../x", "has space", "a".repeat(101).as_str()] {
+            let tasks = vec![candidate(id, 1, 0, true)];
+            assert_eq!(select(&tasks, 1), Err(SelectionError::InvalidTaskId(id.to_owned())));
+        }
+    }
+
+    #[test]
+    fn accepts_python_task_id_characters() {
+        let tasks = vec![candidate("task.a_1-x", 1, 0, true)];
+        assert_eq!(select(&tasks, 1).unwrap(), vec!["task.a_1-x"]);
     }
 
     #[test]
