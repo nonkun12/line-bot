@@ -99,6 +99,34 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         report = self.evaluate(runs={})
         self.assertEqual(report["status"], "BLOCKED")
 
+    def test_paginated_actions_pages_are_flattened(self):
+        pages = [
+            {"workflow_runs": [
+                {"workflow_id": 357086091, "status": "in_progress"},
+                {"workflow_id": 111111111, "status": "completed"},
+            ]},
+            {"workflow_runs": [
+                {"workflow_id": 222222222, "status": "queued"},
+            ]},
+        ]
+        report = self.evaluate(runs=pages)
+        activity = report["checks"]["main_loop_activity"]
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(activity["status"], "PASS")
+        self.assertEqual(activity["active_run_count"], 1)
+        self.assertIs(report["dispatch_allowed"], False)
+
+    def test_malformed_paginated_actions_page_blocks(self):
+        pages = [
+            {"workflow_runs": [{"workflow_id": 357086091, "status": "in_progress"}]},
+            {"workflow_runs": "not-a-list"},
+        ]
+        report = self.evaluate(runs=pages)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["checks"]["actions_api"]["status"], "BLOCKED")
+        self.assertEqual(report["checks"]["main_loop_activity"]["outcome"], "UNVERIFIED")
+        self.assertIs(report["dispatch_allowed"], False)
+
     def test_missing_recovery_schema_blocks(self):
         report = self.evaluate(state={"version": 1})
         self.assertEqual(report["status"], "BLOCKED")

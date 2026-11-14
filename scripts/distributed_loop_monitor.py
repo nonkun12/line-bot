@@ -71,6 +71,20 @@ def decode_github_contents(payload: Any) -> Any:
         return None
 
 
+def normalize_actions_runs(payload: Any) -> dict[str, Any] | None:
+    """Normalize either a single Actions response or gh --paginate --slurp pages."""
+    if isinstance(payload, dict):
+        return payload
+    if not isinstance(payload, list) or not payload:
+        return None
+    combined: list[Any] = []
+    for page in payload:
+        if not isinstance(page, dict) or not isinstance(page.get("workflow_runs"), list):
+            return None
+        combined.extend(page["workflow_runs"])
+    return {"workflow_runs": combined}
+
+
 def evaluate(
     runs_payload: Any,
     durable_payload: Any,
@@ -84,6 +98,7 @@ def evaluate(
     checks: dict[str, dict[str, Any]] = {}
     reasons: list[str] = []
 
+    runs_payload = normalize_actions_runs(runs_payload)
     runs_shape_ok = (
         isinstance(runs_payload, dict)
         and isinstance(runs_payload.get("workflow_runs"), list)
