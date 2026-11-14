@@ -1,7 +1,7 @@
 """Import/export a bounded, sanitized self-improvement history in loop state.
 
-Only allowlisted signal kinds, conservative task identifiers, and fixed generic
-details are persisted. Cycle memory is preserved using categorical fields only;
+Only allowlisted signal kinds, conservative task identifiers, and fixed
+categorical details are persisted. Cycle memory is preserved using categories only;
 raw exceptions, paths, prompts, model output, and user content are discarded.
 """
 from __future__ import annotations
