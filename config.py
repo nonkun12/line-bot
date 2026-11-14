@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import httpx
 import certifi
@@ -36,6 +37,7 @@ N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
 VOICE_PUBLIC_BASE_URL = os.environ.get("VOICE_PUBLIC_BASE_URL", "https://line-bot-yvea.onrender.com").rstrip("/")
 ORCA_TASK_API_URL = os.environ.get("ORCA_TASK_API_URL", "").strip()
 ORCA_TASK_API_TOKEN = os.environ.get("ORCA_TASK_API_TOKEN", "").strip()
+ORCA_TASK_APPROVAL_HMAC_KEY = os.environ.get("ORCA_TASK_APPROVAL_HMAC_KEY", "").strip()
 
 AI_APP_BUILDER_URL = os.environ.get("AI_APP_BUILDER_URL", "")
 AI_APP_BUILDER_SHARED_SECRET = os.environ.get("AI_APP_BUILDER_SHARED_SECRET", "")
@@ -52,7 +54,104 @@ MODEL = "openai/gpt-oss-20b"
 DEPLOY_SYNC_MARKER = "2026-09-12-line-voice-e2e"
 
 
-def _register_orca_task(message: str, message_id: str):
+
+def _get_orca_task_status(message: str, user_id: str | None):
+    """Read one task status, restricted by the verified LINE submitter identity."""
+    prefixes = ("タスク状態:", "タスク状態：")
+    prefix = next((item for item in prefixes if message.startswith(item)), None)
+    if prefix is None:
+        return None
+    task_id = message[len(prefix):].strip()
+    if not task_id or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+        return False, "タスクIDの形式が正しくありません。"
+    from core.orca_task_approval import is_valid_line_user_id
+    if not is_valid_line_user_id(user_id):
+        return False, "LINEユーザーを確認できないため状態を照会できません。"
+    if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN:
+        return False, "タスク状態照会の接続設定が未完了です。"
+    url = ORCA_TASK_API_URL.rstrip("/") + "/tasks/" + task_id + "/status"
+    try:
+        response = httpx.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {ORCA_TASK_API_TOKEN}",
+                "X-ORCA-Task-Owner": str(user_id),
+            },
+            timeout=8.0,
+        )
+        if response.status_code == 404:
+            return False, "タスクが見つからないか、照会権限がありません。"
+        if response.status_code != 200:
+            return False, f"タスク状態を取得できませんでした（HTTP {response.status_code}）。"
+        result = response.json()
+        task = result.get("task") if isinstance(result, dict) else None
+        if not isinstance(task, dict) or task.get("task_id") != task_id:
+            return False, "タスク状態の応答を確認できませんでした。"
+        status = task.get("status")
+        if status not in ("queued", "running", "pass", "fail", "blocked"):
+            return False, "タスク状態の応答が不正です。"
+    except (httpx.TransportError, ValueError, AttributeError):
+        return False, "タスク状態照会に失敗しました。時間をおいて再度お試しください。"
+    labels = {
+        "queued": "受付済み（未実行）",
+        "running": "実行中",
+        "pass": "完了",
+        "fail": "失敗",
+        "blocked": "停止・要確認",
+    }
+    return True, f"タスク {task_id} の状態: {labels[status]}（{status}）"
+
+
+def _approve_orca_task(message: str, user_id: str | None):
+    """Approve one exact task from its verified LINE submitter."""
+    prefixes = ("タスク承認:", "タスク承認：")
+    prefix = next((item for item in prefixes if message.startswith(item)), None)
+    if prefix is None:
+        return None
+    task_id = message[len(prefix):].strip()
+    if not task_id or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+        return False, "タスクIDの形式が正しくありません。"
+    from core.orca_task_approval import build_approval_payload, is_valid_line_user_id
+    if not is_valid_line_user_id(user_id):
+        return False, "LINEユーザーを確認できないため承認できません。"
+    if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN or len(ORCA_TASK_APPROVAL_HMAC_KEY) < 32:
+        return False, "タスク承認の安全設定が未完了です。承認は行っていません。"
+    url = ORCA_TASK_API_URL.rstrip("/") + "/tasks/" + task_id
+    headers = {"Authorization": f"Bearer {ORCA_TASK_API_TOKEN}"}
+    try:
+        response = httpx.get(url, headers=headers, timeout=8.0)
+        if response.status_code != 200:
+            return False, f"タスクを取得できませんでした（HTTP {response.status_code}）。承認していません。"
+        result = response.json()
+        task = result.get("task") if isinstance(result, dict) else None
+        if not isinstance(task, dict):
+            return False, "タスク応答の形式が不正です。承認していません。"
+        if task.get("task_id") != task_id or task.get("status") not in ("queued", "running"):
+            return False, "対象タスクが承認可能な状態ではありません。承認していません。"
+        request_text = task.get("request_text")
+        if not isinstance(request_text, str) or not request_text.startswith(("アプリ開発:", "アプリ開発：")):
+            return False, "明示的なアプリ開発タスクではありません。承認していません。"
+        payload = build_approval_payload(
+            task_id, request_text, str(user_id), ORCA_TASK_APPROVAL_HMAC_KEY
+        )
+        approved = httpx.post(
+            url + "/approve", json=payload,
+            headers=headers, timeout=8.0,
+        )
+    except (httpx.TransportError, ValueError, KeyError):
+        return False, "承認APIとの通信または応答検証に失敗しました。承認していません。"
+    if approved.status_code != 200:
+        return False, f"承認は拒否されました（HTTP {approved.status_code}）。"
+    try:
+        approval_result = approved.json()
+    except ValueError:
+        return False, "承認結果を確認できませんでした。状態を確認してください。"
+    if not isinstance(approval_result, dict) or approval_result.get("approved") is not True:
+        return False, "承認結果を確認できませんでした。状態を確認してください。"
+    return True, f"タスク {task_id} を承認しました。有効期限: {approval_result.get('expires_at', '1時間以内')}。実行後もPRレビューとマージは別途必要です。"
+
+
+def _register_orca_task(message: str, message_id: str, user_id: str | None = None):
     """Explicit LINE task intake only; stores a task in Cloudflare D1 without executing it."""
     prefixes = ("タスク登録:", "タスク登録：")
     prefix = next((item for item in prefixes if message.startswith(item)), None)
@@ -62,16 +161,21 @@ def _register_orca_task(message: str, message_id: str):
     request_text = message[len(prefix):].strip()
     if not request_text:
         return False, "タスク内容が空です。「タスク登録: 依頼内容」の形式で送ってください。", False
+    if not request_text.startswith(("アプリ開発:", "アプリ開発：")):
+        return False, "現在のOrca実行対象はアプリ開発のみです。「タスク登録: アプリ開発: 依頼内容」の形式で送ってください。", False
     if len(request_text.encode("utf-8")) > 6000:
         return False, "依頼文が長すぎます。6,000バイト以内にしてください。", False
     if not ORCA_TASK_API_URL or not ORCA_TASK_API_TOKEN:
         return False, "Cloudflare受付設定が未完了です。依頼は登録されていません。", False
 
-    payload = {
-        "task_id": f"line-{uuid.uuid4().hex}",
-        "request_text": request_text,
-        "source_event_id": str(message_id),
-    }
+    from core.orca_task_intake import build_task_payload
+
+    payload = build_task_payload(
+        task_id=f"line-{uuid.uuid4().hex}",
+        request_text=request_text,
+        message_id=message_id,
+        user_id=user_id,
+    )
     try:
         response = httpx.post(
             ORCA_TASK_API_URL,
@@ -141,8 +245,22 @@ def handle_message_event(event):
             if len(_processed_message_ids) > _MAX_TRACKED_IDS:
                 _processed_message_ids.popitem(last=False)
 
+        # Task status is read-only and scoped to the verified LINE submitter.
+        status_result = _get_orca_task_status(text, user_id)
+        if status_result is not None:
+            _, status_reply = status_result
+            _line_push(str(user_id), status_reply)
+            return
+
+        # Task approval is a separate, allowlisted, signed LINE protocol.
+        approval_result = _approve_orca_task(text, user_id)
+        if approval_result is not None:
+            _, approval_reply = approval_result
+            _line_push(str(user_id), approval_reply)
+            return
+
         # Explicit Cloudflare intake is isolated from development and Distributed Loop dispatch.
-        intake_result = _register_orca_task(text, message_id)
+        intake_result = _register_orca_task(text, message_id, user_id=user_id)
         if intake_result is not None:
             accepted, intake_reply, retryable = intake_result
             if retryable:
