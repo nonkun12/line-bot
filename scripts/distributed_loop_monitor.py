@@ -456,6 +456,11 @@ def evaluate(
         }
         if run_evidence["status"] == "BLOCKED":
             reasons.append("Main LOOP run evidence invalid or unhealthy: " + run_evidence["detail"])
+        elif run_evidence["outcome"] == "NO_CHANGE":
+            # Absence of a Main LOOP run is not evidence of a healthy cadence.
+            # Keep the activity sub-check informational, but fail the overall
+            # monitor closed so a missing run cannot be mistaken for PASS.
+            reasons.append("No Main LOOP run found; scheduled task activity is unverified")
     else:
         checks["main_loop_activity"] = {
             "status": "BLOCKED",
