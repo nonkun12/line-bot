@@ -41,6 +41,40 @@ def test_history_rejects_corruption_without_overwriting(tmp_path):
     assert path.read_text(encoding="utf-8") == original
 
 
+def test_history_normalizes_legacy_free_text_and_task_ids(tmp_path):
+    path = tmp_path / "history.jsonl"
+    path.write_text(
+        '{"kind":"failure","task_id":"../private","detail":"token=secret exception"}\\n',
+        encoding="utf-8",
+    )
+    store = SelfImprovementHistory(path)
+    assert store.load() == (
+        ImprovementSignal("failure", None, "development failure observed"),
+    )
+    store.append([ImprovementSignal("repair", "task-2", "safe")])
+    persisted = path.read_text(encoding="utf-8")
+    assert "secret" not in persisted
+    assert "../private" not in persisted
+
+
+def test_history_scans_corruption_before_bounded_tail(tmp_path):
+    path = tmp_path / "history.jsonl"
+    path.write_text(
+        'not-json\\n' + ''.join(
+            '{"kind":"success","task_id":"task-%s","detail":"task passed or verified no-change"}\\n' % i
+            for i in range(205)
+        ),
+        encoding="utf-8",
+    )
+    store = SelfImprovementHistory(path, max_records=2)
+    try:
+        store.append([ImprovementSignal("repair", "new", "safe")])
+    except ValueError as exc:
+        assert "line 1" in str(exc)
+    else:
+        raise AssertionError("old corruption must not be truncated away")
+
+
 def test_history_rejects_invalid_signal(tmp_path):
     store = SelfImprovementHistory(tmp_path / "history.jsonl")
     try:
