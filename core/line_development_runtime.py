@@ -2710,16 +2710,9 @@ def execute(instruction: str) -> int:
     autonomous_task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
     free_mode_block_reason = _free_mode_block_reason(autonomous_task_id)
     if free_mode_block_reason is not None:
+        # Free-only runs must never touch the legacy Google Sheets audit adapter.
+        # The guarded runner writes a local run summary and uploads it as an artifact.
         print(f"BLOCKED: {free_mode_block_reason}", flush=True)
-        _write_development_audit_to_google_sheets(
-            instruction=instruction,
-            status="BLOCKED",
-            target_path=None,
-            branch=None,
-            exit_detail=free_mode_block_reason,
-            base_sha=None,
-            produced_sha=None,
-        )
         return 1
     deterministic_task = autonomous_task_id in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
     review_coverage_gap_task = _is_review_coverage_gap_task_id(autonomous_task_id)
