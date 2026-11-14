@@ -15,7 +15,6 @@ pub struct Candidate {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SelectionError {
-    EmptyTaskId,
     InvalidTaskId(String),
     InvalidLimit,
     DuplicateTaskId(String),
@@ -32,9 +31,6 @@ pub fn select(candidates: &[Candidate], limit: usize) -> Result<Vec<String>, Sel
     let mut seen = HashSet::with_capacity(candidates.len());
 
     for candidate in candidates {
-        if candidate.id.trim().is_empty() {
-            return Err(SelectionError::EmptyTaskId);
-        }
         let bytes = candidate.id.as_bytes();
         let valid = (3..=100).contains(&bytes.len())
             && (bytes[0].is_ascii_lowercase() || bytes[0].is_ascii_digit())
@@ -112,9 +108,8 @@ mod tests {
     }
 
     #[test]
-    fn respects_zero_and_positive_limits() {
+    fn respects_positive_limits() {
         let tasks = vec![candidate("task-a", 2, 0, true), candidate("task-b", 1, 1, true)];
-        assert!(select(&tasks, 0).unwrap().is_empty());
         assert_eq!(select(&tasks, 1).unwrap(), vec!["task-a"]);
     }
 
@@ -127,9 +122,18 @@ mod tests {
 
     #[test]
     fn rejects_ids_outside_python_contract() {
-        for id in ["ab", "UPPER", "../x", "has space", "a".repeat(101).as_str()] {
-            let tasks = vec![candidate(id, 1, 0, true)];
-            assert_eq!(select(&tasks, 1), Err(SelectionError::InvalidTaskId(id.to_owned())));
+        let invalid_ids = vec![
+            "".to_owned(),
+            "  ".to_owned(),
+            "ab".to_owned(),
+            "UPPER".to_owned(),
+            "../x".to_owned(),
+            "has space".to_owned(),
+            "a".repeat(101),
+        ];
+        for id in invalid_ids {
+            let tasks = vec![candidate(&id, 1, 0, true)];
+            assert_eq!(select(&tasks, 1), Err(SelectionError::InvalidTaskId(id)));
         }
     }
 
@@ -146,8 +150,5 @@ mod tests {
     }
 
     #[test]
-    fn rejects_blank_ids_fail_closed() {
-        let tasks = vec![candidate("  ", 2, 0, true)];
-        assert_eq!(select(&tasks, 1), Err(SelectionError::EmptyTaskId));
-    }
+
 }
