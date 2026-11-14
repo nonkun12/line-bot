@@ -41,4 +41,4 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run Python-Rust selector shadow parity
-        run: python -m unittest tests.test_rust_task_selector_shadow
+        run: python -m unittest discover -s tests -p test_rust_task_selector_shadow.py
