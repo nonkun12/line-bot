@@ -44,7 +44,7 @@ def test_history_rejects_corruption_without_overwriting(tmp_path):
 def test_history_normalizes_legacy_free_text_and_task_ids(tmp_path):
     path = tmp_path / "history.jsonl"
     path.write_text(
-        '{"kind":"failure","task_id":"../private","detail":"token=secret exception"}\\n',
+        '{"kind":"failure","task_id":"../private","detail":"token=secret exception"}\n',
         encoding="utf-8",
     )
     store = SelfImprovementHistory(path)
@@ -60,8 +60,8 @@ def test_history_normalizes_legacy_free_text_and_task_ids(tmp_path):
 def test_history_scans_corruption_before_bounded_tail(tmp_path):
     path = tmp_path / "history.jsonl"
     path.write_text(
-        'not-json\\n' + ''.join(
-            '{"kind":"success","task_id":"task-%s","detail":"task passed or verified no-change"}\\n' % i
+        'not-json\n' + ''.join(
+            '{"kind":"success","task_id":"task-%s","detail":"task passed or verified no-change"}\n' % i
             for i in range(205)
         ),
         encoding="utf-8",
@@ -78,7 +78,7 @@ def test_history_scans_corruption_before_bounded_tail(tmp_path):
 def test_history_memory_discards_legacy_free_text_and_paths(tmp_path):
     path = tmp_path / "history.jsonl"
     path.write_text(
-        '{"record_type":"cycle_memory","outcome":"FAIL","cause":"token=secret","improvements":["raw prompt"],"next_action":"run anything","target_path":"../../secrets","recurring_patterns":["private stack trace"]}\\n',
+        '{"record_type":"cycle_memory","outcome":"FAIL","cause":"token=secret","improvements":["raw prompt"],"next_action":"run anything","target_path":"../../secrets","recurring_patterns":["private stack trace"]}\n',
         encoding="utf-8",
     )
     store = SelfImprovementHistory(path)
