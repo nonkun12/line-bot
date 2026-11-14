@@ -1,0 +1,35 @@
+name: Rust Task Selector
+
+on:
+  pull_request:
+    paths:
+      - "rust/task-selector/**"
+      - ".github/workflows/rust-task-selector.yml"
+  push:
+    branches:
+      - feat/rust-task-selector-shadow-20261114
+    paths:
+      - "rust/task-selector/**"
+      - ".github/workflows/rust-task-selector.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout without persistent credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install stable Rust toolchain
+        run: |
+          if ! command -v rustup >/dev/null 2>&1; then
+            echo "::error::rustup is unavailable on this runner"
+            exit 1
+          fi
+          rustup toolchain install stable --profile minimal
+      - name: Run selector unit tests
+        run: cargo +stable test --manifest-path rust/task-selector/Cargo.toml
