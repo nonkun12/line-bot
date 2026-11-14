@@ -47,6 +47,11 @@ def filter_queue(queue_path: Path, output_path: Path, report_path: Path) -> dict
         if not isinstance(allowed_paths, list) or not all(isinstance(p, str) for p in allowed_paths):
             raise ValueError(f"runtime queue task allowed_paths is invalid: {task_id}")
         seen.add(task_id)
+        # Review-coverage-gap IDs are explicitly model-backed by the runtime,
+        # even when a legacy target-map entry exists for their test file.
+        if task_id.startswith("review-coverage-gap-"):
+            excluded.append({"id": task_id, "reason": "review_gap_requires_model"})
+            continue
         expected_path = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
         if expected_path is None:
             excluded.append({"id": task_id, "reason": "not_registered_deterministic"})
