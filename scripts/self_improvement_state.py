@@ -164,7 +164,7 @@ def validate_durable_history(records: object) -> list[dict[str, object]]:
             not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id)
         ):
             raise ValueError("self-improvement task ID is invalid")
-        if detail not in _SAFE_DETAIL[kind]:
+        if not isinstance(detail, str) or detail not in _SAFE_DETAIL[kind]:
             raise ValueError("self-improvement signal detail is invalid")
         validated.append({"kind": kind, "task_id": task_id, "detail": detail})
     return validated
