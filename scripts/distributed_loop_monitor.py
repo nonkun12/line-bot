@@ -84,17 +84,25 @@ def evaluate(
     checks: dict[str, dict[str, Any]] = {}
     reasons: list[str] = []
 
-    runs_ok = (
+    runs_shape_ok = (
         isinstance(runs_payload, dict)
         and isinstance(runs_payload.get("workflow_runs"), list)
         and all(isinstance(item, dict) for item in runs_payload["workflow_runs"])
     )
+    runs_have_valid_workflow_ids = runs_shape_ok and all(
+        type(item.get("workflow_id")) is int and item["workflow_id"] > 0
+        for item in runs_payload["workflow_runs"]
+    )
+    runs_ok = runs_shape_ok and runs_have_valid_workflow_ids
     checks["actions_api"] = {
         "status": "PASS" if runs_ok else "BLOCKED",
-        "detail": "Recent workflow runs retrieved" if runs_ok else "Actions evidence missing or malformed",
+        "detail": (
+            "Recent workflow runs retrieved with valid workflow IDs"
+            if runs_ok else "Actions evidence missing, malformed, or missing a valid workflow_id"
+        ),
     }
     if not runs_ok:
-        reasons.append("Actions API evidence unavailable")
+        reasons.append("Actions API evidence unavailable or malformed (workflow_id validation failed)")
 
     state_ok = isinstance(durable_payload, dict)
     recovery = durable_payload.get("recovery_ai") if state_ok else None
@@ -257,13 +265,26 @@ def evaluate(
     if runs_ok:
         active = [
             item for item in runs_payload["workflow_runs"]
-            if item.get("name") == "Distributed Autonomous Development Loop"
+            if item.get("workflow_id") == 357086091
             and item.get("status") in {"queued", "in_progress"}
         ]
         checks["main_loop_activity"] = {
-            "status": "PASS",
+            "status": "PASS" if active else "INFO",
+            "outcome": "ACTIVE" if active else "NO_CHANGE",
+            "workflow_id": 357086091,
             "active_run_count": len(active),
-            "detail": "Active Main LOOP runs observed; monitor did not dispatch or cancel anything",
+            "detail": (
+                "Main LOOP workflow activity confirmed by fixed workflow ID; monitor did not dispatch or cancel anything"
+                if active else "No active Main LOOP run observed for the fixed workflow ID; no dispatch was attempted"
+            ),
+        }
+    else:
+        checks["main_loop_activity"] = {
+            "status": "BLOCKED",
+            "outcome": "UNVERIFIED",
+            "workflow_id": 357086091,
+            "active_run_count": None,
+            "detail": "Main LOOP activity cannot be verified because Actions run records or workflow IDs are invalid",
         }
 
     monitor_sha_ok = isinstance(head_sha, str) and bool(SHA_RE.fullmatch(head_sha))

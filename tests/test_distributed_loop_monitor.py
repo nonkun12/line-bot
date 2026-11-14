@@ -159,15 +159,66 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         state["recovery_ai"]["tasks"]["task-1"] = "invalid"
         self.assertEqual(self.evaluate(state=state)["status"], "BLOCKED")
 
-    def test_active_main_run_is_reported_but_not_dispatched(self):
+    def test_active_main_run_is_identified_by_fixed_workflow_id_not_name(self):
         runs = {"workflow_runs": [{
-            "name": "Distributed Autonomous Development Loop",
+            "workflow_id": 357086091,
+            "name": "Renamed workflow must still be identified by ID",
             "status": "in_progress",
         }]}
         report = self.evaluate(runs=runs)
+        activity = report["checks"]["main_loop_activity"]
         self.assertEqual(report["status"], "PASS")
-        self.assertEqual(report["checks"]["main_loop_activity"]["active_run_count"], 1)
-        self.assertFalse(report["dispatch_allowed"])
+        self.assertEqual(activity["status"], "PASS")
+        self.assertEqual(activity["outcome"], "ACTIVE")
+        self.assertEqual(activity["workflow_id"], 357086091)
+        self.assertEqual(activity["active_run_count"], 1)
+        self.assertIs(report["dispatch_allowed"], False)
+
+    def test_zero_active_main_runs_is_info_no_change(self):
+        report = self.evaluate(runs={"workflow_runs": []})
+        activity = report["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "INFO")
+        self.assertEqual(activity["outcome"], "NO_CHANGE")
+        self.assertEqual(activity["active_run_count"], 0)
+        self.assertIs(report["dispatch_allowed"], False)
+
+    def test_completed_main_run_is_not_reported_as_active(self):
+        runs = {"workflow_runs": [{
+            "workflow_id": 357086091,
+            "status": "completed",
+            "conclusion": "success",
+        }]}
+        activity = self.evaluate(runs=runs)["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "INFO")
+        self.assertEqual(activity["outcome"], "NO_CHANGE")
+        self.assertEqual(activity["active_run_count"], 0)
+
+    def test_unrelated_active_workflow_is_not_counted_as_main_loop(self):
+        runs = {"workflow_runs": [{
+            "workflow_id": 999999999,
+            "name": "Some other active workflow",
+            "status": "in_progress",
+        }]}
+        activity = self.evaluate(runs=runs)["checks"]["main_loop_activity"]
+        self.assertEqual(activity["status"], "INFO")
+        self.assertEqual(activity["outcome"], "NO_CHANGE")
+        self.assertEqual(activity["active_run_count"], 0)
+
+    def test_missing_or_invalid_workflow_id_blocks(self):
+        invalid_records = [
+            {"status": "in_progress"},
+            {"workflow_id": 0, "status": "in_progress"},
+            {"workflow_id": True, "status": "in_progress"},
+            {"workflow_id": "357086091", "status": "in_progress"},
+        ]
+        for record in invalid_records:
+            with self.subTest(record=record):
+                report = self.evaluate(runs={"workflow_runs": [record]})
+                self.assertEqual(report["status"], "BLOCKED")
+                self.assertEqual(report["checks"]["actions_api"]["status"], "BLOCKED")
+                self.assertEqual(report["checks"]["main_loop_activity"]["status"], "BLOCKED")
+                self.assertEqual(report["checks"]["main_loop_activity"]["outcome"], "UNVERIFIED")
+                self.assertIs(report["dispatch_allowed"], False)
 
 
     def test_missing_recovery_update_timestamp_blocks(self):
