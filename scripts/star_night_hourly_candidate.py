@@ -386,25 +386,57 @@ def _render_animatic(destination: Path) -> Path:
         draw.text((1190, 92), titles[index], font=font(22), fill=(190, 222, 245, 230), anchor="ra")
         image.save(frame_dir / f"cut_{index + 1:02d}.png", optimize=True)
 
-    concat_file = frame_dir / "frames.txt"
-    lines = []
-    for index, duration in enumerate(durations, start=1):
-        lines.extend([f"file 'cut_{index:02d}.png'", f"duration {duration}"])
-    lines.append(f"file 'cut_{len(durations):02d}.png'")
-    concat_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Turn each storyboard panel into a moving camera shot rather than holding
+    # five stills. The motion remains an animatic: it is not character animation.
     output = destination / "star-night-episode-01-animatic.mp4"
+    fps = 24
+    frame_counts = [round(duration * fps) for duration in durations]
+    camera_moves = [
+        ("center", "center"),
+        ("right", "center"),
+        ("left", "down"),
+        ("right", "up"),
+        ("center", "up"),
+    ]
+    inputs = []
+    filters = []
+    for index, (duration, frames, move) in enumerate(zip(durations, frame_counts, camera_moves)):
+        inputs.extend(["-loop", "1", "-framerate", str(fps), "-i", str(frame_dir / f"cut_{index + 1:02d}.png")])
+        horizontal, vertical = move
+        if horizontal == "left":
+            x_expr = f"(iw-iw/zoom)*(1-on/{max(frames - 1, 1)})"
+        elif horizontal == "right":
+            x_expr = f"(iw-iw/zoom)*on/{max(frames - 1, 1)}"
+        else:
+            x_expr = "(iw-iw/zoom)/2"
+        if vertical == "up":
+            y_expr = f"(ih-ih/zoom)*(1-on/{max(frames - 1, 1)})"
+        elif vertical == "down":
+            y_expr = f"(ih-ih/zoom)*on/{max(frames - 1, 1)}"
+        else:
+            y_expr = "(ih-ih/zoom)/2"
+        filters.append(
+            f"[{index}:v]zoompan=z='1+0.045*on/{max(frames - 1, 1)}':"
+            f"x='{x_expr}':y='{y_expr}':d={frames}:s={width}x{height}:fps={fps},"
+            f"trim=duration={duration},setpts=PTS-STARTPTS,"
+            f"fade=t=in:st=0:d=0.16,fade=t=out:st={max(duration - 0.16, 0):.3f}:d=0.16,"
+            f"format=yuv420p[v{index}]"
+        )
+    video_inputs = "".join(f"[v{i}]" for i in range(len(durations)))
+    filters.append(f"{video_inputs}concat=n={len(durations)}:v=1:a=0[vout]")
+    filters.append("[5:a]afade=t=in:st=0:d=0.35,afade=t=out:st=13.8:d=1.2[aout]")
     command = [
         ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-        "-f", "concat", "-safe", "0", "-i", str(concat_file),
-        "-i", str(destination / "original_music.wav"),
-        "-vf", "fps=24,format=yuv420p", "-t", "15",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
-        "-c:a", "aac", "-b:a", "160k", "-shortest",
+        *inputs, "-i", str(destination / "original_music.wav"),
+        "-filter_complex", ";".join(filters),
+        "-map", "[vout]", "-map", "[aout]", "-t", "15",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
+        "-c:a", "aac", "-b:a", "192k", "-shortest",
         "-movflags", "+faststart", str(output),
     ]
     subprocess.run(command, cwd=frame_dir, check=True, capture_output=True, text=True)
     if not output.is_file() or output.stat().st_size < 10_000:
-        raise RuntimeError("ffmpeg did not produce a valid animatic")
+        raise RuntimeError("ffmpeg did not produce a valid motion animatic")
     return output
 
 
@@ -490,7 +522,10 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
         manifest = {"schema_version": "star-night-candidate-manifest.v1", "created_at": moment.isoformat(),
                     "project_id": PROJECT, "episode_id": "SN-E001", "status": "draft",
                     "cloud_execution": True, "mac_required": False, "paid_api_used": False,
-                    "video_render_status": "animatic_rendered" if video_path else "not_rendered", "publication_authorized": False,
+                    "video_render_status": "motion_animatic_rendered" if video_path else "not_rendered",
+                    "motion_profile": {"camera": "per-shot slow pan and 4.5% zoom", "transitions": "short fades",
+                                       "fps": 24, "character_animation": False},
+                    "publication_authorized": False,
                     "canon_modified": False, "hourly_task": task, "sha256": hashes}
         (destination / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return {"status": "candidate_created", "directory": str(destination), "artifact_count": len(hashes) + 1,
