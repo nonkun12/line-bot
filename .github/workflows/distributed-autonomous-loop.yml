@@ -137,6 +137,14 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Read-only Phase 1 state observation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ORCA_STATE_BRANCH: ${{ vars.ORCA_STATE_BRANCH || 'orca-state' }}
+          ORCA_STATE_PATH: ${{ vars.ORCA_STATE_PATH || 'state/queue.json' }}
+        run: python scripts/orca_github_phase1_observer.py
+
       - name: Read-only activation preflight
         id: preflight
         env:
