@@ -20,7 +20,7 @@ def valid_state():
 
 def contents_response(state=None):
     raw = json.dumps(valid_state() if state is None else state, separators=(",", ":")).encode()
-    blob_sha = hashlib.sha1(f"blob {len(raw)}\\0".encode() + raw).hexdigest()
+    blob_sha = hashlib.sha1(f"blob {len(raw)}\0".encode() + raw).hexdigest()
     return {
         "encoding": "base64",
         "content": base64.b64encode(raw).decode(),
