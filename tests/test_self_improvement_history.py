@@ -75,6 +75,26 @@ def test_history_scans_corruption_before_bounded_tail(tmp_path):
         raise AssertionError("old corruption must not be truncated away")
 
 
+def test_history_memory_discards_legacy_free_text_and_paths(tmp_path):
+    path = tmp_path / "history.jsonl"
+    path.write_text(
+        '{"record_type":"cycle_memory","outcome":"FAIL","cause":"token=secret","improvements":["raw prompt"],"next_action":"run anything","target_path":"../../secrets","recurring_patterns":["private stack trace"]}\\n',
+        encoding="utf-8",
+    )
+    store = SelfImprovementHistory(path)
+    memory = store.load_memory()
+    assert len(memory) == 1
+    assert memory[0].cause == "development cycle failed"
+    assert memory[0].target_path == ""
+    assert memory[0].improvements == ()
+    assert memory[0].recurring_patterns == ()
+    store.append([ImprovementSignal("repair", "task-3", "safe")])
+    persisted = path.read_text(encoding="utf-8")
+    assert "secret" not in persisted
+    assert "secrets" not in persisted
+    assert "raw prompt" not in persisted
+
+
 def test_history_rejects_invalid_signal(tmp_path):
     store = SelfImprovementHistory(tmp_path / "history.jsonl")
     try:
