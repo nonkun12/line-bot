@@ -46,6 +46,20 @@ def valid_meta(response=None):
 def valid_runs():
     return {"workflow_runs": []}
 
+def main_run(**overrides):
+    run = {
+        "id": 9001,
+        "run_number": 10,
+        "run_attempt": 1,
+        "workflow_id": 357086091,
+        "event": "workflow_dispatch",
+        "status": "in_progress",
+        "conclusion": None,
+        "created_at": "2026-11-13T23:59:00Z",
+    }
+    run.update(overrides)
+    return run
+
 
 class DistributedLoopMonitorTests(unittest.TestCase):
     def evaluate(self, runs=None, state=None, meta=None, response=None):
@@ -102,7 +116,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
     def test_paginated_actions_pages_are_flattened(self):
         pages = [
             {"workflow_runs": [
-                {"workflow_id": 357086091, "status": "in_progress"},
+                main_run(),
                 {"workflow_id": 111111111, "status": "completed"},
             ]},
             {"workflow_runs": [
@@ -270,6 +284,51 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         state["recovery_ai"]["state_updated_at"] = "2026-11-14T00:10:00Z"
         report = self.evaluate(state=state)
         self.assertEqual(report["status"], "BLOCKED")
+
+
+    def test_newer_failure_is_not_masked_by_older_success(self):
+        older = main_run(id=100, run_number=1, status="completed", conclusion="success",
+                         created_at="2026-11-13T22:00:00Z")
+        newer = main_run(id=101, run_number=2, status="completed", conclusion="failure",
+                         created_at="2026-11-13T23:00:00Z")
+        report = self.evaluate(runs={"workflow_runs": [older, newer]})
+        activity = report["checks"]["main_loop_activity"]
+        self.assertEqual(activity["latest_run_id"], 101)
+        self.assertEqual(activity["status"], "BLOCKED")
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertIs(report["dispatch_allowed"], False)
+
+    def test_latest_attempt_is_selected_for_same_run_id(self):
+        first = main_run(id=200, run_attempt=1, status="completed", conclusion="success")
+        retry = main_run(id=200, run_attempt=2, status="completed", conclusion="failure")
+        activity = self.evaluate(runs={"workflow_runs": [first, retry]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["latest_run_attempt"], 2)
+        self.assertEqual(activity["status"], "BLOCKED")
+
+    def test_multiple_active_runs_block_as_overlap(self):
+        first = main_run(id=301, created_at="2026-11-13T23:57:00Z")
+        second = main_run(id=302, created_at="2026-11-13T23:58:00Z", event="schedule")
+        activity = self.evaluate(runs={"workflow_runs": [first, second]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["outcome"], "OVERLAP")
+        self.assertEqual(activity["status"], "BLOCKED")
+
+    def test_stale_queued_schedule_blocks(self):
+        queued = main_run(status="queued", event="schedule", created_at="2026-11-13T22:00:00Z")
+        activity = self.evaluate(runs={"workflow_runs": [queued]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["outcome"], "STALE_QUEUED")
+        self.assertEqual(activity["status"], "BLOCKED")
+
+    def test_skipped_run_is_not_execution_success(self):
+        skipped = main_run(status="completed", conclusion="skipped")
+        activity = self.evaluate(runs={"workflow_runs": [skipped]})["checks"]["main_loop_activity"]
+        self.assertEqual(activity["outcome"], "NOT_EXECUTED")
+        self.assertEqual(activity["status"], "INFO")
+
+    def test_successful_workflow_does_not_claim_task_execution_evidence(self):
+        succeeded = main_run(status="completed", conclusion="success")
+        report = self.evaluate(runs={"workflow_runs": [succeeded]})
+        self.assertEqual(report["checks"]["task_execution_evidence"]["status"], "NOT_EVALUATED")
+        self.assertIn("task-level result", report["checks"]["main_loop_activity"]["detail"])
 
 
 if __name__ == "__main__":
