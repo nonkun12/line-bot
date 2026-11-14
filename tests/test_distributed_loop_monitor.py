@@ -221,6 +221,8 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertEqual(activity["status"], "INFO")
         self.assertEqual(activity["outcome"], "NO_CHANGE")
         self.assertEqual(activity["active_run_count"], 0)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertIn("No Main LOOP run found", report["failure_reason"])
         self.assertIs(report["dispatch_allowed"], False)
 
     def test_completed_main_run_is_not_reported_as_active(self):
