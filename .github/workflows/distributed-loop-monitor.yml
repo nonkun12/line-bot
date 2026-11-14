@@ -1,0 +1,107 @@
+name: Distributed Loop Read-Only Monitor
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: distributed-loop-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Collect recent Actions runs (read-only)
+        id: actions
+        continue-on-error: true
+        run: |
+          set -u
+          if gh api --paginate "repos/$REPOSITORY/actions/runs?per_page=100" --jq '{"workflow_runs": [.workflow_runs[]]}' > /tmp/monitor-runs.json; then
+            echo "collected=true" >> "$GITHUB_OUTPUT"
+          else
+            printf '%s\n' '{}' > /tmp/monitor-runs.json
+            echo "collected=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect durable state (read-only)
+        id: state
+        continue-on-error: true
+        run: |
+          set -u
+          if gh api "repos/$REPOSITORY/contents/.autonomous-loop-state.json?ref=autonomous-loop-state" > /tmp/monitor-state-response.json; then
+            echo "collected=true" >> "$GITHUB_OUTPUT"
+          else
+            printf '%s\n' '{}' > /tmp/monitor-state-response.json
+            echo "collected=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Evaluate read-only monitor
+        if: always()
+        env:
+          ACTIONS_COLLECTION: ${{ steps.actions.outputs.collected }}
+          STATE_COLLECTION: ${{ steps.state.outputs.collected }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for name, env_name, path in (
+              ("runs", "ACTIONS_COLLECTION", "/tmp/monitor-runs.json"),
+              ("state", "STATE_COLLECTION", "/tmp/monitor-state-response.json"),
+          ):
+              if __import__("os").environ.get(env_name) != "true":
+                  Path(path).write_text("{}\n", encoding="utf-8")
+          PY
+          python scripts/distributed_loop_monitor.py \
+            --runs-json /tmp/monitor-runs.json \
+            --state-json /tmp/monitor-state-response.json \
+            --output artifacts/distributed-loop-monitor/monitor-report.json
+
+      - name: Publish monitor summary
+        if: always()
+        run: |
+          if [ -s artifacts/distributed-loop-monitor/monitor-report.json ]; then
+            python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          report = json.loads(Path("artifacts/distributed-loop-monitor/monitor-report.json").read_text(encoding="utf-8"))
+          print("# Distributed LOOP Monitor")
+          print(f"- Status: **{report['status']}**")
+          print(f"- Run ID: {report['run_id']}")
+          print(f"- HEAD: {report['head_sha']}")
+          print("- Dispatch allowed: **false**")
+          print(f"- Reason: {report['failure_reason'] or 'none'}")
+          PY
+          else
+            echo "Monitor report was not produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Preserve monitor evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributed-loop-monitor-${{ github.run_id }}
+          path: artifacts/distributed-loop-monitor/monitor-report.json
+          if-no-files-found: error
+          retention-days: 14
