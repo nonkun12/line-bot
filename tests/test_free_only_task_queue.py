@@ -28,6 +28,7 @@ def test_filter_queue_keeps_only_exact_registered_deterministic_tasks(tmp_path):
     _write_queue(source, [
         _task(),
         _task("review-coverage-gap-unregistered", ["tests/test_project_registry.py"]),
+        _task("review-coverage-gap-703fa3c06b", ["tests/test_project_registry.py"]),
         _task("router-regression-english-casefold", ["tests/test_recovery_ai.py"]),
     ])
 
@@ -36,10 +37,11 @@ def test_filter_queue_keeps_only_exact_registered_deterministic_tasks(tmp_path):
     queued = json.loads(output.read_text(encoding="utf-8"))
     assert [task["id"] for task in queued["tasks"]] == ["router-regression-english-casefold"]
     assert result["eligible_deterministic_count"] == 1
-    assert result["excluded_count"] == 2
+    assert result["excluded_count"] == 3
     assert {item["reason"] for item in result["excluded_tasks"]} == {
         "not_registered_deterministic",
         "registered_path_mismatch",
+        "review_gap_requires_model",
     }
 
 
