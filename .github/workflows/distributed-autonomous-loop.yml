@@ -131,6 +131,8 @@ jobs:
       # before queue reads/task launch; this never bypasses safety gates.
       CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
       SELF_IMPROVEMENT_POLICY_ENFORCED: 'true'
+      # All task execution is provider-free; unknown/model-backed IDs fail closed.
+      AUTONOMOUS_FREE_MODE: 'true'
       # Hosted loop must not call an unverified cloud Hermes provider.
       HERMES_ADVISOR_ENABLED: 'false'
       SELF_IMPROVEMENT_CREATOR_CRITIC: 'false'
@@ -390,7 +392,12 @@ jobs:
             --output /tmp/autonomous-loop-runtime-queue.json \
             --history /tmp/line-bot-self-improvement.jsonl \
             | tee /tmp/autonomous-loop-refill-report.json
-          echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
+          python -m scripts.free_only_task_queue \
+            --queue /tmp/autonomous-loop-runtime-queue.json \
+            --output /tmp/autonomous-loop-free-queue.json \
+            --report /tmp/autonomous-loop-free-only-report.json \
+            | tee /tmp/autonomous-loop-free-only-report.stdout
+          echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-free-queue.json" >> "$GITHUB_ENV"
 
       - name: Load all existing issues for candidate deduplication
         if: success() && env.TRIGGER_MODE == 'normal'
@@ -487,7 +494,6 @@ jobs:
       - name: Run one bounded autonomous task
         id: run_task
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SELF_IMPROVEMENT_HISTORY_PATH: /tmp/line-bot-self-improvement.jsonl
           # RAG is advisory and sanitized; the authoritative Recovery AI state
           # remains durable in autonomous-loop-state. This SQLite cache is run-local.
@@ -546,7 +552,20 @@ jobs:
           review = report.get("skipped_catalog_review_ids")
           held_count = len(held) if isinstance(held, list) else 0
           review_count = len(review) if isinstance(review, list) else 0
-          if type(eligible) is int and eligible == 0 and isinstance(held, list) and held:
+          free_report_path = Path("/tmp/autonomous-loop-free-only-report.json")
+          free_report = {}
+          if free_report_path.exists():
+              try:
+                  free_report = json.loads(free_report_path.read_text(encoding="utf-8"))
+              except (OSError, ValueError):
+                  free_report = {}
+          free_eligible = free_report.get("eligible_deterministic_count")
+          free_excluded = free_report.get("excluded_count")
+          if free_eligible == 0 and isinstance(free_excluded, int) and free_excluded > 0:
+              reason = f"free_only_no_deterministic_tasks:excluded={free_excluded}"
+              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + chr(10), encoding="utf-8")
+              print(f"::warning::BLOCKED: {reason}; model-backed tasks are excluded in free-only mode.")
+          elif type(eligible) is int and eligible == 0 and isinstance(held, list) and held:
               if review_count:
                   reason = f"catalog_exhausted_mixed:held={held_count},review={review_count}"
                   print(f"::warning::BLOCKED: {reason}; held and review-pending tasks require human review.")
