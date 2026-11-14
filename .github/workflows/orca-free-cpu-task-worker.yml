@@ -1,0 +1,104 @@
+name: ORCA Free CPU Task Worker
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orca-free-cpu-task-worker
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      task_id: ${{ steps.poll.outputs.task_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+      - name: Poll D1 task queue (read-only)
+        id: poll
+        env:
+          ORCA_TASK_API_URL: https://orca-test-api.norimitsu50.workers.dev
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python scripts/orca_free_cpu_worker.py poll
+
+  execute:
+    name: Execute signed-approved ORCA task ${{ needs.poll.outputs.task_id }}
+    needs: poll
+    if: ${{ github.ref == 'refs/heads/main' && needs.poll.outputs.task_id != '' }}
+    runs-on: ubuntu-latest
+    # Keep the job shorter than the API's 30-minute lease; expired work can be reclaimed.
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      pull-requests: write
+    environment:
+      name: orca-task-execution
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+      - name: Verify protected execution environment is configured
+        env:
+          ORCA_TASK_APPROVAL_GATE: ${{ secrets.ORCA_TASK_APPROVAL_GATE }}
+        run: |
+          set -euo pipefail
+          test -n "$ORCA_TASK_APPROVAL_GATE" || { echo "Required reviewer environment gate is not configured."; exit 1; }
+      - name: Build isolated app test image
+        run: |
+          set -euo pipefail
+          docker build --tag orca-app-test:local - <<'DOCKER'
+          FROM python:3.13-slim
+          RUN python -m pip install --no-cache-dir pytest==8.4.2
+          DOCKER
+      - name: Install Ollama CPU runtime
+        run: |
+          set -euo pipefail
+          OLLAMA_VERSION="0.40.16"
+          INSTALLER="$(mktemp)"
+          trap 'rm -f "$INSTALLER"' EXIT
+          curl --fail --show-error --location --retry 3 \
+            --output "$INSTALLER" \
+            "https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/install.sh"
+          echo "25f64b810b947145095956533e1bdf56eacea2673c55a7e586be4515fc882c9f  $INSTALLER" | sha256sum --check --status || {
+            echo "Ollama installer checksum mismatch; refusing to execute."
+            exit 1
+          }
+          OLLAMA_VERSION="$OLLAMA_VERSION" sh "$INSTALLER"
+          nohup ollama serve >/tmp/ollama.log 2>&1 </dev/null &
+          for attempt in $(seq 1 30); do
+            if ollama list >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          ollama pull qwen2.5-coder:1.5b
+      - name: Generate, test, and open a review-only PR
+        env:
+          ORCA_TASK_API_URL: https://orca-test-api.norimitsu50.workers.dev
+          ORCA_TASK_API_TOKEN: ${{ secrets.ORCA_TASK_API_TOKEN }}
+          ORCA_TASK_APPROVAL_GATE: ${{ secrets.ORCA_TASK_APPROVAL_GATE }}
+          ORCA_TASK_ID: ${{ needs.poll.outputs.task_id }}
+          ORCA_CPU_MODEL: qwen2.5-coder:1.5b
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python scripts/orca_free_cpu_worker.py process
