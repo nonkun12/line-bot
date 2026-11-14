@@ -105,6 +105,7 @@ def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) 
 
     errors: list[str] = []
     normalized: dict[int, dict[str, Any]] = {}
+    seen_attempts: dict[tuple[int, int], tuple[Any, ...]] = {}
     for item in target:
         run_id = item.get("id")
         attempt = item.get("run_attempt")
@@ -146,15 +147,19 @@ def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) 
         if type(run_number) is not int or run_number <= 0:
             errors.append(f"Main LOOP run {run_id} has missing or invalid run_number")
             continue
+        identity_fields = (
+            "workflow_id", "run_number", "event", "status", "conclusion",
+            "created_at", "run_started_at", "updated_at",
+        )
+        attempt_key = (run_id, attempt)
+        identity = tuple(item.get(field) for field in identity_fields)
+        seen_identity = seen_attempts.get(attempt_key)
+        if seen_identity is not None and identity != seen_identity:
+            errors.append(f"Main LOOP run {run_id} has conflicting records for the same attempt")
+            continue
+        seen_attempts[attempt_key] = identity
+
         previous = normalized.get(run_id)
-        if previous is not None and attempt == previous["run_attempt"]:
-            identity_fields = (
-                "workflow_id", "run_number", "event", "status", "conclusion",
-                "created_at", "run_started_at", "updated_at",
-            )
-            if any(item.get(field) != previous.get(field) for field in identity_fields):
-                errors.append(f"Main LOOP run {run_id} has conflicting records for the same attempt")
-                continue
         if previous is None or attempt > previous["run_attempt"]:
             normalized[run_id] = {**item, "_parsed_run_started_at": run_started}
 
