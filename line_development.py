@@ -11,6 +11,7 @@ from typing import Optional
 import httpx
 
 from core.request_safety import is_non_execution_request
+from core.line_development_context import save_last_instruction
 
 
 logger = logging.getLogger(__name__)
@@ -104,8 +105,6 @@ def dispatch_development_workflow(
 
     # 新規アプリ作成も既存システムの保守・機能追加も受け付ける。
     # すべて同じ認可・GitHub Actionsの管理された開発フローへ送り、安全性は実行側で検査する。
-
-    # 通常のLINE開発指示は、分類器の汎用判定に関わらず既存リポジトリへ送る。
     repository = repository or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
     dispatch_url = (
         f"https://api.github.com/repos/{repository}"
@@ -121,6 +120,7 @@ def dispatch_development_workflow(
         "inputs": {
             "instruction": instruction,
             "user_id": str(user_id),
+            "request_id": request_id,
         },
     }
 
@@ -147,7 +147,25 @@ def dispatch_development_workflow(
         logger.info("line_dev_dispatch event=github_response request_id=%s attempt=%s status=%s", request_id, attempt, response.status_code)
         if response.status_code == 204:
             logger.info("line_dev_dispatch event=accepted request_id=%s", request_id)
-            return f"🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始しました。\n通常のLINE会話とは分離して実行します。\n受付ID: {request_id}"
+            context_saved = False
+            try:
+                context_saved = save_last_instruction(user_id, instruction, request_id)
+            except Exception as exc:
+                logger.warning(
+                    "line_dev_dispatch event=context_save_failed request_id=%s error=%s",
+                    request_id,
+                    type(exc).__name__,
+                )
+            continuation_note = (
+                "前回作業の継続コンテキストを24時間保存しました。"
+                if context_saved
+                else "継続コンテキストは保存できませんでした。"
+            )
+            return (
+                "🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始しました。\n"
+                "通常のLINE会話とは分離して実行します。\n"
+                f"{continuation_note}\n受付ID: {request_id}"
+            )
 
         if response.status_code in _RETRYABLE_STATUS_CODES and attempt < _DISPATCH_ATTEMPTS:
             retry_after = response.headers.get("Retry-After", "")
