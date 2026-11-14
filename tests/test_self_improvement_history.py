@@ -20,7 +20,7 @@ def test_history_round_trips_and_is_bounded(tmp_path):
     )
 
 
-def test_history_ignores_malformed_records(tmp_path):
+def test_history_rejects_corruption_without_overwriting(tmp_path):
     path = tmp_path / "history.jsonl"
     path.write_text(
         '{"kind":"failure","task_id":"ok","detail":"valid"}\n'
@@ -31,9 +31,14 @@ def test_history_ignores_malformed_records(tmp_path):
     )
     store = SelfImprovementHistory(path)
 
-    assert store.load() == (
-        ImprovementSignal("failure", "ok", "valid"),
-    )
+    original = path.read_text(encoding="utf-8")
+    try:
+        store.append([ImprovementSignal("repair", "new", "safe")])
+    except ValueError as exc:
+        assert "corrupt" in str(exc)
+    else:
+        raise AssertionError("expected corrupt history to fail closed")
+    assert path.read_text(encoding="utf-8") == original
 
 
 def test_history_rejects_invalid_signal(tmp_path):
