@@ -131,6 +131,36 @@ def evaluate(
         reasons.append("Durable Recovery AI evidence unavailable or invalid")
 
     started_dt = parse_utc(started_at)
+    recovery_updated_at = (
+        parse_utc(recovery.get("state_updated_at"))
+        if isinstance(recovery, dict) else None
+    )
+    recovery_age_seconds = None
+    recovery_freshness_errors: list[str] = []
+    if recovery_updated_at is None:
+        recovery_freshness_errors.append("Recovery AI state_updated_at missing or invalid")
+    if started_dt is None:
+        recovery_freshness_errors.append("monitor start timestamp missing or invalid")
+    if recovery_updated_at is not None and started_dt is not None:
+        recovery_age_seconds = int((started_dt - recovery_updated_at).total_seconds())
+        if recovery_age_seconds < -MAX_FUTURE_CLOCK_SKEW_SECONDS:
+            recovery_freshness_errors.append("Recovery AI update timestamp is too far in the future")
+        elif recovery_age_seconds > MAX_STATE_AGE_HOURS * 3600:
+            recovery_freshness_errors.append(
+                f"Recovery AI state is older than {MAX_STATE_AGE_HOURS} hours"
+            )
+    recovery_freshness_ok = not recovery_freshness_errors
+    checks["recovery_freshness"] = {
+        "status": "PASS" if recovery_freshness_ok else "BLOCKED",
+        "state_updated_at": recovery.get("state_updated_at") if isinstance(recovery, dict) else None,
+        "age_seconds": recovery_age_seconds,
+        "max_age_hours": MAX_STATE_AGE_HOURS,
+        "detail": "Recovery AI document update timestamp is fresh"
+                  if recovery_freshness_ok else "; ".join(recovery_freshness_errors),
+    }
+    if not recovery_freshness_ok:
+        reasons.extend(recovery_freshness_errors)
+
     meta_ok = isinstance(state_meta, dict)
     branch_sha = state_meta.get("branch_tip_sha") if meta_ok else None
     commit_sha = state_meta.get("state_commit_sha") if meta_ok else None
@@ -253,6 +283,8 @@ def evaluate(
         "state_commit_sha": commit_sha if isinstance(commit_sha, str) else None,
         "state_blob_sha": response_blob_sha if isinstance(response_blob_sha, str) else None,
         "state_age_seconds": state_age_seconds,
+        "recovery_state_updated_at": recovery.get("state_updated_at") if isinstance(recovery, dict) else None,
+        "recovery_state_age_seconds": recovery_age_seconds,
         "scheduled_at": None,
         "schedule_expression": "*/30 * * * * (UTC)",
         "started_at": started_at,
@@ -265,6 +297,7 @@ def evaluate(
             "A PASS is health evidence only and never authorizes task execution.",
             "Queue eligibility and independent human approval are not evaluated by this health monitor and must be enforced by a separate execution gate.",
             "The 24-hour state-age ceiling is a conservative monitoring guard, not a verified normal writer cadence.",
+            "Recovery AI state freshness is measured from its own state_updated_at field, separately from the outer Git commit timestamp.",
             "GitHub scheduled events may be delayed or skipped; this report does not imply a missed run succeeded.",
         ],
     }
