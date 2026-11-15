@@ -397,34 +397,22 @@ def _handle_ai_gateway_request(ai_request):
     if core_image_reply is not None:
         return core_image_reply
 
-    # Only explicitly prefixed OpenClaw requests enter the authenticated Mac queue.
-    # All ordinary LINE messages keep using the existing cloud/Core routing path.
-    # The durable queue preserves requests while the Mac worker is offline.
+    # The Mac-local OpenClaw bridge is not part of the Mac-less
+    # Orchestrator-only route. Do not enqueue work for an offline local worker.
     if is_openclaw_intent(message):
-        try:
-            job_id = enqueue_openclaw_request(user_id, message)
-            return (
-                f"OpenClawへの依頼を受け付けました（Job {job_id}）。"
-                "Mac側のBonsaiワーカーが処理し、完了結果をこのLINEに返信します。"
-            )
-        except Exception as exc:
-            app.logger.warning(
-                "OPENCLAW BRIDGE ENQUEUE FAILED: %s",
-                type(exc).__name__,
-            )
-            return (
-                "OpenClawへの依頼を受け付けられませんでした。"
-                "Macブリッジ設定とキュー状態を確認してください。"
-            )
+        return (
+            "旧OpenClaw Macブリッジは停止中です。"
+            "Macを使わないOrchestrator単独運用へ統合中のため、"
+            "この依頼は受け付け・キュー登録されていません。"
+        )
 
-    # Route only explicit Obsidian commands to the authenticated Mac approval queue.
-    # Never fall through to a cloud agent that cannot access the local vault.
+    # The Obsidian approval queue is also Mac-local; keep it closed in
+    # the Mac-less single-Orchestrator deployment.
     if is_obsidian_intent(message):
-        try:
-            job_id = enqueue_obsidian_request(user_id, message)
-            return f"Obsidianへの保存依頼を受け付けました。Macで「実行」を選ぶと保存します。（Job {job_id}）"
-        except Exception:
-            return "Obsidianへの保存依頼を受け付けられませんでした。設定を確認してください。"
+        return (
+            "旧Obsidian Macブリッジは停止中です。"
+            "Orchestrator統合ルートが有効になるまで、保存依頼は受け付けていません。"
+        )
 
     app_development_requirement = extract_app_development_request(message)
     if app_development_requirement is not None:

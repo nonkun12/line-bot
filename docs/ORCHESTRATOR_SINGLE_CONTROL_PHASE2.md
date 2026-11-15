@@ -84,6 +84,10 @@ single-control migration is in progress. Neither route can clear HOLD or
 change review state. Historical old-loop status is labeled as legacy evidence
 and must not be presented as current Orchestrator activity.
 
+The Mac-local OpenClaw and Obsidian LINE queues are also closed. Requests to
+those legacy routes are rejected without enqueueing because this migration
+does not use a Mac worker.
+
 ## LINE integration contract
 
 LINE status aliases require the configured user allowlist and then read the
