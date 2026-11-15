@@ -33,22 +33,15 @@ def fixture():
         CompatibilityReport(True, MergeStrategy.PARAMETER, ()),
         fitness, 2, CandidateStatus.PENDING_HUMAN_APPROVAL, False,
     )
+    child_digest = evidence_digest(
+        candidate_id="child-1", evaluated_artifact_digest=ARTIFACT,
+        evaluation_suite_digest=SUITE, evaluator_id="independent-evaluator",
+        fitness=fitness,
+    )
     evidence = EvaluationEvidence(
         candidate_id="child-1", evaluated_artifact_digest=ARTIFACT,
         evaluation_suite_digest=SUITE, evaluator_id="independent-evaluator",
-        fitness=fitness, passed=True, evidence_digest="",
-    )
-    evidence = EvaluationEvidence(
-        candidate_id=evidence.candidate_id,
-        evaluated_artifact_digest=evidence.evaluated_artifact_digest,
-        evaluation_suite_digest=evidence.evaluation_suite_digest,
-        evaluator_id=evidence.evaluator_id, fitness=evidence.fitness, passed=True,
-        evidence_digest=evidence_digest(
-            candidate_id=evidence.candidate_id,
-            evaluated_artifact_digest=evidence.evaluated_artifact_digest,
-            evaluation_suite_digest=evidence.evaluation_suite_digest,
-            evaluator_id=evidence.evaluator_id, fitness=evidence.fitness,
-        ),
+        fitness=fitness, passed=True, evidence_digest=child_digest,
     )
     nonce = "nonce-1"
     signature = hmac.new(SECRET, signature_message(key_id=KEY_ID, nonce=nonce, evidence=evidence), hashlib.sha256).hexdigest()
