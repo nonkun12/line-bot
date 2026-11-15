@@ -206,6 +206,56 @@ def revision_workflow_snapshot(
     }
 
 
+def run_revision_workflow_if_needed(
+    *,
+    original_verdict: str,
+    request_id: str,
+    task_id: str,
+    revision_agent_id: str,
+    target_agent_id: str,
+    original_reviewer_id: str,
+    independent_reviewer_id: str,
+    original_result: str,
+    findings: Sequence[str],
+    draft_model_call: RevisionModelCall,
+    review_model_call: RevisionModelCall,
+    persist_snapshot: Callable[[dict[str, object]], None] | None = None,
+) -> dict[str, object]:
+    """Run evidence-only draft/re-review stages only for NEEDS_REVISION.
+
+    The two model callables are deliberately injected separately. This function
+    does not claim that distinct callables imply distinct model processes or
+    independent providers. Callers must provision the four logical identities.
+    Any malformed response, identity error, or persistence failure propagates;
+    no execution or retry is attempted.
+    """
+    if original_verdict != "NEEDS_REVISION":
+        return revision_workflow_snapshot()
+    identities = {
+        revision_agent_id, target_agent_id, original_reviewer_id,
+        independent_reviewer_id,
+    }
+    if len(identities) != 4:
+        raise ValueError("revision workflow requires four distinct logical identities")
+    draft = prepare_revision_draft(
+        request_id=request_id,
+        task_id=task_id,
+        revision_agent_id=revision_agent_id,
+        target_agent_id=target_agent_id,
+        original_reviewer_id=original_reviewer_id,
+        original_result=original_result,
+        findings=findings,
+        model_call=draft_model_call,
+    )
+    review = review_revision_draft(
+        draft,
+        independent_reviewer_id=independent_reviewer_id,
+        model_call=review_model_call,
+    )
+    snapshot = revision_workflow_snapshot(draft, review)
+    if persist_snapshot is not None:
+        persist_snapshot(snapshot)
+    return snapshot
 
 
-__all__ = ["RevisionDraft", "RevisionReview", "prepare_revision_draft", "review_revision_draft", "revision_workflow_snapshot"]
+__all__ = ["RevisionDraft", "RevisionReview", "prepare_revision_draft", "review_revision_draft", "revision_workflow_snapshot", "run_revision_workflow_if_needed"]
