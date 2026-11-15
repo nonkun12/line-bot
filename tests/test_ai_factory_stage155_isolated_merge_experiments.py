@@ -170,3 +170,22 @@ def test_deterministic_outcome_digest():
     first, _, _ = execute()
     second, _, _ = execute()
     assert first.outcome_digest == second.outcome_digest
+
+
+def test_rejects_plan_without_independent_evaluation_or_with_self_authority():
+    from dataclasses import replace
+
+    for bad_plan in (
+        replace(plan(), independent_evaluation_required=False),
+        replace(plan(), execution_authorized=True),
+        replace(plan(), merge_authorized=True),
+        replace(plan(), activation_authorized=True),
+    ):
+        with pytest.raises(IsolatedMergeExperimentError):
+            IsolatedMergeExperimentRunner().run(
+                plan=bad_plan, approval_token="human-approval",
+                verify_approval=lambda token, digest: True,
+                sandbox=Sandbox(), evaluator=Evaluator(),
+                verify_evaluation_evidence=lambda evidence: True,
+                baseline_fitness=fitness(),
+            )
