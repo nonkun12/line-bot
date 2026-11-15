@@ -172,6 +172,8 @@ def build_stage132_producers(
     """Require independent gates; the model is never used as its own verifier."""
     if not callable(test_gate) or not callable(review_gate):
         raise ValueError("independent TEST and REVIEW gates are required")
+    if test_gate is local_model or review_gate is local_model:
+        raise ValueError("local model cannot be reused as an independent TEST or REVIEW gate")
     return {
         CollaborationStage.DESIGN: local_model,
         CollaborationStage.BUILD: local_model,
