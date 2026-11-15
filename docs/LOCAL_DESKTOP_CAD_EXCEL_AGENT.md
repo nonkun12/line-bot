@@ -45,7 +45,8 @@ Japanese natural-language request
 ## Current security milestone
 
 The next engineering milestone is a no-op macOS XPC identity probe, specified in
-[ XPC_IDENTITY_PROBE_SPEC.md ](XPC_IDENTITY_PROBE_SPEC.md). It is not a desktop
+[ XPC_IDENTITY_PROBE_SPEC.md ](XPC_IDENTITY_PROBE_SPEC.md), with the
+[ Mac-side test matrix ](XPC_NOOP_PROBE_TEST_MATRIX.md). It is not a desktop
 agent and cannot approve or execute actions. The probe requires a reviewed
 macOS version/signing target and Mac-side positive/negative tests; those cannot
 be substituted by Python mocks or GitHub-hosted CI.
