@@ -91,3 +91,32 @@ approvals, mint capabilities, or call desktop APIs.
 
 Until every gate is reviewed and explicitly approved, XPC is not to be connected
 to the existing bridge. Read-only desktop inspection is also disabled.
+
+
+## Public XPC API constraint
+
+Do not implement this design by assuming that `NSXPCConnection` exposes a
+public audit-token property. Apple's currently published `NSXPCConnection`
+reference documents peer PID, effective UID/GID, audit-session ID, and
+`setCodeSigningRequirement`; it does not document an audit-token accessor.
+The lower-level XPC reference documents peer PID/UID/GID/audit-session
+accessors and code-signing-requirement APIs.
+
+Therefore the implementation review must choose one API family and prove the
+peer-signing check using its documented public interface. Prefer the operating
+system's XPC peer code-signing requirement enforcement where supported; do not
+add a second, unsupported audit-token extraction path merely to match this
+design's earlier wording. If Security.framework audit-token validation is
+needed, first identify a documented public source for the token in the chosen
+API family and test it on the target OS. PID, UID, and audit-session ID are
+useful session/process attributes but are not substitutes for code-signature
+validation.
+
+References:
+- [NSXPCConnection](https://developer.apple.com/documentation/foundation/nsxpcconnection)
+- [XPC connections](https://developer.apple.com/documentation/xpc/xpc-connections)
+- [XPC peer code-signing requirement](https://developer.apple.com/documentation/xpc/xpc_connection_set_peer_code_signing_requirement(_:_:))
+- [Security code-signing services](https://developer.apple.com/documentation/security/code-signing-services/)
+
+This is a design correction, not an implementation claim. The exact API and
+availability must be confirmed against the selected deployment target and SDK.
