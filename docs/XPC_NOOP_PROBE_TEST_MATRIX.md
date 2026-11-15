@@ -53,7 +53,7 @@ the same connection.
 | N02 | Client signed by a different team | Rejected | Same |
 | N03 | Same team, wrong designated requirement / wrong executable identity | Rejected | Same |
 | N04 | Correct client, broker signed with wrong identity | Client rejects broker | Client connection error |
-| N05 | Correctly signed client supplies false PID, UID, bundle ID, or role claims | Claims ignored; authenticated signing verdict is unchanged | Compare equivalent requests with and without spoofed claims; no identity field is trusted |
+| N05 | Correctly signed client supplies false PID, UID, bundle ID, team ID, or broker/executor role claims | Claims ignored; authenticated signing verdict is unchanged | Compare equivalent requests with and without spoofed claims; no identity field is trusted |
 | N06 | Wrong protocol version | Rejected after authenticated connection | Fixed protocol error |
 | N07 | Unknown fields or oversized message | Rejected; process remains healthy | Fixed malformed-message error |
 | N08 | Reused nonce/request ID within one broker instance | Rejected by in-memory probe replay guard | Fixed replay error |
