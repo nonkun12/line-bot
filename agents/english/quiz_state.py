@@ -37,7 +37,7 @@ def _connect() -> sqlite3.Connection:
 
 
 def _user_key(user_id: str) -> str:
-    return str(user_id or "anonymous").strip()[:200] or "anonymous"
+    return str(user_id or "anonymous").strip().lower()[:200] or "anonymous"
 
 
 def _lexicon() -> list[tuple[str, str, str]]:
