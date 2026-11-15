@@ -152,6 +152,21 @@ def test_stage133_rejects_missing_independent_gates():
         )
 
 
+def test_stage133_requires_distinct_test_and_review_gate_objects():
+    shared_gate = lambda *_: None
+    with pytest.raises(ValueError, match="separate independent"):
+        build_stage133_runtime(
+            configs=Stage133ModelConfigs(
+                LocalModelConfig("designer"),
+                LocalModelConfig("architect"),
+                LocalModelConfig("builder"),
+            ),
+            roles=CollaborationRoles("a", "b", "c", "d"),
+            builder=FakeBuilder(), sandbox=FakeSandbox(), reviewer=FakeReviewer(),
+            test_gate=shared_gate, review_gate=shared_gate,
+        )
+
+
 def test_stage133_never_configures_human_approval_or_auto_activation():
     runtime, _ = make_runtime()
     factory = runtime.factory.factory_adapter.factory
