@@ -61,4 +61,4 @@ Each completed orchestration attempt writes only a bounded collaboration summary
 
 `GET /api/dashboard/orchestrator/collaboration?limit=10`
 
-This endpoint reports evidence only. It cannot approve tasks, grant permissions, dispatch work, or change the execution queue. The dashboard endpoint is an API surface; it does not yet add a visual panel to the HTML dashboard.
+This endpoint reports evidence only. It cannot approve tasks, grant permissions, dispatch work, or change the execution queue. The authenticated dashboard page renders a read-only collaboration panel with the latest agent roster, task assignments, peer-review status, acceptance result, and bounded findings. It refreshes on demand and every 60 seconds. The panel cannot dispatch or approve work.
