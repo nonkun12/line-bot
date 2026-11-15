@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const updated=document.getElementById('collaborationUpdated');
     if(!summary||!agentsPanel||!findingsPanel) return;
     try{
-      const response=await fetch(api('/api/dashboard/orchestrator/collaboration?limit=10'));
+      const response=await fetch(api('/api/dashboard/orchestrator/collaboration'));
       const data=await response.json();
       if(!response.ok||!data.ok) throw new Error(data.error||'HTTP '+response.status);
       const records=Array.isArray(data.snapshots)?data.snapshots:[];
