@@ -39,14 +39,23 @@ Request fields:
 - request_id: bounded opaque correlation value
 - probe_nonce: bounded random value
 
-Before accepting a probe request, the broker issues a fresh, cryptographically random,
-ephemeral instance challenge for that connection. The request includes that challenge
-alongside protocol_version, request_id, and probe_nonce. Reject unknown fields,
-duplicate fields, oversized messages, malformed values, unsupported versions,
-requests with a challenge from another broker instance, and replayed probe nonces.
-The broker obtains caller identity independently of all request fields. The challenge
-is held only in broker memory and is never persisted; restarting the broker creates
-a new challenge, invalidating captured requests from the previous instance.
+After the XPC connection has passed the OS-enforced peer code-signing check,
+the client sends a bounded BeginProbe message containing only protocol_version
+and request_id. The broker replies with a bounded BeginProbe response containing
+protocol_version, the same request_id, and a fresh cryptographically random
+connection_challenge. This challenge is generated independently for each
+authenticated connection, bound to that connection, held only in broker memory,
+and never persisted.
+
+The client then sends Probe with protocol_version, request_id, probe_nonce, and
+the exact connection_challenge received on that connection. The broker accepts
+Probe only on the connection to which that challenge was issued. Reject unknown
+or duplicate fields, oversized messages, malformed values, unsupported
+versions, a missing or mismatched connection_challenge, and replayed probe
+nonces. The broker obtains caller identity independently of all request fields.
+Disconnecting or restarting the broker destroys the connection and its challenge;
+a captured old Probe sent on a new connection therefore carries a challenge that
+does not match the new connection and is rejected.
 
 Response fields:
 - protocol_version
