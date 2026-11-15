@@ -78,13 +78,13 @@ def _freshness(observed_at: Any, now: datetime, label: str) -> int:
 
 
 def _validate_state(document: Any) -> tuple[set[str], dict[str, dict[str, Any]]]:
-    if not isinstance(document, dict) or document.get("version") != 1:
+    if not isinstance(document, dict) or type(document.get("version")) is not int or document.get("version") != 1:
         raise SnapshotError("durable_state_invalid")
     completed = document.get("completed")
     recovery = document.get("recovery_ai")
     if not isinstance(completed, list) or any(not isinstance(x, str) or not x for x in completed):
         raise SnapshotError("durable_completed_invalid")
-    if not isinstance(recovery, dict) or recovery.get("schema_version") != 1:
+    if not isinstance(recovery, dict) or type(recovery.get("schema_version")) is not int or recovery.get("schema_version") != 1:
         raise SnapshotError("recovery_state_invalid")
     recovery_tasks = recovery.get("tasks")
     if not isinstance(recovery_tasks, dict):
@@ -95,6 +95,12 @@ def _validate_state(document: Any) -> tuple[set[str], dict[str, dict[str, Any]]]
         for flag in ("held", "resume_requires_review"):
             if flag in entry and not isinstance(entry[flag], bool):
                 raise SnapshotError("recovery_task_flag_invalid")
+    if len(completed) != len(set(completed)):
+        raise SnapshotError("durable_completed_duplicate")
+    for task_id in set(completed):
+        entry = recovery_tasks.get(task_id, {})
+        if entry.get("held") is True or entry.get("resume_requires_review") is True:
+            raise SnapshotError("durable_state_completion_conflict")
     return set(completed), recovery_tasks
 
 
@@ -186,11 +192,11 @@ def build_live_snapshot(
         catalog_states[task_id] = state
 
     queue_rows = []
-    candidate_ids = []
+    potential_candidate_ids = []
     for task_id, task in queue_map.items():
         state = catalog_states[task_id]
         if state == "pending":
-            candidate_ids.append(task_id)
+            potential_candidate_ids.append(task_id)
         queue_rows.append({
             "id": task_id,
             "state": state,
@@ -205,7 +211,7 @@ def build_live_snapshot(
     reasons = list(hold_reasons) + list(budget_reasons)
     if global_hold:
         reasons.append("global_hold_active")
-    if candidate_ids:
+    if potential_candidate_ids:
         reasons.append("approval_evidence_unverified")
     else:
         reasons.append("no_eligible_queue_tasks")
@@ -213,6 +219,9 @@ def build_live_snapshot(
     hard_blockers = set(hold_reasons + budget_reasons)
     if global_hold:
         hard_blockers.add("global_hold_active")
+    # Candidate IDs are exposed only after the independent HOLD and budget
+    # evidence gates pass. Pending tasks remain visible in the task table.
+    candidate_ids = [] if hard_blockers else sorted(potential_candidate_ids)
     if hard_blockers:
         status = "BLOCKED"
     elif candidate_ids:
