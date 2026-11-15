@@ -68,7 +68,7 @@ Disconnecting or restarting the broker destroys the connection and its challenge
 a captured old Probe sent on a new connection therefore carries a challenge that
 does not match the new connection and is rejected.
 
-Response fields:
+Probe response fields (distinct from the BeginProbe challenge response):
 - protocol_version
 - request_id
 - verdict: ACCEPTED_TEST_IDENTITY or REJECTED
@@ -98,7 +98,7 @@ prove that the user approved an action or that a desktop operation is safe.
 | Wrong signer | Sign with another test identity | REJECTED |
 | Wrong requirement | Same team, non-matching designated requirement | REJECTED |
 | Claimed identity spoof | Correctly signed client sends false PID/UID/team/bundle/role claims | Signing verdict unchanged; claims ignored; request handled only according to authenticated peer and protocol policy |
-| Role confusion | Positive client claims broker or executor role | REJECTED |
+| Role confusion | Positive client sends a false broker or executor role claim | Claim ignored; authenticated signing verdict is unchanged |
 | Wrong user session | Connect from a different user/session context | REJECTED |
 | Protocol downgrade | Send unsupported older version | REJECTED |
 | Oversized message | Exceed strict request bound | REJECTED |
