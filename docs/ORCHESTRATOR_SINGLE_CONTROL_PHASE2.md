@@ -59,6 +59,10 @@ review-required tasks are never candidates.
   BLOCKED.
 - The Orchestrator planner always reports
   `execution_authorized=false`; it only produces a plan.
+- While no independent provenance verifier is connected, a non-empty plan is
+  explicitly `BLOCKED` (not `PLAN_READY`) even when caller-supplied HOLD and
+  budget fields look valid. A selected candidate is only a deterministic
+  preview and is not an execution-ready candidate.
 
 ## Global HOLD and permissions
 
