@@ -22,6 +22,24 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
       CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
+    steps:
+      - name: Checkout trusted main for stop-file check
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Stop when Control Tower or repository kill switch is active
+        id: kill
+        run: |
+          set -euo pipefail
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ] || [ -f .autonomous-loop.stop ]; then
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            echo "Scheduler stopped: kill switch is active." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "dispatch=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Verify public repository and standard-runner billing scope
         id: budget
         if: steps.kill.outputs.dispatch == 'true'
@@ -67,7 +85,7 @@ jobs:
             echo "# 30-minute Distributed LOOP Scheduler"
             echo "- Trigger: ${GITHUB_EVENT_NAME}"
             echo "- Kill switch: ${CONTROL_TOWER_KILL_SWITCH}"
-            echo "- Billing gate: public repository + standard ubuntu-latest runner required"
+            echo "- Repository-local monthly budget: ${MONTHLY_REPOSITORY_MINUTE_BUDGET} minutes"
             echo "- Target task limit: 1"
             echo "- Merge/deploy: not performed by scheduler"
           } >> "$GITHUB_STEP_SUMMARY"
