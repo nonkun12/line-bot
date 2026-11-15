@@ -1,149 +1,60 @@
 # Local Natural-Language Desktop Control: CAD + Excel + Calc
 
-## Goal and scope
+## Current status
 
-Provide a Mac-local Computer Use system that accepts Japanese natural-language requests
-and can work with CAD and spreadsheet applications. The preferred architecture uses
-native application APIs for precise edits and Computer Use for UI navigation, visual
-inspection, and verification.
+The project has a Phase 0 plan validator and a Phase 1 bridge placeholder. No desktop
+execution is enabled. The bridge intentionally rejects all execution requests until
+a trusted, local, user-interaction approval surface and independently reviewed adapter
+are implemented. A caller-supplied phrase, model output, LINE message, or
+enabled=True flag is not proof of human approval.
 
-Targets:
-- Spreadsheet: Microsoft Excel **and** LibreOffice Calc.
-- CAD: vendor-neutral action contract first. The CAD application is deliberately
-  undecided; do not assume FreeCAD or install a CAD package without a later decision.
-- Desktop control: local logged-in Mac session only. OpenClaw's local Computer Use
-  capability is the preferred integration candidate, subject to a read-only capability
-  and permission check on the actual Mac.
+## Scope
 
-The current implementation is **Phase 0: intent-to-plan**. It validates local-model
-proposals and returns a preview. It does not control the desktop or modify files.
+- Spreadsheet targets: Microsoft Excel and LibreOffice Calc.
+- CAD remains vendor-neutral; no CAD application is selected or installed.
+- Mac-local operation only; no paid API, cloud fallback, remote desktop, or credential capture.
+- Existing 30-minute LOOP workflows and queues are out of scope and must not be modified.
 
 ## Architecture
 
-```text
-Japanese natural-language request (chat / LINE)
-        |
-        v
-Existing Orchestrator: intent routing and task decomposition
-        |
-        v
-Local model through loopback-only Ollama adapter
-        |
-        v
-Strict JSON plan validator (core/desktop_control.py)
-        |
-        v
-Plan preview + risk classification + human confirmation
-        |
-        v
-Mac-local Computer Use bridge (not connected yet)
-        |
-        +-------------------+---------------------+
-        v                   v                     v
-Excel adapter        LibreOffice adapter     CAD adapter
-(native API first)   (UNO/API first)         (vendor-neutral contract)
-        |                   |                     |
-        +-------------------+---------------------+
-                            v
-                 Read-back verification
-                            |
-                            v
-                Local audit + user-visible result
-```
+Japanese natural-language request
+→ local model via loopback-only endpoint
+→ strict JSON plan validation
+→ risk-labelled preview
+→ trusted local approval UI (not implemented)
+→ narrowly scoped application adapter (not implemented)
+→ read-back verification (not implemented)
+→ local audit record
 
-## Supported plan vocabulary
+## Safety boundary
 
-### CAD (application not selected)
-- `open_document(path)`
-- `inspect_model(object_name?)`
-- `create_sketch(plane, geometry[])`
-- `add_hole(diameter_mm, positions[])`
-- `extrude(depth_mm)`
-- `export_step(path)`
-- `save_as(path)`
-
-The plan schema is vendor-neutral. A later CAD selection must map these operations
-to that application's native API and report unsupported operations explicitly.
-
-### Excel and LibreOffice Calc
-Both spreadsheet targets share the same bounded operations:
-- `open_workbook(path)`
-- `inspect_sheet(sheet_name?)`
-- `write_cells(sheet_name, range, values[][])`
-- `create_formula(sheet_name, cell, formula)`
-- `create_chart(sheet_name, data_range, chart_type)`
-- `save_as(path)`
-
-A target-specific adapter must preserve workbook formulas, styles, merged cells,
-named ranges, charts, and unsupported features. It must not silently convert or
-discard features when opening/saving across formats.
-
-## Safety contract
-
-- The local model proposes structured data; it never supplies executable code.
-- Only per-application operation allowlists are accepted.
-- Shell commands, Python/JavaScript, VBA/macros, URLs, network paths, arbitrary
-  file deletion, and unrecognized operations are rejected.
-- Spreadsheet formulas capable of external data access or links are rejected.
-- Numeric CAD geometry and spreadsheet ranges are bounded and validated.
-- Read-only inspection can be previewed without modification approval.
-- Every modifying operation requires explicit human confirmation.
-- Save/export operations are high-risk and require explicit confirmation.
-- The plan digest binds the exact validated request and actions.
-- Current runner always fails closed: `execution_authorized=false`,
-  `execution_performed=false`.
+- The model proposes structured data only; it cannot provide executable code.
+- Per-application operation allowlists and bounded parameters are validated.
+- Shell commands, scripts, macros, URLs, network paths, arbitrary deletion, and
+  unrecognized operations are rejected.
+- Read-only inspection and modifying operations are both preview-only at this stage.
+- Modifying operations and save/export actions will require explicit, action-scoped
+  human approval in a trusted local UI.
+- No approval can be minted by a plain string or by a LINE/model request.
+- The current bridge rejects snapshot and execution requests. Injecting an adapter
+  or setting enabled=True does not enable it.
+- The bridge must verify exact plan identity, action scope, expiry, one-time use,
+  and post-action read-back before any production enablement.
 - No background job or GitHub Action may operate the user's Mac desktop.
-- No cloud fallback or paid model API. Model endpoint remains loopback-only.
 
-## Implementation phases
+## Remaining phases
 
-1. **Phase 0 — Plan contract (implemented):** Excel, Calc and vendor-neutral CAD
-   schemas; JSON validation; bounds; risk labels; digest; fail-closed runner.
-2. **Phase 1 — Mac Computer Use bridge:** inspect existing OpenClaw installation,
-   desktop capability, accessibility/screen-recording permissions and local tool
-   policy. Read-only capability check first; do not change host settings silently.
-3. **Phase 2 — App adapters:** Excel and Calc adapters; choose CAD application only
-   after a separate decision. Prefer native APIs, use Computer Use for UI-only tasks.
-4. **Phase 3 — Approval and execution:** per-action confirmation, scoped file access,
-   no arbitrary shell or macro execution, and explicit save/export confirmation.
-5. **Phase 4 — Verification:** reopen/read-back, geometry and cell-value checks,
-   save-path confirmation, screenshots and append-only local audit records.
-6. **Phase 5 — Orchestrator/LINE:** submit natural-language tasks, show previews,
-   request approvals, and report verified outcomes. LINE cannot bypass local approval
-   or operate the Mac while the local bridge is offline.
+1. Trusted approval UI: local interactive confirmation bound to exact plan digest
+   and selected actions; must not be callable by model/LINE input.
+2. Local bridge: authenticated local-session transport with no arbitrary shell access.
+3. Application adapters: Excel and Calc first; CAD only after a separate app choice.
+4. Execution policy: per-action scope, expiry, one-time authorization, cancellation,
+   and safe handling of partial failure.
+5. Verification: read-back of cell values, formulas, workbook properties, CAD
+   geometry, and save/export destination; report discrepancies without claiming success.
+6. Orchestrator/LINE: submit requests and show previews, but never bypass local approval.
 
-## Runtime constraints
+## Test scope
 
-- Mac-local, user-session-only operation.
-- No paid APIs, cloud fallback, remote desktop, or credential capture.
-- No auto-merge, deploy, or reopening of the four legacy sub-systems.
-- No install, permission change, or live desktop action as part of this PR.
-- The existing 30-minute LOOP work remains a separate priority; this desktop project
-  must not consume or modify its runtime queue or scheduling configuration.
-
-## Phase 0 test
-
-Run:
-
-```bash
-pytest -q tests/test_desktop_control.py
-```
-
-Passing these tests proves only that plans are validated and unsafe plans rejected.
-It does not prove that Excel, Calc, CAD, or Mac Computer Use can be controlled yet.
-
-
-## Phase 1 bridge boundary (implemented, not connected)
-
-`core/computer_use_bridge.py` defines the adapter contract and approval gate:
-- Adapter interface is limited to `snapshot()` and one validated `act(app, operation, params)`.
-- Bridge defaults to disabled; no OpenClaw transport or live desktop backend is included.
-- A human confirmation must match the explicit approval phrase in the local approval UI.
-- Grants bind to the exact plan SHA-256 and selected action IDs, expire within 1–300 seconds,
-  and are consumed before the first side effect.
-- Partial adapter failure still consumes the grant; retry requires a fresh review/approval.
-- A changed plan, expired grant, reused grant, or missing grant is rejected.
-
-This is a software boundary, not proof of identity or a substitute for a trusted local
-approval UI. The eventual Mac integration must ensure that only a real user interaction
-can call `approve_plan`; LINE messages and model output must never call it directly.
+The bridge tests should prove that the placeholder remains disabled even when an
+adapter is injected or enabled=True is passed. They do not prove desktop integration.
