@@ -8,8 +8,11 @@ configuration, entitlement, LaunchAgent, or desktop operation is implemented.
 Prove only that the intended signed probe client can establish an XPC
 connection to the intended signed probe broker under an OS-enforced
 code-signing requirement, and that deliberately invalid peers are rejected.
-The protocol uses a version, random request ID, nonce, and a fresh ephemeral
-broker-instance challenge. It returns a verdict and fixed reason code.
+After OS-authenticated XPC connection establishment, the client sends BeginProbe
+(version and request ID); the broker returns a cryptographically random
+connection-bound challenge. The client includes that challenge, the version,
+request ID, and a random nonce in Probe. The broker returns a verdict and fixed
+reason code.
 
 This probe does not authenticate a human, approve a plan, issue a capability,
 read or write files, capture screenshots, inspect CAD/spreadsheets, or invoke
@@ -54,7 +57,7 @@ the same connection.
 | N06 | Wrong protocol version | Rejected after authenticated connection | Fixed protocol error |
 | N07 | Unknown fields or oversized message | Rejected; process remains healthy | Fixed malformed-message error |
 | N08 | Reused nonce/request ID within one broker instance | Rejected by in-memory probe replay guard | Fixed replay error |
-| N09 | Broker restart followed by replay of a captured old request and old instance challenge | Rejected because the new instance issued a different ephemeral challenge | Restart/replay test log; verify no persistent replay/approval store |
+| N09 | Broker restart followed by replay of a captured old Probe and old connection challenge | Rejected because restart destroys the old connection; a new connection has a different challenge | Restart/replay test log; verify no persistent replay/approval store |
 | N10 | Client disconnect during request | No partial approval or side effect; request discarded | Broker state trace |
 | N11 | Wrong user or audit session | Rejected by independent session policy | OS-derived session evidence |
 | N12 | Broker or client crashes during test | No persistent approval state; next run starts fail-closed | Restart test log |
@@ -76,9 +79,11 @@ the same connection.
 - No file, application, or desktop APIs are linked or invoked.
 - Rejection paths are observable through fixed reason codes without exposing
   sensitive identity material.
-- The broker-instance challenge and replay set exist only in memory. A restart
-  creates a fresh unpredictable challenge, so captured old requests cannot be
-  replayed. No durable approval state or replay database is created.
+- Each authenticated connection receives its own unpredictable challenge, held
+  only in broker memory and bound to that connection. Disconnect or restart
+  destroys it; a captured old Probe cannot be replayed on a new connection.
+  The nonce replay set is also memory-only. No durable approval state or replay
+  database is created.
 
 ## Evidence package
 
