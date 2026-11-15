@@ -1,4 +1,5 @@
 from dataclasses import replace
+import hashlib
 
 import pytest
 
@@ -22,7 +23,7 @@ def make_score(strategy="slerp", *, repeatable=True, safety=.99, regressions=0, 
     return StrategyScore(
         "candidate-" + strategy, strategy, 2, ("eval-a", "eval-b"),
         fitness, repeatable, reasons, repeatable and safety >= .95 and regressions == 0,
-        (strategy[0] * 64),
+        hashlib.sha256(strategy.encode()).hexdigest(),
     )
 
 
@@ -91,7 +92,9 @@ def test_rejects_authority_bearing_tournament_and_invalid_metrics():
         FailureInformedExplorationPlanner().plan(
             unsafe, attestation, policy, verify_attestation=lambda report, envelope: True
         )
-    bad_score = replace(tournament.scores[0], median_fitness=replace(tournament.scores[0].median_fitness, safety=float("nan")))
+    bad_fitness = replace(tournament.scores[0].median_fitness)
+    object.__setattr__(bad_fitness, "safety", float("nan"))
+    bad_score = replace(tournament.scores[0], median_fitness=bad_fitness)
     bad_report = replace(tournament, scores=(bad_score,))
     bad_attestation = replace(attestation, report_digest=bad_report.digest)
     with pytest.raises(ExplorationPlanningError, match="metrics"):
