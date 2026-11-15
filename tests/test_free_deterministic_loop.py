@@ -90,3 +90,18 @@ def test_timeout_restores_original_source(tmp_path, monkeypatch):
     else:
         raise AssertionError("pytest timeout must propagate")
     assert target.read_text(encoding="utf-8") == original
+
+
+
+def test_nonempty_queue_requires_explicit_workflow_approval(tmp_path, monkeypatch):
+    queue = tmp_path / "queue.json"
+    queue.write_text(json.dumps({"tasks": [_task()]}), encoding="utf-8")
+    evidence = tmp_path / "evidence.jsonl"
+    monkeypatch.setattr(
+        runner.sys, "argv",
+        ["runner", "--queue", str(queue), "--evidence", str(evidence)],
+    )
+    assert runner.main() == 1
+    record = json.loads(evidence.read_text(encoding="utf-8").splitlines()[0])
+    assert record["status"] == "BLOCKED"
+    assert record["failure_reason"] == "explicit_workflow_approval_required"
