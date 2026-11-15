@@ -4,14 +4,14 @@ import hmac
 import pytest
 
 from core.ai_factory_stage141_evolution import (
-    CandidateStatus, CompatibilityReport, Fitness, MergeStrategy, ModelCandidate,
+    CandidateStatus, CompatibilityReport, Fitness, MergeStrategy, ModelCandidate, ModelDescriptor,
 )
-from core.ai_factory_stage142_lineage import EvaluationEvidence, evidence_digest
+from core.ai_factory_stage142_lineage import EvaluationEvidence, ModelLineageRecord, evidence_digest
 from core.ai_factory_stage143_evidence_auth import (
     AuthenticatedEvidenceVerifier, TrustedEvaluatorKey, signature_message,
 )
 from core.ai_factory_stage145_improvement_gate import (
-    EvolutionDecision, GenerationImprovementReport, ParentComparison, SignedEvidence,
+    EvolutionDecision, GenerationImprovementReport, ParentComparison, ParentEvaluation, SignedEvidence,
 )
 from core.ai_factory_stage146_merge_strategy import MergeMethod, MergeReadiness, MergeRecipe
 from core.ai_factory_stage149_evolutionary_selection import (
@@ -57,10 +57,37 @@ def fixture():
         ParentComparison("parent-a", 1, True, .02, .02, .01, .95, .95, 0),
         ParentComparison("parent-b", 1, False, .01, .01, .005, .98, .98, 0),
     )
+    parents = (
+        ModelDescriptor("parent-a", "llama", "tok", "schema", "safetensors", "c" * 64,
+                        "reviewed", "local", "fp16", True),
+        ModelDescriptor("parent-b", "llama", "tok", "schema", "safetensors", "d" * 64,
+                        "reviewed", "local", "fp16", True),
+    )
+    lineage = ModelLineageRecord(
+        "child-1", ("parent-a", "parent-b"), ("c" * 64, "d" * 64),
+        "parameter_merge", 2, ARTIFACT, SUITE, "independent-evaluator",
+        evidence.evidence_digest,
+    )
     report = GenerationImprovementReport(
         "child-1", 2, EvolutionDecision.IMPROVED, comparisons,
-        object(), "authenticated improvement",
+        lineage, "authenticated improvement",
     )
+    parent_fitnesses = (
+        Fitness(.89, .91, .98, 105.0, 538.0, 0, SUITE),
+        Fitness(.90, .92, .99, 110.0, 520.0, 0, SUITE),
+    )
+    parent_evaluations = []
+    for descriptor, parent_fit, parent_nonce in zip(parents, parent_fitnesses, ("parent-nonce-a", "parent-nonce-b")):
+        parent_ev = EvaluationEvidence(
+            descriptor.model_id, descriptor.artifact_digest, SUITE,
+            "independent-evaluator", parent_fit, True,
+            evidence_digest(candidate_id=descriptor.model_id,
+                            evaluated_artifact_digest=descriptor.artifact_digest,
+                            evaluation_suite_digest=SUITE,
+                            evaluator_id="independent-evaluator", fitness=parent_fit),
+        )
+        parent_sig = hmac.new(SECRET, signature_message(key_id=KEY_ID, nonce=parent_nonce, evidence=parent_ev), hashlib.sha256).hexdigest()
+        parent_evaluations.append(ParentEvaluation(descriptor, 1, SignedEvidence(parent_ev, KEY_ID, parent_nonce, parent_sig)))
     recipe = MergeRecipe(
         candidate_id="child-1", generation=2, method=MergeMethod.SLERP,
         readiness=MergeReadiness.PROPOSAL_ONLY,
@@ -71,16 +98,16 @@ def fixture():
         quantization="fp16", coefficients=(.5, .5), density=None, seed=7,
         reasons=("compatible fixture",), evidence_suite_digest=SUITE,
     )
-    return verifier, candidate, report, recipe, signed
+    return verifier, candidate, report, recipe, signed, tuple(parent_evaluations)
 
 
 def test_admission_reverifies_signed_evidence_and_plans_next_generation():
-    _, candidate, report, recipe, signed = fixture()
+    _, candidate, report, recipe, signed, parents = fixture()
     population = EvolutionaryPopulation(
         AuthenticatedEvidenceVerifier({KEY_ID: TrustedEvaluatorKey("independent-evaluator", SECRET)}),
         max_population=4, max_survivors=2,
     )
-    entry = population.admit(candidate, report, recipe, signed, expected_artifact_digest=ARTIFACT)
+    entry = population.admit(candidate, report, recipe, signed, parents, expected_artifact_digest=ARTIFACT)
     assert entry.candidate_id == "child-1"
     assert entry.status == "pending_human_approval"
     assert entry.enabled is False
@@ -107,7 +134,7 @@ def test_safety_stops_fail_closed(kwargs):
         AuthenticatedEvidenceVerifier({KEY_ID: TrustedEvaluatorKey("independent-evaluator", SECRET)})
     )
     with pytest.raises(EvolutionPopulationError):
-        population.admit(candidate, report, recipe, signed, expected_artifact_digest=ARTIFACT, **kwargs)
+        population.admit(candidate, report, recipe, signed, parents, expected_artifact_digest=ARTIFACT, **kwargs)
 
 
 def test_rejects_report_or_recipe_identity_drift():
@@ -119,7 +146,7 @@ def test_rejects_report_or_recipe_identity_drift():
         "other", 2, EvolutionDecision.IMPROVED, report.comparisons, object(), "forged"
     )
     with pytest.raises(EvolutionPopulationError):
-        population.admit(candidate, bad_report, recipe, signed, expected_artifact_digest=ARTIFACT)
+        population.admit(candidate, bad_report, recipe, signed, parents, expected_artifact_digest=ARTIFACT)
 
 
 def test_rejects_tampered_signature_and_artifact_digest():
@@ -129,7 +156,7 @@ def test_rejects_tampered_signature_and_artifact_digest():
     )
     tampered = SignedEvidence(signed.evidence, signed.key_id, signed.nonce, "0" * 64)
     with pytest.raises(EvolutionPopulationError):
-        population.admit(candidate, report, recipe, tampered, expected_artifact_digest=ARTIFACT)
+        population.admit(candidate, report, recipe, tampered, parents, expected_artifact_digest=ARTIFACT)
 
 
 def test_capacity_is_bounded_and_fail_closed():
@@ -154,4 +181,4 @@ def test_candidate_must_be_pending_and_disabled():
         AuthenticatedEvidenceVerifier({KEY_ID: TrustedEvaluatorKey("independent-evaluator", SECRET)})
     )
     with pytest.raises(EvolutionPopulationError):
-        population.admit(active, report, recipe, signed, expected_artifact_digest=ARTIFACT)
+        population.admit(active, report, recipe, signed, parents, expected_artifact_digest=ARTIFACT)
