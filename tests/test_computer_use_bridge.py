@@ -158,3 +158,30 @@ def test_capability_rejects_lifetime_over_two_minutes_and_digest_mismatch():
             current_session_id="mac-session-A", now=1010.0,
             redeemed_nonces=set(),
         )
+
+
+def test_capability_rejects_duplicate_and_malformed_action_ids():
+    plan = _plan()
+    for ids, nonce in [(("a1", "a1"), "d" * 40), (("",), "m" * 40)]:
+        with pytest.raises(CapabilityPolicyError):
+            validate_capability(
+                _capability(plan, action_ids=ids, nonce=nonce), plan,
+                current_session_id="mac-session-A", now=1010.0,
+                redeemed_nonces=set(),
+            )
+
+
+@pytest.mark.parametrize("issued_at,expires_at,now", [
+    (True, 1060.0, 1010.0),
+    (1000.0, False, 1010.0),
+    (1000.0, 1060.0, float("nan")),
+    (1000.0, 1060.0, 999.0),
+])
+def test_capability_rejects_invalid_or_not_yet_valid_timestamps(issued_at, expires_at, now):
+    plan = _plan()
+    with pytest.raises(CapabilityPolicyError):
+        validate_capability(
+            _capability(plan, issued_at=issued_at, expires_at=expires_at, nonce="t" * 40),
+            plan, current_session_id="mac-session-A", now=now,
+            redeemed_nonces=set(),
+        )
