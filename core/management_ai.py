@@ -124,9 +124,15 @@ class ManagementRun:
     def collaboration_snapshot(self) -> dict[str, object]:
         """Return a bounded, JSON-safe summary for a dashboard or audit record."""
         agents = self.agent_team.agents if self.agent_team is not None else ()
+        reviewers = self.agent_team.reviewer_agents if self.agent_team is not None else ()
         review = self.peer_review
         return {
             "agent_count": len(agents),
+            "reviewer_count": len(reviewers),
+            "reviewers": [
+                {"agent_id": agent.agent_id, "role": agent.role.value, "task_ids": []}
+                for agent in reviewers
+            ],
             "agents": [
                 {
                     "agent_id": agent.agent_id,
@@ -495,9 +501,13 @@ class ManagementAI:
             reviews: list[PeerReview] = []
             agents = agent_team.agents
             for index, target in enumerate(agents):
-                if len(agents) < 2:
+                if len(agents) < 2 and not agent_team.reviewer_agents:
                     break
-                reviewer = agents[(index + 1) % len(agents)]
+                reviewer = (
+                    agent_team.reviewer_agents[0]
+                    if len(agents) == 1 and agent_team.reviewer_agents
+                    else agents[(index + 1) % len(agents)]
+                )
                 target_observation = observations_by_task[target.task_ids[0]]
                 try:
                     review = self._peer_reviewer(reviewer, target, target_observation)
