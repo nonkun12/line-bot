@@ -117,6 +117,8 @@ def prepare_revision_draft(
     addressed = payload.get("addressed_findings")
     if not isinstance(content, str) or not isinstance(addressed, list):
         raise ValueError("revision model output is missing required fields")
+    if any(not isinstance(item, str) or item not in bounded_findings for item in addressed):
+        raise ValueError("revision model may only claim supplied findings as addressed")
     return RevisionDraft(
         request_id=request_id,
         task_id=task_id,
