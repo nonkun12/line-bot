@@ -157,6 +157,14 @@ class ManagementRun:
                 for item in (review.revision_requests if review else ())
             ],
             "accepted": self.success,
+            "revision_workflow": {
+                "draft_status": "NOT_STARTED",
+                "review_status": "NOT_STARTED",
+                "draft_preview": "",
+                "addressed_findings": [],
+                "review_findings": [],
+                "execution_authorized": False,
+            },
         }
     @property
     def revision_feedback(self) -> tuple[str, ...]:
