@@ -43,6 +43,7 @@ class AgentTask:
     resources: frozenset[str] = field(default_factory=frozenset)
     depends_on: tuple[str, ...] = ()
     priority: int = 0
+    agent_id: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.task_id, str) or not self.task_id.strip():
@@ -75,6 +76,12 @@ class AgentTask:
             raise ValueError("dependency ids must be non-empty strings <= 200 characters")
         if self.task_id in self.depends_on:
             raise ValueError("task cannot depend on itself")
+        if self.agent_id is not None and (
+            not isinstance(self.agent_id, str)
+            or not self.agent_id.strip()
+            or len(self.agent_id) > 200
+        ):
+            raise ValueError("agent_id must be a non-empty string <= 200 characters")
         if not isinstance(self.priority, int) or isinstance(self.priority, bool):
             raise ValueError("priority must be an integer")
         if not -10 <= self.priority <= 10:
