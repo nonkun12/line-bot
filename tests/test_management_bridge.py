@@ -292,3 +292,78 @@ def test_management_bridge_detects_news_and_toyota_stock_as_two_specialists() ->
     roles = specialist_roles_for_message("AI NEWSとトヨタの株価を教えて")
     assert roles == frozenset({AgentRole.NEWS, AgentRole.STOCKS})
     assert should_route_to_management_ai("AI NEWSとトヨタの株価を教えて")
+
+
+
+def test_local_peer_review_is_explicitly_opt_in_and_uses_configured_loopback_model(monkeypatch):
+    from types import SimpleNamespace
+    from core.management_ai import ManagementAI
+
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_PEER_REVIEW_ENABLED", "true")
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_PEER_REVIEW_MODEL", "lfm3:1.7b-qad-q4_0")
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_PEER_REVIEW_URL", "http://127.0.0.1:11434/v1")
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry",
+        lambda: object(),
+    )
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: FakeExecutor(AgentRole.NEWS),
+            AgentRole.STOCKS: FakeExecutor(AgentRole.STOCKS),
+        },
+    )
+    captured = {}
+    fake_run = SimpleNamespace(
+        success=True,
+        collaboration_snapshot=lambda: {"agent_count": 2, "accepted": True},
+        observations=(),
+    )
+
+    class FakeManager:
+        def run(self, request):
+            return fake_run
+
+    def fake_factory(cls, executors, **kwargs):
+        captured.update(kwargs)
+        return FakeManager()
+
+    monkeypatch.setattr(ManagementAI, "with_local_peer_review", classmethod(fake_factory))
+    monkeypatch.setattr(
+        "core.management_bridge.record_collaboration_snapshot",
+        lambda **kwargs: captured.update(audit=kwargs),
+    )
+
+    result = run_management_request(
+        "u1",
+        "AIニュースと株価を調べて",
+        planner=StaticPlanner(),
+    )
+
+    assert result is None
+    assert captured["model"] == "lfm3:1.7b-qad-q4_0"
+    assert captured["base_url"] == "http://127.0.0.1:11434/v1"
+    assert captured["audit"]["snapshot"]["agent_count"] == 2
+
+
+def test_local_peer_review_enabled_without_model_fails_closed_before_execution(monkeypatch):
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_PEER_REVIEW_ENABLED", "true")
+    monkeypatch.delenv("ORCHESTRATOR_LOCAL_PEER_REVIEW_MODEL", raising=False)
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry",
+        lambda: object(),
+    )
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: FakeExecutor(AgentRole.NEWS),
+            AgentRole.STOCKS: FakeExecutor(AgentRole.STOCKS),
+        },
+    )
+
+    result = run_management_request(
+        "u1",
+        "AIニュースと株価を調べて",
+        planner=StaticPlanner(),
+    )
+    assert result == "管理AIの実行で問題が発生したため、同じ専門AIを再実行せずに処理を停止しました。"
