@@ -95,11 +95,18 @@ class OrchestratorCoreTests(unittest.TestCase):
         self.assertIsNone(plan["selected_candidate"])
         self.assertIn("global_hold", plan["reasons"])
 
-    def test_missing_approval_fails_closed(self):
-        plan = build_plan(payload([{"id": "work"}]))
-        self.assertEqual(plan["status"], "HOLD")
-        self.assertIn("execution_approval_missing", plan["reasons"])
-        self.assertIsNone(plan["selected_candidate"])
+    def test_unverified_approval_is_never_execution_authorization(self):
+        plan = build_plan(payload([
+            {"id": "highest-unapproved", "priority": 10},
+            {"id": "lower-caller-approved", "priority": 5, "execution_approved": True},
+        ]))
+        self.assertEqual(plan["status"], "PLAN_READY")
+        self.assertEqual(plan["selected_candidate"], "highest-unapproved")
+        self.assertFalse(plan["execution_authorized"])
+        self.assertFalse(plan["approval_evidence_verified"])
+        self.assertFalse(plan["budget_evidence_verified"])
+        self.assertIn("approval_evidence_unverified", plan["reasons"])
+        self.assertFalse(plan["execution_performed"])
 
     def test_budget_exhaustion_blocks(self):
         plan = build_plan(payload(
