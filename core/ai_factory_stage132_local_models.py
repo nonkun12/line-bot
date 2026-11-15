@@ -177,6 +177,8 @@ def build_stage132_producers(
         raise ValueError("independent TEST and REVIEW gates are required")
     if test_gate is local_model or review_gate is local_model:
         raise ValueError("local model cannot be reused as an independent TEST or REVIEW gate")
+    if test_gate is review_gate:
+        raise ValueError("TEST and REVIEW require separate independent gate producers")
     return {
         CollaborationStage.DESIGN: local_model,
         CollaborationStage.BUILD: local_model,
