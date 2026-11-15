@@ -157,6 +157,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const cards=[
           ['最新の依頼',String(records[0].created_at||'日時未取得'),'最新の保存記録'],
           ['分身数',String(Number(latest.agent_count||0))+'体','論理エージェント数'],
+          ['レビュー専任',String(Number(latest.reviewer_count||0))+'体','実行タスクを持たない独立レビュー担当'],
+          ['修正依頼',String(Array.isArray(latest.revision_requests)?latest.revision_requests.length:0)+'件','指摘を担当分身へ返却・未受入'],
           ['相互レビュー',reviewLabel,'レビュー結果の記録'],
           ['最終判定',accepted?'🟢 受入可能':'🔴 未受入','accepted=true の場合のみPASS相当']
         ];
@@ -167,7 +169,14 @@ document.addEventListener('DOMContentLoaded', () => {
           return '<div class="system-card"><div class="system-card-title">'+esc(agent.role||'role未取得')+'</div><div class="system-details">Agent: <code>'+esc(agent.agent_id||'ID未取得')+'</code></div><div class="system-details">Task: '+esc(taskIds.join(' / ')||'未割当')+'</div></div>';
         }).join('')||'<div class="system-details">分身の明細は記録されていません</div>';
         const findings=Array.isArray(latest.findings)?latest.findings:[];
-        findingsPanel.textContent=findings.length?'レビュー所見：'+findings.map(x=>String(x)).join(' / '):'レビュー所見はありません';
+        const revisions=Array.isArray(latest.revision_requests)?latest.revision_requests:[];
+        const findingText=findings.length?'レビュー所見：'+findings.map(x=>String(x)).join(' / '):'レビュー所見はありません';
+        const revisionText=revisions.length?'修正依頼：'+revisions.map(item=>{
+          const target=String(item.target_agent_id||'対象ID不明');
+          const notes=Array.isArray(item.findings)?item.findings.map(x=>String(x)).join(' / '):'詳細なし';
+          return target+' ← '+notes;
+        }).join(' | '):'未処理の修正依頼はありません';
+        findingsPanel.textContent=findingText+'\n'+revisionText;
       }
       if(updated) updated.textContent='更新 '+new Date().toLocaleTimeString('ja-JP')+' ・ '+records.length+'件';
     }catch(error){
