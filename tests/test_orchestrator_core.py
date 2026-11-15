@@ -163,6 +163,24 @@ class OrchestratorCoreTests(unittest.TestCase):
         self.assertIn("merge=false", rendered)
         self.assertIn("Snapshot renderer only", rendered)
 
+    def test_dashboard_cli_smoke_test(self):
+        document = payload([
+            {"id": "audit", "title": "Read-only audit", "execution_approved": False},
+        ])
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = Path(tmp) / "queue.json"
+            input_path.write_text(json.dumps(document), encoding="utf-8")
+            script = Path(__file__).resolve().parents[1] / "scripts" / "orchestrator_dashboard.py"
+            result = subprocess.run(
+                [sys.executable, str(script), "--input", str(input_path)],
+                capture_output=True, text=True, check=False, timeout=15,
+            )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("**Status:** HOLD", result.stdout)
+        self.assertIn("Read-only audit", result.stdout)
+        self.assertIn("execution=false", result.stdout)
+        self.assertEqual(result.stderr, "")
+
     def test_dashboard_renders_task_state_and_escapes_table_values(self):
         rendered = render_dashboard(payload([
             {"id": "task|one", "title": "Audit\n|details", "priority": 4,
