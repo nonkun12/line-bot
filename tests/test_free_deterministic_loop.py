@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import subprocess
 from pathlib import Path
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "free_deterministic_loop.py"
@@ -14,9 +13,9 @@ SPEC.loader.exec_module(runner)
 
 def _task(**overrides):
     value = {
-        "id": "loop-deterministic-nochange-focused-test",
+        "id": "distributed-loop-queue-progress-empty-queue-regression",
         "execution_approved": True,
-        "allowed_paths": ["tests/test_line_development_worker_v2.py"],
+        "allowed_paths": ["tests/test_distributed_loop_queue_progress.py"],
         "base_sha": "a" * 40,
     }
     value.update(overrides)
@@ -38,14 +37,16 @@ def test_candidate_adds_exactly_one_test_and_preserves_existing_tests():
     original = "def test_existing():\n    assert True\n\n" + spec["anchor"]
     candidate, status = runner.build_candidate(task, original)
     assert status == "PATCHED"
-    assert len(runner.ast_test_signatures(candidate, "fixture.py")) == 2
-    assert runner.ast_test_signatures(candidate, "fixture.py")[0] == runner.ast_test_signatures(original, "fixture.py")[0]
+    before = runner.ast_test_signatures(original, "fixture.py")
+    after = runner.ast_test_signatures(candidate, "fixture.py")
+    assert len(after) == len(before) + 1
+    assert before[0] in after
 
 
 def test_existing_test_is_not_rewritten():
     task = _task()
     spec = runner.TASKS[task["id"]]
-    original = "def " + spec["test_name"] + "():\n    assert True\n"
+    original = "def " + spec["test_name"] + "(tmp_path):\n    assert True\n"
     candidate, status = runner.build_candidate(task, original)
     assert candidate == original
     assert status == "NO_CHANGE"
@@ -63,7 +64,7 @@ def test_ambiguous_anchor_fails_closed():
         raise AssertionError("ambiguous anchor must be rejected")
 
 
-def test_queue_requires_exact_single_task_schema(tmp_path, monkeypatch):
+def test_empty_queue_emits_no_task_evidence(tmp_path, monkeypatch):
     queue = tmp_path / "queue.json"
     queue.write_text(json.dumps({"tasks": []}), encoding="utf-8")
     evidence = tmp_path / "evidence.jsonl"
