@@ -71,3 +71,22 @@ def test_empty_queue_emits_no_task_evidence(tmp_path, monkeypatch):
     monkeypatch.setattr(runner.sys, "argv", ["runner", "--queue", str(queue), "--evidence", str(evidence)])
     assert runner.main() == 0
     assert json.loads(evidence.read_text(encoding="utf-8").splitlines()[0])["status"] == "NO_TASK"
+
+
+
+def test_timeout_restores_original_source(tmp_path, monkeypatch):
+    target = tmp_path / "target.py"
+    original = "original source\\n"
+    target.write_text("temporary candidate\\n", encoding="utf-8")
+
+    def timeout(*args, **kwargs):
+        raise runner.subprocess.TimeoutExpired(cmd="pytest", timeout=600)
+
+    monkeypatch.setattr(runner.subprocess, "run", timeout)
+    try:
+        runner.run_targeted_pytest(target, original, True, "tests/test_target.py")
+    except runner.subprocess.TimeoutExpired:
+        pass
+    else:
+        raise AssertionError("pytest timeout must propagate")
+    assert target.read_text(encoding="utf-8") == original
