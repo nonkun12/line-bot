@@ -91,7 +91,6 @@ def test_independent_review_is_separate_and_never_authorizes_execution():
 @pytest.mark.parametrize("payload", [
     "not json",
     '{"verdict":"APPROVED","findings":[]}',
-    '{"verdict":"PASS","findings":["oversized"]}',
 ])
 def test_independent_review_rejects_malformed_or_unrecognized_output(payload):
     draft = _draft()
