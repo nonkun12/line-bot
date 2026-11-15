@@ -4,7 +4,8 @@
 
 - `RequestScopedAgentFactory` creates one logical agent identity per planned task (maximum six).
 - `ManagementAI` sends each task's identity to the existing specialist executor.
-- When peer review is configured, a different task agent reviews each result.
+- When peer review is configured, a different task agent reviews each result; single-task plans receive a separate review-only logical identity with no execution task.
+- `NEEDS_REVISION` creates a bounded, target-specific revision request in the collaboration snapshot. It is not accepted as success and does not automatically rerun a specialist executor.
 - Review evidence is part of final acceptance. Missing, failed, spoofed, or adverse review evidence fails closed.
 - `ManagementRun.collaboration_snapshot()` returns bounded JSON-safe team and review status for a dashboard or audit record.
 - `OllamaLocalModelCall` calls an OpenAI-compatible Ollama endpoint over loopback only.
@@ -36,7 +37,8 @@ manager = ManagementAI.with_local_peer_review(
 - HTTPS, remote hosts, LAN addresses, credentials in URLs, query strings, and fragments are rejected.
 - No API key, cloud provider, remote fallback, automatic model download, or subprocess is used.
 - If Ollama is unavailable or returns invalid output, the review adapter fails and the management run is `BLOCKED`.
-- A configured review stage requires at least two planned task agents. A single-task request cannot independently review itself and is `BLOCKED`.
+- A configured review stage can handle a single planned task by creating one separate review-only identity. It has no task assignment and cannot be a review target.
+- `NEEDS_REVISION` and `BLOCKED` both prevent acceptance. Revision requests are returned as evidence for a later controlled correction; the system does not automatically rerun specialist executors because their side effects and idempotency are not assumed.
 - The planner and specialist executors retain their existing provider/runtime configuration; this adapter changes only the peer-review call. It does not claim the entire application is local-only.
 - Do not point this adapter at a service running on a different host. In a hosted container, loopback refers to that container, not a developer laptop.
 
