@@ -36,7 +36,7 @@ def test_obsidian_queue_failure_fails_closed_without_fallback(monkeypatch):
     monkeypatch.setattr(
         line_app,
         "enqueue_obsidian_request",
-        lambda *_args: (_ for _ in ()).throw(RuntimeError("internal detail must not be returned")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("internal detail must not be returned")),
     )
     monkeypatch.setattr(
         line_app,
@@ -54,7 +54,7 @@ def test_obsidian_queue_failure_fails_closed_without_fallback(monkeypatch):
 
 def test_regular_message_does_not_enter_obsidian_queue(monkeypatch):
     queued = []
-    monkeypatch.setattr(line_app, "request_distributed_loop", lambda *_args: (False, ""))
+    monkeypatch.setattr(line_app, "request_distributed_loop", lambda *_args, **_kwargs: (False, ""))
     monkeypatch.setattr(line_app, "enqueue_obsidian_request", lambda *args: queued.append(args))
     monkeypatch.setattr(line_app, "_core_dynamic_enabled", lambda: False)
     monkeypatch.setattr(line_app, "generate_reply", lambda _user, _message: "ordinary reply")
