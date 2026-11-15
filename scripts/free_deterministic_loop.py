@@ -164,6 +164,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--queue", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
+    parser.add_argument("--approved-task-id", default=None)
     args = parser.parse_args()
     record_path = args.evidence
     try:
@@ -180,6 +181,8 @@ def main() -> int:
             return 0
         if len(queue["tasks"]) != 1:
             raise RuntimeError("pilot_accepts_exactly_one_task")
+        if args.approved_task_id != queue["tasks"][0].get("id"):
+            raise RuntimeError("explicit_workflow_approval_required")
         record = run_task(queue["tasks"][0])
         emit(record, record_path)
         print("FREE_LOOP_STATUS=" + record["status"])
