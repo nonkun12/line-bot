@@ -98,9 +98,11 @@ class Executor:
     def __init__(self, role: AgentRole) -> None:
         self.role = role
         self.calls: list[str] = []
+        self.agent_ids: list[str | None] = []
 
     def execute(self, task: AgentTask) -> AgentResult:
         self.calls.append(task.task_id)
+        self.agent_ids.append(task.agent_id)
         return AgentResult(task.task_id, True, f"{self.role.value}:done")
 
 
@@ -777,6 +779,8 @@ def test_management_ai_attaches_per_task_agents_and_runs_peer_review() -> None:
     assert result.peer_review is not None
     assert result.peer_review.status == "PASS"
     assert len(review_calls) == 2
+    assert voice.agent_ids and all(voice.agent_ids)
+    assert news.agent_ids and all(news.agent_ids)
 
 
 def test_management_ai_blocks_peer_review_when_review_adapter_fails() -> None:
@@ -794,3 +798,24 @@ def test_management_ai_blocks_peer_review_when_review_adapter_fails() -> None:
     assert result.peer_review.status == "BLOCKED"
     assert not result.peer_review.accepted_agent_ids
     assert len(result.peer_review.blocked_agent_ids) == 2
+
+
+
+def test_management_ai_rejects_peer_review_identity_spoofing() -> None:
+    def spoofed_reviewer(reviewer_agent, target_agent, observation):
+        return PeerReview(
+            reviewer_id=target_agent.agent_id,
+            target_agent_id=reviewer_agent.agent_id,
+            verdict=ReviewVerdict.PASS,
+        )
+
+    manager = ManagementAI(
+        {AgentRole.VOICE: Executor(AgentRole.VOICE), AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=StaticPlanner(),
+        peer_reviewer=spoofed_reviewer,
+    )
+    result = manager.run(ManagementRequest("u1", "音声とニュースを準備して"))
+
+    assert result.peer_review is not None
+    assert result.peer_review.status == "BLOCKED"
+    assert not result.peer_review.accepted_agent_ids
