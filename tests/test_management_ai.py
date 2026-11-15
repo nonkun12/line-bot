@@ -833,18 +833,31 @@ def test_management_ai_rejects_peer_review_identity_spoofing() -> None:
 
 
 
-def test_configured_peer_review_blocks_single_agent_request_without_independent_reviewer() -> None:
+def test_configured_peer_review_uses_independent_reviewer_for_single_agent_request() -> None:
+    calls = []
+
+    def reviewer(reviewer_agent, target_agent, observation):
+        calls.append((reviewer_agent.agent_id, target_agent.agent_id))
+        assert reviewer_agent.agent_id != target_agent.agent_id
+        assert reviewer_agent.task_ids == ()
+        return PeerReview(
+            reviewer_id=reviewer_agent.agent_id,
+            target_agent_id=target_agent.agent_id,
+            verdict=ReviewVerdict.PASS,
+        )
+
     manager = ManagementAI(
         {AgentRole.NEWS: Executor(AgentRole.NEWS)},
         planner=LoopPlanner(),
-        peer_reviewer=lambda *_args: pytest.fail("a single agent cannot peer-review itself"),
+        peer_reviewer=reviewer,
     )
     result = manager.run(ManagementRequest("u1", "ニュースを要約して"))
 
     assert result.peer_review_required
     assert result.peer_review is not None
-    assert result.peer_review.status == "BLOCKED"
-    assert not result.success
+    assert result.peer_review.status == "PASS"
+    assert result.success
+    assert len(calls) == 1
 
 
 def test_local_peer_reviewer_factory_is_explicit_and_loopback_only() -> None:
