@@ -62,6 +62,11 @@ class AgentReviewer(Protocol):
         ...
 
 
+class HumanApprovalGate(Protocol):
+    def approve(self, candidate: "AgentCreationRecord", approved_by: str) -> bool:
+        ...
+
+
 @dataclass(frozen=True)
 class AgentCreationRecord:
     build: AgentBuild
@@ -86,6 +91,7 @@ class AgentFactory:
         governance: AgentGovernance | None = None,
         permitted_tools: tuple[str, ...] = (),
         permitted_resource_scopes: tuple[str, ...] = (),
+        approval_gate: HumanApprovalGate | None = None,
     ) -> None:
         self.architect = architect
         self.builder = builder
@@ -94,6 +100,7 @@ class AgentFactory:
         self.governance = governance or AgentGovernance()
         self.permitted_tools = frozenset(permitted_tools)
         self.permitted_resource_scopes = frozenset(permitted_resource_scopes)
+        self.approval_gate = approval_gate
         self._records: dict[str, AgentCreationRecord] = {}
 
     def create_candidate(self, capability_gap: str) -> AgentCreationRecord:
@@ -154,11 +161,8 @@ class AgentFactory:
         agent: object,
         version: AgentVersion,
         approved_by: str,
-        human_approval: bool = False,
     ) -> AgentGovernanceRecord:
-        """Register only after a separate, explicit human approval action."""
-        if human_approval is not True:
-            raise PermissionError("explicit human approval is required")
+        """Register only after the configured human approval gate accepts."""
         approver = str(approved_by).strip()
         if not approver:
             raise ValueError("approved_by is required")
@@ -168,6 +172,10 @@ class AgentFactory:
             raise KeyError(f"unknown reviewed candidate: {name}")
         if record.lifecycle != AgentLifecycle.REVIEWED:
             raise ValueError("candidate is not in REVIEWED lifecycle")
+        if self.approval_gate is None:
+            raise PermissionError("human approval gate is not configured")
+        if self.approval_gate.approve(record, approver) is not True:
+            raise PermissionError("human approval gate rejected the candidate")
 
         enabled_spec = record.build.spec.transition(AgentLifecycle.ENABLED)
         if version.agent_name != enabled_spec.name:
@@ -246,4 +254,5 @@ __all__ = [
     "AgentBuilder",
     "AgentSandbox",
     "AgentReviewer",
+    "HumanApprovalGate",
 ]
