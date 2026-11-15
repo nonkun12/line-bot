@@ -6,6 +6,7 @@
 - `ManagementAI` sends each task's identity to the existing specialist executor.
 - When peer review is configured, a different task agent reviews each result; single-task plans receive a separate review-only logical identity with no execution task.
 - `NEEDS_REVISION` creates a bounded, target-specific revision request in the collaboration snapshot. It is not accepted as success and does not automatically rerun a specialist executor.
+- `run_closed_loop()` surfaces target-specific `NEEDS_REVISION` findings through `pending_revision_feedback` and stops before another execution round. The manager can use those observations to prepare a correction plan, but executor replay requires a separate controlled decision; idempotency and side effects are not assumed.
 - Review evidence is part of final acceptance. Missing, failed, spoofed, or adverse review evidence fails closed.
 - `ManagementRun.collaboration_snapshot()` returns bounded JSON-safe team and review status for a dashboard or audit record.
 - `OllamaLocalModelCall` calls an OpenAI-compatible Ollama endpoint over loopback only.
