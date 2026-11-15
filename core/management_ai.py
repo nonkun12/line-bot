@@ -6,7 +6,7 @@ and collects results. Planning text never grants tools or repository mutation.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable, Mapping, Protocol, Sequence
 
 from ai_client import generate_chat_completion
@@ -329,6 +329,14 @@ class ManagementAI:
         from uuid import uuid4
 
         agent_team = self._agent_factory.create(f"req-{uuid4().hex}", plan.tasks)
+        agent_id_by_task = {
+            agent.task_ids[0]: agent.agent_id for agent in agent_team.agents
+        }
+        bound_tasks = tuple(
+            replace(task, agent_id=agent_id_by_task[task.task_id])
+            for task in plan.tasks
+        )
+        plan = replace(plan, tasks=bound_tasks)
         # All-or-nothing: every planned role is checked BEFORE any task runs, so
         # a denied role can never cause partial execution of earlier batches.
         assert_all_approved(task.role for task in plan.tasks)
@@ -383,6 +391,11 @@ class ManagementAI:
                     review = self._peer_reviewer(reviewer, target, target_observation)
                     if not isinstance(review, PeerReview):
                         raise TypeError("peer_reviewer must return PeerReview")
+                    if (
+                        review.reviewer_id != reviewer.agent_id
+                        or review.target_agent_id != target.agent_id
+                    ):
+                        raise ValueError("peer review identity does not match its assigned agents")
                     reviews.append(review)
                 except Exception as exc:
                     reviews.append(
