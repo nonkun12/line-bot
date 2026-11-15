@@ -9,7 +9,7 @@ from core.ai_factory_stage169_lineage_survival_ledger import (
     EvolutionaryLineageLedgerBuilder, proposal_digest,
 )
 from core.ai_factory_stage170_evolutionary_merge_strategy_adaptation import (
-    EvolutionaryMergeStrategyAdapter, MergeStrategyAdaptationError,
+    EvolutionaryMergeStrategyAdapter, MergeStrategyAdaptationError, _ledger_digest,
 )
 
 
@@ -63,12 +63,14 @@ def test_rejects_tampered_ledger_and_forbidden_authority():
 def test_rejects_invalid_strategy_metrics_and_empty_history():
     ledger = make_ledger()
     bad_strategy = replace(ledger.strategy_history[0], survival_rate=.99)
+    tampered = replace(ledger, strategy_history=(bad_strategy,) + ledger.strategy_history[1:])
+    tampered = replace(tampered, digest=_ledger_digest(tampered))
     with pytest.raises(MergeStrategyAdaptationError, match="rate"):
-        EvolutionaryMergeStrategyAdapter().build(
-            replace(ledger, strategy_history=(bad_strategy,) + ledger.strategy_history[1:])
-        )
+        EvolutionaryMergeStrategyAdapter().build(tampered)
+    empty = replace(ledger, strategy_history=())
+    empty = replace(empty, digest=_ledger_digest(empty))
     with pytest.raises(MergeStrategyAdaptationError, match="no measured"):
-        EvolutionaryMergeStrategyAdapter().build(replace(ledger, strategy_history=()))
+        EvolutionaryMergeStrategyAdapter().build(empty)
 
 
 @pytest.mark.parametrize("flags", [
