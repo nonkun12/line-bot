@@ -363,11 +363,11 @@ def _handle_ai_gateway_request(ai_request):
     # Resolve explicit read-only status requests and bounded Loop commands before
     # any general/development routing. Status aliases are handled by the same
     # GitHub-evidence path as the Loop status command and never dispatch a run.
-    loop_handled, loop_reply = request_distributed_loop(user_id, message)
+    loop_handled, loop_reply = request_distributed_loop(user_id, message, allow_dispatch=False)
     if loop_handled:
         return loop_reply
 
-    review_handled, review_reply = request_recovery_resume_review(user_id, message)
+    review_handled, review_reply = request_recovery_resume_review(user_id, message, allow_state_change=False)
     if review_handled:
         return review_reply
 
