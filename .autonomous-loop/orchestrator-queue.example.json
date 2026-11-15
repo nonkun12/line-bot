@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "global_hold": false,
+  "budget": {
+    "limit_minutes": 2000,
+    "consumed_minutes": 0,
+    "reserved_minutes": 0
+  },
+  "tasks": [
+    {
+      "id": "example-read-only-audit",
+      "title": "Read-only audit",
+      "priority": 10,
+      "status": "pending",
+      "depends_on": [],
+      "estimated_minutes": 5,
+      "execution_approved": false
+    }
+  ]
+}
