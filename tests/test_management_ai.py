@@ -799,6 +799,7 @@ def test_management_ai_blocks_peer_review_when_review_adapter_fails() -> None:
     assert result.peer_review.status == "BLOCKED"
     assert not result.peer_review.accepted_agent_ids
     assert len(result.peer_review.blocked_agent_ids) == 2
+    assert not result.success  # peer-review BLOCKED must affect final acceptance
 
 
 
