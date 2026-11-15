@@ -850,7 +850,7 @@ def test_configured_peer_review_blocks_single_agent_request_without_independent_
 def test_local_peer_reviewer_factory_is_explicit_and_loopback_only() -> None:
     reviewer = build_local_peer_reviewer(model="lfm3:1.7b-qad-q4_0")
     assert isinstance(reviewer, ModelPeerReviewer)
-    with pytest.raises(ValueError, match="remote model endpoints are forbidden"):
+    with pytest.raises(ValueError, match="HTTP loopback URL"):
         build_local_peer_reviewer(
             model="external-model",
             base_url="https://api.example.com/v1",
