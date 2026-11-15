@@ -66,7 +66,8 @@ def test_no_adapter_side_effects_are_possible_through_placeholder():
     bridge = LocalComputerUseBridge(adapter, enabled=True)
     with pytest.raises(DesktopExecutionDisabled):
         bridge.execute(_plan(), grant=object())
-    assert adapter.calls == []
+    assert adapter.snapshot_calls == 0
+    assert adapter.action_calls == []
 
 
 from core.desktop_approval_policy import (
