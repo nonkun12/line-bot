@@ -214,8 +214,10 @@ class OrchestratorCoreTests(unittest.TestCase):
                 [sys.executable, str(script), "--input", str(input_path)],
                 capture_output=True, text=True, check=False, timeout=15,
             )
-        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 2)
         self.assertIn("**Status:** BLOCKED", result.stdout)
+        self.assertIn("global_hold_evidence_unverified", result.stdout)
+        self.assertIn("budget_evidence_unverified", result.stdout)
         self.assertIn("Read-only audit", result.stdout)
         self.assertIn("execution=false", result.stdout)
         self.assertIn("approval_evidence_unverified", result.stdout)
