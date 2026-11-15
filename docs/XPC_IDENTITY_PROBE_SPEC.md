@@ -18,10 +18,13 @@ treat a successful connection as user approval or execution authority.
 - A short-lived, separately signed test broker exposes one fixed XPC interface.
 - A separately signed positive test client sends a constant probe message.
 - Negative test clients vary one trust property at a time.
-- The broker obtains the connection audit token from the XPC connection and
-  derives code-signing identity with Security.framework APIs.
-- The broker compares the result against a pinned designated requirement and
-  expected role configuration shipped with the test build.
+- The broker configures the XPC connection's documented peer code-signing
+  requirement before accepting or processing requests. The operating system
+  enforces that requirement; the probe does not need to extract an audit token
+  merely to establish the peer's signing requirement.
+- The broker uses only documented peer/session attributes for additional
+  session checks. Claimed PID, UID, username, bundle ID, team ID, role, and
+  environment variables remain untrusted diagnostic input.
 - Claimed PID, UID, username, bundle ID, team ID, role, environment variables,
   and message fields are diagnostic input only; none can satisfy identity checks.
 - The only response is a bounded verdict and reason code. No plan, file path,
@@ -121,46 +124,44 @@ The probe is not connected to `core/computer_use_bridge.py`. The bridge's
 authorized by this specification.
 
 
-## API selection note — public API verification required
+## API selection note — peer signing enforcement
 
-The API choice is intentionally unresolved. Do not assume that every XPC
-abstraction exposes an audit token directly.
+Do not make audit-token extraction a prerequisite for this no-op probe. The
+primary identity gate should be the operating system's documented XPC
+peer-code-signing requirement API:
 
-Apple's current public documentation distinguishes:
-- `NSXPCConnection`, whose documented security attributes include the peer PID,
-  effective UID/GID, and audit-session identifier, and whose API includes
-  `setCodeSigningRequirement`;
-- lower-level `xpc_connection_t` APIs, which document peer PID/UID/GID/audit
-  session accessors and peer code-signing requirement setters; and
-- Security.framework APIs such as `SecCodeCopyGuestWithAttributes`,
-  `kSecGuestAttributeAudit`, and `SecCodeCheckValidity`.
+- High-level Foundation path: configure
+  `NSXPCConnection.setCodeSigningRequirement(_:)` on the peer connection
+  before `resume()`, or configure
+  `NSXPCListener.setConnectionCodeSigningRequirement(_:)` for incoming
+  connections. A malformed requirement is a programming error; a peer that
+  does not match causes the connection to be invalidated.
+- Lower-level libXPC path: configure
+  `xpc_connection_set_peer_code_signing_requirement` on the connection before
+  processing messages. Apple documents that the system checks the peer's
+  code-signing requirement as it sends messages.
 
-The public documentation consulted for this specification:
-- [NSXPCConnection](https://developer.apple.com/documentation/foundation/nsxpcconnection)
-- [XPC connections](https://developer.apple.com/documentation/xpc/xpc-connections)
-- [XPC code-signing requirement](https://developer.apple.com/documentation/xpc/xpc_connection_set_peer_code_signing_requirement(_:_:))
-- [SecCodeCopyGuestWithAttributes](https://developer.apple.com/documentation/security/seccodecopyguestwithattributes(_:_:_:_:))
-- [Guest Attribute Dictionary Keys](https://developer.apple.com/documentation/security/guest-attribute-dictionary-keys)
-- [Code Signing Services](https://developer.apple.com/documentation/security/code-signing-services/)
+The probe must pin a narrowly scoped designated requirement for the expected
+test client. A team identifier alone may be too broad if multiple executables
+from that team are trusted. The exact requirement must be reviewed against the
+actual signing identity and distribution method.
 
-Before writing the probe, an engineer must select either the high-level
-`NSXPCConnection` or low-level `libXPC` implementation and record:
-1. the exact supported macOS deployment target and SDK;
-2. the public API that enforces the pinned peer code-signing requirement;
-3. the documented, supported source of any audit token used for additional
-   Security.framework validation;
-4. how the code requirement is checked on every incoming connection/message;
-5. the negative test proving an unsigned or wrong-requirement peer is rejected.
+Use peer PID/UID/GID/audit-session attributes only for supplementary session
+policy and diagnostics, never as a replacement for code-signature enforcement.
+Do not use a caller-supplied PID or a PID-only lookup as identity proof.
 
-Do not infer an audit token from a client-supplied PID, or treat PID/UID/ASID
-alone as code-signing identity. Do not use undocumented/private APIs. If the
-selected public API cannot provide the required peer verification, stop and
-revise the architecture rather than weakening the requirement.
+The public references consulted:
+- [NSXPCConnection.setCodeSigningRequirement(_:)](https://developer.apple.com/documentation/foundation/nsxpcconnection/setcodesigningrequirement(_:))
+- [NSXPCListener.setConnectionCodeSigningRequirement(_:)](https://developer.apple.com/documentation/foundation/nsxpclistener/setconnectioncodesigningrequirement(_:))
+- [xpc_connection_set_peer_code_signing_requirement](https://developer.apple.com/documentation/xpc/xpc_connection_set_peer_code_signing_requirement(_:_:))
+- [TN3127: Inside Code Signing: Requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements/)
+- [Apple Developer Technical Support: Validating Signature Of XPC Process](https://developer.apple.com/forums/thread/681053)
 
-The documentation above is API reference material, not proof that the proposed
-combination works on the eventual target OS/toolchain. Compilation and runtime
-verification on the actual Mac remain mandatory.
-
+Do not add a separate Security.framework audit-token validation step unless
+the selected public API family and target SDK provide a documented, supported
+way to obtain the token and an independent review establishes that it adds a
+necessary security property. Do not use undocumented/private APIs. Compilation
+and positive/negative runtime verification on the actual Mac remain mandatory.
 
 ## Deployment-target decision gate
 
