@@ -159,6 +159,21 @@ class ManagementRun:
             "accepted": self.success,
         }
     @property
+    def revision_feedback(self) -> tuple[str, ...]:
+        """Return review findings as bounded, non-executable planner observations."""
+        if self.peer_review is None:
+            return ()
+        return tuple(
+            (
+                "PEER_REVIEW_REVISION "
+                f"reviewer_id={item.reviewer_id}; "
+                f"target_agent_id={item.target_agent_id}; "
+                f"findings={' | '.join(item.findings)[:1200]}"
+            )
+            for item in self.peer_review.revision_requests[:6]
+        )
+
+    @property
     def success(self) -> bool:
         if not self.distributed.success:
             return False
@@ -176,6 +191,7 @@ class ManagementRun:
 class ManagementCycleRun:
     rounds: tuple[ManagementRun, ...]
     stopped_reason: str
+    pending_revision_feedback: tuple[str, ...] = ()
 
     @property
     def final_run(self) -> ManagementRun:
@@ -557,6 +573,15 @@ class ManagementAI:
                 for observation in current.observations
             )
             if not current.success:
+                if current.peer_review is not None and current.peer_review.status == "NEEDS_REVISION":
+                    # Surface actionable feedback for a later controlled correction.
+                    # Never replay a specialist executor automatically: side effects
+                    # and idempotency are not assumed.
+                    return ManagementCycleRun(
+                        tuple(rounds),
+                        "peer revision requested; correction awaits controlled approval",
+                        current.revision_feedback,
+                    )
                 return ManagementCycleRun(tuple(rounds), "round failed; fail closed")
             if not current.plan.continue_after_round:
                 return ManagementCycleRun(tuple(rounds), "manager stopped the cycle")
