@@ -146,21 +146,29 @@ def build_plan(document: Any) -> dict[str, Any]:
         (row for row in rows if row["planning_state"] == "READY"),
         key=lambda row: (-row["priority"], row["id"]),
     )
+    # Planning is deliberately independent from execution authorization.
+    # The approval boolean is caller-supplied metadata and is NOT verified
+    # against an authoritative approval record in this phase.
     selected = None
     if not reasons and ready:
-        candidate = ready[0]
-        if not candidate["execution_approved"]:
-            reasons.append("execution_approval_missing")
-        elif candidate["estimated_minutes"] > remaining:
-            reasons.append("insufficient_remaining_budget")
+        fitting = [
+            row for row in ready
+            if row["estimated_minutes"] <= remaining
+        ]
+        if fitting:
+            selected = fitting[0]["id"]
+            if not any(row["execution_approved"] for row in fitting):
+                reasons.append("approval_evidence_unverified")
         else:
-            selected = candidate["id"]
+            reasons.append("insufficient_remaining_budget")
     elif tasks and not ready and not reasons:
         reasons.append("no_ready_tasks")
 
     return {
         "schema_version": 1,
-        "status": "HOLD" if reasons else ("PLAN_READY" if selected else "NO_TASK"),
+        "status": "HOLD" if "global_hold" in reasons or "budget_exhausted" in reasons
+        or "insufficient_remaining_budget" in reasons or "no_ready_tasks" in reasons
+        else ("PLAN_READY" if selected else "NO_TASK"),
         "global_hold": meta["global_hold"],
         "budget": {
             "limit_minutes": budget["limit_minutes"],
@@ -170,6 +178,9 @@ def build_plan(document: Any) -> dict[str, Any]:
         },
         "tasks": sorted(rows, key=lambda row: (-row["priority"], row["id"])),
         "selected_candidate": selected,
+        "execution_authorized": False,
+        "approval_evidence_verified": False,
+        "budget_evidence_verified": False,
         "execution_performed": False,
         "dispatch_performed": False,
         "repository_modified": False,
