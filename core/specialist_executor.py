@@ -83,6 +83,7 @@ class RegistrySpecialistExecutor(AgentExecutor):
                         **dict(self._request.metadata),
                         "management_task_id": task.task_id,
                         "management_role": task.role.value,
+                        "management_agent_id": task.agent_id or "",
                         "declared_resources": sorted(task.resources),
                     },
                 )
