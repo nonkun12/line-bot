@@ -245,7 +245,7 @@ class RecursiveEvolutionPolicyReviser:
             if score.median_fitness.safety < 0.95 or score.median_fitness.regression_count:
                 continue
             prior = revised_map.get(strategy)
-            if prior is not None and not prior.candidate_retention_eligible:
+            if prior is None or not prior.candidate_retention_eligible:
                 continue
             candidates.append(NextGenerationCandidate(
                 candidate_id, strategy, prior.revised_prior if prior else 0.0,
