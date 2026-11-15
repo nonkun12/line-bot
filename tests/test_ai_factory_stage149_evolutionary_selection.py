@@ -15,7 +15,7 @@ from core.ai_factory_stage145_improvement_gate import (
 )
 from core.ai_factory_stage146_merge_strategy import MergeMethod, MergeReadiness, MergeRecipe
 from core.ai_factory_stage149_evolutionary_selection import (
-    EvolutionaryPopulation, EvolutionaryPopulationError,
+    EvolutionaryPopulation, EvolutionPopulationError,
 )
 
 
@@ -126,7 +126,7 @@ def test_safety_stops_fail_closed(kwargs):
     population = EvolutionaryPopulation(
         AuthenticatedEvidenceVerifier({KEY_ID: TrustedEvaluatorKey("independent-evaluator", SECRET)})
     )
-    with pytest.raises(EvolutionaryPopulationError):
+    with pytest.raises(EvolutionPopulationError):
         population.admit(candidate, report, recipe, signed, parents, expected_artifact_digest=ARTIFACT, **kwargs)
 
 
@@ -138,7 +138,7 @@ def test_rejects_report_or_recipe_identity_drift():
     bad_report = GenerationImprovementReport(
         "other", 2, EvolutionDecision.IMPROVED, report.comparisons, object(), "forged"
     )
-    with pytest.raises(EvolutionaryPopulationError):
+    with pytest.raises(EvolutionPopulationError):
         population.admit(candidate, bad_report, recipe, signed, parents, expected_artifact_digest=ARTIFACT)
 
 
@@ -148,7 +148,7 @@ def test_rejects_tampered_signature_and_artifact_digest():
         AuthenticatedEvidenceVerifier({KEY_ID: TrustedEvaluatorKey("independent-evaluator", SECRET)})
     )
     tampered = SignedEvidence(signed.evidence, signed.key_id, signed.nonce, "0" * 64)
-    with pytest.raises(EvolutionaryPopulationError):
+    with pytest.raises(EvolutionPopulationError):
         population.admit(candidate, report, recipe, tampered, parents, expected_artifact_digest=ARTIFACT)
 
 
@@ -173,5 +173,5 @@ def test_candidate_must_be_pending_and_disabled():
     population = EvolutionaryPopulation(
         AuthenticatedEvidenceVerifier({KEY_ID: TrustedEvaluatorKey("independent-evaluator", SECRET)})
     )
-    with pytest.raises(EvolutionaryPopulationError):
+    with pytest.raises(EvolutionPopulationError):
         population.admit(active, report, recipe, signed, parents, expected_artifact_digest=ARTIFACT)
