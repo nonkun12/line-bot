@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .agent_collaboration_pipeline import CollaborationRoles
+from .agent_collaboration_pipeline import CollaborationRoles, CollaborationStage
 from .agent_factory import AgentBuilder, AgentFactory, AgentReviewer, AgentSandbox
 from .ai_factory_orchestrator import AIFactoryOrchestrator
 from .ai_factory_stage131_adapters import (
@@ -70,9 +70,9 @@ def build_stage133_runtime(
     role_producer = LocalModelRoleProducer(
         clients_by_stage={
             # Separate instances and model configs prevent role aliasing.
-            __import__("core.agent_collaboration_pipeline", fromlist=["CollaborationStage"]).CollaborationStage.DESIGN:
+            CollaborationStage.DESIGN:
                 OllamaLoopbackClient(configs.architect_role),
-            __import__("core.agent_collaboration_pipeline", fromlist=["CollaborationStage"]).CollaborationStage.BUILD:
+            CollaborationStage.BUILD:
                 OllamaLoopbackClient(configs.builder_role),
         },
         role_by_stage={
