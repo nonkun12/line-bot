@@ -121,3 +121,15 @@ For each operation:
 - No arbitrary shell, scripts, macros, or remote URLs.
 - No paid API or cloud fallback.
 - No changes to the existing distributed LOOP cadence, queues, or workflows.
+
+
+## Current code boundary
+
+The current `core/desktop_approval_policy.py` is a pure policy-checking helper
+only. It checks plan digest, selected action IDs and order, session identifier
+equality supplied by its caller, a maximum 120-second lifetime, expiry, and
+in-memory nonce replay within the caller-provided set. It does **not** authenticate
+the session identifier, prove who constructed an `ApprovalCapability`, mint or
+sign capabilities, provide durable replay protection, or establish trusted IPC.
+Therefore it is not an authorization mechanism and must not be connected to the
+desktop bridge or treated as permission to execute. The bridge remains disabled.
