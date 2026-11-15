@@ -60,7 +60,7 @@ def _validate(document: Any) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]
         if task_id in by_id:
             raise PlanError("duplicate_task_id")
         status = task.get("status", "pending")
-        if status not in VALID_STATES:
+        if not isinstance(status, str) or status not in VALID_STATES:
             raise PlanError("invalid_task_status")
         priority = task.get("priority", 0)
         if isinstance(priority, bool) or not isinstance(priority, int) or not -100 <= priority <= 100:

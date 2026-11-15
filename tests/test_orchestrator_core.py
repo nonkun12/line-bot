@@ -1,4 +1,9 @@
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 from scripts.orchestrator_core import PlanError, build_plan
 
@@ -19,8 +24,34 @@ class OrchestratorCoreTests(unittest.TestCase):
         plan = build_plan(payload([]))
         self.assertEqual(plan["status"], "NO_TASK")
         self.assertIsNone(plan["selected_candidate"])
+        for key in (
+            "execution_performed", "dispatch_performed", "repository_modified",
+            "push_performed", "pull_request_created", "merge_performed",
+            "deployment_performed",
+        ):
+            self.assertFalse(plan[key], key)
+
+    def test_cli_empty_queue_smoke_test(self):
+        document = payload([])
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = Path(tmp) / "empty-queue.json"
+            input_path.write_text(json.dumps(document), encoding="utf-8")
+            script = Path(__file__).resolve().parents[1] / "scripts" / "orchestrator_core.py"
+            result = subprocess.run(
+                [sys.executable, str(script), "--input", str(input_path)],
+                capture_output=True, text=True, check=False, timeout=15,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = json.loads(result.stdout)
+        self.assertEqual(plan["status"], "NO_TASK")
+        self.assertIsNone(plan["selected_candidate"])
         self.assertFalse(plan["execution_performed"])
         self.assertFalse(plan["dispatch_performed"])
+        self.assertFalse(plan["repository_modified"])
+        self.assertFalse(plan["push_performed"])
+        self.assertFalse(plan["pull_request_created"])
+        self.assertFalse(plan["merge_performed"])
+        self.assertFalse(plan["deployment_performed"])
 
     def test_priority_then_id_is_deterministic(self):
         plan = build_plan(payload([
@@ -87,6 +118,10 @@ class OrchestratorCoreTests(unittest.TestCase):
     def test_unknown_status_is_rejected(self):
         with self.assertRaisesRegex(PlanError, "invalid_task_status"):
             build_plan(payload([{"id": "x", "status": "magic"}]))
+
+    def test_non_string_status_is_rejected_without_crashing(self):
+        with self.assertRaisesRegex(PlanError, "invalid_task_status"):
+            build_plan(payload([{"id": "x", "status": []}]))
 
     def test_running_and_failed_tasks_are_not_candidates(self):
         plan = build_plan(payload([
