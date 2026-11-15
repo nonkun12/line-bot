@@ -200,7 +200,7 @@ class EvolutionaryPopulation:
         try:
             for parent in parent_evaluations:
                 verified_parent = self._verifier.verify(
-                    parent.signed_evidence,
+                    parent.signed_evidence.evidence,
                     key_id=parent.signed_evidence.key_id,
                     nonce=parent.signed_evidence.nonce,
                     signature_hex=parent.signed_evidence.signature_hex,
