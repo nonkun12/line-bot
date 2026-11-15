@@ -182,10 +182,11 @@ class OrchestratorCoreTests(unittest.TestCase):
                 [sys.executable, str(script), "--input", str(input_path)],
                 capture_output=True, text=True, check=False, timeout=15,
             )
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("**Status:** HOLD", result.stdout)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("**Status:** PLAN_READY", result.stdout)
         self.assertIn("Read-only audit", result.stdout)
         self.assertIn("execution=false", result.stdout)
+        self.assertIn("approval_evidence_unverified", result.stdout)
         self.assertEqual(result.stderr, "")
 
     def test_dashboard_renders_task_state_and_escapes_table_values(self):
