@@ -131,3 +131,19 @@ pytest -q tests/test_desktop_control.py
 
 Passing these tests proves only that plans are validated and unsafe plans rejected.
 It does not prove that Excel, Calc, CAD, or Mac Computer Use can be controlled yet.
+
+
+## Phase 1 bridge boundary (implemented, not connected)
+
+`core/computer_use_bridge.py` defines the adapter contract and approval gate:
+- Adapter interface is limited to `snapshot()` and one validated `act(app, operation, params)`.
+- Bridge defaults to disabled; no OpenClaw transport or live desktop backend is included.
+- A human confirmation must match the explicit approval phrase in the local approval UI.
+- Grants bind to the exact plan SHA-256 and selected action IDs, expire within 1–300 seconds,
+  and are consumed before the first side effect.
+- Partial adapter failure still consumes the grant; retry requires a fresh review/approval.
+- A changed plan, expired grant, reused grant, or missing grant is rejected.
+
+This is a software boundary, not proof of identity or a substitute for a trusted local
+approval UI. The eventual Mac integration must ensure that only a real user interaction
+can call `approve_plan`; LINE messages and model output must never call it directly.
