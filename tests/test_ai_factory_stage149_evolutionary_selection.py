@@ -30,7 +30,7 @@ def fixture():
     fitness = Fitness(0.91, 0.93, 0.99, 100.0, 512.0, 0, SUITE)
     candidate = ModelCandidate(
         "child-1", ("parent-a", "parent-b"), MergeStrategy.PARAMETER,
-        CompatibilityReport(True, MergeStrategy.SLERP, ()),
+        CompatibilityReport(True, MergeStrategy.PARAMETER, ()),
         fitness, 2, CandidateStatus.PENDING_HUMAN_APPROVAL, False,
     )
     evidence = EvaluationEvidence(
@@ -129,7 +129,7 @@ def test_admission_reverifies_signed_evidence_and_plans_next_generation():
     {"budget_available": False},
 ])
 def test_safety_stops_fail_closed(kwargs):
-    _, candidate, report, recipe, signed = fixture()
+    _, candidate, report, recipe, signed, parents = fixture()
     population = EvolutionaryPopulation(
         AuthenticatedEvidenceVerifier({KEY_ID: TrustedEvaluatorKey("independent-evaluator", SECRET)})
     )
@@ -138,7 +138,7 @@ def test_safety_stops_fail_closed(kwargs):
 
 
 def test_rejects_report_or_recipe_identity_drift():
-    _, candidate, report, recipe, signed = fixture()
+    _, candidate, report, recipe, signed, parents = fixture()
     population = EvolutionaryPopulation(
         AuthenticatedEvidenceVerifier({KEY_ID: TrustedEvaluatorKey("independent-evaluator", SECRET)})
     )
@@ -150,7 +150,7 @@ def test_rejects_report_or_recipe_identity_drift():
 
 
 def test_rejects_tampered_signature_and_artifact_digest():
-    _, candidate, report, recipe, signed = fixture()
+    _, candidate, report, recipe, signed, parents = fixture()
     population = EvolutionaryPopulation(
         AuthenticatedEvidenceVerifier({KEY_ID: TrustedEvaluatorKey("independent-evaluator", SECRET)})
     )
@@ -160,18 +160,18 @@ def test_rejects_tampered_signature_and_artifact_digest():
 
 
 def test_capacity_is_bounded_and_fail_closed():
-    _, candidate, report, recipe, signed = fixture()
+    _, candidate, report, recipe, signed, parents = fixture()
     population = EvolutionaryPopulation(
         AuthenticatedEvidenceVerifier({KEY_ID: TrustedEvaluatorKey("independent-evaluator", SECRET)}),
         max_population=1,
     )
-    population.admit(candidate, report, recipe, signed, expected_artifact_digest=ARTIFACT)
+    population.admit(candidate, report, recipe, signed, parents, expected_artifact_digest=ARTIFACT)
     assert len(population.snapshot().entries) == 1
     assert population.snapshot().capacity == 1
 
 
 def test_candidate_must_be_pending_and_disabled():
-    _, candidate, report, recipe, signed = fixture()
+    _, candidate, report, recipe, signed, parents = fixture()
     active = ModelCandidate(
         candidate.candidate_id, candidate.parent_ids, candidate.strategy,
         candidate.compatibility, candidate.fitness, candidate.generation,
