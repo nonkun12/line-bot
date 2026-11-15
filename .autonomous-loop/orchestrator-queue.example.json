@@ -16,5 +16,6 @@
       "estimated_minutes": 5,
       "execution_approved": false
     }
-  ]
+  ],
+  "_note": "Illustrative sample only. consumed_minutes=0 and reserved_minutes=0 are placeholders, not observed usage or remaining-quota evidence. Never use this file as production approval, HOLD, or budget evidence."
 }
