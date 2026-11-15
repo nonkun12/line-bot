@@ -13,11 +13,11 @@ from core.ai_factory_stage167_diversity_preserving_population import (
 
 def make_revision(candidates=None, revisions=None):
     candidates = candidates if candidates is not None else (
-        NextGenerationCandidate("a1", "slerp", .08, "a" * 64, True, True),
-        NextGenerationCandidate("a2", "slerp", .08, "b" * 64, True, True),
-        NextGenerationCandidate("b1", "ties", .04, "c" * 64, True, True),
-        NextGenerationCandidate("c1", "dare", .02, "d" * 64, True, True),
-        NextGenerationCandidate("d1", "lora", -.01, "e" * 64, True, True),
+        NextGenerationCandidate("a1", "slerp", .08, True, True, "a" * 64),
+        NextGenerationCandidate("a2", "slerp", .08, True, True, "b" * 64),
+        NextGenerationCandidate("b1", "ties", .04, True, True, "c" * 64),
+        NextGenerationCandidate("c1", "dare", .02, True, True, "d" * 64),
+        NextGenerationCandidate("d1", "lora", -.01, True, True, "e" * 64),
     )
     revisions = revisions if revisions is not None else (
         RevisedStrategyPrior("slerp", .07, .08, 4, 3, 0, 0, 1, .8, True),
@@ -91,7 +91,7 @@ def test_rejects_tampered_report_authority_and_unsafe_candidates():
     unsafe = replace(revision.next_generation_candidates[0], repeatable=False)
     with pytest.raises(EvolutionaryPopulationDiversityError, match="non-Pareto"):
         EvolutionaryPopulationDiversifier().build(
-            replace(revision, next_generation_candidates=(unsafe,) + revision.next_generation_candidates[1:])
+            make_revision(candidates=(unsafe,) + revision.next_generation_candidates[1:])
         )
 
 
@@ -107,9 +107,9 @@ def test_rejects_duplicate_candidate_or_score_digest_and_strategy_retention_fail
     revision = make_revision()
     duplicate = revision.next_generation_candidates + (revision.next_generation_candidates[0],)
     with pytest.raises(EvolutionaryPopulationDiversityError, match="duplicate"):
-        EvolutionaryPopulationDiversifier().build(replace(revision, next_generation_candidates=duplicate))
+        EvolutionaryPopulationDiversifier().build(make_revision(candidates=duplicate))
     blocked_prior = replace(revision.revised_priors[0], candidate_retention_eligible=False)
     with pytest.raises(EvolutionaryPopulationDiversityError, match="retention"):
         EvolutionaryPopulationDiversifier().build(
-            replace(revision, revised_priors=(blocked_prior,) + revision.revised_priors[1:])
+            make_revision(revisions=(blocked_prior,) + revision.revised_priors[1:])
         )
