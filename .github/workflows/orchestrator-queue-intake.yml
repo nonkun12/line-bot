@@ -1,0 +1,157 @@
+name: Orchestrator Queue Intake
+run-name: Orchestrator review-queue intake (${{ github.event_name }})
+
+# This workflow only discovers and records bounded, test-only review candidates.
+# It never admits a task to the executable runtime queue or runs any task.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  pull_request:
+    paths:
+      - "scripts/catalog_exhaustion_analyzer.py"
+      - "scripts/autonomous_task_issue_drafts.py"
+      - "scripts/autonomous_task_candidate_contract.py"
+      - "scripts/autonomous_task_target_allowlist.py"
+      - ".github/workflows/orchestrator-queue-intake.yml"
+      - ".github/autonomous-loop-tasks.json"
+      - ".github/autonomous-loop-task-catalog.json"
+      - "core/line_development_runtime.py"
+      - "tests/test_catalog_exhaustion_analyzer.py"
+      - "tests/test_autonomous_task_issue_drafts.py"
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: orchestrator-queue-intake
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Checkout trusted source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Restore durable state as read-only evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \
+            fetch --no-tags --depth=1 origin \
+            refs/heads/autonomous-loop-state:refs/remotes/origin/autonomous-loop-state
+          git show origin/autonomous-loop-state:.autonomous-loop-state.json \
+            > /tmp/orchestrator-durable-state.json
+          python -m json.tool /tmp/orchestrator-durable-state.json >/dev/null
+
+      - name: Load issue and pull-request history for deduplication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" \
+            | jq -s 'add | map(select(has("pull_request") | not) | {number,title,body,state,labels})' \
+            > /tmp/orchestrator-all-issues.json
+          jq '[.[] | select(.state == "open")]' \
+            /tmp/orchestrator-all-issues.json > /tmp/orchestrator-open-issues.json
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+            | jq -s 'add | map({number,state,body,merged_at})' \
+            > /tmp/orchestrator-open-pulls.json
+
+      - name: Discover bounded review-only candidates
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/orchestrator-queue-intake
+          python -m scripts.catalog_exhaustion_analyzer \
+            --repo-root . \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --queue .github/autonomous-loop-tasks.json \
+            --state /tmp/orchestrator-durable-state.json \
+            --runtime core/line_development_runtime.py \
+            --existing-issues /tmp/orchestrator-all-issues.json \
+            --output artifacts/orchestrator-queue-intake/analyzer-report.json
+          python -m scripts.autonomous_task_issue_drafts \
+            --report artifacts/orchestrator-queue-intake/analyzer-report.json \
+            --issues /tmp/orchestrator-all-issues.json \
+            --pull-requests /tmp/orchestrator-open-pulls.json \
+            --output artifacts/orchestrator-queue-intake/review-issue-drafts.json
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          report = json.loads(Path("artifacts/orchestrator-queue-intake/analyzer-report.json").read_text(encoding="utf-8"))
+          drafts = json.loads(Path("artifacts/orchestrator-queue-intake/review-issue-drafts.json").read_text(encoding="utf-8"))
+          print("# Orchestrator Queue Intake")
+          print(f"- Discovery: **{report['status']}**")
+          print(f"- New heuristic candidates: **{report['candidate_count']}**")
+          print(f"- Review-only issue drafts: **{len(drafts)}**")
+          print("- Executable queue admission: **false**")
+          print("- Task execution / dispatch / merge / deploy: **false**")
+          print("- Candidate status: human review required; no approval is implied")
+          PY
+
+      - name: Upload read-only intake evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orchestrator-queue-intake-${{ github.run_id }}
+          path: artifacts/orchestrator-queue-intake/
+          if-no-files-found: warn
+          retention-days: 14
+
+  publish-review-candidates:
+    needs: analyze
+    if: github.event_name == 'schedule' && github.ref == 'refs/heads/main' && needs.analyze.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      issues: write
+    steps:
+      - name: Download validated review-only drafts
+        uses: actions/download-artifact@v4
+        with:
+          name: orchestrator-queue-intake-${{ github.run_id }}
+          path: artifacts/orchestrator-queue-intake
+
+      - name: Publish only bounded human-review issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          drafts="artifacts/orchestrator-queue-intake/review-issue-drafts.json"
+          test -s "$drafts"
+          count="$(jq 'if type == "array" then length else error("drafts must be an array") end' "$drafts")"
+          if [ "$count" -gt 4 ]; then
+            echo "::error::Review candidate cap exceeded."
+            exit 1
+          fi
+          if [ "$count" -eq 0 ]; then
+            echo "No new review-only candidates; no issue writes."
+            exit 0
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/labels/autonomous-task-candidate" >/dev/null
+          while IFS= read -r draft; do
+            title="$(printf '%s' "$draft" | jq -er '.title | select(type == "string" and length > 0 and length <= 180)')"
+            body="$(printf '%s' "$draft" | jq -er '.body | select(type == "string" and length > 0 and length <= 8000)')"
+            printf '%s' "$body" | grep -qF '<!-- autonomous-task-spec -->'
+            printf '%s' "$body" | grep -qF 'Queue admission: not authorized'
+            gh issue create --title "$title" --body "$body" --label autonomous-task-candidate
+          done < <(jq -c '.[]' "$drafts")
+          echo "Created $count review-only issue(s). No task was queued or executed."
