@@ -8,6 +8,7 @@ single-agent path.
 from __future__ import annotations
 
 from dataclasses import replace
+from hashlib import sha256
 import os
 from typing import Sequence
 
@@ -24,6 +25,7 @@ from agents.video.intents import is_video_intent
 from core.agents import AgentRequest
 from core.distributed_scheduler import DistributedExecutionError
 from core.collaboration_audit import record_collaboration_snapshot
+from core.revision_workflow import run_revision_workflow_if_needed
 from core.management_ai import (
     ManagementAI,
     ManagementPlan,
@@ -293,10 +295,77 @@ def run_management_request(
         print(f"[MANAGEMENT AI] unexpected execution failure; no legacy retry: {type(exc).__name__}: {exc}")
         return _MANAGEMENT_EXECUTION_FAILURE
 
+    snapshot = run.collaboration_snapshot()
+    revision_enabled = os.environ.get(
+        "ORCHESTRATOR_LOCAL_REVISION_WORKFLOW_ENABLED", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if revision_enabled:
+        # Revision drafting is separately opt-in and only follows a verified
+        # NEEDS_REVISION result from the local peer-review stage.
+        if not local_review_enabled or run.peer_review is None:
+            print("[MANAGEMENT AI] revision workflow requires local peer review; fail closed")
+            return _MANAGEMENT_EXECUTION_FAILURE
+        if run.peer_review.status == "NEEDS_REVISION":
+            if not run.agent_team or not run.peer_review.revision_requests:
+                print("[MANAGEMENT AI] revision evidence is incomplete; fail closed")
+                return _MANAGEMENT_EXECUTION_FAILURE
+            revision_request = run.peer_review.revision_requests[0]
+            target = next(
+                (agent for agent in run.agent_team.agents
+                 if agent.agent_id == revision_request.target_agent_id),
+                None,
+            )
+            observation = next(
+                (item for item in run.observations
+                 if target is not None and item.task_id in target.task_ids),
+                None,
+            )
+            if target is None or observation is None:
+                print("[MANAGEMENT AI] revision target evidence is missing; fail closed")
+                return _MANAGEMENT_EXECUTION_FAILURE
+            request_id = run.agent_team.request_id
+            revision_agent_id = f"{request_id}:revision:{sha256(target.agent_id.encode()).hexdigest()[:12]}"
+            independent_reviewer_id = f"{request_id}:revision-review:{sha256((target.agent_id + revision_request.reviewer_id).encode()).hexdigest()[:12]}"
+            try:
+                from core.local_model_adapter import OllamaLocalModelCall
+                revision_model = os.environ.get(
+                    "ORCHESTRATOR_LOCAL_REVISION_MODEL",
+                    os.environ.get("ORCHESTRATOR_LOCAL_PEER_REVIEW_MODEL", ""),
+                ).strip()
+                if not revision_model:
+                    raise ValueError("local revision model is not configured")
+                model_call = OllamaLocalModelCall(
+                    model=revision_model,
+                    base_url=os.environ.get(
+                        "ORCHESTRATOR_LOCAL_REVISION_URL",
+                        os.environ.get(
+                            "ORCHESTRATOR_LOCAL_PEER_REVIEW_URL",
+                            "http://127.0.0.1:11434/v1",
+                        ),
+                    ),
+                )
+                snapshot["revision_workflow"] = run_revision_workflow_if_needed(
+                    original_verdict="NEEDS_REVISION",
+                    request_id=request_id,
+                    task_id=observation.task_id,
+                    revision_agent_id=revision_agent_id,
+                    target_agent_id=target.agent_id,
+                    original_reviewer_id=revision_request.reviewer_id,
+                    independent_reviewer_id=independent_reviewer_id,
+                    original_result=observation.summary,
+                    findings=revision_request.findings,
+                    draft_model_call=model_call,
+                    review_model_call=model_call,
+                )
+                # This is one local model adapter called twice under distinct
+                # logical identities, NOT proof of independent model processes.
+            except Exception as exc:
+                print(f"[MANAGEMENT AI] revision workflow failed closed: {type(exc).__name__}")
+                return _MANAGEMENT_EXECUTION_FAILURE
     try:
         record_collaboration_snapshot(
             user_id=request.user_id,
-            snapshot=run.collaboration_snapshot(),
+            snapshot=snapshot,
         )
     except Exception as exc:
         # Observability must never change task execution or trigger a retry.
