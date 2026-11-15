@@ -620,3 +620,10 @@ body {
   .operations-history { padding: 1rem; }
   .loop-history-table { min-width: 680px; }
 }
+
+
+/* Orchestrator collaboration evidence */
+#collaborationAgents { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+#collaborationAgents code { overflow-wrap: anywhere; color: var(--text-secondary); }
+#collaborationFindings { color: var(--text-secondary); line-height: 1.6; overflow-wrap: anywhere; }
+#orchestratorCollaborationSection .section-header > div:last-child { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
