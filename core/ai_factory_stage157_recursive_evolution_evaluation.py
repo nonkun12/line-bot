@@ -175,12 +175,12 @@ class RecursiveEvolutionEvaluator:
             raise RecursiveEvaluationError("safety floor or evaluation regression blocks longitudinal acceptance")
         if not callable(verify_evaluation) or not verify_evaluation(observation):
             raise RecursiveEvaluationError("independent generation-evaluation signature verification failed")
-        if observation.evidence_digest in self._seen_evidence:
-            raise RecursiveEvaluationError("duplicate or replayed generation evidence")
         if len(self._observations) >= self._max_generations:
             raise RecursiveEvaluationError("generation history capacity reached")
         if self._suite_digest is not None and observation.evaluation_suite_digest != self._suite_digest:
             raise RecursiveEvaluationError("evaluation suite drift; cross-suite comparison is not valid")
+        if observation.evidence_digest in self._seen_evidence:
+            raise RecursiveEvaluationError("duplicate or replayed generation evidence")
         if self._observations:
             previous = self._observations[-1]
             if observation.generation != previous.generation + 1:
