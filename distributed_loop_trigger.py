@@ -429,11 +429,12 @@ def request_distributed_loop(
                     )
                 ]
                 lines = [
-                    "統括AI／分散Loop 状況"
+                    "統括AI／旧分散Loop履歴"
                     if status_kind == "status"
-                    else "分散Loop 最新結果"
+                    else "旧分散Loop 最新履歴"
                 ]
-                lines.append("【実際の実行履歴】")
+                lines.append("注意: これは閉鎖済み旧Loopの履歴です。現行Orchestratorの稼働・実行証拠ではありません。")
+                lines.append("【旧Loopの実行履歴】")
                 if not execution_runs:
                     lines.append("実作業Runはまだ確認できません。")
                 else:
