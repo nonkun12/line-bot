@@ -11,6 +11,7 @@ from threading import RLock
 from typing import Sequence
 
 from .ai_factory_stage141_evolution import Fitness, ModelCandidate, dominates
+from .ai_factory_stage142_lineage import ModelLineageRecord
 from .ai_factory_stage143_evidence_auth import (
     AuthenticatedEvidenceVerifier,
     EvidenceVerificationError,
@@ -18,6 +19,7 @@ from .ai_factory_stage143_evidence_auth import (
 from .ai_factory_stage145_improvement_gate import (
     EvolutionDecision,
     GenerationImprovementReport,
+    ParentEvaluation,
     SignedEvidence,
 )
 from .ai_factory_stage146_merge_strategy import MergeRecipe, MergeReadiness
@@ -120,6 +122,7 @@ class EvolutionaryPopulation:
         report: GenerationImprovementReport,
         recipe: MergeRecipe,
         signed_evidence: SignedEvidence,
+        parent_evaluations: Sequence[ParentEvaluation],
         *,
         expected_artifact_digest: str,
         kill_switch_active: bool = False,
@@ -139,8 +142,8 @@ class EvolutionaryPopulation:
             raise EvolutionPopulationError("signed independent evaluation evidence is required")
         if candidate.enabled or candidate.status.value != "pending_human_approval":
             raise EvolutionPopulationError("candidate must remain disabled and pending human approval")
-        if report.lineage_record is None:
-            raise EvolutionPopulationError("authenticated lineage record is required")
+        if not isinstance(report.lineage_record, ModelLineageRecord):
+            raise EvolutionPopulationError("typed authenticated Stage 142 lineage record is required")
         if report.candidate_id != candidate.candidate_id or report.generation != candidate.generation:
             raise EvolutionPopulationError("Stage 145 report identity differs from candidate")
         if recipe.candidate_id != candidate.candidate_id or recipe.generation != candidate.generation:
@@ -151,6 +154,14 @@ class EvolutionaryPopulation:
             raise EvolutionPopulationError("candidate must have between two and four parents")
         if candidate.generation < 1 or candidate.generation > self._max_generation:
             raise EvolutionPopulationError("candidate generation is outside the configured bound")
+        lineage = report.lineage_record
+        if (lineage.candidate_id != candidate.candidate_id
+                or lineage.parent_ids != candidate.parent_ids
+                or lineage.generation != candidate.generation
+                or lineage.evaluated_artifact_digest != expected_artifact_digest
+                or lineage.evaluation_suite_digest != recipe.evidence_suite_digest
+                or lineage.enabled or lineage.status.value != "pending_human_approval"):
+            raise EvolutionPopulationError("authenticated lineage does not bind exact candidate, parents, generation and artifact")
         if recipe.output_artifact_digest != expected_artifact_digest:
             raise EvolutionPopulationError("recipe output digest differs from the independently verified artifact digest")
         if recipe.evidence_suite_digest != candidate.fitness.evaluation_suite_digest:
@@ -161,10 +172,14 @@ class EvolutionaryPopulation:
             raise EvolutionPopulationError("generation mismatch")
         if signed_evidence.evidence.fitness != candidate.fitness:
             raise EvolutionPopulationError("signed evidence metrics differ from candidate fitness")
+        if not isinstance(parent_evaluations, Sequence) or len(parent_evaluations) != len(candidate.parent_ids):
+            raise EvolutionPopulationError("one independently signed parent evaluation per parent is required")
+        if tuple(item.descriptor.model_id for item in parent_evaluations) != candidate.parent_ids:
+            raise EvolutionPopulationError("parent evaluation identities/order differ from candidate lineage")
+        if tuple(item.descriptor.artifact_digest for item in parent_evaluations) != lineage.parent_artifact_digests:
+            raise EvolutionPopulationError("parent evaluation artifacts differ from authenticated lineage")
         if not report.comparisons or {item.parent_id for item in report.comparisons} != set(candidate.parent_ids):
             raise EvolutionPopulationError("Stage 145 comparison set does not match exact candidate parents")
-        if not any(item.dominates_parent for item in report.comparisons):
-            raise EvolutionPopulationError("candidate has no authenticated Pareto improvement over its parents")
         if candidate.fitness.safety < 0.95 or candidate.fitness.regression_count != 0:
             raise EvolutionPopulationError("absolute safety or regression guardrail failed")
 
@@ -180,6 +195,28 @@ class EvolutionaryPopulation:
             )
         except (EvidenceVerificationError, PermissionError, TypeError, ValueError) as exc:
             raise EvolutionPopulationError(f"independent signature verification failed: {exc}") from exc
+
+        parent_fitnesses = []
+        try:
+            for parent in parent_evaluations:
+                verified_parent = self._verifier.verify(
+                    parent.signed_evidence,
+                    key_id=parent.signed_evidence.key_id,
+                    nonce=parent.signed_evidence.nonce,
+                    signature_hex=parent.signed_evidence.signature_hex,
+                    expected_candidate_id=parent.descriptor.model_id,
+                    expected_artifact_digest=parent.descriptor.artifact_digest,
+                    expected_suite_digest=recipe.evidence_suite_digest,
+                )
+                if parent.generation < 0 or candidate.generation <= parent.generation:
+                    raise EvolutionPopulationError("candidate generation must follow each authenticated parent")
+                parent_fitnesses.append(verified_parent.fitness)
+        except (EvidenceVerificationError, PermissionError, TypeError, ValueError) as exc:
+            raise EvolutionPopulationError(f"independent parent evidence verification failed: {exc}") from exc
+        if candidate.generation != max(item.generation for item in parent_evaluations) + 1:
+            raise EvolutionPopulationError("candidate generation must be exactly one above newest parent")
+        if not any(dominates(verified.fitness, fitness) for fitness in parent_fitnesses):
+            raise EvolutionPopulationError("signed child evidence does not Pareto-dominate any signed parent")
 
         entry = EvolutionPopulationEntry(
             candidate_id=candidate.candidate_id,
