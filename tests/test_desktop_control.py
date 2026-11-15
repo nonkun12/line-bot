@@ -135,3 +135,44 @@ def test_live_runner_fails_closed():
     plan = validate_plan(_plan(), original_request="Excelを確認")
     with pytest.raises(DesktopExecutionDisabled):
         DesktopRunner().execute(plan)
+
+
+def test_plan_digest_is_stable_for_equivalent_validated_input():
+    document = _plan("excel", "write_cells", {
+        "sheet_name": "Sheet1", "range": "A1", "values": [[42]],
+    })
+    first = validate_plan(document, original_request="セルに42を入力")
+    second = validate_plan(document, original_request="セルに42を入力")
+    assert first.plan_sha256 == second.plan_sha256
+
+
+def test_plan_digest_changes_when_approved_action_parameters_change():
+    first = validate_plan(
+        _plan("excel", "write_cells", {
+            "sheet_name": "Sheet1", "range": "A1", "values": [[42]],
+        }),
+        original_request="セルに値を入力",
+    )
+    changed = validate_plan(
+        _plan("excel", "write_cells", {
+            "sheet_name": "Sheet1", "range": "A1", "values": [[43]],
+        }),
+        original_request="セルに値を入力",
+    )
+    assert first.plan_sha256 != changed.plan_sha256
+
+
+def test_plan_digest_changes_when_action_order_changes():
+    document = {
+        "schema_version": 1,
+        "app": "excel",
+        "goal": "Inspect two sheets",
+        "actions": [
+            {"id": "a1", "operation": "inspect_sheet", "params": {"sheet_name": "A"}},
+            {"id": "a2", "operation": "inspect_sheet", "params": {"sheet_name": "B"}},
+        ],
+    }
+    forward = validate_plan(document, original_request="2枚確認")
+    reversed_document = {**document, "actions": list(reversed(document["actions"]))}
+    reverse = validate_plan(reversed_document, original_request="2枚確認")
+    assert forward.plan_sha256 != reverse.plan_sha256
