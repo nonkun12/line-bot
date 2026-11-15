@@ -177,7 +177,8 @@ class EvolutionaryMergeTournament:
             if not isinstance(item, StrategyTrialEvidence):
                 raise MergeTournamentError("typed signed trial evidence is required")
             if (not _valid_digest(item.evidence_digest) or not _valid_digest(item.candidate_artifact_digest)
-                    or not _valid_digest(item.evaluation_suite_digest) or not _valid_digest(item.signature)
+                    or not _valid_digest(item.evaluation_suite_digest)
+                    or not isinstance(item.signature, str) or not item.signature.strip() or len(item.signature) > 8192
                     or not _ID.fullmatch(item.trial_id or "") or not _ID.fullmatch(item.evaluator_id or "")
                     or item.replicate < 1):
                 raise MergeTournamentError("trial identity, signature, digest, or replicate is invalid")
@@ -228,7 +229,10 @@ class EvolutionaryMergeTournament:
                         x.candidate_artifact_digest, x.evaluation_suite_digest) for x in items}
             if len(lineage) != 1:
                 raise MergeTournamentError("strategy replicates are not lineage-comparable")
-            evaluators = tuple(sorted(x.evaluator_id for x in items))
+            evaluator_ids = [x.evaluator_id for x in items]
+            if len(set(evaluator_ids)) != len(evaluator_ids):
+                raise MergeTournamentError("replicates must use distinct independent evaluators")
+            evaluators = tuple(sorted(evaluator_ids))
             repeatable, reasons = _repeatability(items)
             aggregate = _median_fitness(items)
             payload = {
