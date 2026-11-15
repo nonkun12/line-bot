@@ -155,7 +155,7 @@ def build_plan(document: Any) -> dict[str, Any]:
             reasons.append("insufficient_remaining_budget")
         else:
             selected = candidate["id"]
-    elif not ready and not reasons:
+    elif tasks and not ready and not reasons:
         reasons.append("no_ready_tasks")
 
     return {

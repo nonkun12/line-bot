@@ -32,7 +32,7 @@ class OrchestratorCoreTests(unittest.TestCase):
 
     def test_dependency_must_be_done(self):
         plan = build_plan(payload([
-            {"id": "setup"},
+            {"id": "setup", "execution_approved": True},
             {"id": "work", "depends_on": ["setup"], "execution_approved": True},
         ]))
         states = {task["id"]: task["planning_state"] for task in plan["tasks"]}
