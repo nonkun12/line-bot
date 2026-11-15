@@ -121,6 +121,10 @@ def build_plan(document: Any) -> dict[str, Any]:
         reasons.append("global_hold")
     if remaining <= 0:
         reasons.append("budget_exhausted")
+    # No independent provenance verifier is connected in this phase. Numeric
+    # budget fields and global_hold=false are caller-supplied claims, not proof.
+    if tasks:
+        reasons.extend(("global_hold_evidence_unverified", "budget_evidence_unverified"))
 
     rows = []
     for task_id, task in tasks.items():
@@ -167,11 +171,20 @@ def build_plan(document: Any) -> dict[str, Any]:
     elif tasks and not ready and not reasons:
         reasons.append("no_ready_tasks")
 
+    blocked_reasons = {
+        "global_hold", "budget_exhausted", "insufficient_remaining_budget",
+        "no_ready_tasks", "global_hold_evidence_unverified",
+        "budget_evidence_unverified",
+    }
+    status = (
+        "HOLD" if "global_hold" in reasons or "budget_exhausted" in reasons
+        else "BLOCKED" if any(reason in blocked_reasons for reason in reasons)
+        else "PLAN_READY" if selected else "NO_TASK"
+    )
+
     return {
         "schema_version": 1,
-        "status": "HOLD" if "global_hold" in reasons or "budget_exhausted" in reasons
-        or "insufficient_remaining_budget" in reasons or "no_ready_tasks" in reasons
-        else ("PLAN_READY" if selected else "NO_TASK"),
+        "status": status,
         "global_hold": meta["global_hold"],
         "budget": {
             "limit_minutes": budget["limit_minutes"],
