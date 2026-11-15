@@ -41,7 +41,7 @@ CELL_RANGE = re.compile(
     r"^\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6}(?::\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6})?$",
     re.IGNORECASE,
 )
-SINGLE_CELL = re.compile(r"^\\$?[A-Z]{1,3}\\$?[1-9][0-9]{0,6}$", re.IGNORECASE)
+SINGLE_CELL = re.compile(r"^\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6}$", re.IGNORECASE)
 
 
 class DesktopPlanError(ValueError):
