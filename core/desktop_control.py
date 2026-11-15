@@ -103,6 +103,8 @@ def _validate_params(app: str, operation: str, params: Any) -> dict[str, Any]:
         raise DesktopPlanError("executable_or_network_payload_forbidden")
 
     if operation in {"open_document", "open_workbook", "save_as", "export_step"}:
+        if set(params) != {"path"}:
+            raise DesktopPlanError("invalid_path_params")
         return _local_path(params)
 
     if operation == "inspect_model":
