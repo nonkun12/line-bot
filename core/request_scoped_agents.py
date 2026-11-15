@@ -85,24 +85,17 @@ class RequestScopedAgentFactory:
 
         # plan_batches validates duplicate IDs, missing dependencies and cycles.
         batches = plan_batches(task_list)
-        grouped: dict[AgentRole, list[str]] = {}
-        for task in task_list:
-            grouped.setdefault(task.role, []).append(task.task_id)
-        if len(grouped) > self.max_agents:
-            raise ValueError("specialist count exceeds configured agent limit")
-
         agents: list[AgentInstance] = []
-        for role in sorted(grouped, key=lambda item: item.value):
-            task_ids = tuple(sorted(grouped[role]))
+        for task in task_list:
             digest = sha256(
-                (request_id + "|" + role.value + "|" + "|".join(task_ids)).encode()
+                (request_id + "|" + task.role.value + "|" + task.task_id).encode()
             ).hexdigest()[:16]
             agents.append(
                 AgentInstance(
-                    agent_id=f"{request_id}:{role.value}:{digest}",
+                    agent_id=f"{request_id}:{task.role.value}:{digest}",
                     request_id=request_id,
-                    role=role,
-                    task_ids=task_ids,
+                    role=task.role,
+                    task_ids=(task.task_id,),
                     context_key=digest,
                 )
             )
