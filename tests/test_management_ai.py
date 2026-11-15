@@ -16,6 +16,7 @@ from core.management_ai import (
     ManagementPlanningError,
     ModelManagementPlanner,
     ModelPeerReviewer,
+    build_local_peer_reviewer,
 )
 from core.management_contract import ManagementDecision, ManagementRequest, Specialist
 from core.multi_agent import AgentResult, AgentRole, AgentTask
@@ -823,6 +824,30 @@ def test_management_ai_rejects_peer_review_identity_spoofing() -> None:
     assert not result.peer_review.accepted_agent_ids
 
 
+
+
+def test_configured_peer_review_blocks_single_agent_request_without_independent_reviewer() -> None:
+    manager = ManagementAI(
+        {AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=LoopPlanner(),
+        peer_reviewer=lambda *_args: pytest.fail("a single agent cannot peer-review itself"),
+    )
+    result = manager.run(ManagementRequest("u1", "ニュースを要約して"))
+
+    assert result.peer_review_required
+    assert result.peer_review is not None
+    assert result.peer_review.status == "BLOCKED"
+    assert not result.success
+
+
+def test_local_peer_reviewer_factory_is_explicit_and_loopback_only() -> None:
+    reviewer = build_local_peer_reviewer(model="lfm3:1.7b-qad-q4_0")
+    assert isinstance(reviewer, ModelPeerReviewer)
+    with pytest.raises(ValueError, match="remote model endpoints are forbidden"):
+        build_local_peer_reviewer(
+            model="external-model",
+            base_url="https://api.example.com/v1",
+        )
 
 def test_model_peer_reviewer_parses_bounded_provider_neutral_review() -> None:
     from core.request_scoped_agents import RequestScopedAgentFactory
