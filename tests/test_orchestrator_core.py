@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from scripts.orchestrator_core import PlanError, build_plan
+from scripts.orchestrator_dashboard import render_dashboard
 
 
 def payload(tasks, **overrides):
@@ -152,6 +153,25 @@ class OrchestratorCoreTests(unittest.TestCase):
             {"id": "a", "priority": 1, "execution_approved": True},
         ])
         self.assertEqual(build_plan(doc), build_plan(doc))
+
+    def test_dashboard_renders_empty_queue_and_read_only_flags(self):
+        rendered = render_dashboard(payload([]))
+        self.assertIn("**Status:** NO_TASK", rendered)
+        self.assertIn("Selected candidate:** none", rendered)
+        self.assertIn("execution=false", rendered)
+        self.assertIn("dispatch=false", rendered)
+        self.assertIn("merge=false", rendered)
+        self.assertIn("Snapshot renderer only", rendered)
+
+    def test_dashboard_renders_task_state_and_escapes_table_values(self):
+        rendered = render_dashboard(payload([
+            {"id": "task|one", "title": "Audit\n|details", "priority": 4,
+             "estimated_minutes": 3, "execution_approved": True},
+        ]))
+        self.assertIn("task\\|one", rendered)
+        self.assertIn("Audit |\\|details", rendered)
+        self.assertIn("READY", rendered)
+        self.assertIn("yes", rendered)
 
 
 if __name__ == "__main__":

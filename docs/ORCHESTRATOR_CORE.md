@@ -20,13 +20,22 @@ See `.autonomous-loop/orchestrator-queue.example.json`. Runtime state and
 budget figures must be supplied explicitly. Unknown or malformed values fail
 closed; this module does not infer approvals or available budget.
 
+The JSON input is a caller-supplied snapshot, not a live or durable task
+ledger. The example queue is illustrative and is not connected to the
+production LOOP queue. No task state is written back by this phase.
+
 ## Run
 
 ```sh
 python scripts/orchestrator_core.py \
   --input .autonomous-loop/orchestrator-queue.example.json
+python scripts/orchestrator_dashboard.py \
+  --input .autonomous-loop/orchestrator-queue.example.json
 python -m unittest tests.test_orchestrator_core -v
 ```
+
+The dashboard prints a Markdown snapshot to stdout. It does not create output
+files, call GitHub APIs, persist state, dispatch work, or authorize execution.
 
 ## Phase 1 safety boundary
 
