@@ -915,3 +915,28 @@ def test_model_peer_reviewer_rejects_invalid_verdict() -> None:
         )(team.agents[0], team.agents[1], ManagementObservation(
             "b", AgentRole.NEWS, True, "Evidence."
         ))
+
+
+def test_configured_peer_review_uses_dedicated_clone_for_single_task() -> None:
+    calls = []
+    def reviewer(reviewer_agent, target_agent, observation):
+        calls.append((reviewer_agent, target_agent))
+        assert reviewer_agent.agent_id != target_agent.agent_id
+        assert reviewer_agent.task_ids == ()
+        return PeerReview(
+            reviewer_id=reviewer_agent.agent_id,
+            target_agent_id=target_agent.agent_id,
+            verdict=ReviewVerdict.PASS,
+            findings=("independent check complete",),
+        )
+    manager = ManagementAI(
+        {AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=LoopPlanner(),
+        peer_reviewer=reviewer,
+    )
+    result = manager.run(ManagementRequest("u1", "ニュースを要約して"))
+    assert result.success
+    assert len(calls) == 1
+    snapshot = result.collaboration_snapshot()
+    assert snapshot["reviewer_count"] == 1
+    assert snapshot["peer_review_status"] == "PASS"
