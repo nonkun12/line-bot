@@ -129,4 +129,4 @@ def test_digest_tampering_is_rejected_before_signature_check():
         evidence_digest="f" * 64,
     )
     with pytest.raises(EvidenceVerificationError, match="canonicalization"):
-        verify(verifier(), forged)
+        verify(verifier(), forged, signature="0" * 64)
