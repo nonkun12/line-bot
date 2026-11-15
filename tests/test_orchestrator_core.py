@@ -187,7 +187,7 @@ class OrchestratorCoreTests(unittest.TestCase):
              "estimated_minutes": 3, "execution_approved": True},
         ]))
         self.assertIn("task\\|one", rendered)
-        self.assertIn("Audit |\\|details", rendered)
+        self.assertIn(r"Audit \|details", rendered)
         self.assertIn("READY", rendered)
         self.assertIn("yes", rendered)
 
