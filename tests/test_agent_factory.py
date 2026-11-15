@@ -60,6 +60,14 @@ class Reviewer:
         return self.report
 
 
+class ApprovalGate:
+    def __init__(self, approved=True):
+        self.approved = approved
+
+    def approve(self, candidate, approved_by):
+        return self.approved
+
+
 class RuntimeAgent:
     name = "generated_researcher"
     description = "generated candidate"
@@ -155,10 +163,23 @@ def test_review_blocker_prevents_candidate_registration():
     assert subject.candidate_names() == ()
 
 
-def test_registration_requires_separate_explicit_human_approval():
+def test_registration_requires_a_configured_human_approval_gate():
     subject = factory()
     subject.create_candidate("research")
-    with pytest.raises(PermissionError, match="explicit human approval"):
+    with pytest.raises(PermissionError, match="gate is not configured"):
+        subject.approve_and_register(
+            "generated_researcher",
+            agent=RuntimeAgent(),
+            version=AgentVersion("generated_researcher", "1.0.0"),
+            approved_by="operator",
+        )
+    assert subject.governance.names() == ()
+
+
+def test_rejected_human_approval_gate_prevents_registration():
+    subject = factory(approval_gate=ApprovalGate(False))
+    subject.create_candidate("research")
+    with pytest.raises(PermissionError, match="gate rejected"):
         subject.approve_and_register(
             "generated_researcher",
             agent=RuntimeAgent(),
@@ -169,14 +190,13 @@ def test_registration_requires_separate_explicit_human_approval():
 
 
 def test_human_approved_candidate_is_registered_through_governance():
-    subject = factory()
+    subject = factory(approval_gate=ApprovalGate(True))
     subject.create_candidate("research")
     result = subject.approve_and_register(
         "generated_researcher",
         agent=RuntimeAgent(),
         version=AgentVersion("generated_researcher", "1.0.0"),
         approved_by="human operator",
-        human_approval=True,
     )
     assert result.name == "generated_researcher"
     assert subject.governance.names() == ("generated_researcher",)
