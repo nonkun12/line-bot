@@ -60,11 +60,12 @@ def test_local_model_config_bounds_timeout_and_output():
 
 
 def test_role_producer_generates_design_and_build_only():
-    client = FakeClient()
+    design_client = FakeClient()
+    build_client = FakeClient()
     producer = LocalModelRoleProducer(
         clients_by_stage={
-            CollaborationStage.DESIGN: client,
-            CollaborationStage.BUILD: FakeClient(),
+            CollaborationStage.DESIGN: design_client,
+            CollaborationStage.BUILD: build_client,
         },
         role_by_stage={
             CollaborationStage.DESIGN: "architect-ai",
@@ -77,10 +78,10 @@ def test_role_producer_generates_design_and_build_only():
     assert build.agent == "builder-ai"
     assert design.passed is None and design.approved is None
     assert build.passed is None and build.approved is None
-    assert len(client.calls) == 2
+    assert len(design_client.calls) == 1
+    assert len(build_client.calls) == 1
 
 
-@pytest.mark.parametrize("stage", [CollaborationStage.TEST, CollaborationStage.REVIEW])
 def test_design_and_build_require_distinct_model_clients():
     shared = FakeClient()
     with pytest.raises(ValueError, match="separate model client"):
@@ -96,6 +97,7 @@ def test_design_and_build_require_distinct_model_clients():
         )
 
 
+@pytest.mark.parametrize("stage", [CollaborationStage.TEST, CollaborationStage.REVIEW])
 def test_role_producer_cannot_self_certify_gates(stage):
     producer = LocalModelRoleProducer(
         clients_by_stage={
