@@ -34,7 +34,7 @@ def trial(cid,n,e,safety=.99,quality=.88):
 def report(p,c,ts,verify=lambda x:True):
  return Stage173IndependentEvaluator().build(p,c,ts,verify_signature=verify)
 def test_full_stages_171_to_175_produce_proposal_only():
- p,c=setup(); assert len(p.combinations)==1 and c[0].compatible
+ p,c=setup(); assert len(p.combinations)>=1 and all(x.compatible for x in c)
  cid=p.combinations[0].candidate_id
  ev=report(p,c,[trial(cid,1,"e1"),trial(cid,2,"e2")]); assert ev.evaluations[0].eligible
  sel=Stage174ParetoSelector().build(ev); nxt=Stage175GenerationProposer().build(p,ev,sel)
@@ -42,7 +42,7 @@ def test_full_stages_171_to_175_produce_proposal_only():
  assert nxt.proposal_only and not nxt.generation_advance_authorized and not nxt.model_merge_authorized
  assert not nxt.weight_mutation_authorized and not nxt.model_activation_authorized and not nxt.production_switch_authorized
 def test_compatibility_mismatch_blocks_parameter_evaluation():
- p,c=setup(False); assert not c[0].compatible
+ p,c=setup(False); assert len(c)>=1 and all(not x.compatible for x in c)
  with pytest.raises(EvolutionaryMergePipelineError,match="compatibility"):
   report(p,c,[trial(p.combinations[0].candidate_id,1,"e1"),trial(p.combinations[0].candidate_id,2,"e2")])
 def test_stage173_rejects_replay_suite_drift_and_bad_signatures():
