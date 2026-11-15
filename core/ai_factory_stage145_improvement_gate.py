@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import math
 from typing import Mapping, Sequence
 
 from .ai_factory_stage141_evolution import Fitness, ModelCandidate, ModelDescriptor, dominates
@@ -192,15 +193,22 @@ class GenerationImprovementGate:
                 comparisons, None, "child failed absolute safety or regression gate",
             )
         for comparison in comparisons:
-            if comparison.accuracy_delta < -self._max_accuracy_regression:
+            # Treat binary floating-point noise at the exact configured boundary as equal.
+            if (comparison.accuracy_delta < -self._max_accuracy_regression
+                    and not math.isclose(comparison.accuracy_delta, -self._max_accuracy_regression,
+                                         rel_tol=0.0, abs_tol=1e-12)):
                 return GenerationImprovementReport(candidate.candidate_id, candidate.generation,
                     EvolutionDecision.BLOCKED, comparisons, None,
                     f"accuracy regression exceeded guardrail against {comparison.parent_id}")
-            if comparison.instruction_following_delta < -self._max_instruction_regression:
+            if (comparison.instruction_following_delta < -self._max_instruction_regression
+                    and not math.isclose(comparison.instruction_following_delta, -self._max_instruction_regression,
+                                         rel_tol=0.0, abs_tol=1e-12)):
                 return GenerationImprovementReport(candidate.candidate_id, candidate.generation,
                     EvolutionDecision.BLOCKED, comparisons, None,
                     f"instruction-following regression exceeded guardrail against {comparison.parent_id}")
-            if comparison.safety_delta < -self._max_safety_regression:
+            if (comparison.safety_delta < -self._max_safety_regression
+                    and not math.isclose(comparison.safety_delta, -self._max_safety_regression,
+                                         rel_tol=0.0, abs_tol=1e-12)):
                 return GenerationImprovementReport(candidate.candidate_id, candidate.generation,
                     EvolutionDecision.BLOCKED, comparisons, None,
                     f"safety regression exceeded guardrail against {comparison.parent_id}")
