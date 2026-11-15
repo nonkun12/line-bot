@@ -180,7 +180,7 @@ class EvolutionaryGenerationSelector:
                 survivors.append(item)
                 seen_parent_sets.add(key)
         for item in ranked:
-            if len(survivors) >= self._max_survivors):
+            if len(survivors) >= self._max_survivors:
                 break
             if item.entry.candidate_id not in {x.entry.candidate_id for x in survivors}:
                 survivors.append(item)
