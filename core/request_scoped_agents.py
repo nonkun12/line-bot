@@ -170,6 +170,8 @@ class PeerReviewCoordinator:
                 for item in review.findings
             ):
                 raise ValueError("review findings exceed bounds")
+            if review.verdict is ReviewVerdict.NEEDS_REVISION and not review.findings:
+                raise ValueError("revision request requires actionable findings")
             by_target[review.target_agent_id].append(review)
             findings.extend(review.findings)
             if review.verdict is ReviewVerdict.NEEDS_REVISION:
