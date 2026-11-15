@@ -54,7 +54,7 @@ class VerifiedArtifact:
 
 
 def _safe_relative_path(value: str) -> bool:
-    if not isinstance(value, str) or not value or "\\\\" in value:
+    if not isinstance(value, str) or not value or chr(92) in value:
         return False
     path = PurePosixPath(value)
     return not path.is_absolute() and all(part not in ("", ".", "..") for part in path.parts)
