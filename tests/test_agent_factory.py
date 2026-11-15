@@ -98,9 +98,7 @@ def test_empty_gap_is_rejected_before_architect_runs():
 
 
 def test_architect_cannot_self_select_enabled_lifecycle():
-    subject = factory(architect=Architect(make_spec()).__class__(
-        make_spec()
-    ))
+    subject = factory(architect=Architect(make_spec()))
     subject.architect.spec = AgentSpec.create(
         name="generated_researcher",
         purpose="research",
