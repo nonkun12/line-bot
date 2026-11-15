@@ -610,7 +610,7 @@ class ManagementAI:
                     )
                     return ManagementCycleRun(
                         tuple(rounds),
-                        "peer revision proposed; correction awaits independent re-review and approval",
+                        "peer revision requested; proposal awaits independent re-review and approval",
                         current.revision_feedback,
                         proposals,
                     )
