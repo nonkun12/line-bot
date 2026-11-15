@@ -122,7 +122,13 @@ class ManagementRun:
 
     @property
     def success(self) -> bool:
-        return self.distributed.success
+        if not self.distributed.success:
+            return False
+        # A configured peer-review stage is part of acceptance, not decoration.
+        # Missing or adverse review evidence must fail closed.
+        if self.peer_review is not None and self.peer_review.status != "PASS":
+            return False
+        return True
 
 
 @dataclass(frozen=True)
