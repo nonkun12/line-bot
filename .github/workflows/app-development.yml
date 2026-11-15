@@ -61,6 +61,21 @@ jobs:
             echo "forwarded=false" >> "${GITHUB_OUTPUT}"
           fi
 
+      - name: Require explicit app prefix and pass REA preflight
+        if: ${{ steps.forward_e2e.outputs.forwarded != 'true' }}
+        env:
+          APP_REQUIREMENT: ${{ github.event.inputs.requirement }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from scripts.create_app_scaffold import is_new_app_request
+          if not is_new_app_request(os.environ.get("APP_REQUIREMENT", "")):
+              print("APP_BUILD=BLOCKED reason=explicit_アプリ開発_prefix_required")
+              raise SystemExit(80)
+          PY
+          python -m scripts.rea_preflight
+
       - name: Run independent-repository app builder
         id: app_development
         if: ${{ steps.forward_e2e.outputs.forwarded != 'true' }}

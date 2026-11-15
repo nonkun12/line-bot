@@ -71,11 +71,15 @@ jobs:
             echo "test_only=true" >> "$GITHUB_OUTPUT"
             echo "app_creation=false" >> "$GITHUB_OUTPUT"
             python -m pytest -q --tb=native
-          elif python -c 'import sys; from scripts.create_app_scaffold import is_new_app_request; sys.exit(0 if is_new_app_request(sys.argv[1]) else 1)' "$DEV_INSTRUCTION"; then
+          elif python -c 'import sys; from scripts.create_app_scaffold import has_new_app_intent; sys.exit(0 if has_new_app_intent(sys.argv[1]) else 1)' "$DEV_INSTRUCTION"; then
             echo "test_only=false" >> "$GITHUB_OUTPUT"
             echo "app_creation=true" >> "$GITHUB_OUTPUT"
-            # New apps use a dedicated, path-restricted scaffold path. Validate its
-            # generator before writing files; it never overwrites an existing app.
+            if ! python -c 'import sys; from scripts.create_app_scaffold import is_new_app_request; sys.exit(0 if is_new_app_request(sys.argv[1]) else 1)' "$DEV_INSTRUCTION"; then
+              echo "APP_SCAFFOLD=BLOCKED reason=explicit_アプリ開発_prefix_required" >&2
+              exit 80
+            fi
+            # The read-only REA gate must pass before tests, file creation, or branch publication.
+            python -m scripts.rea_preflight
             python -m pytest -q --tb=native tests/test_create_app_scaffold.py
             python -m scripts.create_app_scaffold --instruction "$DEV_INSTRUCTION" --run-id "$GITHUB_RUN_ID" --branch "line-dev/$GITHUB_RUN_ID"
             echo "LINE_DEVELOPMENT_LOOP=PASS index=1/1" | tee -a /tmp/line-development-loop.log

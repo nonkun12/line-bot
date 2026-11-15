@@ -8,6 +8,9 @@ from pathlib import Path
 
 from groq import Groq
 
+from scripts.create_app_scaffold import is_new_app_request
+from scripts.rea_preflight import require_rea_pass
+
 from universal_app_builder import (
     MAX_REPAIR_ATTEMPTS,
     MAX_REQUIREMENT_LENGTH,
@@ -86,9 +89,14 @@ def main() -> int:
     requirement = os.environ.get("APP_REQUIREMENT", "").strip()[:MAX_REQUIREMENT_LENGTH]
     token = os.environ.get("APP_GITHUB_TOKEN", "").strip()
     owner = os.environ.get("APP_GITHUB_OWNER", "nonkun12").strip() or "nonkun12"
-    if not requirement:
-        print("No app requirement supplied")
-        return 2
+    if not is_new_app_request(requirement):
+        print("APP_BUILD=BLOCKED reason=explicit_アプリ開発_prefix_required")
+        return 80
+    try:
+        require_rea_pass(Path.cwd())
+    except Exception:
+        print("APP_BUILD=BLOCKED reason=rea_preflight")
+        return 80
     if not token:
         print("APP_GITHUB_TOKEN is not configured; refusing to create a repository")
         return 2
