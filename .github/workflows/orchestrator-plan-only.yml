@@ -80,15 +80,33 @@ jobs:
                       "deployment_performed"):
               if payload.get(key) is not False:
                   raise SystemExit(f"unsafe side-effect flag: {key}")
-          if payload.get("status") not in {"PLAN_READY", "NO_TASK", "BLOCKED"}:
+          status = payload.get("status")
+          if status not in {"PLAN_READY", "NO_TASK", "BLOCKED"}:
               raise SystemExit("unknown snapshot status")
+          if status == "BLOCKED":
+              allowed = {
+                  "global_hold_state_missing", "global_hold_unverified", "global_hold_active",
+                  "budget_evidence_missing", "budget_evidence_unverified",
+                  "approval_evidence_unverified", "no_eligible_queue_tasks",
+              }
+              reasons = payload.get("reasons")
+              if not isinstance(reasons, list) or not reasons or not set(reasons).issubset(allowed):
+                  raise SystemExit("BLOCKED contains an unexpected or malformed reason")
+              if payload.get("candidate_ids") != []:
+                  raise SystemExit("BLOCKED snapshot must not expose executable candidates")
+              if payload.get("execution_authorized") is not False:
+                  raise SystemExit("BLOCKED snapshot cannot authorize execution")
           Path("/tmp/orchestrator-snapshot-status.txt").write_text(
-              str(payload["status"]) + "\n", encoding="utf-8"
+              str(status) + "\n", encoding="utf-8"
           )
           PY
           if [ "$code" -ne 0 ] && [ "$(cat /tmp/orchestrator-snapshot-status.txt)" != "BLOCKED" ]; then
             echo "::error::Snapshot adapter failed unexpectedly (exit=$code)."
             exit "$code"
+          fi
+          if [ "$code" -eq 0 ] && [ "$(cat /tmp/orchestrator-snapshot-status.txt)" = "BLOCKED" ]; then
+            echo "::error::BLOCKED snapshot must return a non-zero adapter status."
+            exit 2
           fi
           cat /tmp/orchestrator-snapshot.json >> "$GITHUB_STEP_SUMMARY"
           echo "Snapshot status: $(cat /tmp/orchestrator-snapshot-status.txt)"
