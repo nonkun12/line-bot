@@ -159,11 +159,12 @@ class EvolutionaryLineageLedgerBuilder:
                     raise EvolutionaryLineageLedgerError("duplicate candidate fate in generation")
                 seen_candidate_generation.add(key)
                 local_ids.add(fate.candidate_id)
+                is_new_candidate = fate.candidate_id not in candidate_rows
                 row = candidate_rows.setdefault(fate.candidate_id, {
                     "strategy": fate.strategy, "first": generation, "last": generation,
                     "survived": 0, "retired": 0, "reexplored": 0, "status": fate.status,
                 })
-                if row["strategy"] != fate.strategy or generation <= row["last"]:
+                if row["strategy"] != fate.strategy or (not is_new_candidate and generation <= row["last"]):
                     raise EvolutionaryLineageLedgerError("candidate identity changed strategy or lineage order")
                 row["last"] = generation
                 row["status"] = fate.status
