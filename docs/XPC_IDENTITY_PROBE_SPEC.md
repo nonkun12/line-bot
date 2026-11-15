@@ -34,10 +34,21 @@ treat a successful connection as user approval or execution authority.
 
 Protocol version: integer constant selected at build time.
 
-Request fields:
+BeginProbe request fields:
 - protocol_version
 - request_id: bounded opaque correlation value
+
+BeginProbe response fields:
+- protocol_version
+- request_id
+- connection_challenge: bounded cryptographically random value, valid only on
+  the issuing authenticated XPC connection
+
+Probe request fields:
+- protocol_version
+- request_id
 - probe_nonce: bounded random value
+- connection_challenge: exact value returned for this connection
 
 After the XPC connection has passed the OS-enforced peer code-signing check,
 the client sends a bounded BeginProbe message containing only protocol_version
@@ -93,7 +104,7 @@ prove that the user approved an action or that a desktop operation is safe.
 | Oversized message | Exceed strict request bound | REJECTED |
 | Replay | Reuse probe nonce | REJECTED |
 | Unknown field | Add unrecognized request field | REJECTED |
-| Broker restart | Replay a captured request carrying the prior broker-instance challenge | REJECTED because the new broker instance has a different ephemeral challenge |
+| Broker restart | Replay a captured old Probe carrying its old connection challenge on a new connection | REJECTED because the new connection has a different challenge |
 
 Tests must demonstrate that spoofed payload claims never change the identity
 verdict. Test fixtures must not be described as evidence of real macOS identity.
