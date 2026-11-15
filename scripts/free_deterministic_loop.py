@@ -20,25 +20,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TASKS = {
-    "loop-deterministic-nochange-focused-test": {
-        "target": "tests/test_line_development_worker_v2.py",
-        "test_name": "test_run_tests_can_verify_only_allowlisted_target_for_no_change",
-        "anchor": "def test_worker_entrypoint_is_executable():\n",
+    "distributed-loop-queue-progress-empty-queue-regression": {
+        "target": "tests/test_distributed_loop_queue_progress.py",
+        "test_name": "test_empty_runtime_queue_reports_zero_progress_for_not_run",
+        "anchor": "def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):\n",
         "addition": (
-            "def test_run_tests_can_verify_only_allowlisted_target_for_no_change(monkeypatch, tmp_path):\n"
-            "    calls = []\n\n"
-            "    def fake_run(cmd, timeout=900, input_text=None):\n"
-            "        calls.append(cmd)\n"
-            "        return subprocess.CompletedProcess(cmd, 0, stdout='1 passed', stderr='')\n\n"
-            "    monkeypatch.setattr(worker, 'ROOT', tmp_path)\n"
-            "    monkeypatch.setattr(worker, 'run', fake_run)\n"
-            "    passed, output = worker.run_tests(['tests/test_ai_speaker.py'], full_suite=False)\n"
-            "    assert passed\n"
-            "    pytest_call = next(cmd for cmd in calls if cmd[2:] and cmd[2] == 'pytest')\n"
-            "    assert pytest_call == [worker.sys.executable, '-m', 'pytest', '-q', '--tb=native', 'tests/test_ai_speaker.py']\n"
-            "    assert 'targeted pytest:' in output\n\n\n"
+            "def test_empty_runtime_queue_reports_zero_progress_for_not_run(tmp_path: Path):\n"
+            "    queue = tmp_path / \"runtime-queue.json\"\n"
+            "    state = tmp_path / \"state.json\"\n"
+            "    results = tmp_path / \"results.jsonl\"\n"
+            "    queue.write_text(json.dumps({\"tasks\": []}), encoding=\"utf-8\")\n"
+            "    state.write_text(json.dumps({\"completed\": [\"prior-task\"]}), encoding=\"utf-8\")\n"
+            "    results.write_text(json.dumps({\"task_id\": \"\", \"status\": \"NOT_RUN\", \"failure_reason\": \"queue_empty\"}), encoding=\"utf-8\")\n"
+            "    assert calculate_progress(queue, state, results) == {\"queue_total\": 0, \"queue_completed\": 0}\n\n\n"
         ),
-        "pytest_target": "tests/test_line_development_worker_v2.py",
+        "pytest_target": "tests/test_distributed_loop_queue_progress.py",
     }
 }
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
