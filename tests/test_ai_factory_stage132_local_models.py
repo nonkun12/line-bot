@@ -62,7 +62,10 @@ def test_local_model_config_bounds_timeout_and_output():
 def test_role_producer_generates_design_and_build_only():
     client = FakeClient()
     producer = LocalModelRoleProducer(
-        client=client,
+        clients_by_stage={
+            CollaborationStage.DESIGN: client,
+            CollaborationStage.BUILD: FakeClient(),
+        },
         role_by_stage={
             CollaborationStage.DESIGN: "architect-ai",
             CollaborationStage.BUILD: "builder-ai",
@@ -78,9 +81,27 @@ def test_role_producer_generates_design_and_build_only():
 
 
 @pytest.mark.parametrize("stage", [CollaborationStage.TEST, CollaborationStage.REVIEW])
+def test_design_and_build_require_distinct_model_clients():
+    shared = FakeClient()
+    with pytest.raises(ValueError, match="separate model client"):
+        LocalModelRoleProducer(
+            clients_by_stage={
+                CollaborationStage.DESIGN: shared,
+                CollaborationStage.BUILD: shared,
+            },
+            role_by_stage={
+                CollaborationStage.DESIGN: "architect-ai",
+                CollaborationStage.BUILD: "builder-ai",
+            },
+        )
+
+
 def test_role_producer_cannot_self_certify_gates(stage):
     producer = LocalModelRoleProducer(
-        client=FakeClient(),
+        clients_by_stage={
+            CollaborationStage.DESIGN: FakeClient(),
+            CollaborationStage.BUILD: FakeClient(),
+        },
         role_by_stage={
             CollaborationStage.DESIGN: "architect-ai",
             CollaborationStage.BUILD: "builder-ai",
@@ -92,7 +113,10 @@ def test_role_producer_cannot_self_certify_gates(stage):
 
 def test_producer_map_requires_independent_test_and_review_gates():
     producer = LocalModelRoleProducer(
-        client=FakeClient(),
+        clients_by_stage={
+            CollaborationStage.DESIGN: FakeClient(),
+            CollaborationStage.BUILD: FakeClient(),
+        },
         role_by_stage={
             CollaborationStage.DESIGN: "architect-ai",
             CollaborationStage.BUILD: "builder-ai",
@@ -117,7 +141,10 @@ def test_producer_map_requires_independent_test_and_review_gates():
 
 def test_local_model_cannot_be_reused_as_test_or_review_gate():
     producer = LocalModelRoleProducer(
-        client=FakeClient(),
+        clients_by_stage={
+            CollaborationStage.DESIGN: FakeClient(),
+            CollaborationStage.BUILD: FakeClient(),
+        },
         role_by_stage={
             CollaborationStage.DESIGN: "architect-ai",
             CollaborationStage.BUILD: "builder-ai",
