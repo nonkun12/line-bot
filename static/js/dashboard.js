@@ -159,6 +159,8 @@ document.addEventListener('DOMContentLoaded', () => {
           ['分身数',String(Number(latest.agent_count||0))+'体','論理エージェント数'],
           ['レビュー専任',String(Number(latest.reviewer_count||0))+'体','実行タスクを持たない独立レビュー担当'],
           ['修正依頼',String(Array.isArray(latest.revision_requests)?latest.revision_requests.length:0)+'件','指摘を担当分身へ返却・未受入'],
+          ['修正案作成',String(latest.revision_workflow?.draft_status||'NOT_STARTED'),'修正担当の案は未実行テキスト'],
+          ['独立再レビュー',String(latest.revision_workflow?.review_status||'NOT_STARTED'),'元レビュアーとは別IDで確認'],
           ['相互レビュー',reviewLabel,'レビュー結果の記録'],
           ['最終判定',accepted?'🟢 受入可能':'🔴 未受入','accepted=true の場合のみPASS相当']
         ];
@@ -176,7 +178,11 @@ document.addEventListener('DOMContentLoaded', () => {
           const notes=Array.isArray(item.findings)?item.findings.map(x=>String(x)).join(' / '):'詳細なし';
           return target+' ← '+notes;
         }).join(' | '):'未処理の修正依頼はありません';
-        findingsPanel.textContent=findingText+'\n'+revisionText;
+        const revisionStage=latest.revision_workflow||{};
+        const stageText='修正段階：案 '+String(revisionStage.draft_status||'NOT_STARTED')+' / 独立再レビュー '+String(revisionStage.review_status||'NOT_STARTED')+' / 実行許可 '+(revisionStage.execution_authorized===true?'あり':'なし');
+        const draftPreview=String(revisionStage.draft_preview||'').slice(0,500);
+        const reviewFindings=Array.isArray(revisionStage.review_findings)?revisionStage.review_findings.map(x=>String(x)).join(' / '):'';
+        findingsPanel.textContent=findingText+'\n'+revisionText+'\n'+stageText+(draftPreview?'\n修正案（最大500字）：'+draftPreview:'')+(reviewFindings?'\n独立再レビュー所見：'+reviewFindings:'');
       }
       if(updated) updated.textContent='更新 '+new Date().toLocaleTimeString('ja-JP')+' ・ '+records.length+'件';
     }catch(error){
