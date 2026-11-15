@@ -100,3 +100,45 @@ def test_independent_review_rejects_malformed_or_unrecognized_output(payload):
             independent_reviewer_id="second-reviewer",
             model_call=lambda prompt: payload,
         )
+
+
+def test_revision_snapshot_reports_not_started_without_inventing_activity():
+    from core.revision_workflow import revision_workflow_snapshot
+
+    snapshot = revision_workflow_snapshot()
+    assert snapshot["draft_status"] == "NOT_STARTED"
+    assert snapshot["review_status"] == "NOT_STARTED"
+    assert snapshot["execution_authorized"] is False
+
+
+def test_revision_snapshot_requires_matching_review_chain():
+    from core.revision_workflow import revision_workflow_snapshot, RevisionReview
+
+    draft = _draft()
+    review = RevisionReview(
+        request_id="req-1",
+        task_id="task-1",
+        revision_agent_id="revision-agent",
+        target_agent_id="target-agent",
+        original_reviewer_id="first-reviewer",
+        independent_reviewer_id="second-reviewer",
+        verdict="PASS",
+        findings=(),
+    )
+    snapshot = revision_workflow_snapshot(draft, review)
+    assert snapshot["draft_status"] == "PREPARED"
+    assert snapshot["review_status"] == "PASS"
+    assert snapshot["execution_authorized"] is False
+
+    mismatched = RevisionReview(
+        request_id="req-2",
+        task_id="task-1",
+        revision_agent_id="revision-agent",
+        target_agent_id="target-agent",
+        original_reviewer_id="first-reviewer",
+        independent_reviewer_id="second-reviewer",
+        verdict="PASS",
+        findings=(),
+    )
+    with pytest.raises(ValueError, match="does not match"):
+        revision_workflow_snapshot(draft, mismatched)
