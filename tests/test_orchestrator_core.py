@@ -53,6 +53,21 @@ class OrchestratorCoreTests(unittest.TestCase):
         self.assertFalse(plan["merge_performed"])
         self.assertFalse(plan["deployment_performed"])
 
+    def test_cli_rejects_output_file_option(self):
+        document = payload([])
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = Path(tmp) / "empty-queue.json"
+            output_path = Path(tmp) / "must-not-be-created.json"
+            input_path.write_text(json.dumps(document), encoding="utf-8")
+            script = Path(__file__).resolve().parents[1] / "scripts" / "orchestrator_core.py"
+            result = subprocess.run(
+                [sys.executable, str(script), "--input", str(input_path),
+                 "--output", str(output_path)],
+                capture_output=True, text=True, check=False, timeout=15,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(output_path.exists())
+
     def test_priority_then_id_is_deterministic(self):
         plan = build_plan(payload([
             {"id": "z", "priority": 5, "execution_approved": True},

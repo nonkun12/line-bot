@@ -184,7 +184,6 @@ def build_plan(document: Any) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True)
-    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
         document = json.loads(args.input.read_text(encoding="utf-8"))
@@ -199,10 +198,7 @@ def main() -> int:
             "reasons": [str(exc)[:160]],
         }
     rendered = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    if args.output:
-        args.output.write_text(rendered, encoding="utf-8")
-    else:
-        sys.stdout.write(rendered)
+    sys.stdout.write(rendered)
     return 0 if result["status"] in {"PLAN_READY", "NO_TASK"} else 2
 
 
