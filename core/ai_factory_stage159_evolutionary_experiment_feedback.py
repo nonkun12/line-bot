@@ -204,12 +204,14 @@ class EvolutionaryExperimentFeedbackLoop:
                 or plan.evaluation_suite_digest != dispatch.evaluation_suite_digest):
             raise EvolutionaryDispatchError("dispatch does not bind to the selected exact plan")
         experiment_runner = runner or IsolatedMergeExperimentRunner()
+        captured_evidence: list[IndependentEvaluationEvidence] = []
         try:
             outcome = experiment_runner.run(
                 plan=plan, approval_token=approval_token, verify_approval=verify_approval,
                 sandbox=sandbox, evaluator=evaluator,
                 verify_evaluation_evidence=verify_evaluation_evidence,
                 baseline_fitness=baseline_fitness, policy=policy,
+                evidence_sink=captured_evidence.append,
             )
         except Exception as exc:
             raise EvolutionaryDispatchError("Stage 155 isolated experiment did not produce verified feedback") from exc
@@ -219,10 +221,10 @@ class EvolutionaryExperimentFeedbackLoop:
                 or not outcome.proposal_only or outcome.generation_advanced
                 or outcome.model_activated or outcome.production_switch_authorized):
             raise EvolutionaryDispatchError("Stage 155 outcome identity or authority is invalid")
-        evidence = getattr(experiment_runner, "last_evidence", None)
+        if len(captured_evidence) != 1:
+            raise EvolutionaryDispatchError("Stage 155 must return exactly one verified evidence envelope")
+        evidence = captured_evidence[0]
         if not isinstance(evidence, IndependentEvaluationEvidence):
-            # The standard runner returns an outcome only; an evidence-capturing adapter
-            # must expose the exact verified envelope to enable authenticated Stage 156 transfer.
             raise EvolutionaryDispatchError("verified Stage 155 evidence envelope is required for feedback transfer")
         if (evidence.evidence_digest != outcome.evaluation_evidence_digest
                 or evidence.artifact_digest != outcome.output_artifact_digest
