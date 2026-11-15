@@ -35,6 +35,17 @@
     <div id="agentMessageSummary" class="system-details">メッセージバス: 確認中...</div>
   </section>
 
+  <section class="section-card" id="orchestratorCollaborationSection">
+    <div class="section-header">
+      <div class="title-group"><span class="section-icon">🤝</span><h2 class="section-title">Orchestrator 分身協力状況</h2></div>
+      <div><span id="collaborationUpdated" class="status-note">履歴を確認中...</span> <button id="collaborationRefreshBtn" class="btn btn-primary" type="button">🔄更新</button></div>
+    </div>
+    <p class="dashboard-evidence-note">依頼ごとの分身・担当タスク・相互レビュー結果を表示します。ここから実行・承認・権限変更はできません。</p>
+    <div id="collaborationSummary" class="system-grid" aria-live="polite"><div class="system-details">協力履歴を取得中...</div></div>
+    <div id="collaborationAgents" class="system-grid" aria-live="polite"></div>
+    <div id="collaborationFindings" class="system-details"></div>
+  </section>
+
   <section class="section-card">
     <div class="section-header"><div class="title-group"><span class="section-icon">⚙️</span><h2 class="section-title">自動Loop / Safety Control Tower</h2></div><span id="loopSummary" class="status-note">確認中...</span></div>
     <div id="loopGrid" class="system-grid"></div>
