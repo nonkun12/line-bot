@@ -98,8 +98,24 @@ def test_preflight_rejects_quantization_or_license_mismatch():
     proofs = tuple(verify_local_artifact(item, (b"parent-a" if item.model_id == "p-a" else b"parent-b",))
                    for item in parents)
     incompatible = (parents[0], manifest("p-b", b"parent-b", quant="q4_k_m"))
+    incompatible_proofs = (
+        proofs[0],
+        verify_local_artifact(incompatible[1], (b"parent-b",)),
+    )
     with pytest.raises(ArtifactPreflightError, match="incompatible"):
-        preflight_merge_inputs(plan, incompatible, proofs)
+        preflight_merge_inputs(plan, incompatible, incompatible_proofs)
+    license_mismatch = (
+        parents[0],
+        ArtifactManifest(
+            **{**incompatible[1].__dict__, "license_id": "different-license"}
+        ),
+    )
+    license_proofs = (
+        proofs[0],
+        verify_local_artifact(license_mismatch[1], (b"parent-b",)),
+    )
+    with pytest.raises(ArtifactPreflightError, match="incompatible"):
+        preflight_merge_inputs(plan, license_mismatch, license_proofs)
 
 
 def test_independent_before_after_evaluation_accepts_improved_candidate():
