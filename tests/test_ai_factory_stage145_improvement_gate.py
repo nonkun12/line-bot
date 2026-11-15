@@ -79,7 +79,7 @@ def test_improved_child_requires_signed_parent_and_child_evidence():
 
 
 def test_no_improvement_is_not_admitted():
-    gate, store, candidate, parents, child, artifact = setup(candidate_metrics=fitness(.79))
+    gate, store, candidate, parents, child, artifact = setup(candidate_metrics=fitness(.81, instruction=.89))
     report = gate.evaluate(candidate, parents, child, expected_candidate_artifact_digest=artifact)
     assert report.decision is EvolutionDecision.NO_IMPROVEMENT
     assert report.lineage_record is None
