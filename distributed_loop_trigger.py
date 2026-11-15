@@ -345,7 +345,12 @@ def _append_task_evidence(
         lines.append(f"Catalog実行候補: {eligible_count}件")
 
 
-def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
+def request_distributed_loop(
+    user_id: str,
+    message: str,
+    *,
+    allow_dispatch: bool = True,
+) -> Tuple[bool, str]:
     command = _normalize_command(message)
     status_kind = None
     if command in {
@@ -374,6 +379,12 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
     max_tasks = _requested_max_tasks(message)
     if max_tasks is None and status_kind is None:
         return False, ""
+    if status_kind is None and not allow_dispatch:
+        return True, (
+            "旧分散Loopの起動経路は閉鎖されています。"
+            "サブ系統は再起動せず、Orchestrator単独の計画専用経路へ集約中です。"
+            "現在は状態変更・タスク実行を受け付けません。"
+        )
     if not user_id or user_id not in _allowed_users():
         return True, "分散Loop起動は許可されていません（このLINEユーザーには統括AIの操作権限がありません）。"
     token = os.environ.get("GITHUB_ACTIONS_DISPATCH_TOKEN") or os.environ.get("GITHUB_TOKEN")
