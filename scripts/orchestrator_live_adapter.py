@@ -238,9 +238,8 @@ def build_live_snapshot(
             "catalog_completed_count": sum(x == "completed" for x in catalog_states.values()),
             "catalog_held_count": sum(x == "held" for x in catalog_states.values()),
             "catalog_review_required_count": sum(
-                entry.get("resume_requires_review") is True
-                for entry in recovery_tasks.values()
-                if isinstance(entry, dict)
+                recovery_tasks.get(task_id, {}).get("resume_requires_review") is True
+                for task_id in catalog_map
             ),
             "catalog_pending_count": sum(x == "pending" for x in catalog_states.values()),
             "durable_completed_count": len(completed),
@@ -258,6 +257,7 @@ def build_live_snapshot(
         },
         "tasks": sorted(queue_rows, key=lambda row: row["id"]),
         "candidate_ids": sorted(candidate_ids),
+        "potential_candidate_count": len(potential_candidate_ids),
         "execution_authorized": False,
         "approval_evidence_verified": False,
         "budget_evidence_verified": budget_verified,
