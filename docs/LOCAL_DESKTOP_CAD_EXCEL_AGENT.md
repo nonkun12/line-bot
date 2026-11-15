@@ -42,6 +42,14 @@ Japanese natural-language request
   and post-action read-back before any production enablement.
 - No background job or GitHub Action may operate the user's Mac desktop.
 
+## Current security milestone
+
+The next engineering milestone is a no-op macOS XPC identity probe, specified in
+[ XPC_IDENTITY_PROBE_SPEC.md ](XPC_IDENTITY_PROBE_SPEC.md). It is not a desktop
+agent and cannot approve or execute actions. The probe requires a reviewed
+macOS version/signing target and Mac-side positive/negative tests; those cannot
+be substituted by Python mocks or GitHub-hosted CI.
+
 ## Remaining phases
 
 1. Trusted approval UI: local interactive confirmation bound to exact plan digest
