@@ -56,7 +56,9 @@ def test_rejects_suite_drift_replay_and_tampered_digest():
             first, proposal(6, "c" * 64, [fate("model-b", "ties", "SURVIVE")], suite="d" * 64)
         ))
     with pytest.raises(EvolutionaryLineageLedgerError, match="replay"):
-        EvolutionaryLineageLedgerBuilder().build((first, replace(first, proposed_generation=6, source_generation=5)))
+        EvolutionaryLineageLedgerBuilder().build((
+            first, proposal(6, "b" * 64, [fate("model-b", "ties", "SURVIVE")])
+        ))
     with pytest.raises(EvolutionaryLineageLedgerError, match="digest"):
         EvolutionaryLineageLedgerBuilder().build((replace(first, digest="f" * 64),))
 
