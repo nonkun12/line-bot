@@ -188,10 +188,33 @@ class ManagementRun:
 
 
 @dataclass(frozen=True)
+class RevisionProposal:
+    """Non-executable, target-bound correction proposal derived from review evidence."""
+
+    reviewer_id: str
+    target_agent_id: str
+    findings: tuple[str, ...]
+    execution_authorized: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.reviewer_id or not self.target_agent_id:
+            raise ValueError("revision proposal identities are required")
+        if self.reviewer_id == self.target_agent_id:
+            raise ValueError("revision proposal cannot be self-reviewed")
+        if not self.findings or len(self.findings) > 8:
+            raise ValueError("revision proposal findings are required and bounded")
+        if any(not isinstance(item, str) or not item.strip() or len(item) > 500 for item in self.findings):
+            raise ValueError("revision proposal findings are invalid")
+        if self.execution_authorized:
+            raise ValueError("revision proposals cannot authorize execution")
+
+
+@dataclass(frozen=True)
 class ManagementCycleRun:
     rounds: tuple[ManagementRun, ...]
     stopped_reason: str
     pending_revision_feedback: tuple[str, ...] = ()
+    revision_proposals: tuple[RevisionProposal, ...] = ()
 
     @property
     def final_run(self) -> ManagementRun:
@@ -577,10 +600,19 @@ class ManagementAI:
                     # Surface actionable feedback for a later controlled correction.
                     # Never replay a specialist executor automatically: side effects
                     # and idempotency are not assumed.
+                    proposals = tuple(
+                        RevisionProposal(
+                            reviewer_id=item.reviewer_id,
+                            target_agent_id=item.target_agent_id,
+                            findings=item.findings,
+                        )
+                        for item in current.peer_review.revision_requests
+                    )
                     return ManagementCycleRun(
                         tuple(rounds),
-                        "peer revision requested; correction awaits controlled approval",
+                        "peer revision proposed; correction awaits independent re-review and approval",
                         current.revision_feedback,
+                        proposals,
                     )
                 return ManagementCycleRun(tuple(rounds), "round failed; fail closed")
             if not current.plan.continue_after_round:
@@ -671,6 +703,7 @@ __all__ = [
     "ManagementPlanningError",
     "ManagementRun",
     "ManagementObservation",
+    "RevisionProposal",
     "ModelManagementPlanner",
     "ModelPeerReviewer",
     "build_local_peer_reviewer",
