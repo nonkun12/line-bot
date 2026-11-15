@@ -110,7 +110,7 @@ def test_rejects_cross_lineage_replicates_and_duplicate_replicate_numbers():
     r = report((plan(),))
     p = r.plans[0]
     changed = replace(trial(p, 2), parent_artifact_digests=("f" * 64, PARENT_B))
-    with pytest.raises(MergeTournamentError, match="lineage-comparable"):
+    with pytest.raises(MergeTournamentError, match="exact Stage 154"):
         EvolutionaryMergeTournament().evaluate(r, [trial(p, 1), changed], verify_trial=verify)
     duplicate_replicate = replace(trial(p, 2), replicate=1)
     with pytest.raises(MergeTournamentError, match="replicate"):
