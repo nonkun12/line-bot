@@ -119,13 +119,17 @@ class ManagementRun:
     observations: tuple[ManagementObservation, ...] = ()
     agent_team: AgentTeam | None = None
     peer_review: ReviewDecision | None = None
+    peer_review_required: bool = False
 
     @property
     def success(self) -> bool:
         if not self.distributed.success:
             return False
-        # A configured peer-review stage is part of acceptance, not decoration.
-        # Missing or adverse review evidence must fail closed.
+        # Once configured, peer review is mandatory evidence, not decoration.
+        if self.peer_review_required and (
+            self.peer_review is None or self.peer_review.status != "PASS"
+        ):
+            return False
         if self.peer_review is not None and self.peer_review.status != "PASS":
             return False
         return True
@@ -348,6 +352,13 @@ class ModelPeerReviewer:
         )
 
 
+def build_local_peer_reviewer(*, model: str, base_url: str = "http://127.0.0.1:11434/v1") -> ModelPeerReviewer:
+    """Opt in to a loopback-only Ollama model; never falls back to a cloud API."""
+    from .local_model_adapter import OllamaLocalModelCall
+
+    return ModelPeerReviewer(model_call=OllamaLocalModelCall(model=model, base_url=base_url))
+
+
 class ManagementAI:
     """Manager -> distributed specialists -> result mailbox."""
 
@@ -466,7 +477,7 @@ class ManagementAI:
                         )
                     )
             peer_review = self._peer_review_coordinator.decide(agent_team, reviews)
-        return ManagementRun(plan, batches, distributed, observations, agent_team, peer_review)
+        return ManagementRun(plan, batches, distributed, observations, agent_team, peer_review, self._peer_reviewer is not None)
 
     def run_closed_loop(self, request: ManagementRequest, *, max_rounds: int = 3) -> ManagementCycleRun:
         """Run bounded management rounds and feed specialist results back to the manager."""
