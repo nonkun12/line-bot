@@ -783,6 +783,10 @@ def test_management_ai_attaches_per_task_agents_and_runs_peer_review() -> None:
     assert len(review_calls) == 2
     assert voice.agent_ids and all(voice.agent_ids)
     assert news.agent_ids and all(news.agent_ids)
+    snapshot = result.collaboration_snapshot()
+    assert snapshot["agent_count"] == 2
+    assert snapshot["peer_review_status"] == "PASS"
+    assert snapshot["accepted"] is True
 
 
 def test_management_ai_blocks_peer_review_when_review_adapter_fails() -> None:
@@ -801,6 +805,9 @@ def test_management_ai_blocks_peer_review_when_review_adapter_fails() -> None:
     assert not result.peer_review.accepted_agent_ids
     assert len(result.peer_review.blocked_agent_ids) == 2
     assert not result.success  # peer-review BLOCKED must affect final acceptance
+    snapshot = result.collaboration_snapshot()
+    assert snapshot["peer_review_status"] == "BLOCKED"
+    assert snapshot["accepted"] is False
 
 
 
