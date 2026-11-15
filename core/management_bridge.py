@@ -8,6 +8,7 @@ single-agent path.
 from __future__ import annotations
 
 from dataclasses import replace
+import os
 from typing import Sequence
 
 from agents.stocks.node import StocksAgent
@@ -22,6 +23,7 @@ from agents.music.intents import is_music_intent
 from agents.video.intents import is_video_intent
 from core.agents import AgentRequest
 from core.distributed_scheduler import DistributedExecutionError
+from core.collaboration_audit import record_collaboration_snapshot
 from core.management_ai import (
     ManagementAI,
     ManagementPlan,
@@ -244,12 +246,32 @@ def run_management_request(
         planner or ModelManagementPlanner(),
         allowed_roles,
     )
-    manager = ManagementAI(
-        executors,
-        planner=restricted_planner,
-        max_workers=1,
-        isolated=False,
-    )
+    local_review_enabled = os.environ.get(
+        "ORCHESTRATOR_LOCAL_PEER_REVIEW_ENABLED", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if local_review_enabled:
+        local_model = os.environ.get("ORCHESTRATOR_LOCAL_PEER_REVIEW_MODEL", "").strip()
+        if not local_model:
+            print("[MANAGEMENT AI] local peer review enabled without a model; fail closed")
+            return _MANAGEMENT_EXECUTION_FAILURE
+        manager = ManagementAI.with_local_peer_review(
+            executors,
+            model=local_model,
+            base_url=os.environ.get(
+                "ORCHESTRATOR_LOCAL_PEER_REVIEW_URL",
+                "http://127.0.0.1:11434/v1",
+            ),
+            planner=restricted_planner,
+            max_workers=1,
+            isolated=False,
+        )
+    else:
+        manager = ManagementAI(
+            executors,
+            planner=restricted_planner,
+            max_workers=1,
+            isolated=False,
+        )
 
     try:
         run = manager.run(management_request)
@@ -270,6 +292,15 @@ def run_management_request(
         # duplicate external effects from a partially executed round.
         print(f"[MANAGEMENT AI] unexpected execution failure; no legacy retry: {type(exc).__name__}: {exc}")
         return _MANAGEMENT_EXECUTION_FAILURE
+
+    try:
+        record_collaboration_snapshot(
+            user_id=request.user_id,
+            snapshot=run.collaboration_snapshot(),
+        )
+    except Exception as exc:
+        # Observability must never change task execution or trigger a retry.
+        print(f"[MANAGEMENT AI] collaboration audit unavailable: {type(exc).__name__}")
 
     if not run.success:
         print("[MANAGEMENT AI] distributed round reported failure; no legacy retry")
