@@ -13,12 +13,14 @@ separate executor/broker process. Do not expose a TCP or localhost HTTP approval
 endpoint. Do not let LINE, GitHub Actions, a model process, a shell command, or
 a background queue connect to the approval broker.
 
-The broker must validate the connecting process using the XPC connection's
-kernel-provided audit token and Security framework code-signing identity. A
-claimed PID, bundle identifier, username, environment variable, or request
-field is not identity evidence. Validate the expected signing requirement and
-the active logged-in user/session independently. If the platform API cannot
-establish the required identity, reject the connection.
+The broker must enforce a narrowly scoped peer code-signing requirement using
+the documented XPC API available on the selected deployment target. Prefer
+operating-system enforcement on the connection over a custom PID-to-signature
+lookup. A claimed PID, bundle identifier, username, environment variable, or
+request field is not identity evidence. Validate the active logged-in
+user/session independently using documented peer/session attributes. If the
+platform API cannot establish the required signing identity or session, reject
+the connection.
 
 The UI and broker must be separately identifiable roles. Only the UI role may
 request a preview-bound approval; only the executor role may redeem the
@@ -95,28 +97,33 @@ to the existing bridge. Read-only desktop inspection is also disabled.
 
 ## Public XPC API constraint
 
-Do not implement this design by assuming that `NSXPCConnection` exposes a
-public audit-token property. Apple's currently published `NSXPCConnection`
-reference documents peer PID, effective UID/GID, audit-session ID, and
-`setCodeSigningRequirement`; it does not document an audit-token accessor.
-The lower-level XPC reference documents peer PID/UID/GID/audit-session
-accessors and code-signing-requirement APIs.
+Do not make audit-token extraction the primary identity mechanism for the
+no-op probe. Use the operating system's documented peer code-signing
+requirement enforcement:
 
-Therefore the implementation review must choose one API family and prove the
-peer-signing check using its documented public interface. Prefer the operating
-system's XPC peer code-signing requirement enforcement where supported; do not
-add a second, unsupported audit-token extraction path merely to match this
-design's earlier wording. If Security.framework audit-token validation is
-needed, first identify a documented public source for the token in the chosen
-API family and test it on the target OS. PID, UID, and audit-session ID are
-useful session/process attributes but are not substitutes for code-signature
-validation.
+- Foundation path: `NSXPCConnection.setCodeSigningRequirement(_:)` or
+  `NSXPCListener.setConnectionCodeSigningRequirement(_:)`.
+- Lower-level path: `xpc_connection_set_peer_code_signing_requirement`.
+
+The selected API must be configured before the connection starts processing
+requests. The expected requirement must be narrowly scoped to the intended
+signed test client; a broad team-only requirement may trust more executables
+than intended. Confirm the exact requirement against the signing and
+distribution model.
+
+PID, UID, GID, and audit-session ID are useful supplementary session/process
+attributes but are not substitutes for code-signature validation. Never infer
+identity from a caller-supplied PID or payload field. Do not add a
+Security.framework audit-token validation path unless the chosen public API
+family and SDK provide a documented, supported token source and an independent
+review demonstrates why that extra check is necessary.
 
 References:
-- [NSXPCConnection](https://developer.apple.com/documentation/foundation/nsxpcconnection)
-- [XPC connections](https://developer.apple.com/documentation/xpc/xpc-connections)
+- [NSXPCConnection.setCodeSigningRequirement(_:)](https://developer.apple.com/documentation/foundation/nsxpcconnection/setcodesigningrequirement(_:))
+- [NSXPCListener.setConnectionCodeSigningRequirement(_:)](https://developer.apple.com/documentation/foundation/nsxpclistener/setconnectioncodesigningrequirement(_:))
 - [XPC peer code-signing requirement](https://developer.apple.com/documentation/xpc/xpc_connection_set_peer_code_signing_requirement(_:_:))
-- [Security code-signing services](https://developer.apple.com/documentation/security/code-signing-services/)
+- [TN3127: Inside Code Signing: Requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements/)
+- [Apple Developer Technical Support: Validating Signature Of XPC Process](https://developer.apple.com/forums/thread/681053)
 
 This is a design correction, not an implementation claim. The exact API and
 availability must be confirmed against the selected deployment target and SDK.
