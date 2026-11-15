@@ -33,6 +33,8 @@ def test_dashboard_page_status_code_and_content(auth_headers):
     assert b"agentMessageSummary" in response.data
     assert "分散Loop 実行履歴".encode("utf-8") in response.data
     assert b"loopHistoryBody" in response.data
+    assert "Orchestrator 分身協力状況".encode("utf-8") in response.data
+    assert b"collaborationSummary" in response.data
     assert "個別タスクのPASS".encode("utf-8") in response.data
 
 
@@ -255,3 +257,52 @@ def test_dashboard_github_loop_runs_includes_evidence_fields(monkeypatch):
     assert run["display_title"] == "bounded task run"
     assert run["run_attempt"] == 2
     assert run["workflow_id"] == 99
+
+
+
+def test_orchestrator_collaboration_dashboard_api_is_read_only_and_user_scoped(auth_headers):
+    client = app.test_client()
+    snapshots = [
+        {
+            "created_at": "2026-11-15 12:00:00",
+            "snapshot": {
+                "agent_count": 3,
+                "peer_review_status": "PASS",
+                "accepted": True,
+                "agents": [{"agent_id": "agent-a", "role": "news", "task_ids": ["task-a"]}],
+                "findings": [],
+            },
+        }
+    ]
+    with patch(
+        "core.collaboration_audit.list_collaboration_snapshots",
+        return_value=snapshots,
+    ) as read:
+        response = client.get(
+            "/api/dashboard/orchestrator/collaboration?limit=5",
+            headers=auth_headers,
+        )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["ok"] is True
+    assert data["read_only"] is True
+    assert data["execution_authorized"] is False
+    assert data["snapshots"] == snapshots
+    read.assert_called_once_with(user_id=TEST_USER_ID, limit=5)
+
+
+def test_orchestrator_collaboration_dashboard_api_rejects_invalid_limit(auth_headers):
+    client = app.test_client()
+    response = client.get(
+        "/api/dashboard/orchestrator/collaboration?limit=21",
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+    assert response.get_json()["ok"] is False
+
+
+def test_orchestrator_collaboration_dashboard_api_requires_auth():
+    response = app.test_client().get(
+        "/api/dashboard/orchestrator/collaboration?user_id=someone"
+    )
+    assert response.status_code == 401

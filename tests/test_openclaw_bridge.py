@@ -181,7 +181,7 @@ def test_complete_failure_notifies_line_without_leaking_error(monkeypatch):
     assert "private" not in pushed[0][1]
 
 
-def test_openclaw_prefix_routes_to_authenticated_mac_queue(monkeypatch):
+def test_openclaw_prefix_is_blocked_without_mac_queue(monkeypatch):
     from types import SimpleNamespace
     import app as app_module
 
@@ -192,36 +192,36 @@ def test_openclaw_prefix_routes_to_authenticated_mac_queue(monkeypatch):
     )
     monkeypatch.setattr(
         app_module, "generate_reply",
-        lambda *a, **kw: pytest.fail("explicit OpenClaw requests must use the Mac queue"),
+        lambda *a, **kw: pytest.fail("closed Mac requests must not fall through to cloud AI"),
     )
 
     response = app_module._handle_ai_gateway_request(
         SimpleNamespace(message="OpenClaw: explain this", user_id="U-test")
     )
 
-    assert queued == [("U-test", "OpenClaw: explain this")]
-    assert "Job 12" in response
-    assert "Bonsaiワーカー" in response
+    assert queued == []
+    assert "旧OpenClaw Macブリッジは停止中" in response
+    assert "Job 12" not in response
 
 
-def test_openclaw_enqueue_failure_fails_closed(monkeypatch):
+def test_openclaw_enqueue_failure_path_is_not_called_without_mac(monkeypatch):
     from types import SimpleNamespace
     import app as app_module
 
     monkeypatch.setattr(
         app_module, "enqueue_openclaw_request",
-        lambda *a, **kw: (_ for _ in ()).throw(core.OpenClawBridgeError("missing key")),
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("Mac queue must not be called")),
     )
     monkeypatch.setattr(
         app_module, "generate_reply",
-        lambda *a, **kw: pytest.fail("must not fall through to cloud AI"),
+        lambda *a, **kw: pytest.fail("closed Mac requests must not fall through to cloud AI"),
     )
 
     response = app_module._handle_ai_gateway_request(
         SimpleNamespace(message="OpenClaw: run tests", user_id="U-test")
     )
 
-    assert "受け付けられませんでした" in response
+    assert "旧OpenClaw Macブリッジは停止中" in response
 
 
 def test_stale_job_at_retry_limit_becomes_failed(monkeypatch, tmp_path):

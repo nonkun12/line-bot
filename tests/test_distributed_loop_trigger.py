@@ -290,6 +290,23 @@ def test_dispatch_accepts_one_new_request_when_one_run_is_active(monkeypatch):
     assert len(client.posted) == 1
 
 
+
+def test_legacy_dispatch_is_blocked_when_orchestrator_only_mode_is_enabled(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _Client([])
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_distributed_loop(
+            "u1",
+            "分散Loopを4回、安全確認付きで実行",
+            allow_dispatch=False,
+        )
+    assert handled is True
+    assert "旧分散Loopの起動経路は閉鎖されています" in reply
+    assert "Orchestrator単独" in reply
+    assert client.posted == []
+
 def test_status_command_requires_allowlisted_user_and_token(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
     monkeypatch.delenv("GITHUB_ACTIONS_DISPATCH_TOKEN", raising=False)
@@ -551,7 +568,7 @@ def test_natural_language_status_request_is_read_only_and_does_not_dispatch(monk
     with patch.object(trigger.httpx, "Client", return_value=client):
         handled, reply = trigger.request_distributed_loop("u1", message)
     assert handled is True
-    assert "統括AI／分散Loop 状況" in reply
+    assert "統括AI／旧分散Loop履歴" in reply
     assert "Run #896" in reply
     assert client.posted == []
 

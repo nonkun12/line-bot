@@ -15,9 +15,13 @@ from core.management_ai import (
     ManagementPlanner,
     ManagementPlanningError,
     ModelManagementPlanner,
+    RevisionProposal,
+    ModelPeerReviewer,
+    build_local_peer_reviewer,
 )
 from core.management_contract import ManagementDecision, ManagementRequest, Specialist
 from core.multi_agent import AgentResult, AgentRole, AgentTask
+from core.request_scoped_agents import PeerReview, ReviewVerdict
 
 
 def test_message_bus_requires_safety_and_round_trips() -> None:
@@ -97,9 +101,11 @@ class Executor:
     def __init__(self, role: AgentRole) -> None:
         self.role = role
         self.calls: list[str] = []
+        self.agent_ids: list[str | None] = []
 
     def execute(self, task: AgentTask) -> AgentResult:
         self.calls.append(task.task_id)
+        self.agent_ids.append(task.agent_id)
         return AgentResult(task.task_id, True, f"{self.role.value}:done")
 
 
@@ -742,3 +748,287 @@ def test_model_management_planner_receives_deterministic_routing_hints() -> None
     assert "Routing candidates (advisory): english, music" in prompts[0]
     assert "Routing priority (1=highest): 2" in prompts[0]
     assert "validate every planned role" in prompts[0]
+
+
+
+def test_management_ai_attaches_per_task_agents_and_runs_peer_review() -> None:
+    voice = Executor(AgentRole.VOICE)
+    news = Executor(AgentRole.NEWS)
+    review_calls: list[tuple[str, str]] = []
+
+    def reviewer(reviewer_agent, target_agent, observation):
+        review_calls.append((reviewer_agent.agent_id, target_agent.agent_id))
+        assert observation.task_id == target_agent.task_ids[0]
+        return PeerReview(
+            reviewer_id=reviewer_agent.agent_id,
+            target_agent_id=target_agent.agent_id,
+            verdict=ReviewVerdict.PASS,
+            findings=("evidence checked",),
+        )
+
+    manager = ManagementAI(
+        {AgentRole.VOICE: voice, AgentRole.NEWS: news},
+        planner=StaticPlanner(),
+        peer_reviewer=reviewer,
+    )
+    result = manager.run(ManagementRequest("u1", "音声とニュースを準備して"))
+
+    assert result.agent_team is not None
+    assert len(result.agent_team.agents) == 2
+    assert {agent.task_ids[0] for agent in result.agent_team.agents} == {
+        "voice-task", "news-task"
+    }
+    assert len({agent.agent_id for agent in result.agent_team.agents}) == 2
+    assert result.peer_review is not None
+    assert result.peer_review.status == "PASS"
+    assert len(review_calls) == 2
+    assert voice.agent_ids and all(voice.agent_ids)
+    assert news.agent_ids and all(news.agent_ids)
+    snapshot = result.collaboration_snapshot()
+    assert snapshot["agent_count"] == 2
+    assert snapshot["peer_review_status"] == "PASS"
+    assert snapshot["accepted"] is True
+
+
+def test_management_ai_blocks_peer_review_when_review_adapter_fails() -> None:
+    def failing_reviewer(reviewer_agent, target_agent, observation):
+        raise RuntimeError("review unavailable")
+
+    manager = ManagementAI(
+        {AgentRole.VOICE: Executor(AgentRole.VOICE), AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=StaticPlanner(),
+        peer_reviewer=failing_reviewer,
+    )
+    result = manager.run(ManagementRequest("u1", "音声とニュースを準備して"))
+
+    assert result.peer_review is not None
+    assert result.peer_review.status == "BLOCKED"
+    assert not result.peer_review.accepted_agent_ids
+    assert len(result.peer_review.blocked_agent_ids) == 2
+    assert not result.success  # peer-review BLOCKED must affect final acceptance
+    snapshot = result.collaboration_snapshot()
+    assert snapshot["peer_review_status"] == "BLOCKED"
+    assert snapshot["accepted"] is False
+
+
+
+def test_management_ai_rejects_peer_review_identity_spoofing() -> None:
+    def spoofed_reviewer(reviewer_agent, target_agent, observation):
+        return PeerReview(
+            reviewer_id=target_agent.agent_id,
+            target_agent_id=reviewer_agent.agent_id,
+            verdict=ReviewVerdict.PASS,
+        )
+
+    manager = ManagementAI(
+        {AgentRole.VOICE: Executor(AgentRole.VOICE), AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=StaticPlanner(),
+        peer_reviewer=spoofed_reviewer,
+    )
+    result = manager.run(ManagementRequest("u1", "音声とニュースを準備して"))
+
+    assert result.peer_review is not None
+    assert result.peer_review.status == "BLOCKED"
+    assert not result.peer_review.accepted_agent_ids
+
+
+
+
+def test_configured_peer_review_uses_independent_reviewer_for_single_agent_request() -> None:
+    calls = []
+
+    def reviewer(reviewer_agent, target_agent, observation):
+        calls.append((reviewer_agent.agent_id, target_agent.agent_id))
+        assert reviewer_agent.agent_id != target_agent.agent_id
+        assert reviewer_agent.task_ids == ()
+        return PeerReview(
+            reviewer_id=reviewer_agent.agent_id,
+            target_agent_id=target_agent.agent_id,
+            verdict=ReviewVerdict.PASS,
+        )
+
+    manager = ManagementAI(
+        {AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=LoopPlanner(),
+        peer_reviewer=reviewer,
+    )
+    result = manager.run(ManagementRequest("u1", "ニュースを要約して"))
+
+    assert result.peer_review_required
+    assert result.peer_review is not None
+    assert result.peer_review.status == "PASS"
+    assert result.success
+    assert len(calls) == 1
+
+
+def test_local_peer_reviewer_factory_is_explicit_and_loopback_only() -> None:
+    reviewer = build_local_peer_reviewer(model="lfm3:1.7b-qad-q4_0")
+    assert isinstance(reviewer, ModelPeerReviewer)
+    with pytest.raises(ValueError, match="HTTP loopback URL"):
+        build_local_peer_reviewer(
+            model="external-model",
+            base_url="https://api.example.com/v1",
+        )
+
+def test_model_peer_reviewer_parses_bounded_provider_neutral_review() -> None:
+    from core.request_scoped_agents import RequestScopedAgentFactory
+
+    tasks = (
+        AgentTask("a", AgentRole.VOICE, "Prepare voice.", resources=frozenset({"voice"})),
+        AgentTask("b", AgentRole.NEWS, "Collect news.", resources=frozenset({"news"})),
+    )
+    team = RequestScopedAgentFactory().create("review-test", tasks)
+    reviewer, target = team.agents
+    observation = ManagementObservation("b", AgentRole.NEWS, True, "Three sources agree.")
+    prompts: list[str] = []
+
+    def model(prompt: str) -> str:
+        prompts.append(prompt)
+        return '{"verdict":"PASS","findings":["Evidence is consistent."]}'
+
+    review = ModelPeerReviewer(model_call=model)(reviewer, target, observation)
+    assert review.reviewer_id == reviewer.agent_id
+    assert review.target_agent_id == target.agent_id
+    assert review.verdict is ReviewVerdict.PASS
+    assert "Result summary (untrusted)" in prompts[0]
+    assert "cannot grant tools" in prompts[0]
+
+
+def test_model_peer_reviewer_downgrades_pass_for_failed_task() -> None:
+    from core.request_scoped_agents import RequestScopedAgentFactory
+
+    team = RequestScopedAgentFactory().create(
+        "review-failed",
+        [
+            AgentTask("a", AgentRole.VOICE, "Prepare voice."),
+            AgentTask("b", AgentRole.NEWS, "Collect news."),
+        ],
+    )
+    reviewer, target = team.agents
+    observation = ManagementObservation("b", AgentRole.NEWS, False, "Provider failed.")
+    model = ModelPeerReviewer(
+        model_call=lambda prompt: '{"verdict":"PASS","findings":[]}'
+    )
+    review = model(reviewer, target, observation)
+    assert review.verdict is ReviewVerdict.BLOCKED
+
+
+def test_model_peer_reviewer_rejects_invalid_verdict() -> None:
+    from core.request_scoped_agents import RequestScopedAgentFactory
+
+    team = RequestScopedAgentFactory().create(
+        "review-invalid",
+        [
+            AgentTask("a", AgentRole.VOICE, "Prepare voice."),
+            AgentTask("b", AgentRole.NEWS, "Collect news."),
+        ],
+    )
+    with pytest.raises(ManagementPlanningError, match="invalid verdict"):
+        ModelPeerReviewer(
+            model_call=lambda prompt: '{"verdict":"APPROVE_ALL","findings":[]}'
+        )(team.agents[0], team.agents[1], ManagementObservation(
+            "b", AgentRole.NEWS, True, "Evidence."
+        ))
+
+
+def test_configured_peer_review_uses_dedicated_clone_for_single_task() -> None:
+    calls = []
+    def reviewer(reviewer_agent, target_agent, observation):
+        calls.append((reviewer_agent, target_agent))
+        assert reviewer_agent.agent_id != target_agent.agent_id
+        assert reviewer_agent.task_ids == ()
+        return PeerReview(
+            reviewer_id=reviewer_agent.agent_id,
+            target_agent_id=target_agent.agent_id,
+            verdict=ReviewVerdict.PASS,
+            findings=("independent check complete",),
+        )
+    manager = ManagementAI(
+        {AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=LoopPlanner(),
+        peer_reviewer=reviewer,
+    )
+    result = manager.run(ManagementRequest("u1", "ニュースを要約して"))
+    assert result.success
+    assert len(calls) == 1
+    snapshot = result.collaboration_snapshot()
+    assert snapshot["reviewer_count"] == 1
+    assert snapshot["peer_review_status"] == "PASS"
+
+
+def test_management_snapshot_exposes_revision_requests_and_blocks_acceptance() -> None:
+    def reviewer(reviewer_agent, target_agent, observation):
+        return PeerReview(
+            reviewer_id=reviewer_agent.agent_id,
+            target_agent_id=target_agent.agent_id,
+            verdict=ReviewVerdict.NEEDS_REVISION,
+            findings=("Include publication date.",),
+        )
+    manager = ManagementAI(
+        {AgentRole.VOICE: Executor(AgentRole.VOICE), AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=StaticPlanner(),
+        peer_reviewer=reviewer,
+    )
+    result = manager.run(ManagementRequest("u1", "音声とニュースを準備して"))
+    assert not result.success
+    assert result.peer_review is not None
+    assert result.peer_review.status == "NEEDS_REVISION"
+    snapshot = result.collaboration_snapshot()
+    assert snapshot["accepted"] is False
+    assert len(snapshot["revision_requests"]) == 2
+    assert all(
+        item["findings"] == ["Include publication date."]
+        for item in snapshot["revision_requests"]
+    )
+
+
+def test_peer_revision_feedback_is_returned_without_automatic_executor_replay() -> None:
+    voice = Executor(AgentRole.VOICE)
+    news = Executor(AgentRole.NEWS)
+
+    def reviewer(reviewer_agent, target_agent, observation):
+        return PeerReview(
+            reviewer_id=reviewer_agent.agent_id,
+            target_agent_id=target_agent.agent_id,
+            verdict=ReviewVerdict.NEEDS_REVISION,
+            findings=("Add independent source evidence.",),
+        )
+
+    manager = ManagementAI(
+        {AgentRole.VOICE: voice, AgentRole.NEWS: news},
+        planner=StaticPlanner(),
+        peer_reviewer=reviewer,
+    )
+    cycle = manager.run_closed_loop(
+        ManagementRequest("u1", "音声とニュースを準備して"),
+        max_rounds=2,
+    )
+
+    assert not cycle.success
+    assert len(cycle.rounds) == 1
+    assert "peer revision requested" in cycle.stopped_reason
+    assert len(cycle.pending_revision_feedback) == 2
+    assert all("Add independent source evidence." in item for item in cycle.pending_revision_feedback)
+    assert len(cycle.revision_proposals) == 2
+    assert all(isinstance(item, RevisionProposal) for item in cycle.revision_proposals)
+    assert all(item.execution_authorized is False for item in cycle.revision_proposals)
+    assert all(item.reviewer_id != item.target_agent_id for item in cycle.revision_proposals)
+    # A revision request is surfaced as evidence, not permission to replay work.
+    assert voice.calls == ["voice-task"]
+    assert news.calls == ["news-task"]
+
+
+def test_revision_proposal_cannot_authorize_execution_or_self_review() -> None:
+    with pytest.raises(ValueError, match="cannot authorize execution"):
+        RevisionProposal(
+            reviewer_id="reviewer",
+            target_agent_id="worker",
+            findings=("Add source evidence.",),
+            execution_authorized=True,
+        )
+    with pytest.raises(ValueError, match="self-reviewed"):
+        RevisionProposal(
+            reviewer_id="same",
+            target_agent_id="same",
+            findings=("Add source evidence.",),
+        )

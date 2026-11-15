@@ -1,20 +1,8 @@
 name: Free Deterministic LOOP Pilot
 
+# Contract-test only. The standalone 30-minute runner and manual task
+# execution entry point are retired in the single-Orchestrator design.
 on:
-  schedule:
-    - cron: "*/30 * * * *"
-  workflow_dispatch:
-    inputs:
-      execute_task:
-        description: "Explicitly authorize one allowlisted task on main"
-        type: boolean
-        required: true
-        default: false
-      task_id:
-        description: "Exact task ID to authorize"
-        type: string
-        required: false
-        default: ""
   pull_request:
     branches:
       - main
@@ -47,8 +35,8 @@ jobs:
 
       - name: Validate free runner and queue contract
         env:
-          EXECUTE_TASK: ${{ inputs.execute_task || false }}
-          TASK_ID: ${{ inputs.task_id || '' }}
+          EXECUTE_TASK: 'false'
+          TASK_ID: ''
         run: |
           set -euo pipefail
           mkdir -p artifacts/free-deterministic-loop

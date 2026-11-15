@@ -21,12 +21,22 @@ def _normalize(message: str) -> str:
     return re.sub(r"\s+", "", command)
 
 
-def request_recovery_resume_review(user_id: str, message: str) -> Tuple[bool, str]:
+def request_recovery_resume_review(
+    user_id: str,
+    message: str,
+    *,
+    allow_state_change: bool = True,
+) -> Tuple[bool, str]:
     """Dispatch a state-only review acknowledgement; never runs a task itself."""
     command = _normalize(message)
     prefix = "RecoveryAI再開レビュー確認"
     if not command.startswith(prefix):
         return False, ""
+    if not allow_state_change:
+        return True, (
+            "Recovery AIの再開レビュー更新は現在停止中です。"
+            "HOLD／レビュー状態は変更せず、Orchestrator単独化の安全ゲートを維持します。"
+        )
     match = _COMMAND_RE.fullmatch(command)
     if not match:
         return True, (

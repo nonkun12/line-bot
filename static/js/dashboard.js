@@ -133,6 +133,66 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch(e) { const el=document.getElementById('systemError'); document.getElementById('systemErrorMessage').textContent=`システム情報の取得に失敗: ${e.message}`; el.classList.remove('hidden'); }
   }
 
+
+  async function fetchCollaboration(){
+    const summary=document.getElementById('collaborationSummary');
+    const agentsPanel=document.getElementById('collaborationAgents');
+    const findingsPanel=document.getElementById('collaborationFindings');
+    const updated=document.getElementById('collaborationUpdated');
+    if(!summary||!agentsPanel||!findingsPanel) return;
+    try{
+      const response=await fetch(api('/api/dashboard/orchestrator/collaboration'));
+      const data=await response.json();
+      if(!response.ok||!data.ok) throw new Error(data.error||'HTTP '+response.status);
+      const records=Array.isArray(data.snapshots)?data.snapshots:[];
+      if(!records.length){
+        summary.innerHTML='<div class="system-card"><div class="system-card-title">協力履歴</div><div class="system-status">⚪ 記録なし</div><div class="system-details">まだOrchestratorの協力記録はありません</div></div>';
+        agentsPanel.innerHTML='';
+        findingsPanel.textContent='実行記録がない状態を、成功や稼働中とは扱いません。';
+      }else{
+        const latest=records[0].snapshot||{};
+        const review=String(latest.peer_review_status||'NOT_RECORDED');
+        const reviewLabel={PASS:'🟢 相互レビュー PASS',BLOCKED:'🔴 BLOCKED',NEEDS_REVISION:'🟡 要修正',NOT_RUN:'⚪ 未実施',NOT_CONFIGURED:'⚪ 未設定'}[review]||'⚪ '+review;
+        const accepted=latest.accepted===true;
+        const cards=[
+          ['最新の依頼',String(records[0].created_at||'日時未取得'),'最新の保存記録'],
+          ['分身数',String(Number(latest.agent_count||0))+'体','論理エージェント数'],
+          ['レビュー専任',String(Number(latest.reviewer_count||0))+'体','実行タスクを持たない独立レビュー担当'],
+          ['修正依頼',String(Array.isArray(latest.revision_requests)?latest.revision_requests.length:0)+'件','指摘を担当分身へ返却・未受入'],
+          ['修正案作成',String(latest.revision_workflow?.draft_status||'NOT_STARTED'),'修正担当の案は未実行テキスト'],
+          ['独立再レビュー',String(latest.revision_workflow?.review_status||'NOT_STARTED'),'元レビュアーとは別IDで確認'],
+          ['相互レビュー',reviewLabel,'レビュー結果の記録'],
+          ['最終判定',accepted?'🟢 受入可能':'🔴 未受入','accepted=true の場合のみPASS相当']
+        ];
+        summary.innerHTML=cards.map(item=>'<div class="system-card"><div class="system-card-title">'+esc(item[0])+'</div><div class="system-status">'+esc(item[1])+'</div><div class="system-details">'+esc(item[2])+'</div></div>').join('');
+        const agentList=Array.isArray(latest.agents)?latest.agents:[];
+        agentsPanel.innerHTML=agentList.map(agent=>{
+          const taskIds=Array.isArray(agent.task_ids)?agent.task_ids:[];
+          return '<div class="system-card"><div class="system-card-title">'+esc(agent.role||'role未取得')+'</div><div class="system-details">Agent: <code>'+esc(agent.agent_id||'ID未取得')+'</code></div><div class="system-details">Task: '+esc(taskIds.join(' / ')||'未割当')+'</div></div>';
+        }).join('')||'<div class="system-details">分身の明細は記録されていません</div>';
+        const findings=Array.isArray(latest.findings)?latest.findings:[];
+        const revisions=Array.isArray(latest.revision_requests)?latest.revision_requests:[];
+        const findingText=findings.length?'レビュー所見：'+findings.map(x=>String(x)).join(' / '):'レビュー所見はありません';
+        const revisionText=revisions.length?'修正依頼：'+revisions.map(item=>{
+          const target=String(item.target_agent_id||'対象ID不明');
+          const notes=Array.isArray(item.findings)?item.findings.map(x=>String(x)).join(' / '):'詳細なし';
+          return target+' ← '+notes;
+        }).join(' | '):'未処理の修正依頼はありません';
+        const revisionStage=latest.revision_workflow||{};
+        const stageText='修正段階：案 '+String(revisionStage.draft_status||'NOT_STARTED')+' / 独立再レビュー '+String(revisionStage.review_status||'NOT_STARTED')+' / 実行許可 '+(revisionStage.execution_authorized===true?'あり':'なし');
+        const draftPreview=String(revisionStage.draft_preview||'').slice(0,500);
+        const reviewFindings=Array.isArray(revisionStage.review_findings)?revisionStage.review_findings.map(x=>String(x)).join(' / '):'';
+        findingsPanel.textContent=findingText+'\n'+revisionText+'\n'+stageText+(draftPreview?'\n修正案（最大500字）：'+draftPreview:'')+(reviewFindings?'\n独立再レビュー所見：'+reviewFindings:'');
+      }
+      if(updated) updated.textContent='更新 '+new Date().toLocaleTimeString('ja-JP')+' ・ '+records.length+'件';
+    }catch(error){
+      summary.innerHTML='<div class="system-card"><div class="system-card-title">協力履歴</div><div class="system-status">⚪ 未確認</div><div class="system-details">'+esc(error.message)+'</div></div>';
+      agentsPanel.innerHTML='';
+      findingsPanel.textContent='取得エラー時は履歴を成功扱いしません。';
+      if(updated) updated.textContent='取得失敗';
+    }
+  }
+
   async function fetchOrcaStatus(){
     const panel=document.getElementById('orcaLiveBoard');
     if(!panel) return;
@@ -170,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function deleteNote(id){if(!id||id==='-'||!confirm('このメモを削除してよろしいですか？'))return;try{const r=await fetch(api('/api/dashboard/notes/'+encodeURIComponent(id)),{method:'DELETE'});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||`HTTP ${r.status}`);fetchNotes();}catch(e){document.getElementById('errorMessage').textContent=`削除に失敗しました: ${e.message}`;error.classList.remove('hidden');}}
   async function addNote(title,body,category){try{const r=await fetch(api('/api/dashboard/notes'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,category})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||`HTTP ${r.status}`);closeModal();fetchNotes();}catch(e){document.getElementById('modalErrorMessage').textContent=e.message;document.getElementById('modalErrorAlert').classList.remove('hidden');}}
   const modal=document.getElementById('newNoteModal'); const closeModal=()=>modal.classList.add('hidden');
-  document.getElementById('refreshBtn').onclick=fetchNotes; document.getElementById('searchInput').oninput=filterNotes; document.getElementById('systemRefreshBtn').onclick=()=>{fetchSystem();fetchOrcaStatus();}; document.getElementById('newNoteBtn').onclick=()=>{document.getElementById('newNoteForm').reset();modal.classList.remove('hidden');document.getElementById('noteTitle').focus();}; document.getElementById('closeModalBtn').onclick=closeModal; document.getElementById('cancelModalBtn').onclick=closeModal; modal.onclick=e=>{if(e.target===modal)closeModal();};
+  document.getElementById('refreshBtn').onclick=fetchNotes; document.getElementById('searchInput').oninput=filterNotes; document.getElementById('systemRefreshBtn').onclick=()=>{fetchSystem();fetchOrcaStatus();fetchCollaboration();}; document.getElementById('newNoteBtn').onclick=()=>{document.getElementById('newNoteForm').reset();modal.classList.remove('hidden');document.getElementById('noteTitle').focus();}; document.getElementById('closeModalBtn').onclick=closeModal; document.getElementById('cancelModalBtn').onclick=closeModal; modal.onclick=e=>{if(e.target===modal)closeModal();};
   document.getElementById('newNoteForm').onsubmit=e=>{e.preventDefault();const t=document.getElementById('noteTitle').value.trim(),b=document.getElementById('noteBody').value.trim(),c=document.getElementById('noteCategory').value;if(t&&b)addNote(t,b,c);};
-  fetchSystem(); fetchNotes(); fetchOrcaStatus(); window.setInterval(fetchOrcaStatus, 60000);
+  fetchSystem(); fetchNotes(); fetchOrcaStatus(); fetchCollaboration(); document.getElementById('collaborationRefreshBtn')?.addEventListener('click', fetchCollaboration); window.setInterval(fetchOrcaStatus, 60000); window.setInterval(fetchCollaboration, 60000);
 });

@@ -81,6 +81,10 @@ from core.control_tower_status import (
     build_control_tower_status_reply,
     is_control_tower_status_command,
 )
+from core.orchestrator_status import (
+    build_orchestrator_status_reply,
+    is_orchestrator_status_command,
+)
 from core.github_integration_status import (
     build_github_integration_status_reply,
     is_github_integration_status_request,
@@ -360,14 +364,24 @@ def _handle_ai_gateway_request(ai_request):
             allowed_user_ids=os.environ.get("DEV_ALLOWED_USER_IDS", ""),
         )
 
-    # Resolve explicit read-only status requests and bounded Loop commands before
-    # any general/development routing. Status aliases are handled by the same
-    # GitHub-evidence path as the Loop status command and never dispatch a run.
-    loop_handled, loop_reply = request_distributed_loop(user_id, message)
+    # The Orchestrator is the single read-only status authority. This route
+    # runs before all legacy Loop and development dispatchers.
+    if is_orchestrator_status_command(message):
+        allowed_status_users = {
+            item.strip()
+            for item in os.environ.get("DISTRIBUTED_LOOP_LINE_USER_IDS", "").split(",")
+            if item.strip()
+        }
+        if not user_id or user_id not in allowed_status_users:
+            return "Orchestratorの状態確認は許可されていません。"
+        return build_orchestrator_status_reply(AI_REPORT_GITHUB_REPO, GITHUB_TOKEN)
+
+    # Legacy Loop status remains historical only; dispatch is disabled.
+    loop_handled, loop_reply = request_distributed_loop(user_id, message, allow_dispatch=False)
     if loop_handled:
         return loop_reply
 
-    review_handled, review_reply = request_recovery_resume_review(user_id, message)
+    review_handled, review_reply = request_recovery_resume_review(user_id, message, allow_state_change=False)
     if review_handled:
         return review_reply
 
@@ -383,41 +397,29 @@ def _handle_ai_gateway_request(ai_request):
     if core_image_reply is not None:
         return core_image_reply
 
-    # Only explicitly prefixed OpenClaw requests enter the authenticated Mac queue.
-    # All ordinary LINE messages keep using the existing cloud/Core routing path.
-    # The durable queue preserves requests while the Mac worker is offline.
+    # The Mac-local OpenClaw bridge is not part of the Mac-less
+    # Orchestrator-only route. Do not enqueue work for an offline local worker.
     if is_openclaw_intent(message):
-        try:
-            job_id = enqueue_openclaw_request(user_id, message)
-            return (
-                f"OpenClawへの依頼を受け付けました（Job {job_id}）。"
-                "Mac側のBonsaiワーカーが処理し、完了結果をこのLINEに返信します。"
-            )
-        except Exception as exc:
-            app.logger.warning(
-                "OPENCLAW BRIDGE ENQUEUE FAILED: %s",
-                type(exc).__name__,
-            )
-            return (
-                "OpenClawへの依頼を受け付けられませんでした。"
-                "Macブリッジ設定とキュー状態を確認してください。"
-            )
+        return (
+            "旧OpenClaw Macブリッジは停止中です。"
+            "Macを使わないOrchestrator単独運用へ統合中のため、"
+            "この依頼は受け付け・キュー登録されていません。"
+        )
 
-    # Route only explicit Obsidian commands to the authenticated Mac approval queue.
-    # Never fall through to a cloud agent that cannot access the local vault.
+    # The Obsidian approval queue is also Mac-local; keep it closed in
+    # the Mac-less single-Orchestrator deployment.
     if is_obsidian_intent(message):
-        try:
-            job_id = enqueue_obsidian_request(user_id, message)
-            return f"Obsidianへの保存依頼を受け付けました。Macで「実行」を選ぶと保存します。（Job {job_id}）"
-        except Exception:
-            return "Obsidianへの保存依頼を受け付けられませんでした。設定を確認してください。"
+        return (
+            "旧Obsidian Macブリッジは停止中です。"
+            "Orchestrator統合ルートが有効になるまで、保存依頼は受け付けていません。"
+        )
 
     app_development_requirement = extract_app_development_request(message)
     if app_development_requirement is not None:
-        return dispatch_app_development_workflow(
-            app_development_requirement,
-            user_id=user_id,
-            token=GITHUB_TOKEN,
+        return (
+            "旧アプリ開発workflowの直接起動は停止中です。"
+            "Orchestrator単独化の計画・承認ルートへ統合中のため、"
+            "この依頼はキュー追加・実行されていません。"
         )
 
     self_introduction_reply = handle_self_introduction(message)
@@ -426,11 +428,10 @@ def _handle_ai_gateway_request(ai_request):
 
     development_instruction = extract_development_instruction(message)
     if development_instruction is not None:
-        return dispatch_development_workflow(
-            development_instruction,
-            user_id=user_id,
-            token=GITHUB_TOKEN,
-            repository=AI_REPORT_GITHUB_REPO,
+        return (
+            "旧開発workflowのLINE直接起動は停止中です。"
+            "Orchestrator単独化の計画・承認ルートへ統合中のため、"
+            "この指示はキュー追加・実行されていません。"
         )
 
     if not _core_dynamic_enabled():
