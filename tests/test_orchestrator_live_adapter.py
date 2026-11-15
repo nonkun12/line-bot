@@ -66,7 +66,7 @@ def test_missing_hold_and_budget_evidence_blocks_without_execution():
     assert snapshot["status"] == "BLOCKED"
     assert "global_hold_state_missing" in snapshot["reasons"]
     assert "budget_evidence_missing" in snapshot["reasons"]
-    assert snapshot["candidate_ids"] == ["task-a"]
+    assert snapshot["candidate_ids"] == []
     assert snapshot["execution_authorized"] is False
     assert snapshot["approval_evidence_verified"] is False
     assert snapshot["budget_evidence_verified"] is False
