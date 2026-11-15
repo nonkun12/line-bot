@@ -385,6 +385,25 @@ def build_local_peer_reviewer(*, model: str, base_url: str = "http://127.0.0.1:1
 class ManagementAI:
     """Manager -> distributed specialists -> result mailbox."""
 
+    @classmethod
+    def with_local_peer_review(
+        cls,
+        executors: Mapping[AgentRole, object],
+        *,
+        model: str,
+        base_url: str = "http://127.0.0.1:11434/v1",
+        planner: ManagementPlanner | None = None,
+        max_workers: int = 1,
+        isolated: bool = False,
+    ) -> "ManagementAI":
+        """Construct a manager whose peer review uses only a loopback Ollama model."""
+        return cls(
+            executors,
+            planner=planner,
+            max_workers=max_workers,
+            isolated=isolated,
+            peer_reviewer=build_local_peer_reviewer(model=model, base_url=base_url),
+        )
     def __init__(
         self,
         executors: Mapping[AgentRole, object],
