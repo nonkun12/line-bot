@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib, json, math, re
 from typing import Callable, Sequence
+from .ai_factory_stage170_evolutionary_merge_strategy_adaptation import _plan_digest
 
 _HEX=re.compile(r"^[0-9a-f]{64}$")
 _ID=re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
@@ -42,6 +43,11 @@ class Stage171CombinationPlanner:
         if not getattr(strategy_plan,"proposal_only",False) or getattr(strategy_plan,"model_merge_authorized",True) or getattr(strategy_plan,"weight_mutation_authorized",True) or getattr(strategy_plan,"generation_advanced",True):
             raise EvolutionaryMergePipelineError("unsafe Stage 170 strategy plan")
         _digest(strategy_plan.digest,"strategy plan"); _digest(strategy_plan.evaluation_suite_digest,"suite")
+        expected=_plan_digest(strategy_plan.source_ledger_digest,strategy_plan.evaluation_suite_digest,
+            strategy_plan.source_generation,strategy_plan.target_generation,strategy_plan.allocations,
+            strategy_plan.parameter_merge_share,strategy_plan.orchestration_share,strategy_plan.exploration_share)
+        if expected!=strategy_plan.digest or strategy_plan.target_generation!=strategy_plan.source_generation+1:
+            raise EvolutionaryMergePipelineError("Stage 170 strategy plan digest or generation lineage mismatch")
         if not isinstance(max_combinations,int) or isinstance(max_combinations,bool) or not 1<=max_combinations<=128:
             raise EvolutionaryMergePipelineError("combination bound invalid")
         if not isinstance(artifacts,Sequence) or not 2<=len(artifacts)<=64: raise EvolutionaryMergePipelineError("two to 64 artifacts required")
@@ -89,6 +95,8 @@ class Stage172CompatibilityGate:
             parents=[index.get(x) for x in c.parent_model_ids]; reasons=[]
             if any(x is None for x in parents): reasons.append("parent metadata missing")
             else:
+                if tuple(x.artifact_digest for x in parents) != c.parent_artifact_digests:
+                    reasons.append("parent artifact digest lineage mismatch")
                 for field in ("architecture","tokenizer_digest","tensor_schema_digest","model_format","quantization","provenance_digest","license_id"):
                     values=[getattr(x,field) for x in parents]
                     if any(not x for x in values) or len(set(values))!=1: reasons.append(f"{field} mismatch or missing")
