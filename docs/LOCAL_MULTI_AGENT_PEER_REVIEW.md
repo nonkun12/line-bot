@@ -79,3 +79,22 @@ This endpoint reports evidence only. It cannot approve tasks, grant permissions,
 5. Neither draft nor review can set execution authority. Even `PASS` is review evidence only, not approval to execute or apply a patch.
 
 The model call is dependency-injected and is not automatically invoked by the runtime. No files, queue entries, Issues, PRs, or production state are changed by this workflow. The collaboration snapshot and dashboard now expose the revision-stage fields, defaulting explicitly to `NOT_STARTED`; completed draft/review objects can be serialized with `revision_workflow_snapshot()`. The runtime bridge does not yet invoke the revision model or persist completed draft/review objects, so the dashboard must not be read as evidence that those stages have run. A separately approved integration trial remains future work.
+
+
+## Runtime revision workflow gate (disabled by default)
+
+The management bridge can invoke the evidence-only revision stage only when both `ORCHESTRATOR_LOCAL_PEER_REVIEW_ENABLED=true` and `ORCHESTRATOR_LOCAL_REVISION_WORKFLOW_ENABLED=true` are explicitly set.
+
+The revision stage requires two different, already-installed local Ollama model names:
+
+- `ORCHESTRATOR_LOCAL_REVISION_MODEL=<revision-drafting-model>`
+- `ORCHESTRATOR_LOCAL_REVISION_REVIEW_MODEL=<independent-review-model>`
+
+Optional loopback endpoints:
+
+- `ORCHESTRATOR_LOCAL_REVISION_URL=http://127.0.0.1:11434/v1`
+- `ORCHESTRATOR_LOCAL_REVISION_REVIEW_URL=http://127.0.0.1:11434/v1`
+
+The bridge rejects missing model names and identical model names. It creates separate adapter instances for the two configured models. This provides model-name diversity only; it does not prove separate operating-system processes, separate hardware, or independent model lineage. Both endpoints remain subject to the loopback-only adapter validation. No model is downloaded automatically and no cloud fallback exists.
+
+The revision stage runs only after the peer reviewer returns `NEEDS_REVISION`. Its output remains inert text plus review evidence. Even a revision-stage `PASS` does not change the original task's execution status, apply a patch, replay an executor, write to the work queue, or authorize a merge/deploy. Missing configuration, invalid output, identity collision, or revision-stage failure stops the request without a retry.
