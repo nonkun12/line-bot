@@ -58,7 +58,7 @@ reason code, and timestamp.
 1. Build and sign broker and positive client with the test-only signing setup.
 2. Pin the exact expected designated requirement in broker test configuration.
 3. Launch the client in the intended logged-in user session.
-4. Confirm the broker derives the expected identity from the XPC connection.
+4. Confirm the OS-enforced peer signing requirement accepts the expected client.
 5. Confirm a constant probe receives ACCEPTED_TEST_IDENTITY.
 6. Confirm the response conveys no approval or execution authority.
 
@@ -107,7 +107,7 @@ Xcode/Swift toolchain, signing model, and test distribution method are reviewed.
 After implementation, require:
 - positive signed-client test;
 - all negative cases above;
-- independent verification of audit-token-to-code-signing validation;
+- independent verification that the selected XPC API enforces the pinned peer signing requirement;
 - lifecycle/restart/replay tests;
 - static inspection confirming no desktop API or approval path exists;
 - independent security review.
