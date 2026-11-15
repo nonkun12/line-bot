@@ -81,6 +81,10 @@ from core.control_tower_status import (
     build_control_tower_status_reply,
     is_control_tower_status_command,
 )
+from core.orchestrator_status import (
+    build_orchestrator_status_reply,
+    is_orchestrator_status_command,
+)
 from core.github_integration_status import (
     build_github_integration_status_reply,
     is_github_integration_status_request,
@@ -360,9 +364,12 @@ def _handle_ai_gateway_request(ai_request):
             allowed_user_ids=os.environ.get("DEV_ALLOWED_USER_IDS", ""),
         )
 
-    # Resolve explicit read-only status requests and bounded Loop commands before
-    # any general/development routing. Status aliases are handled by the same
-    # GitHub-evidence path as the Loop status command and never dispatch a run.
+    # The Orchestrator is the single read-only status authority. This route
+    # runs before all legacy Loop and development dispatchers.
+    if is_orchestrator_status_command(message):
+        return build_orchestrator_status_reply(AI_REPORT_GITHUB_REPO, GITHUB_TOKEN)
+
+    # Legacy Loop status remains historical only; dispatch is disabled.
     loop_handled, loop_reply = request_distributed_loop(user_id, message, allow_dispatch=False)
     if loop_handled:
         return loop_reply
@@ -414,10 +421,10 @@ def _handle_ai_gateway_request(ai_request):
 
     app_development_requirement = extract_app_development_request(message)
     if app_development_requirement is not None:
-        return dispatch_app_development_workflow(
-            app_development_requirement,
-            user_id=user_id,
-            token=GITHUB_TOKEN,
+        return (
+            "旧アプリ開発workflowの直接起動は停止中です。"
+            "Orchestrator単独化の計画・承認ルートへ統合中のため、"
+            "この依頼はキュー追加・実行されていません。"
         )
 
     self_introduction_reply = handle_self_introduction(message)
@@ -426,11 +433,10 @@ def _handle_ai_gateway_request(ai_request):
 
     development_instruction = extract_development_instruction(message)
     if development_instruction is not None:
-        return dispatch_development_workflow(
-            development_instruction,
-            user_id=user_id,
-            token=GITHUB_TOKEN,
-            repository=AI_REPORT_GITHUB_REPO,
+        return (
+            "旧開発workflowのLINE直接起動は停止中です。"
+            "Orchestrator単独化の計画・承認ルートへ統合中のため、"
+            "この指示はキュー追加・実行されていません。"
         )
 
     if not _core_dynamic_enabled():

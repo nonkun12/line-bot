@@ -82,6 +82,13 @@ and must not be presented as current Orchestrator activity.
 
 ## LINE integration contract
 
+LINE status aliases now read the queue, catalog, and durable state through
+GitHub read-only content requests. The reply is explicitly plan-only and
+reports missing/unverified HOLD, budget, and approval evidence as BLOCKED.
+Legacy app-development and generic development workflow dispatches are also
+closed from LINE until a single Orchestrator request-planning route is ready.
+No status query dispatches Actions or mutates repository state.
+
 LINE requests are split into two strict classes:
 
 - Read-only: status, queue summary, plan preview, blocker explanation.
