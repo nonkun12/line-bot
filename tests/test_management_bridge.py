@@ -367,3 +367,113 @@ def test_local_peer_review_enabled_without_model_fails_closed_before_execution(m
         planner=StaticPlanner(),
     )
     assert result == "管理AIの実行で問題が発生したため、同じ専門AIを再実行せずに処理を停止しました。"
+
+
+
+def test_revision_workflow_is_off_by_default(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.delenv("ORCHESTRATOR_LOCAL_REVISION_WORKFLOW_ENABLED", raising=False)
+    monkeypatch.delenv("ORCHESTRATOR_LOCAL_PEER_REVIEW_ENABLED", raising=False)
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry", lambda: object()
+    )
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: FakeExecutor(AgentRole.NEWS),
+            AgentRole.STOCKS: FakeExecutor(AgentRole.STOCKS),
+        },
+    )
+    fake_run = SimpleNamespace(
+        success=False,
+        peer_review=SimpleNamespace(status="NEEDS_REVISION", revision_requests=()),
+        agent_team=None,
+        observations=(),
+        collaboration_snapshot=lambda: {"revision_workflow": {"draft_status": "NOT_STARTED"}},
+    )
+    class FakeManager:
+        def run(self, request):
+            return fake_run
+    monkeypatch.setattr(
+        "core.management_bridge.ManagementAI",
+        lambda *args, **kwargs: FakeManager(),
+    )
+    monkeypatch.setattr(
+        "core.management_bridge.record_collaboration_snapshot",
+        lambda **kwargs: None,
+    )
+    result = run_management_request(
+        "u1", "AIニュースと株価を調べて", planner=StaticPlanner()
+    )
+    assert result == "管理AIの実行で問題が発生したため、同じ専門AIを再実行せずに処理を停止しました。"
+
+
+def test_opt_in_revision_workflow_uses_bounded_four_identity_evidence(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_PEER_REVIEW_ENABLED", "true")
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_PEER_REVIEW_MODEL", "test-local-model")
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_REVISION_WORKFLOW_ENABLED", "true")
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry", lambda: object()
+    )
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: FakeExecutor(AgentRole.NEWS),
+            AgentRole.STOCKS: FakeExecutor(AgentRole.STOCKS),
+        },
+    )
+    target = SimpleNamespace(agent_id="req-1:target", task_ids=("news-task",))
+    team = SimpleNamespace(request_id="req-1", agents=(target,))
+    revision_request = SimpleNamespace(
+        reviewer_id="req-1:original-reviewer",
+        target_agent_id=target.agent_id,
+        findings=("Add a source citation.",),
+    )
+    peer_review = SimpleNamespace(
+        status="NEEDS_REVISION", revision_requests=(revision_request,)
+    )
+    fake_run = SimpleNamespace(
+        success=False,
+        peer_review=peer_review,
+        agent_team=team,
+        observations=(SimpleNamespace(task_id="news-task", summary="Initial result."),),
+        collaboration_snapshot=lambda: {"revision_workflow": {"draft_status": "NOT_STARTED"}},
+    )
+    class FakeManager:
+        def run(self, request):
+            return fake_run
+    monkeypatch.setattr(
+        "core.management_bridge.ManagementAI.with_local_peer_review",
+        classmethod(lambda cls, *args, **kwargs: FakeManager()),
+    )
+    class FakeLocalCall:
+        def __init__(self, **kwargs):
+            self.model = kwargs["model"]
+        def __call__(self, prompt):
+            if "Prepare a proposed corrected artifact" in prompt:
+                return '{"content":"Revised result with citation.","addressed_findings":["Add a source citation."]}'
+            return '{"verdict":"PASS","findings":[]}'
+    monkeypatch.setattr(
+        "core.local_model_adapter.OllamaLocalModelCall", FakeLocalCall
+    )
+    captured = {}
+    monkeypatch.setattr(
+        "core.management_bridge.record_collaboration_snapshot",
+        lambda **kwargs: captured.update(kwargs),
+    )
+    result = run_management_request(
+        "u1", "AIニュースと株価を調べて", planner=StaticPlanner()
+    )
+    assert result == "管理AIの実行で問題が発生したため、同じ専門AIを再実行せずに処理を停止しました。"
+    evidence = captured["snapshot"]["revision_workflow"]
+    assert evidence["draft_status"] == "PREPARED"
+    assert evidence["review_status"] == "PASS"
+    assert evidence["execution_authorized"] is False
+    assert evidence["independent_reviewer_id"] not in {
+        evidence["revision_agent_id"],
+        evidence["target_agent_id"],
+        evidence["original_reviewer_id"],
+    }
