@@ -40,7 +40,7 @@ def fixtures(measured=None, accepted=True):
     design = AdaptiveExperimentDesignReport(
         "4" * 64, "5" * 64, SUITE, 7, (recipe,), 2, DESIGN,
     )
-    attestation = DesignAttestation(DESIGN, SUITE, 7, "independent-designer", "signature")
+    attestation = DesignAttestation("4" * 64, SUITE, 7, "independent-designer", "signature")
     plan = MergeEvaluationPlan(
         "plan-165", "candidate-165", 7, MergeAlgorithm.SLERP,
         MergeStrategyParameters(interpolation=.5), ("parent-a", "parent-b"),
