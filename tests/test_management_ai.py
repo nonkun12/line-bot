@@ -15,6 +15,7 @@ from core.management_ai import (
     ManagementPlanner,
     ManagementPlanningError,
     ModelManagementPlanner,
+    RevisionProposal,
     ModelPeerReviewer,
     build_local_peer_reviewer,
 )
@@ -1008,6 +1009,26 @@ def test_peer_revision_feedback_is_returned_without_automatic_executor_replay() 
     assert "peer revision requested" in cycle.stopped_reason
     assert len(cycle.pending_revision_feedback) == 2
     assert all("Add independent source evidence." in item for item in cycle.pending_revision_feedback)
+    assert len(cycle.revision_proposals) == 2
+    assert all(isinstance(item, RevisionProposal) for item in cycle.revision_proposals)
+    assert all(item.execution_authorized is False for item in cycle.revision_proposals)
+    assert all(item.reviewer_id != item.target_agent_id for item in cycle.revision_proposals)
     # A revision request is surfaced as evidence, not permission to replay work.
     assert voice.calls == ["voice-task"]
     assert news.calls == ["news-task"]
+
+
+def test_revision_proposal_cannot_authorize_execution_or_self_review() -> None:
+    with pytest.raises(ValueError, match="cannot authorize execution"):
+        RevisionProposal(
+            reviewer_id="reviewer",
+            target_agent_id="worker",
+            findings=("Add source evidence.",),
+            execution_authorized=True,
+        )
+    with pytest.raises(ValueError, match="self-reviewed"):
+        RevisionProposal(
+            reviewer_id="same",
+            target_agent_id="same",
+            findings=("Add source evidence.",),
+        )
