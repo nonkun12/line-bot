@@ -56,9 +56,16 @@ class Stage139LoopController:
         pending: list[PendingAgentCandidate] = []
         failures: list[str] = []
         results: list[OrchestrationResult] = []
+        candidate_attempts = 0
         for result in raw.processed:
             if result.candidate is None:
                 results.append(result)
+                continue
+            candidate_attempts += 1
+            if candidate_attempts > safety.max_candidates_per_tick:
+                reason = "candidate limit exceeded at Stage 139 catalog boundary"
+                failures.append(f"{result.gap_id}: {reason}")
+                results.append(replace(result, candidate=None, blocked_reason=reason))
                 continue
             try:
                 record = self.candidate_lookup(result.candidate.agent_name)
