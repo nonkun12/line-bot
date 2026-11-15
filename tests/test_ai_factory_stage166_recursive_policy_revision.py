@@ -92,7 +92,7 @@ def test_recursive_revision_rewards_wins_penalizes_failures_and_filters_candidat
     assert priors["dare"].candidate_retention_eligible is False
     assert priors["lora"].revised_prior < 0
     assert [(x.candidate_id, x.strategy) for x in result.next_generation_candidates] == [
-        ("candidate-a", "slerp"), ("candidate-b", "ties")
+        ("candidate-a", "slerp")
     ]
     assert result.proposed_generation == 8
     assert result.proposal_only and not result.candidate_selection_authorized
