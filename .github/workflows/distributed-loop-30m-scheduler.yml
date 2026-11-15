@@ -47,8 +47,9 @@ jobs:
         run: |
           set -euo pipefail
           month_start="$(date -u +%Y-%m-01)"
+          query_start="$(date -u -d "$month_start - 1 day" +%Y-%m-%d)"
           gh api --paginate --slurp \
-            "repos/$REPOSITORY/actions/runs?per_page=100&created=%3E%3D$month_start" \
+            "repos/$REPOSITORY/actions/runs?per_page=100&created=%3E%3D$query_start" \
             > /tmp/actions-runs-pages.json
           : > /tmp/actions-jobs.jsonl
           while IFS= read -r run_id; do
