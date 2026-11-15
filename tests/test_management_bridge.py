@@ -415,6 +415,8 @@ def test_opt_in_revision_workflow_uses_bounded_four_identity_evidence(monkeypatc
     monkeypatch.setenv("ORCHESTRATOR_LOCAL_PEER_REVIEW_ENABLED", "true")
     monkeypatch.setenv("ORCHESTRATOR_LOCAL_PEER_REVIEW_MODEL", "test-local-model")
     monkeypatch.setenv("ORCHESTRATOR_LOCAL_REVISION_WORKFLOW_ENABLED", "true")
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_REVISION_MODEL", "bonsai:9b")
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_REVISION_REVIEW_MODEL", "lfm3:1.7b-qad-q4_0")
     monkeypatch.setattr(
         "core.management_bridge.build_core_agent_registry", lambda: object()
     )
@@ -449,9 +451,11 @@ def test_opt_in_revision_workflow_uses_bounded_four_identity_evidence(monkeypatc
         "core.management_bridge.ManagementAI.with_local_peer_review",
         classmethod(lambda cls, *args, **kwargs: FakeManager()),
     )
+    model_instances = []
     class FakeLocalCall:
         def __init__(self, **kwargs):
             self.model = kwargs["model"]
+            model_instances.append(self.model)
         def __call__(self, prompt):
             if "Prepare a proposed corrected artifact" in prompt:
                 return '{"content":"Revised result with citation.","addressed_findings":["Add a source citation."]}'
@@ -472,8 +476,63 @@ def test_opt_in_revision_workflow_uses_bounded_four_identity_evidence(monkeypatc
     assert evidence["draft_status"] == "PREPARED"
     assert evidence["review_status"] == "PASS"
     assert evidence["execution_authorized"] is False
+    assert model_instances == ["bonsai:9b", "lfm3:1.7b-qad-q4_0"]
     assert evidence["independent_reviewer_id"] not in {
         evidence["revision_agent_id"],
         evidence["target_agent_id"],
         evidence["original_reviewer_id"],
     }
+
+
+
+def test_revision_workflow_rejects_same_model_for_draft_and_independent_review(monkeypatch):
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_PEER_REVIEW_ENABLED", "true")
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_PEER_REVIEW_MODEL", "lfm3:1.7b-qad-q4_0")
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_REVISION_WORKFLOW_ENABLED", "true")
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_REVISION_MODEL", "bonsai:9b")
+    monkeypatch.setenv("ORCHESTRATOR_LOCAL_REVISION_REVIEW_MODEL", "bonsai:9b")
+    monkeypatch.setattr(
+        "core.management_bridge.build_core_agent_registry", lambda: object()
+    )
+    monkeypatch.setattr(
+        "core.management_bridge.build_registry_executors",
+        lambda registry, request: {
+            AgentRole.NEWS: FakeExecutor(AgentRole.NEWS),
+            AgentRole.STOCKS: FakeExecutor(AgentRole.STOCKS),
+        },
+    )
+    target = type("Agent", (), {"agent_id": "req:target", "task_ids": ("news-task",)})()
+    team = type("Team", (), {"request_id": "req", "agents": (target,)})()
+    revision_request = type("RevisionRequest", (), {
+        "reviewer_id": "req:original-reviewer",
+        "target_agent_id": target.agent_id,
+        "findings": ("Add a source citation.",),
+    })()
+    peer_review = type("PeerReview", (), {
+        "status": "NEEDS_REVISION",
+        "revision_requests": (revision_request,),
+    })()
+    fake_run = type("Run", (), {
+        "success": False,
+        "peer_review": peer_review,
+        "agent_team": team,
+        "observations": (type("Observation", (), {
+            "task_id": "news-task", "summary": "Initial result."
+        })(),),
+        "collaboration_snapshot": lambda self: {},
+    })()
+    class FakeManager:
+        def run(self, request):
+            return fake_run
+    monkeypatch.setattr(
+        "core.management_bridge.ManagementAI.with_local_peer_review",
+        classmethod(lambda cls, *args, **kwargs: FakeManager()),
+    )
+    monkeypatch.setattr(
+        "core.management_bridge.record_collaboration_snapshot",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("must not persist incomplete evidence")),
+    )
+    result = run_management_request(
+        "u1", "AIニュースと株価を調べて", planner=StaticPlanner()
+    )
+    assert result == "管理AIの実行で問題が発生したため、同じ専門AIを再実行せずに処理を停止しました。"
