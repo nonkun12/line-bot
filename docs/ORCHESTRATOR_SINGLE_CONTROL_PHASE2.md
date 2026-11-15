@@ -66,6 +66,16 @@ review-required tasks are never candidates.
 - No Actions dispatch, issue/PR write, branch write, push, merge, deploy, or
   approval mutation is part of Phase 2.
 
+## Legacy LINE route closure
+
+The application entry point now calls the legacy distributed-loop trigger with
+dispatch disabled. Start commands for the old loop return a closed-route
+message and do not call the GitHub Actions dispatch API. The Recovery AI
+resume-review acknowledgement route is also disabled from LINE while the
+single-control migration is in progress. Neither route can clear HOLD or
+change review state. Historical old-loop status is labeled as legacy evidence
+and must not be presented as current Orchestrator activity.
+
 ## LINE integration contract
 
 LINE requests are split into two strict classes:
