@@ -148,6 +148,14 @@ class ManagementRun:
             "accepted_agent_ids": list(review.accepted_agent_ids) if review else [],
             "blocked_agent_ids": list(review.blocked_agent_ids) if review else [],
             "findings": list(review.findings[:8]) if review else [],
+            "revision_requests": [
+                {
+                    "reviewer_id": item.reviewer_id,
+                    "target_agent_id": item.target_agent_id,
+                    "findings": list(item.findings[:8]),
+                }
+                for item in (review.revision_requests if review else ())
+            ],
             "accepted": self.success,
         }
     @property
