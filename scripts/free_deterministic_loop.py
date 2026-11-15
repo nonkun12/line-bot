@@ -88,6 +88,22 @@ def build_candidate(task: dict, original: str) -> tuple[str, str]:
     return candidate, "PATCHED"
 
 
+def run_targeted_pytest(target: Path, original: str, patched: bool, pytest_target: str):
+    """Run the focused test and restore the source on failure or interruption."""
+    try:
+        test = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "--tb=short", pytest_target],
+            cwd=ROOT, text=True, capture_output=True, timeout=600, check=False,
+        )
+    except BaseException:
+        if patched:
+            target.write_text(original, encoding="utf-8")
+        raise
+    if test.returncode != 0 and patched:
+        target.write_text(original, encoding="utf-8")
+    return test
+
+
 def run_task(task: dict) -> dict:
     task_id = task.get("id")
     if task_id not in TASKS:
@@ -125,13 +141,8 @@ def run_task(task: dict) -> dict:
         finally:
             temporary.unlink(missing_ok=True)
 
-    test = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "--tb=short", spec["pytest_target"]],
-        cwd=ROOT, text=True, capture_output=True, timeout=600, check=False,
-    )
+    test = run_targeted_pytest(target, original, plan_status == "PATCHED", spec["pytest_target"])
     passed = test.returncode == 0
-    if not passed and plan_status == "PATCHED":
-        target.write_text(original, encoding="utf-8")
 
     return {
         "task_id": task_id,
