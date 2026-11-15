@@ -22,7 +22,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
       CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
-      MONTHLY_REPOSITORY_MINUTE_BUDGET: '1800'
     steps:
       - name: Checkout trusted main for stop-file check
         uses: actions/checkout@v4
@@ -41,42 +40,12 @@ jobs:
             echo "dispatch=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Measure this repository's current-month Actions usage
-        id: budget
-        if: steps.kill.outputs.dispatch == 'true'
-        run: |
-          set -euo pipefail
-          month_start="$(date -u +%Y-%m-01)"
-          query_start="$(date -u -d "$month_start - 1 day" +%Y-%m-%d)"
-          gh api --paginate --slurp \
-            "repos/$REPOSITORY/actions/runs?per_page=100&created=%3E%3D$query_start" \
-            > /tmp/actions-runs-pages.json
-          : > /tmp/actions-jobs.jsonl
-          while IFS= read -r run_id; do
-            [ -n "$run_id" ] || continue
-            gh api --paginate --slurp \
-              "repos/$REPOSITORY/actions/runs/$run_id/jobs?per_page=100" \
-              | jq -c '.[].jobs[]?' >> /tmp/actions-jobs.jsonl
-          done < <(jq -r '.[].workflow_runs[]?.id' /tmp/actions-runs-pages.json)
-          set +e
-          python -m scripts.distributed_loop_budget_gate \
-            --jobs-jsonl /tmp/actions-jobs.jsonl \
-            --budget-minutes "$MONTHLY_REPOSITORY_MINUTE_BUDGET"
-          result=$?
-          set -e
-          if [ "$result" -eq 0 ]; then
-            echo "dispatch=true" >> "$GITHUB_OUTPUT"
-          elif [ "$result" -eq 1 ]; then
-            echo "dispatch=false" >> "$GITHUB_OUTPUT"
-            echo "Budget ceiling reached; no development run dispatched." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Budget evidence invalid; fail closed without dispatch." >> "$GITHUB_STEP_SUMMARY"
-            exit "$result"
-          fi
-
+      # Public repositories' standard GitHub-hosted runners do not consume
+      # included Actions minutes. Avoid scanning every historical run/job:
+      # that N+1 API loop can time out and is not an account-wide billing guard.
       - name: Avoid duplicate active distributed loops
         id: active
-        if: steps.kill.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true'
+        if: steps.kill.outputs.dispatch == 'true'
         run: |
           set -euo pipefail
           active="$(gh api \
@@ -90,7 +59,7 @@ jobs:
           fi
 
       - name: Dispatch one-task distributed development cycle
-        if: steps.kill.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true' && steps.active.outputs.dispatch == 'true'
+        if: steps.kill.outputs.dispatch == 'true' && steps.active.outputs.dispatch == 'true'
         run: |
           set -euo pipefail
           gh workflow run distributed-autonomous-loop.yml \
@@ -104,7 +73,7 @@ jobs:
             echo "# 30-minute Distributed LOOP Scheduler"
             echo "- Trigger: ${GITHUB_EVENT_NAME}"
             echo "- Kill switch: ${CONTROL_TOWER_KILL_SWITCH}"
-            echo "- Repository-local monthly budget: ${MONTHLY_REPOSITORY_MINUTE_BUDGET} minutes"
+            echo "- Runner: ubuntu-latest (standard GitHub-hosted)"
             echo "- Target task limit: 1"
             echo "- Merge/deploy: not performed by scheduler"
           } >> "$GITHUB_STEP_SUMMARY"
