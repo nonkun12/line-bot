@@ -130,12 +130,14 @@ class OrchestratorCoreTests(unittest.TestCase):
             {"id": "highest-unapproved", "priority": 10},
             {"id": "lower-caller-approved", "priority": 5, "execution_approved": True},
         ]))
-        self.assertEqual(plan["status"], "PLAN_READY")
+        self.assertEqual(plan["status"], "BLOCKED")
         self.assertEqual(plan["selected_candidate"], "highest-unapproved")
         self.assertFalse(plan["execution_authorized"])
         self.assertFalse(plan["approval_evidence_verified"])
         self.assertFalse(plan["budget_evidence_verified"])
         self.assertIn("approval_evidence_unverified", plan["reasons"])
+        self.assertIn("global_hold_evidence_unverified", plan["reasons"])
+        self.assertIn("budget_evidence_unverified", plan["reasons"])
         self.assertFalse(plan["execution_performed"])
 
     def test_budget_exhaustion_blocks(self):
@@ -150,7 +152,7 @@ class OrchestratorCoreTests(unittest.TestCase):
         plan = build_plan(payload([
             {"id": "work", "estimated_minutes": 101, "execution_approved": True},
         ]))
-        self.assertEqual(plan["status"], "HOLD")
+        self.assertEqual(plan["status"], "BLOCKED")
         self.assertIn("insufficient_remaining_budget", plan["reasons"])
 
     def test_missing_dependency_is_rejected(self):
@@ -213,7 +215,7 @@ class OrchestratorCoreTests(unittest.TestCase):
                 capture_output=True, text=True, check=False, timeout=15,
             )
         self.assertEqual(result.returncode, 0)
-        self.assertIn("**Status:** PLAN_READY", result.stdout)
+        self.assertIn("**Status:** BLOCKED", result.stdout)
         self.assertIn("Read-only audit", result.stdout)
         self.assertIn("execution=false", result.stdout)
         self.assertIn("approval_evidence_unverified", result.stdout)
