@@ -32,6 +32,7 @@ class CandidateEvaluationEvidence:
     evaluation_suite_digest: str
     generation: int
     evaluator_id: str
+    trial_id: str
     evaluator_key_id: str
     signature: str
     metrics: tuple[tuple[str, float], ...]
@@ -109,7 +110,7 @@ def _evidence_payload(item: CandidateEvaluationEvidence) -> dict:
         "cohort_digest": item.cohort_digest,
         "evaluation_suite_digest": item.evaluation_suite_digest,
         "generation": item.generation, "evaluator_id": item.evaluator_id,
-        "evaluator_key_id": item.evaluator_key_id,
+        "trial_id": item.trial_id, "evaluator_key_id": item.evaluator_key_id,
         "metrics": list(item.metrics), "baseline_metrics": list(item.baseline_metrics),
     }
 
@@ -176,6 +177,7 @@ class GenerationSurvivalEvaluator:
                     or item.generation != cohort.proposed_generation):
                 raise GenerationSurvivalError("candidate, cohort, suite, or generation lineage mismatch")
             if (not item.evaluator_id or len(item.evaluator_id) > 128
+                    or not item.trial_id or len(item.trial_id) > 128
                     or not item.evaluator_key_id or len(item.evaluator_key_id) > 128
                     or not item.signature or len(item.signature) > 2048):
                 raise GenerationSurvivalError("evaluator identity or signature is invalid")
