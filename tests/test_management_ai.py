@@ -979,3 +979,35 @@ def test_management_snapshot_exposes_revision_requests_and_blocks_acceptance() -
         item["findings"] == ["Include publication date."]
         for item in snapshot["revision_requests"]
     )
+
+
+def test_peer_revision_feedback_is_returned_without_automatic_executor_replay() -> None:
+    voice = Executor(AgentRole.VOICE)
+    news = Executor(AgentRole.NEWS)
+
+    def reviewer(reviewer_agent, target_agent, observation):
+        return PeerReview(
+            reviewer_id=reviewer_agent.agent_id,
+            target_agent_id=target_agent.agent_id,
+            verdict=ReviewVerdict.NEEDS_REVISION,
+            findings=("Add independent source evidence.",),
+        )
+
+    manager = ManagementAI(
+        {AgentRole.VOICE: voice, AgentRole.NEWS: news},
+        planner=StaticPlanner(),
+        peer_reviewer=reviewer,
+    )
+    cycle = manager.run_closed_loop(
+        ManagementRequest("u1", "音声とニュースを準備して"),
+        max_rounds=2,
+    )
+
+    assert not cycle.success
+    assert len(cycle.rounds) == 1
+    assert "peer revision requested" in cycle.stopped_reason
+    assert len(cycle.pending_revision_feedback) == 2
+    assert all("Add independent source evidence." in item for item in cycle.pending_revision_feedback)
+    # A revision request is surfaced as evidence, not permission to replay work.
+    assert voice.calls == ["voice-task"]
+    assert news.calls == ["news-task"]
