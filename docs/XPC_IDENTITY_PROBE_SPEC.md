@@ -119,3 +119,44 @@ The probe is not connected to `core/computer_use_bridge.py`. The bridge's
 `snapshot` and `execute` methods must continue to raise
 `DesktopExecutionDisabled` under all inputs. No Mac-side operation is
 authorized by this specification.
+
+
+## API selection note — public API verification required
+
+The API choice is intentionally unresolved. Do not assume that every XPC
+abstraction exposes an audit token directly.
+
+Apple's current public documentation distinguishes:
+- `NSXPCConnection`, whose documented security attributes include the peer PID,
+  effective UID/GID, and audit-session identifier, and whose API includes
+  `setCodeSigningRequirement`;
+- lower-level `xpc_connection_t` APIs, which document peer PID/UID/GID/audit
+  session accessors and peer code-signing requirement setters; and
+- Security.framework APIs such as `SecCodeCopyGuestWithAttributes`,
+  `kSecGuestAttributeAudit`, and `SecCodeCheckValidity`.
+
+The public documentation consulted for this specification:
+- [NSXPCConnection](https://developer.apple.com/documentation/foundation/nsxpcconnection)
+- [XPC connections](https://developer.apple.com/documentation/xpc/xpc-connections)
+- [XPC code-signing requirement](https://developer.apple.com/documentation/xpc/xpc_connection_set_peer_code_signing_requirement(_:_:))
+- [SecCodeCopyGuestWithAttributes](https://developer.apple.com/documentation/security/seccodecopyguestwithattributes(_:_:_:_:))
+- [Guest Attribute Dictionary Keys](https://developer.apple.com/documentation/security/guest-attribute-dictionary-keys)
+- [Code Signing Services](https://developer.apple.com/documentation/security/code-signing-services/)
+
+Before writing the probe, an engineer must select either the high-level
+`NSXPCConnection` or low-level `libXPC` implementation and record:
+1. the exact supported macOS deployment target and SDK;
+2. the public API that enforces the pinned peer code-signing requirement;
+3. the documented, supported source of any audit token used for additional
+   Security.framework validation;
+4. how the code requirement is checked on every incoming connection/message;
+5. the negative test proving an unsigned or wrong-requirement peer is rejected.
+
+Do not infer an audit token from a client-supplied PID, or treat PID/UID/ASID
+alone as code-signing identity. Do not use undocumented/private APIs. If the
+selected public API cannot provide the required peer verification, stop and
+revise the architecture rather than weakening the requirement.
+
+The documentation above is API reference material, not proof that the proposed
+combination works on the eventual target OS/toolchain. Compilation and runtime
+verification on the actual Mac remain mandatory.
