@@ -160,3 +160,24 @@ revise the architecture rather than weakening the requirement.
 The documentation above is API reference material, not proof that the proposed
 combination works on the eventual target OS/toolchain. Compilation and runtime
 verification on the actual Mac remain mandatory.
+
+
+## Deployment-target decision gate
+
+Apple Developer Technical Support has documented these availability boundaries:
+- `NSXPCConnection.setCodeSigningRequirement(_:)`: macOS 13 and later.
+- `xpc_connection_set_peer_code_signing_requirement`: macOS 12 and later.
+- `xpc_connection_set_peer_lightweight_code_requirement`: macOS 14.4 and later.
+
+References:
+- [Apple Developer: NSXPCConnection.setCodeSigningRequirement(_:)](https://developer.apple.com/documentation/foundation/nsxpcconnection/setcodesigningrequirement(_:))
+- [Apple Developer: xpc_connection_set_peer_code_signing_requirement](https://developer.apple.com/documentation/xpc/xpc_connection_set_peer_code_signing_requirement(_:_:))
+- [Apple Developer: XPC lightweight code requirement](https://developer.apple.com/documentation/xpc/xpc_connection_set_peer_lightweight_code_requirement(_:_:))
+- [Apple Developer Forums: Validating Signature Of XPC Process](https://developer.apple.com/forums/thread/681053) (Apple Developer Technical Support guidance; verify against the selected SDK headers and deployment target).
+
+Do not pick an API until the minimum supported macOS version is explicitly
+selected. For a target below the API's availability, do not silently fall back
+to PID/UID checks, payload identity, undocumented APIs, or a weaker scheme.
+Stop and revise the supported-version policy instead. These version boundaries
+are planning inputs; the selected SDK's availability annotations and actual
+Mac compilation remain authoritative.
