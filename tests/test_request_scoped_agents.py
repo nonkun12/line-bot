@@ -89,8 +89,10 @@ def test_peer_review_blocks_on_adverse_verdict_or_missing_review() -> None:
         team,
         [PeerReview(a.agent_id, b.agent_id, ReviewVerdict.NEEDS_REVISION)],
     )
-    assert decision.status == "BLOCKED"
+    assert decision.status == "NEEDS_REVISION"
     assert len(decision.blocked_agent_ids) == 2
+    assert len(decision.revision_requests) == 1
+    assert decision.revision_requests[0].target_agent_id == b.agent_id
 
 
 def test_peer_review_rejects_cross_request_agent_identity() -> None:
