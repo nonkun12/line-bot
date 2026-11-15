@@ -30,6 +30,20 @@ def test_factory_creates_request_scoped_identities_and_parallel_batches() -> Non
     assert {agent.role for agent in team.agents} == {AgentRole.GENERAL, AgentRole.TESTER}
 
 
+def test_factory_creates_distinct_clones_for_tasks_with_same_role() -> None:
+    team = RequestScopedAgentFactory().create(
+        "req-same-role",
+        [
+            task("part-a", AgentRole.GENERAL),
+            task("part-b", AgentRole.GENERAL),
+        ],
+    )
+    assert len(team.agents) == 2
+    assert team.agents[0].role is team.agents[1].role is AgentRole.GENERAL
+    assert team.agents[0].agent_id != team.agents[1].agent_id
+    assert team.agents[0].task_ids != team.agents[1].task_ids
+
+
 def test_factory_rejects_more_than_six_tasks() -> None:
     tasks = [task(str(i), AgentRole.GENERAL) for i in range(7)]
     with pytest.raises(ValueError, match="task count exceeds"):
