@@ -104,7 +104,7 @@ def _validate_hold(path: Path | None, now: datetime) -> tuple[bool, bool, int | 
     if path is None or not path.is_file():
         return False, False, None, ["global_hold_state_missing"]
     doc = _read_json(path, "global_hold_state")
-    if not isinstance(doc, dict) or doc.get("schema_version") != 1:
+    if not isinstance(doc, dict) or type(doc.get("schema_version")) is not int or doc.get("schema_version") != 1:
         raise SnapshotError("global_hold_state_invalid")
     hold = doc.get("global_hold")
     if not isinstance(hold, bool):
@@ -125,7 +125,7 @@ def _validate_budget(path: Path | None, now: datetime) -> tuple[bool, dict[str, 
             "remaining_minutes": None,
         }, None, ["budget_evidence_missing"]
     doc = _read_json(path, "budget_evidence")
-    if not isinstance(doc, dict) or doc.get("schema_version") != 1:
+    if not isinstance(doc, dict) or type(doc.get("schema_version")) is not int or doc.get("schema_version") != 1:
         raise SnapshotError("budget_evidence_invalid")
     if not isinstance(doc.get("source"), str) or not doc["source"].strip():
         raise SnapshotError("budget_source_missing")
