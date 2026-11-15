@@ -93,8 +93,8 @@ verdict. Test fixtures must not be described as evidence of real macOS identity.
 - No connection from LINE, GitHub Actions, model processes, shell wrappers, or
   background workers.
 - Bound request size, response size, connection count, and request duration.
-- Fail closed on missing audit token, Security.framework errors, ambiguous
-  identity, session lookup failure, or broker restart.
+- Fail closed on missing peer-signing enforcement, signing-requirement mismatch,
+  ambiguous identity, session lookup failure, or broker restart.
 - The broker must not load plugins, run shell commands, open documents, or call
   any CAD/Excel/Calc API.
 - Remove test signing identities and temporary artifacts after test completion
