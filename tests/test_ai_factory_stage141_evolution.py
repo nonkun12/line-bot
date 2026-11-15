@@ -88,13 +88,10 @@ def test_safety_regression_and_missing_eval_evidence_reject_candidate():
                               (fitness(safety=.8),))
     regression = planner.plan("tick-4", ((model("a"), model("b")),),
                               (fitness(regression_count=1),))
-    missing_evidence = planner.plan(
-        "tick-5", ((model("a"), model("b")),),
-        (fitness(evaluation_suite_digest=""),),
-    )
     assert low_safety.candidates == ()
     assert regression.candidates == ()
-    assert missing_evidence.candidates == ()
+    with pytest.raises(ValueError, match="evaluation_suite_digest is required"):
+        fitness(evaluation_suite_digest="")
 
 
 def test_pareto_frontier_keeps_tradeoffs_and_rejects_dominated_candidate():
@@ -109,7 +106,10 @@ def test_pareto_frontier_keeps_tradeoffs_and_rejects_dominated_candidate():
         fitness(accuracy=.91, latency_ms=80),
         fitness(accuracy=.89, latency_ms=200),
     )
-    report = planner.plan("tick-6", groups, scores)
+    report = planner.plan(
+        "tick-6", groups, scores,
+        safety=EvolutionarySafety(max_candidates_per_tick=4),
+    )
     assert len(report.candidates) == 3
     assert report.candidates[2].candidate_id not in report.pareto_frontier
     assert len(report.pareto_frontier) == 2
