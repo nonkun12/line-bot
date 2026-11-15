@@ -97,10 +97,6 @@ def _validate_state(document: Any) -> tuple[set[str], dict[str, dict[str, Any]]]
                 raise SnapshotError("recovery_task_flag_invalid")
     if len(completed) != len(set(completed)):
         raise SnapshotError("durable_completed_duplicate")
-    for task_id in set(completed):
-        entry = recovery_tasks.get(task_id, {})
-        if entry.get("held") is True or entry.get("resume_requires_review") is True:
-            raise SnapshotError("durable_state_completion_conflict")
     return set(completed), recovery_tasks
 
 
@@ -181,10 +177,10 @@ def build_live_snapshot(
     catalog_states: dict[str, str] = {}
     for task_id in catalog_map:
         recovery = recovery_tasks.get(task_id, {})
-        if task_id in completed:
-            state = "completed"
-        elif recovery.get("held") is True:
+        if recovery.get("held") is True:
             state = "held"
+        elif task_id in completed:
+            state = "completed"
         elif recovery.get("resume_requires_review") is True:
             state = "review_required"
         else:
@@ -204,6 +200,7 @@ def build_live_snapshot(
             if isinstance(task.get("allowed_paths", []), list) else [],
             "approval_claimed": task.get("execution_approved") is True,
             "approval_evidence_verified": False,
+            "resume_requires_review": recovery_tasks.get(task_id, {}).get("resume_requires_review") is True,
         })
 
     hold_verified, global_hold, hold_age, hold_reasons = _validate_hold(hold_state_path, now)
@@ -240,7 +237,11 @@ def build_live_snapshot(
             "catalog_count": len(catalog_map),
             "catalog_completed_count": sum(x == "completed" for x in catalog_states.values()),
             "catalog_held_count": sum(x == "held" for x in catalog_states.values()),
-            "catalog_review_required_count": sum(x == "review_required" for x in catalog_states.values()),
+            "catalog_review_required_count": sum(
+                entry.get("resume_requires_review") is True
+                for entry in recovery_tasks.values()
+                if isinstance(entry, dict)
+            ),
             "catalog_pending_count": sum(x == "pending" for x in catalog_states.values()),
             "durable_completed_count": len(completed),
             "recovery_task_count": len(recovery_tasks),
