@@ -8,7 +8,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-try:\n    from scripts.orchestrator_core import PlanError, build_plan\nexcept ModuleNotFoundError:  # Direct `python scripts/...` invocation.\n    from orchestrator_core import PlanError, build_plan
+try:
+    from scripts.orchestrator_core import PlanError, build_plan
+except ModuleNotFoundError:  # Direct `python scripts/...` invocation.
+    from orchestrator_core import PlanError, build_plan
 
 
 def _cell(value: Any) -> str:
