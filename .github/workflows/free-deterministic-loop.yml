@@ -1,0 +1,101 @@
+name: Free Deterministic LOOP Pilot
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      execute_task:
+        description: "Explicitly authorize one allowlisted task on main"
+        type: boolean
+        required: true
+        default: false
+      task_id:
+        description: "Exact task ID to authorize"
+        type: string
+        required: false
+        default: ""
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: free-deterministic-loop-pilot
+  cancel-in-progress: false
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependency
+        run: python -m pip install pytest
+
+      - name: Validate free runner and queue contract
+        env:
+          EXECUTE_TASK: ${{ inputs.execute_task || false }}
+          TASK_ID: ${{ inputs.task_id || '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/free-deterministic-loop
+          evidence="artifacts/free-deterministic-loop/task-evidence.jsonl"
+          trap 'rc=$?; if [ ! -s "$evidence" ]; then printf "{\"task_id\":null,\"status\":\"BLOCKED\",\"failure_reason\":\"pilot_step_failed\",\"persisted\":false}\\n" > "$evidence"; fi' EXIT
+          python -m pytest -q tests/test_free_deterministic_loop.py
+          runner_args=(
+            --queue .autonomous-loop/free-deterministic-queue.json
+            --evidence "$evidence"
+          )
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$EXECUTE_TASK" = "true" ]; then
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "Manual task execution is allowed only from main." >&2
+              exit 1
+            fi
+            if [ -z "$TASK_ID" ]; then
+              echo "An exact task_id is required for manual execution." >&2
+              exit 1
+            fi
+            runner_args+=(--approved-task-id "$TASK_ID")
+          fi
+          python scripts/free_deterministic_loop.py "${runner_args[@]}"
+
+      - name: Publish pilot summary
+        if: always()
+        run: |
+          if [ -s artifacts/free-deterministic-loop/task-evidence.jsonl ]; then
+            python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          records = [json.loads(line) for line in Path("artifacts/free-deterministic-loop/task-evidence.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+          print("# Free Deterministic LOOP Pilot")
+          for row in records:
+              print(f"- Status: **{row['status']}**")
+              print(f"- Task: {row.get('task_id') or 'none'}")
+              print(f"- Reason: {row.get('failure_reason') or 'none'}")
+              print(f"- Persisted to repository: **false**")
+          PY
+          else
+            echo "No task evidence was produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Preserve task evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-deterministic-loop-pilot-${{ github.run_id }}
+          path: artifacts/free-deterministic-loop/task-evidence.jsonl
+          if-no-files-found: error
+          retention-days: 14
