@@ -32,7 +32,7 @@ def test_explicit_obsidian_command_queues_and_returns_approval_message(monkeypat
 
 
 def test_obsidian_queue_failure_fails_closed_without_fallback(monkeypatch):
-    monkeypatch.setattr(line_app, "request_distributed_loop", lambda *_args: (False, ""))
+    monkeypatch.setattr(line_app, "request_distributed_loop", lambda *_args, **_kwargs: (False, ""))
     monkeypatch.setattr(
         line_app,
         "enqueue_obsidian_request",
