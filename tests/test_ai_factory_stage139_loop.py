@@ -68,3 +68,29 @@ def test_kill_switch_and_budget_are_fail_closed():
     assert controller.run_tick("t", (), safety=LoopSafety(kill_switch_active=True)).tick.stopped_reason
     assert controller.run_tick("t", (), safety=LoopSafety(budget_available=False)).tick.stopped_reason
     assert fake.calls == 0
+
+
+def test_controller_enforces_candidate_limit_even_if_orchestrator_over_returns():
+    results = tuple(
+        OrchestrationResult(f"gap-{i}", FactoryStage.CATALOG, candidate=candidate(f"agent-{i}"))
+        for i in range(5)
+    )
+    fake = FakeOrchestrator(LoopTickReport("tick-overrun", results))
+    class Catalog:
+        def __init__(self): self.items = []
+        def submit(self, value):
+            self.items.append(value)
+            return value
+    catalog = Catalog()
+    record = object()
+    controller = Stage139LoopController(
+        orchestrator=fake, catalog=catalog, candidate_lookup=lambda name: record,
+    )
+    report = controller.run_tick(
+        "tick-overrun", (), safety=LoopSafety(max_candidates_per_tick=2),
+    )
+    assert len(report.pending_candidates) == 2
+    assert len(catalog.items) == 2
+    assert report.tick.blocked == 3
+    assert all("candidate limit exceeded" in item.blocked_reason
+               for item in report.tick.processed[2:])
