@@ -19,7 +19,7 @@ def config(reviewer="reviewer-model"):
 def roles():
     return CollaborationRoles("architect", "builder", "tester", "reviewer")
 
-def test_gate(gap, stage):
+def _test_gate(gap, stage):
     from core.ai_factory_stage131_adapters import RoleEvidenceInput
     return RoleEvidenceInput("tester", "tests", "passed", ("independent test",), passed=True)
 
@@ -32,7 +32,7 @@ def test_stage137_wires_concrete_builder_sandbox_and_independent_reviewer():
     def factory(cfg):
         client = FakeClient(cfg); clients.append(client); return client
     runtime = build_stage137_runtime(
-        config=config(), roles=roles(), test_gate=test_gate, review_gate=review_gate,
+        config=config(), roles=roles(), test_gate=_test_gate, review_gate=review_gate,
         sandbox_runner=lambda *a, **k: None, model_client_factory=factory,
     )
     factory = runtime.pipeline.factory.factory_adapter.factory
