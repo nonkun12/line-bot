@@ -86,6 +86,36 @@ class OrchestratorCoreTests(unittest.TestCase):
         self.assertEqual(states, {"setup": "READY", "work": "WAITING"})
         self.assertEqual(plan["selected_candidate"], "setup")
 
+
+    def test_missing_global_hold_fails_closed(self):
+        document = payload([{"id": "work"}])
+        del document["global_hold"]
+        with self.assertRaisesRegex(PlanError, "missing_global_hold"):
+            build_plan(document)
+
+    def test_non_boolean_global_hold_is_rejected(self):
+        for value in (None, 0, "false", []):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(PlanError, "invalid_global_hold"):
+                    build_plan(payload([{"id": "work"}], global_hold=value))
+
+    def test_planner_modules_have_no_dispatch_or_provider_dependencies(self):
+        root = Path(__file__).resolve().parents[1]
+        for relative in (
+            "scripts/orchestrator_core.py",
+            "scripts/orchestrator_live_adapter.py",
+            "scripts/orchestrator_dashboard.py",
+        ):
+            source = (root / relative).read_text(encoding="utf-8").lower()
+            for forbidden in (
+                "import requests", "from requests", "import httpx", "from httpx",
+                "import openai", "from openai", "import anthropic", "from anthropic",
+                "google.generativeai", "workflow_dispatch", "actions/workflows/",
+            ):
+                with self.subTest(module=relative, forbidden=forbidden):
+                    self.assertNotIn(forbidden, source)
+            self.assertNotIn(".post(", source)
+
     def test_global_hold_blocks_selection(self):
         plan = build_plan(payload(
             [{"id": "work", "execution_approved": True}],
