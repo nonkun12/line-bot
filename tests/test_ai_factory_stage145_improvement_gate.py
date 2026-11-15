@@ -36,9 +36,9 @@ def signed_evidence(identity, artifact, metrics, nonce):
     evaluator = "independent-lab"
     digest = evidence_digest(
         candidate_id=identity, evaluated_artifact_digest=artifact,
-        evaluation_suite_digest=SUITE, evaluator_id=evaluator, fitness=metrics,
+        evaluation_suite_digest=metrics.evaluation_suite_digest, evaluator_id=evaluator, fitness=metrics,
     )
-    evidence = EvaluationEvidence(identity, artifact, SUITE, evaluator, metrics, True, digest)
+    evidence = EvaluationEvidence(identity, artifact, metrics.evaluation_suite_digest, evaluator, metrics, True, digest)
     key_id = "lab-key"
     signature = hmac.new(
         SECRET, signature_message(key_id=key_id, nonce=nonce, evidence=evidence),
@@ -79,7 +79,7 @@ def test_improved_child_requires_signed_parent_and_child_evidence():
 
 
 def test_no_improvement_is_not_admitted():
-    gate, store, candidate, parents, child, artifact = setup(candidate_metrics=fitness(.81))
+    gate, store, candidate, parents, child, artifact = setup(candidate_metrics=fitness(.79))
     report = gate.evaluate(candidate, parents, child, expected_candidate_artifact_digest=artifact)
     assert report.decision is EvolutionDecision.NO_IMPROVEMENT
     assert report.lineage_record is None
