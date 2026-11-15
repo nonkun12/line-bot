@@ -132,6 +132,26 @@ def test_completed_held_and_review_required_tasks_are_never_candidates(
     assert snapshot["execution_authorized"] is False
 
 
+
+def test_completed_task_with_review_flag_stays_terminal_and_is_counted(tmp_path):
+    hold_path, budget_path = evidence_files(tmp_path)
+    snapshot = build_live_snapshot(
+        {"tasks": [task()]},
+        {"tasks": [task()]},
+        state(
+            completed=["task-a"],
+            recovery_tasks={"task-a": {"resume_requires_review": True}},
+        ),
+        hold_state_path=hold_path,
+        budget_evidence_path=budget_path,
+        now=NOW,
+    )
+    assert snapshot["tasks"][0]["state"] == "completed"
+    assert snapshot["tasks"][0]["resume_requires_review"] is True
+    assert snapshot["sources"]["catalog_review_required_count"] == 1
+    assert snapshot["candidate_ids"] == []
+    assert snapshot["status"] == "NO_TASK"
+
 def test_queue_catalog_definition_mismatch_is_rejected():
     queued = task()
     catalogued = {**task(), "instruction": "Different instruction"}
