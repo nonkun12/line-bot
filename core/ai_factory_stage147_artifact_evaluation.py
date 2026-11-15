@@ -91,11 +91,11 @@ def verify_local_artifact(
         manifest.license_id, manifest.provenance,
     )):
         raise ArtifactPreflightError("format, compatibility, license and provenance metadata are required")
+    if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or max_bytes <= 0:
+        raise ArtifactPreflightError("max_bytes must be a positive integer")
     if (not isinstance(manifest.byte_length, int) or isinstance(manifest.byte_length, bool)
             or manifest.byte_length <= 0 or manifest.byte_length > max_bytes):
         raise ArtifactPreflightError("artifact byte length is outside the configured bound")
-    if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or max_bytes <= 0:
-        raise ArtifactPreflightError("max_bytes must be a positive integer")
 
     digest = hashlib.sha256()
     total = 0
