@@ -6,9 +6,9 @@ All four former sub-systems remain closed. The Orchestrator is the only future
 control plane. This document defines the read-only integration boundary; it
 does not restart any workflow or authorize task execution.
 
-## Verified source snapshot
+## Verified source snapshot (2026-11-15)
 
-The current repository snapshot was inspected read-only:
+The repository snapshot below was inspected read-only on 2026-11-15; these counts are point-in-time evidence, not live dashboard values:
 
 - `.github/autonomous-loop-tasks.json`: 4 queued entries.
 - `.github/autonomous-loop-task-catalog.json`: 71 unique catalog entries.
