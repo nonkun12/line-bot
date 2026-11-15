@@ -18,6 +18,7 @@ from core.management_ai import (
 )
 from core.management_contract import ManagementDecision, ManagementRequest, Specialist
 from core.multi_agent import AgentResult, AgentRole, AgentTask
+from core.request_scoped_agents import PeerReview, ReviewVerdict
 
 
 def test_message_bus_requires_safety_and_round_trips() -> None:
@@ -742,3 +743,54 @@ def test_model_management_planner_receives_deterministic_routing_hints() -> None
     assert "Routing candidates (advisory): english, music" in prompts[0]
     assert "Routing priority (1=highest): 2" in prompts[0]
     assert "validate every planned role" in prompts[0]
+
+
+
+def test_management_ai_attaches_per_task_agents_and_runs_peer_review() -> None:
+    voice = Executor(AgentRole.VOICE)
+    news = Executor(AgentRole.NEWS)
+    review_calls: list[tuple[str, str]] = []
+
+    def reviewer(reviewer_agent, target_agent, observation):
+        review_calls.append((reviewer_agent.agent_id, target_agent.agent_id))
+        assert observation.task_id == target_agent.task_ids[0]
+        return PeerReview(
+            reviewer_id=reviewer_agent.agent_id,
+            target_agent_id=target_agent.agent_id,
+            verdict=ReviewVerdict.PASS,
+            findings=("evidence checked",),
+        )
+
+    manager = ManagementAI(
+        {AgentRole.VOICE: voice, AgentRole.NEWS: news},
+        planner=StaticPlanner(),
+        peer_reviewer=reviewer,
+    )
+    result = manager.run(ManagementRequest("u1", "音声とニュースを準備して"))
+
+    assert result.agent_team is not None
+    assert len(result.agent_team.agents) == 2
+    assert {agent.task_ids[0] for agent in result.agent_team.agents} == {
+        "voice-task", "news-task"
+    }
+    assert len({agent.agent_id for agent in result.agent_team.agents}) == 2
+    assert result.peer_review is not None
+    assert result.peer_review.status == "PASS"
+    assert len(review_calls) == 2
+
+
+def test_management_ai_blocks_peer_review_when_review_adapter_fails() -> None:
+    def failing_reviewer(reviewer_agent, target_agent, observation):
+        raise RuntimeError("review unavailable")
+
+    manager = ManagementAI(
+        {AgentRole.VOICE: Executor(AgentRole.VOICE), AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=StaticPlanner(),
+        peer_reviewer=failing_reviewer,
+    )
+    result = manager.run(ManagementRequest("u1", "音声とニュースを準備して"))
+
+    assert result.peer_review is not None
+    assert result.peer_review.status == "BLOCKED"
+    assert not result.peer_review.accepted_agent_ids
+    assert len(result.peer_review.blocked_agent_ids) == 2
