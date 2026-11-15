@@ -119,6 +119,7 @@ class IsolatedMergeExperimentRunner:
         verify_evaluation_evidence: Callable[[IndependentEvaluationEvidence], bool],
         baseline_fitness: Fitness,
         policy: SandboxPolicy = SandboxPolicy(),
+        evidence_sink: Callable[[IndependentEvaluationEvidence], None] | None = None,
     ) -> MergeExperimentOutcome:
         if not isinstance(plan, MergeEvaluationPlan):
             raise IsolatedMergeExperimentError("typed Stage 154 plan is required")
@@ -177,6 +178,10 @@ class IsolatedMergeExperimentRunner:
         _validate_fitness(evidence.fitness, plan.evaluation_suite_digest)
         if not callable(verify_evaluation_evidence) or not verify_evaluation_evidence(evidence):
             raise IsolatedMergeExperimentError("evaluation signature/evidence verification failed")
+        if evidence_sink is not None:
+            if not callable(evidence_sink):
+                raise IsolatedMergeExperimentError("evidence sink must be callable")
+            evidence_sink(evidence)
 
         measured = evidence.fitness
         reasons = []
