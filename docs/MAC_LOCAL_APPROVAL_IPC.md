@@ -70,6 +70,13 @@ set or in-memory state in an untrusted process is not sufficient for production.
 - Cancellation racing with redemption has one deterministic outcome: either a
   redemption already atomically committed, or cancellation wins; never both.
 
+## No-op identity probe
+
+The detailed probe-only contract, positive/negative test matrix, and acceptance
+criteria are specified in [XPC_IDENTITY_PROBE_SPEC.md](XPC_IDENTITY_PROBE_SPEC.md).
+That probe is identity verification only: it must not accept plans, issue
+approvals, mint capabilities, or call desktop APIs.
+
 ## Implementation gates
 
 1. Review this design against supported macOS versions and signing/distribution
