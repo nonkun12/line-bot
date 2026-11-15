@@ -1,0 +1,94 @@
+name: Orchestrator Plan Only
+run-name: Orchestrator read-only plan (${{ github.event_name }})
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/orchestrator_core.py"
+      - "scripts/orchestrator_live_adapter.py"
+      - "scripts/orchestrator_dashboard.py"
+      - "tests/test_orchestrator_live_adapter.py"
+      - ".github/workflows/orchestrator-plan-only.yml"
+      - ".github/autonomous-loop-tasks.json"
+      - ".github/autonomous-loop-task-catalog.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orchestrator-plan-only-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout source without write credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Fetch durable state as read-only evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \
+            fetch --no-tags --depth=1 origin \
+            refs/heads/autonomous-loop-state:refs/remotes/origin/autonomous-loop-state
+          git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/orchestrator-durable-state.json
+          python -m json.tool /tmp/orchestrator-durable-state.json >/dev/null
+
+      - name: Build read-only live snapshot
+        id: snapshot
+        run: |
+          set +e
+          python -m scripts.orchestrator_live_adapter \
+            --queue .github/autonomous-loop-tasks.json \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --state /tmp/orchestrator-durable-state.json \
+            > /tmp/orchestrator-snapshot.json
+          code=$?
+          set -e
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("/tmp/orchestrator-snapshot.json").read_text(encoding="utf-8"))
+          if payload.get("schema_version") != 1:
+              raise SystemExit("invalid snapshot schema")
+          if payload.get("execution_authorized") is not False:
+              raise SystemExit("execution authorization must remain false")
+          for key in ("execution_performed", "dispatch_performed", "repository_modified",
+                      "push_performed", "pull_request_created", "merge_performed",
+                      "deployment_performed"):
+              if payload.get(key) is not False:
+                  raise SystemExit(f"unsafe side-effect flag: {key}")
+          if payload.get("status") not in {"PLAN_READY", "NO_TASK", "BLOCKED"}:
+              raise SystemExit("unknown snapshot status")
+          Path("/tmp/orchestrator-snapshot-status.txt").write_text(
+              str(payload["status"]) + "\n", encoding="utf-8"
+          )
+          PY
+          if [ "$code" -ne 0 ] && [ "$(cat /tmp/orchestrator-snapshot-status.txt)" != "BLOCKED" ]; then
+            echo "::error::Snapshot adapter failed unexpectedly (exit=$code)."
+            exit "$code"
+          fi
+          cat /tmp/orchestrator-snapshot.json >> "$GITHUB_STEP_SUMMARY"
+          echo "Snapshot status: $(cat /tmp/orchestrator-snapshot-status.txt)"
+
+      - name: Upload plan-only evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orchestrator-plan-only-${{ github.run_id }}
+          path: /tmp/orchestrator-snapshot.json
+          retention-days: 14
+          if-no-files-found: error
