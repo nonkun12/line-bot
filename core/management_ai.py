@@ -17,6 +17,15 @@ from .specialist_gate import approved_executors, assert_all_approved
 from .management_contract import ManagementDecision, ManagementRequest, Specialist
 from .management_router import route
 from .multi_agent import AgentRole, AgentTask, TaskBatch, plan_batches
+from .request_scoped_agents import (
+    AgentInstance,
+    AgentTeam,
+    PeerReview,
+    PeerReviewCoordinator,
+    RequestScopedAgentFactory,
+    ReviewDecision,
+    ReviewVerdict,
+)
 
 
 ModelCall = Callable[[str], str]
@@ -108,6 +117,8 @@ class ManagementRun:
     batches: tuple[TaskBatch, ...]
     distributed: DistributedRun
     observations: tuple[ManagementObservation, ...] = ()
+    agent_team: AgentTeam | None = None
+    peer_review: ReviewDecision | None = None
 
     @property
     def success(self) -> bool:
@@ -289,6 +300,7 @@ class ManagementAI:
         message_bus: AgentMessageBus | None = None,
         max_workers: int = 1,
         isolated: bool = False,
+        peer_reviewer: Callable[[AgentInstance, AgentInstance, ManagementObservation], PeerReview] | None = None,
     ) -> None:
         if max_workers > 1 and not isolated:
             raise ValueError("parallel management execution requires isolated=True")
@@ -297,6 +309,9 @@ class ManagementAI:
         self._planner = planner or ModelManagementPlanner()
         self._message_bus = message_bus or AgentMessageBus()
         self._max_workers = max_workers
+        self._agent_factory = RequestScopedAgentFactory()
+        self._peer_reviewer = peer_reviewer
+        self._peer_review_coordinator = PeerReviewCoordinator()
 
     @property
     def message_bus(self):
@@ -308,6 +323,12 @@ class ManagementAI:
 
     def run(self, request: ManagementRequest, feedback: Sequence[str] = ()) -> ManagementRun:
         plan = self.plan(request, feedback)
+        # Every task gets its own request-scoped identity, even when roles repeat.
+        # These are logical execution identities; provider/process isolation remains
+        # the responsibility of the injected executor implementation.
+        from uuid import uuid4
+
+        agent_team = self._agent_factory.create(f"req-{uuid4().hex}", plan.tasks)
         # All-or-nothing: every planned role is checked BEFORE any task runs, so
         # a denied role can never cause partial execution of earlier batches.
         assert_all_approved(task.role for task in plan.tasks)
@@ -348,7 +369,32 @@ class ManagementAI:
                 context=context,
                 safety_constraints=("result-only", "no-permission-grant"),
             )
-        return ManagementRun(plan, batches, distributed, observations)
+        peer_review: ReviewDecision | None = None
+        if self._peer_reviewer is not None:
+            observations_by_task = {item.task_id: item for item in observations}
+            reviews: list[PeerReview] = []
+            agents = agent_team.agents
+            for index, target in enumerate(agents):
+                if len(agents) < 2:
+                    break
+                reviewer = agents[(index + 1) % len(agents)]
+                target_observation = observations_by_task[target.task_ids[0]]
+                try:
+                    review = self._peer_reviewer(reviewer, target, target_observation)
+                    if not isinstance(review, PeerReview):
+                        raise TypeError("peer_reviewer must return PeerReview")
+                    reviews.append(review)
+                except Exception as exc:
+                    reviews.append(
+                        PeerReview(
+                            reviewer_id=reviewer.agent_id,
+                            target_agent_id=target.agent_id,
+                            verdict=ReviewVerdict.BLOCKED,
+                            findings=(f"review adapter failed: {type(exc).__name__}"[:500],),
+                        )
+                    )
+            peer_review = self._peer_review_coordinator.decide(agent_team, reviews)
+        return ManagementRun(plan, batches, distributed, observations, agent_team, peer_review)
 
     def run_closed_loop(self, request: ManagementRequest, *, max_rounds: int = 3) -> ManagementCycleRun:
         """Run bounded management rounds and feed specialist results back to the manager."""
