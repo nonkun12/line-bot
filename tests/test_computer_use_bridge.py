@@ -12,13 +12,15 @@ from core.desktop_control import DesktopExecutionDisabled, validate_plan
 
 class FakeAdapter:
     def __init__(self):
-        self.calls = []
+        self.snapshot_calls = 0
+        self.action_calls = []
 
     def snapshot(self):
+        self.snapshot_calls += 1
         return {"mode": "read-only"}
 
     def act(self, app, operation, params):
-        self.calls.append((app, operation, params))
+        self.action_calls.append((app, operation, params))
         return {"ok": True, "operation": operation}
 
 
@@ -50,7 +52,8 @@ def test_enabled_flag_and_injected_adapter_do_not_bypass_trusted_approval_gate()
         bridge.snapshot()
     with pytest.raises(DesktopExecutionDisabled, match="trusted_local_approval_ui_not_connected"):
         bridge.execute(_plan(), grant=object())
-    assert adapter.calls == []
+    assert adapter.snapshot_calls == 0
+    assert adapter.action_calls == []
 
 
 def test_confirmation_string_is_not_accepted_as_human_approval():
@@ -185,3 +188,17 @@ def test_capability_rejects_invalid_or_not_yet_valid_timestamps(issued_at, expir
             plan, current_session_id="mac-session-A", now=now,
             redeemed_nonces=set(),
         )
+
+ 
+
+def test_snapshot_and_execute_never_invoke_injected_adapter():
+    adapter = FakeAdapter()
+    bridge = LocalComputerUseBridge(adapter, enabled=True)
+
+    with pytest.raises(DesktopExecutionDisabled):
+        bridge.snapshot()
+    with pytest.raises(DesktopExecutionDisabled):
+        bridge.execute(_plan(), grant={"approved": True, "session_id": "mac-session-A"})
+
+    assert adapter.snapshot_calls == 0
+    assert adapter.action_calls == []
