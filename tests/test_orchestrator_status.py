@@ -102,6 +102,7 @@ def test_builder_fails_closed_on_malformed_contents():
 
 
 def test_line_status_routes_to_orchestrator_before_legacy_dispatchers(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "test-user")
     monkeypatch.setattr(app_module, "is_orchestrator_status_command", lambda _message: True)
     monkeypatch.setattr(
         app_module,
@@ -126,6 +127,24 @@ def test_line_status_routes_to_orchestrator_before_legacy_dispatchers(monkeypatc
     })()
     assert app_module._handle_ai_gateway_request(request) == "ORCHESTRATOR_STATUS"
 
+
+
+def test_line_status_denies_non_allowlisted_user(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "allowed-user")
+    monkeypatch.setattr(app_module, "is_orchestrator_status_command", lambda _message: True)
+    monkeypatch.setattr(
+        app_module,
+        "build_orchestrator_status_reply",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("status source must not be queried")),
+    )
+    request = type("Request", (), {
+        "message": "統括AI 状況確認",
+        "user_id": "unknown-user",
+        "channel": "line",
+        "metadata": {},
+    })()
+    reply = app_module._handle_ai_gateway_request(request)
+    assert "許可されていません" in reply
 
 def test_legacy_app_development_dispatch_is_closed(monkeypatch):
     monkeypatch.setattr(app_module, "is_orchestrator_status_command", lambda _message: False)

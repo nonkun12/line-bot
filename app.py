@@ -367,6 +367,13 @@ def _handle_ai_gateway_request(ai_request):
     # The Orchestrator is the single read-only status authority. This route
     # runs before all legacy Loop and development dispatchers.
     if is_orchestrator_status_command(message):
+        allowed_status_users = {
+            item.strip()
+            for item in os.environ.get("DISTRIBUTED_LOOP_LINE_USER_IDS", "").split(",")
+            if item.strip()
+        }
+        if not user_id or user_id not in allowed_status_users:
+            return "Orchestratorの状態確認は許可されていません。"
         return build_orchestrator_status_reply(AI_REPORT_GITHUB_REPO, GITHUB_TOKEN)
 
     # Legacy Loop status remains historical only; dispatch is disabled.
