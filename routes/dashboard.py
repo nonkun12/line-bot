@@ -618,3 +618,37 @@ def stock_dashboard_analyze():
         "limits": {"max_tickers": _STOCK_DASHBOARD_MAX_TICKERS},
         "notice": "テクニカル指標による参考情報です。売買注文は実行しません。",
     })
+
+
+@dashboard_bp.route("/api/dashboard/orchestrator/collaboration", methods=["GET"])
+@requires_dashboard_access
+def get_orchestrator_collaboration():
+    """Read-only, user-scoped view of bounded multi-agent collaboration evidence."""
+    user_id = resolve_user_id(request.args.get("user_id"))
+    error = _require_user_id(user_id)
+    if error:
+        return error
+    raw_limit = request.args.get("limit", "10")
+    try:
+        limit = int(raw_limit)
+        if not 1 <= limit <= 20:
+            raise ValueError
+        from core.collaboration_audit import list_collaboration_snapshots
+        snapshots = list_collaboration_snapshots(user_id=user_id, limit=limit)
+        return jsonify({
+            "ok": True,
+            "user_id": user_id,
+            "count": len(snapshots),
+            "snapshots": snapshots,
+            "read_only": True,
+            "execution_authorized": False,
+        })
+    except ValueError:
+        return jsonify({"ok": False, "error": "limit must be between 1 and 20"}), 400
+    except Exception:
+        return _internal_error(
+            current_app.logger,
+            "DASHBOARD ORCHESTRATOR COLLABORATION ERROR",
+            with_user_id=True,
+            user_id=user_id,
+        )
