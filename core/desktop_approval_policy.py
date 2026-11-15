@@ -42,7 +42,11 @@ def validate_capability(
         raise CapabilityPolicyError("invalid_capability_type")
     if capability.plan_sha256 != plan.plan_sha256:
         raise CapabilityPolicyError("plan_digest_mismatch")
-    if not isinstance(capability.action_ids, tuple) or not capability.action_ids:
+    if (
+        not isinstance(capability.action_ids, tuple)
+        or not capability.action_ids
+        or any(not isinstance(action_id, str) or not action_id for action_id in capability.action_ids)
+    ):
         raise CapabilityPolicyError("invalid_action_scope")
     allowed_ids = tuple(action["id"] for action in plan.actions)
     selected = capability.action_ids
