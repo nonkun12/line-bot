@@ -34,7 +34,7 @@ def test_unknown_task_is_rejected():
 def test_candidate_adds_exactly_one_test_and_preserves_existing_tests():
     task = _task()
     spec = runner.TASKS[task["id"]]
-    original = "def test_existing():\n    assert True\n\n" + spec["anchor"]
+    original = "def test_existing():\n    assert True\n\n" + spec["anchor"] + "    queue = tmp_path / \"runtime-queue.json\"\n"
     candidate, status = runner.build_candidate(task, original)
     assert status == "PATCHED"
     before = runner.ast_test_signatures(original, "fixture.py")
