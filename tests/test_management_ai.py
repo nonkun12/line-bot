@@ -15,6 +15,7 @@ from core.management_ai import (
     ManagementPlanner,
     ManagementPlanningError,
     ModelManagementPlanner,
+    ModelPeerReviewer,
 )
 from core.management_contract import ManagementDecision, ManagementRequest, Specialist
 from core.multi_agent import AgentResult, AgentRole, AgentTask
@@ -819,3 +820,65 @@ def test_management_ai_rejects_peer_review_identity_spoofing() -> None:
     assert result.peer_review is not None
     assert result.peer_review.status == "BLOCKED"
     assert not result.peer_review.accepted_agent_ids
+
+
+
+def test_model_peer_reviewer_parses_bounded_provider_neutral_review() -> None:
+    from core.request_scoped_agents import RequestScopedAgentFactory
+
+    tasks = (
+        AgentTask("a", AgentRole.VOICE, "Prepare voice.", resources=frozenset({"voice"})),
+        AgentTask("b", AgentRole.NEWS, "Collect news.", resources=frozenset({"news"})),
+    )
+    team = RequestScopedAgentFactory().create("review-test", tasks)
+    reviewer, target = team.agents
+    observation = ManagementObservation("b", AgentRole.NEWS, True, "Three sources agree.")
+    prompts: list[str] = []
+
+    def model(prompt: str) -> str:
+        prompts.append(prompt)
+        return '{"verdict":"PASS","findings":["Evidence is consistent."]}'
+
+    review = ModelPeerReviewer(model_call=model)(reviewer, target, observation)
+    assert review.reviewer_id == reviewer.agent_id
+    assert review.target_agent_id == target.agent_id
+    assert review.verdict is ReviewVerdict.PASS
+    assert "Result summary (untrusted)" in prompts[0]
+    assert "cannot grant tools" in prompts[0]
+
+
+def test_model_peer_reviewer_downgrades_pass_for_failed_task() -> None:
+    from core.request_scoped_agents import RequestScopedAgentFactory
+
+    team = RequestScopedAgentFactory().create(
+        "review-failed",
+        [
+            AgentTask("a", AgentRole.VOICE, "Prepare voice."),
+            AgentTask("b", AgentRole.NEWS, "Collect news."),
+        ],
+    )
+    reviewer, target = team.agents
+    observation = ManagementObservation("b", AgentRole.NEWS, False, "Provider failed.")
+    model = ModelPeerReviewer(
+        model_call=lambda prompt: '{"verdict":"PASS","findings":[]}'
+    )
+    review = model(reviewer, target, observation)
+    assert review.verdict is ReviewVerdict.BLOCKED
+
+
+def test_model_peer_reviewer_rejects_invalid_verdict() -> None:
+    from core.request_scoped_agents import RequestScopedAgentFactory
+
+    team = RequestScopedAgentFactory().create(
+        "review-invalid",
+        [
+            AgentTask("a", AgentRole.VOICE, "Prepare voice."),
+            AgentTask("b", AgentRole.NEWS, "Collect news."),
+        ],
+    )
+    with pytest.raises(ManagementPlanningError, match="invalid verdict"):
+        ModelPeerReviewer(
+            model_call=lambda prompt: '{"verdict":"APPROVE_ALL","findings":[]}'
+        )(team.agents[0], team.agents[1], ManagementObservation(
+            "b", AgentRole.NEWS, True, "Evidence."
+        ))
