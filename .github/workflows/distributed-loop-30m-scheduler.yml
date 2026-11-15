@@ -85,7 +85,7 @@ jobs:
             echo "# 30-minute Distributed LOOP Scheduler"
             echo "- Trigger: ${GITHUB_EVENT_NAME}"
             echo "- Kill switch: ${CONTROL_TOWER_KILL_SWITCH}"
-            echo "- Repository-local monthly budget: ${MONTHLY_REPOSITORY_MINUTE_BUDGET} minutes"
+            echo "- Billing gate: public repository + standard ubuntu-latest runner required"
             echo "- Target task limit: 1"
             echo "- Merge/deploy: not performed by scheduler"
           } >> "$GITHUB_STEP_SUMMARY"
