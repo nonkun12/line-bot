@@ -163,6 +163,12 @@ way to obtain the token and an independent review establishes that it adds a
 necessary security property. Do not use undocumented/private APIs. Compilation
 and positive/negative runtime verification on the actual Mac remain mandatory.
 
+## Mac-side verification matrix
+
+The concrete positive/negative Mac-side acceptance matrix is maintained in
+[ XPC_NOOP_PROBE_TEST_MATRIX.md ](XPC_NOOP_PROBE_TEST_MATRIX.md). It is a
+specification only; no probe executable or XPC service exists yet.
+
 ## Deployment-target decision gate
 
 Apple Developer Technical Support has documented these availability boundaries:
