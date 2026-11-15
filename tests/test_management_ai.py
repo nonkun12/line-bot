@@ -953,3 +953,29 @@ def test_configured_peer_review_uses_dedicated_clone_for_single_task() -> None:
     snapshot = result.collaboration_snapshot()
     assert snapshot["reviewer_count"] == 1
     assert snapshot["peer_review_status"] == "PASS"
+
+
+def test_management_snapshot_exposes_revision_requests_and_blocks_acceptance() -> None:
+    def reviewer(reviewer_agent, target_agent, observation):
+        return PeerReview(
+            reviewer_id=reviewer_agent.agent_id,
+            target_agent_id=target_agent.agent_id,
+            verdict=ReviewVerdict.NEEDS_REVISION,
+            findings=("Include publication date.",),
+        )
+    manager = ManagementAI(
+        {AgentRole.VOICE: Executor(AgentRole.VOICE), AgentRole.NEWS: Executor(AgentRole.NEWS)},
+        planner=StaticPlanner(),
+        peer_reviewer=reviewer,
+    )
+    result = manager.run(ManagementRequest("u1", "音声とニュースを準備して"))
+    assert not result.success
+    assert result.peer_review is not None
+    assert result.peer_review.status == "NEEDS_REVISION"
+    snapshot = result.collaboration_snapshot()
+    assert snapshot["accepted"] is False
+    assert len(snapshot["revision_requests"]) == 2
+    assert all(
+        item["findings"] == ["Include publication date."]
+        for item in snapshot["revision_requests"]
+    )
