@@ -90,7 +90,7 @@ def _number(value: Any, field: str, *, minimum: float, maximum: float) -> float:
 
 def _local_path(params: dict[str, Any]) -> dict[str, str]:
     path = _text(params.get("path"), "path", 2048)
-    if path.startswith(("http://", "https://", "smb://", "\\\\\\")):
+    if path.startswith(("http://", "https://", "smb://")) or path.startswith(chr(92) * 2):
         raise DesktopPlanError("remote_path_forbidden")
     return {"path": path}
 
