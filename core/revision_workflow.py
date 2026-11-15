@@ -172,4 +172,40 @@ def review_revision_draft(
     )
 
 
-__all__ = ["RevisionDraft", "RevisionReview", "prepare_revision_draft", "review_revision_draft"]
+def revision_workflow_snapshot(
+    draft: RevisionDraft | None = None,
+    review: RevisionReview | None = None,
+) -> dict[str, object]:
+    """Serialize revision-stage evidence without exposing executable authority."""
+    if review is not None and draft is None:
+        raise ValueError("revision review cannot exist without a draft")
+    if draft is not None and review is not None:
+        expected = (
+            draft.request_id, draft.task_id, draft.revision_agent_id,
+            draft.target_agent_id, draft.original_reviewer_id,
+        )
+        actual = (
+            review.request_id, review.task_id, review.revision_agent_id,
+            review.target_agent_id, review.original_reviewer_id,
+        )
+        if actual != expected:
+            raise ValueError("revision review does not match its draft")
+    return {
+        "draft_status": "PREPARED" if draft is not None else "NOT_STARTED",
+        "review_status": review.verdict if review is not None else "NOT_STARTED",
+        "request_id": draft.request_id if draft else None,
+        "task_id": draft.task_id if draft else None,
+        "revision_agent_id": draft.revision_agent_id if draft else None,
+        "target_agent_id": draft.target_agent_id if draft else None,
+        "original_reviewer_id": draft.original_reviewer_id if draft else None,
+        "independent_reviewer_id": review.independent_reviewer_id if review else None,
+        "draft_preview": draft.content[:500] if draft else "",
+        "addressed_findings": list(draft.addressed_findings) if draft else [],
+        "review_findings": list(review.findings) if review else [],
+        "execution_authorized": False,
+    }
+
+
+
+
+__all__ = ["RevisionDraft", "RevisionReview", "prepare_revision_draft", "review_revision_draft", "revision_workflow_snapshot"]
