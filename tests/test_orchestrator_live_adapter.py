@@ -156,7 +156,8 @@ def test_completed_task_with_review_flag_stays_terminal_and_is_counted(tmp_path)
     assert snapshot["tasks"][0]["resume_requires_review"] is True
     assert snapshot["sources"]["catalog_review_required_count"] == 1
     assert snapshot["candidate_ids"] == []
-    assert snapshot["status"] == "NO_TASK"
+    assert snapshot["status"] == "BLOCKED"
+
 
 def test_queue_catalog_definition_mismatch_is_rejected():
     queued = task()
@@ -188,7 +189,7 @@ def test_stale_budget_evidence_fails_closed(tmp_path):
         )
 
 
-def test_empty_queue_with_valid_evidence_is_no_task(tmp_path):
+def test_empty_queue_with_unverified_evidence_remains_blocked(tmp_path):
     hold_path, budget_path = evidence_files(tmp_path)
     snapshot = build_live_snapshot(
         {"tasks": []},
@@ -198,8 +199,9 @@ def test_empty_queue_with_valid_evidence_is_no_task(tmp_path):
         budget_evidence_path=budget_path,
         now=NOW,
     )
-    assert snapshot["status"] == "NO_TASK"
+    assert snapshot["status"] == "BLOCKED"
     assert snapshot["candidate_ids"] == []
+    assert snapshot["potential_candidate_count"] == 0
     assert snapshot["sources"]["runtime_queue_count"] == 0
     assert snapshot["execution_authorized"] is False
 
