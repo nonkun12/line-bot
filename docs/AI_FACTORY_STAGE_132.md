@@ -15,7 +15,7 @@ model output to the AI Factory proposal path without granting the model tools.
 
 ## Role separation
 
-- DESIGN and BUILD may receive local-model proposal text.
+- DESIGN and BUILD may receive local-model proposal text through separate, independently injected client instances.
 - TEST and REVIEW must be supplied by separate independent gate producers.
   Local-model text is never allowed to set `passed=True` or `approved=True`.
 - Missing independent gates fail closed.
