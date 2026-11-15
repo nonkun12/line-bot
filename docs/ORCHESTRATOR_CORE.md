@@ -8,8 +8,9 @@ free-deterministic-loop runner.
 
 - Validate the task registry and dependency graph.
 - Detect missing dependencies, duplicate IDs, and dependency cycles.
-- Respect task states, global HOLD, explicit per-task execution approval,
-  and a hard 2,000-minute budget ceiling.
+- Respect task states, global HOLD, caller-supplied approval metadata,
+  and a hard 2,000-minute planning ceiling.
+- Keep planning eligibility separate from execution authorization.
 - Produce a deterministic candidate order (priority descending, then ID).
 - Emit a read-only plan with explicit evidence that no execution or mutation
   occurred.
@@ -23,6 +24,15 @@ closed; this module does not infer approvals or available budget.
 The JSON input is a caller-supplied snapshot, not a live or durable task
 ledger. The example queue is illustrative and is not connected to the
 production LOOP queue. No task state is written back by this phase.
+
+The `execution_approved` boolean is untrusted caller metadata. It is shown
+for planning context only; it is not an approval credential. The planner
+always emits `execution_authorized=false`,
+`approval_evidence_verified=false`, and
+`budget_evidence_verified=false`. A future execution gate must independently
+verify an immutable approval record and authoritative usage evidence before
+any dispatch. A planning candidate must never be interpreted as permission
+to run.
 
 ## Run
 
