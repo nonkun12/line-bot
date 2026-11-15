@@ -183,8 +183,8 @@ class RecursiveEvolutionFeedbackIntegrator:
                 or plan.activation_authorized is not False or plan.independent_evaluation_required is not True):
             raise RecursiveEvolutionFeedbackError("Stage 154 plan contains forbidden authority")
         if (not _valid_digest(design.design_digest) or not _valid_digest(design.evaluation_suite_digest)
-                or not _valid_digest(design_attestation.design_digest)
-                or design_attestation.design_digest != design.design_digest
+                or not _valid_digest(design_attestation.source_plan_digest)
+                or design_attestation.source_plan_digest != design.source_exploration_digest
                 or design_attestation.evaluation_suite_digest != design.evaluation_suite_digest
                 or design_attestation.source_generation != design.source_generation
                 or not _ID.fullmatch(design_attestation.evaluator_id or "")
