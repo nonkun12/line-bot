@@ -112,8 +112,10 @@ def _validate_hold(path: Path | None, now: datetime) -> tuple[bool, bool, int | 
     if not isinstance(doc.get("source"), str) or not doc["source"].strip():
         raise SnapshotError("global_hold_source_missing")
     age = _freshness(doc.get("observed_at"), now, "global_hold")
-    reasons = ["global_hold_active"] if hold else []
-    return True, hold, age, reasons
+    # A well-formed JSON file is not an authenticated control-plane signal.
+    # Until a signature/provenance verifier exists, a false HOLD claim is unknown.
+    reasons = ["global_hold_active"] if hold else ["global_hold_unverified"]
+    return False, hold, age, reasons
 
 
 def _validate_budget(path: Path | None, now: datetime) -> tuple[bool, dict[str, Any], int | None, list[str]]:
@@ -138,12 +140,14 @@ def _validate_budget(path: Path | None, now: datetime) -> tuple[bool, dict[str, 
     if limit != HARD_BUDGET_MINUTES or consumed > limit or reserved > limit or consumed + reserved > limit:
         raise SnapshotError("budget_accounting_invalid")
     age = _freshness(doc.get("observed_at"), now, "budget")
-    return True, {
+    # Shape and freshness checks do not authenticate the usage source.
+    # Keep the reported figures visible, but never mark them trusted.
+    return False, {
         "limit_minutes": limit,
         "consumed_minutes": consumed,
         "reserved_minutes": reserved,
         "remaining_minutes": limit - consumed - reserved,
-    }, age, []
+    }, age, ["budget_evidence_unverified"]
 
 
 def build_live_snapshot(
@@ -247,7 +251,7 @@ def build_live_snapshot(
         },
         "global_hold": {
             "verified": hold_verified,
-            "active": global_hold if hold_verified else None,
+            "active": True if global_hold else None,
             "age_seconds": hold_age,
         },
         "budget": {

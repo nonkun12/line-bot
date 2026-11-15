@@ -568,7 +568,7 @@ def test_natural_language_status_request_is_read_only_and_does_not_dispatch(monk
     with patch.object(trigger.httpx, "Client", return_value=client):
         handled, reply = trigger.request_distributed_loop("u1", message)
     assert handled is True
-    assert "統括AI／分散Loop 状況" in reply
+    assert "統括AI／旧分散Loop履歴" in reply
     assert "Run #896" in reply
     assert client.posted == []
 

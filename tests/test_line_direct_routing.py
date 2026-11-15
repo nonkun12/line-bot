@@ -10,7 +10,7 @@ def test_openclaw_prefixed_line_request_uses_mac_queue(monkeypatch):
     queued = []
 
     monkeypatch.setattr(
-        app_module, "request_recovery_resume_review", lambda user_id, message: (False, "")
+        app_module, "request_recovery_resume_review", lambda user_id, message, **kwargs: (False, "")
     )
     monkeypatch.setattr(
         app_module, "request_distributed_loop", lambda user_id, message: (False, "")

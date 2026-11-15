@@ -73,7 +73,7 @@ def test_missing_hold_and_budget_evidence_blocks_without_execution():
     assert snapshot["dispatch_performed"] is False
 
 
-def test_valid_evidence_creates_plan_only_candidate_not_execution(tmp_path):
+def test_well_formed_but_unauthenticated_evidence_never_unblocks_plan(tmp_path):
     hold_path, budget_path = evidence_files(tmp_path)
     snapshot = build_live_snapshot(
         {"tasks": [task()]},
@@ -83,10 +83,16 @@ def test_valid_evidence_creates_plan_only_candidate_not_execution(tmp_path):
         budget_evidence_path=budget_path,
         now=NOW,
     )
-    assert snapshot["status"] == "PLAN_READY"
-    assert snapshot["candidate_ids"] == ["task-a"]
+    assert snapshot["status"] == "BLOCKED"
+    assert snapshot["candidate_ids"] == []
+    assert snapshot["potential_candidate_count"] == 1
     assert snapshot["execution_authorized"] is False
     assert snapshot["approval_evidence_verified"] is False
+    assert snapshot["budget_evidence_verified"] is False
+    assert snapshot["global_hold"]["verified"] is False
+    assert snapshot["budget"]["verified"] is False
+    assert "global_hold_unverified" in snapshot["reasons"]
+    assert "budget_evidence_unverified" in snapshot["reasons"]
     assert "approval_evidence_unverified" in snapshot["reasons"]
 
 
@@ -128,7 +134,7 @@ def test_completed_held_and_review_required_tasks_are_never_candidates(
     )
     assert snapshot["tasks"][0]["state"] == expected
     assert snapshot["candidate_ids"] == []
-    assert snapshot["status"] == "NO_TASK"
+    assert snapshot["status"] == "BLOCKED"
     assert snapshot["execution_authorized"] is False
 
 
@@ -168,6 +174,9 @@ def test_stale_budget_evidence_fails_closed(tmp_path):
     hold_path, budget_path = evidence_files(
         tmp_path, observed_at="2026-11-15T05:00:00+00:00"
     )
+    hold_doc = json.loads(hold_path.read_text(encoding="utf-8"))
+    hold_doc["observed_at"] = "2026-11-15T07:30:00+00:00"
+    hold_path.write_text(json.dumps(hold_doc), encoding="utf-8")
     with pytest.raises(SnapshotError, match="budget_stale"):
         build_live_snapshot(
             {"tasks": [task()]},

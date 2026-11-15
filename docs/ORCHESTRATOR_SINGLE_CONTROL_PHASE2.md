@@ -53,6 +53,10 @@ review-required tasks are never candidates.
 - Budget evidence must include source, observation time, consumed minutes,
   reserved minutes, and a freshness bound. Missing or stale evidence means
   execution remains blocked.
+- Schema validity and freshness alone do not authenticate a JSON evidence file.
+  Until a cryptographic/provenance verifier is implemented, even a well-formed
+  Global HOLD=false or budget snapshot remains unverified and the gate stays
+  BLOCKED.
 - The Orchestrator planner always reports
   `execution_authorized=false`; it only produces a plan.
 
