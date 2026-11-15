@@ -77,6 +77,21 @@ def test_review_command_dispatches_state_only_workflow(monkeypatch):
     }
 
 
+
+def test_review_command_is_blocked_during_orchestrator_consolidation(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _Client(_Response(204))
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_recovery_resume_review(
+            "u1",
+            "Recovery AI再開レビュー確認 task_id=task-a reviewed=true",
+            allow_state_change=False,
+        )
+    assert handled is True
+    assert "再開レビュー更新は現在停止中" in reply
+    assert client.calls == []
+
 def test_review_command_reports_permission_failure(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
     monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
