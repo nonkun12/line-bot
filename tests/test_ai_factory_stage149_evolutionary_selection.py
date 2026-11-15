@@ -29,7 +29,7 @@ def fixture():
     verifier = AuthenticatedEvidenceVerifier({KEY_ID: TrustedEvaluatorKey("independent-evaluator", SECRET)})
     fitness = Fitness(0.91, 0.93, 0.99, 100.0, 512.0, 0, SUITE)
     candidate = ModelCandidate(
-        "child-1", ("parent-a", "parent-b"), MergeStrategy.SLERP,
+        "child-1", ("parent-a", "parent-b"), MergeStrategy.PARAMETER,
         CompatibilityReport(True, MergeStrategy.SLERP, ()),
         fitness, 2, CandidateStatus.PENDING_HUMAN_APPROVAL, False,
     )
