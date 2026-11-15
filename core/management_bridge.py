@@ -329,20 +329,34 @@ def run_management_request(
             try:
                 from core.local_model_adapter import OllamaLocalModelCall
                 revision_model = os.environ.get(
-                    "ORCHESTRATOR_LOCAL_REVISION_MODEL",
-                    os.environ.get("ORCHESTRATOR_LOCAL_PEER_REVIEW_MODEL", ""),
+                    "ORCHESTRATOR_LOCAL_REVISION_MODEL", ""
                 ).strip()
-                if not revision_model:
-                    raise ValueError("local revision model is not configured")
-                model_call = OllamaLocalModelCall(
+                review_model = os.environ.get(
+                    "ORCHESTRATOR_LOCAL_REVISION_REVIEW_MODEL", ""
+                ).strip()
+                if not revision_model or not review_model:
+                    raise ValueError(
+                        "separate local revision and review models are required"
+                    )
+                if revision_model.casefold() == review_model.casefold():
+                    raise ValueError(
+                        "revision and independent review models must be different"
+                    )
+                revision_url = os.environ.get(
+                    "ORCHESTRATOR_LOCAL_REVISION_URL",
+                    "http://127.0.0.1:11434/v1",
+                )
+                review_url = os.environ.get(
+                    "ORCHESTRATOR_LOCAL_REVISION_REVIEW_URL",
+                    revision_url,
+                )
+                draft_model_call = OllamaLocalModelCall(
                     model=revision_model,
-                    base_url=os.environ.get(
-                        "ORCHESTRATOR_LOCAL_REVISION_URL",
-                        os.environ.get(
-                            "ORCHESTRATOR_LOCAL_PEER_REVIEW_URL",
-                            "http://127.0.0.1:11434/v1",
-                        ),
-                    ),
+                    base_url=revision_url,
+                )
+                review_model_call = OllamaLocalModelCall(
+                    model=review_model,
+                    base_url=review_url,
                 )
                 snapshot["revision_workflow"] = run_revision_workflow_if_needed(
                     original_verdict="NEEDS_REVISION",
@@ -354,11 +368,11 @@ def run_management_request(
                     independent_reviewer_id=independent_reviewer_id,
                     original_result=observation.summary,
                     findings=revision_request.findings,
-                    draft_model_call=model_call,
-                    review_model_call=model_call,
+                    draft_model_call=draft_model_call,
+                    review_model_call=review_model_call,
                 )
-                # This is one local model adapter called twice under distinct
-                # logical identities, NOT proof of independent model processes.
+                # Distinct model names and adapter instances provide model-level
+                # diversity, but not separate OS processes or hardware isolation.
             except Exception as exc:
                 print(f"[MANAGEMENT AI] revision workflow failed closed: {type(exc).__name__}")
                 return _MANAGEMENT_EXECUTION_FAILURE
