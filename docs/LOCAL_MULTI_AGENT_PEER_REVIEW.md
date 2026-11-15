@@ -45,3 +45,20 @@ manager = ManagementAI.with_local_peer_review(
 PR #1373 is still a Draft. The adapter is opt-in and is not automatically enabled by the application. No production deployment, workflow dispatch, merge, or substream restart is performed by this change.
 
 Before enabling it in a runtime, install and verify the local inference server on that same host, then run the full CI and an approved integration trial. If the host cannot run a local model within the free resource budget, keep peer review disabled rather than switching to a paid or remote provider.
+
+
+## Runtime wiring and dashboard audit
+
+Local peer review remains disabled unless the application environment explicitly sets:
+
+- `ORCHESTRATOR_LOCAL_PEER_REVIEW_ENABLED=true`
+- `ORCHESTRATOR_LOCAL_PEER_REVIEW_MODEL=<installed Ollama model name>`
+- Optional: `ORCHESTRATOR_LOCAL_PEER_REVIEW_URL=http://127.0.0.1:11434/v1`
+
+When enabled without a model name, the multi-specialist request fails closed before specialist execution. The URL is still validated by the loopback-only adapter; remote hosts and cloud fallback are rejected. Do not enable this on a hosted runtime unless Ollama is installed and running inside that same runtime.
+
+Each completed orchestration attempt writes only a bounded collaboration summary (agent IDs, roles, task IDs, peer-review state, and bounded findings) to the application SQLite database. The per-user history is capped at 20 records. The dashboard exposes it through the authenticated, read-only endpoint:
+
+`GET /api/dashboard/orchestrator/collaboration?limit=10`
+
+This endpoint reports evidence only. It cannot approve tasks, grant permissions, dispatch work, or change the execution queue. The dashboard endpoint is an API surface; it does not yet add a visual panel to the HTML dashboard.
