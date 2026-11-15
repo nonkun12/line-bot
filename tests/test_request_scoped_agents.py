@@ -87,7 +87,7 @@ def test_peer_review_blocks_on_adverse_verdict_or_missing_review() -> None:
     a, b = team.agents
     decision = PeerReviewCoordinator().decide(
         team,
-        [PeerReview(a.agent_id, b.agent_id, ReviewVerdict.NEEDS_REVISION)],
+        [PeerReview(a.agent_id, b.agent_id, ReviewVerdict.NEEDS_REVISION, ("Add source citations.",))],
     )
     assert decision.status == "NEEDS_REVISION"
     assert len(decision.blocked_agent_ids) == 2
@@ -188,3 +188,23 @@ def test_hard_block_takes_precedence_over_revision_requests() -> None:
     )
     assert decision.status == "BLOCKED"
     assert len(decision.revision_requests) == 1
+
+
+def test_revision_verdict_requires_actionable_findings() -> None:
+    team = RequestScopedAgentFactory().create(
+        "revision-no-finding",
+        [
+            AgentTask("a", AgentRole.VOICE, "Prepare voice."),
+            AgentTask("b", AgentRole.NEWS, "Collect news."),
+        ],
+    )
+    first, second = team.agents
+    with pytest.raises(ValueError, match="actionable findings"):
+        PeerReviewCoordinator().decide(
+            team,
+            [PeerReview(
+                reviewer_id=first.agent_id,
+                target_agent_id=second.agent_id,
+                verdict=ReviewVerdict.NEEDS_REVISION,
+            )],
+        )
