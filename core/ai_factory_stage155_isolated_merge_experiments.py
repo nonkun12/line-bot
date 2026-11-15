@@ -122,11 +122,13 @@ class IsolatedMergeExperimentRunner:
     ) -> MergeExperimentOutcome:
         if not isinstance(plan, MergeEvaluationPlan):
             raise IsolatedMergeExperimentError("typed Stage 154 plan is required")
-        if not plan.independent_evaluation_required or plan.execution_authorized or plan.merge_authorized or plan.activation_authorized:
-            # Approval is a separate, short-lived human authorization; a plan cannot
-            # self-authorize and its immutable authority flags must remain false.
-            if not (plan.execution_authorized is False and plan.merge_authorized is False and plan.activation_authorized is False):
-                raise IsolatedMergeExperimentError("plan authority flags must remain false")
+        # Approval is a separate, short-lived human authorization; a plan cannot
+        # self-authorize and its immutable authority flags must remain false.
+        if (plan.independent_evaluation_required is not True
+                or plan.execution_authorized is not False
+                or plan.merge_authorized is not False
+                or plan.activation_authorized is not False):
+            raise IsolatedMergeExperimentError("plan must require independent evaluation and keep all authority flags false")
         if not _digest(plan.recipe_digest) or not _digest(plan.evaluation_suite_digest):
             raise IsolatedMergeExperimentError("plan recipe or suite digest is invalid")
         if not _digest(plan.candidate_artifact_digest) or not plan.parent_artifact_digests:
@@ -138,6 +140,8 @@ class IsolatedMergeExperimentRunner:
         if not callable(verify_approval) or not verify_approval(approval_token, plan.recipe_digest):
             raise IsolatedMergeExperimentError("human approval could not be independently verified")
         _validate_fitness(baseline_fitness, plan.evaluation_suite_digest)
+        if not isinstance(policy, SandboxPolicy):
+            raise IsolatedMergeExperimentError("validated sandbox policy is required")
         if not callable(getattr(sandbox, "execute", None)) or not callable(getattr(evaluator, "evaluate", None)):
             raise IsolatedMergeExperimentError("sandbox and independent evaluator adapters are required")
 
@@ -146,6 +150,7 @@ class IsolatedMergeExperimentRunner:
             raise IsolatedMergeExperimentError("sandbox returned an untyped execution receipt")
         if (receipt.plan_id != plan.plan_id or receipt.recipe_digest != plan.recipe_digest
                 or not _digest(receipt.output_artifact_digest)
+                or receipt.output_artifact_digest in plan.parent_artifact_digests
                 or not _ID.fullmatch(receipt.sandbox_id or "")
                 or not _ID.fullmatch(receipt.executor_id or "")):
             raise IsolatedMergeExperimentError("sandbox receipt identity or output digest mismatch")
