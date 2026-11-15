@@ -125,7 +125,7 @@ def test_stage133_blocks_when_independent_review_rejects():
 
 
 def test_stage133_requires_four_distinct_role_names():
-    with pytest.raises(ValueError, match="independent"):
+    with pytest.raises(ValueError, match="distinct agent identities"):
         build_stage133_runtime(
             configs=Stage133ModelConfigs(
                 LocalModelConfig("designer"),
