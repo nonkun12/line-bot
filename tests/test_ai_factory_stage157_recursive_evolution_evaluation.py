@@ -44,7 +44,7 @@ def observation(generation=8, *, evaluator=None, metrics=None):
         artifact_digest=ARTIFACT_8 if generation == 8 else ARTIFACT_9,
         evaluation_suite_digest=SUITE,
         evaluator_id=evaluator or f"independent-evaluator-{generation}",
-        evidence_digest=("7" if generation == 8 else "8") * 64,
+        evidence_digest=(format(generation, "064x")) ,
         fitness=metrics or fitness(),
         signature="valid-signed-evidence",
     )
@@ -96,7 +96,7 @@ def test_stagnation_and_regression_are_distinguished():
 def test_mixed_tradeoff_requires_human_review():
     ledger = RecursiveEvolutionEvaluator()
     add(ledger, 8, fitness())
-    result = add(ledger, 9, fitness(.92, .90, .99, 112, 500))
+    result = add(ledger, 9, fitness(.92, .90, .99, 108, 500))
     assert result.verdict == EvolutionVerdict.MIXED
     assert "human review" in " ".join(result.rationale)
 
