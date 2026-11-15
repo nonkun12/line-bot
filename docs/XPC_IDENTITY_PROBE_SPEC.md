@@ -39,9 +39,14 @@ Request fields:
 - request_id: bounded opaque correlation value
 - probe_nonce: bounded random value
 
-Reject unknown fields, duplicate fields, oversized messages, malformed values,
-unsupported versions, and replayed probe nonces. The broker obtains caller
-identity independently of all request fields.
+Before accepting a probe request, the broker issues a fresh, cryptographically random,
+ephemeral instance challenge for that connection. The request includes that challenge
+alongside protocol_version, request_id, and probe_nonce. Reject unknown fields,
+duplicate fields, oversized messages, malformed values, unsupported versions,
+requests with a challenge from another broker instance, and replayed probe nonces.
+The broker obtains caller identity independently of all request fields. The challenge
+is held only in broker memory and is never persisted; restarting the broker creates
+a new challenge, invalidating captured requests from the previous instance.
 
 Response fields:
 - protocol_version
@@ -72,14 +77,14 @@ prove that the user approved an action or that a desktop operation is safe.
 | Unsigned client | Remove signature | REJECTED |
 | Wrong signer | Sign with another test identity | REJECTED |
 | Wrong requirement | Same team, non-matching designated requirement | REJECTED |
-| Claimed identity spoof | Send expected PID/UID/team/bundle/role in payload | REJECTED |
+| Claimed identity spoof | Correctly signed client sends false PID/UID/team/bundle/role claims | Signing verdict unchanged; claims ignored; request handled only according to authenticated peer and protocol policy |
 | Role confusion | Positive client claims broker or executor role | REJECTED |
 | Wrong user session | Connect from a different user/session context | REJECTED |
 | Protocol downgrade | Send unsupported older version | REJECTED |
 | Oversized message | Exceed strict request bound | REJECTED |
 | Replay | Reuse probe nonce | REJECTED |
 | Unknown field | Add unrecognized request field | REJECTED |
-| Broker restart | Reuse pre-restart nonce where replay persistence is required | REJECTED |
+| Broker restart | Replay a captured request carrying the prior broker-instance challenge | REJECTED because the new broker instance has a different ephemeral challenge |
 
 Tests must demonstrate that spoofed payload claims never change the identity
 verdict. Test fixtures must not be described as evidence of real macOS identity.
@@ -94,7 +99,8 @@ verdict. Test fixtures must not be described as evidence of real macOS identity.
   background workers.
 - Bound request size, response size, connection count, and request duration.
 - Fail closed on missing peer-signing enforcement, signing-requirement mismatch,
-  ambiguous identity, session lookup failure, or broker restart.
+  ambiguous identity, session lookup failure, or broker restart; issue a new
+  ephemeral instance challenge after every restart.
 - The broker must not load plugins, run shell commands, open documents, or call
   any CAD/Excel/Calc API.
 - Remove test signing identities and temporary artifacts after test completion
