@@ -121,6 +121,29 @@ class ManagementRun:
     peer_review: ReviewDecision | None = None
     peer_review_required: bool = False
 
+    def collaboration_snapshot(self) -> dict[str, object]:
+        """Return a bounded, JSON-safe summary for a dashboard or audit record."""
+        agents = self.agent_team.agents if self.agent_team is not None else ()
+        review = self.peer_review
+        return {
+            "agent_count": len(agents),
+            "agents": [
+                {
+                    "agent_id": agent.agent_id,
+                    "role": agent.role.value,
+                    "task_ids": list(agent.task_ids),
+                }
+                for agent in agents
+            ],
+            "peer_review_required": self.peer_review_required,
+            "peer_review_status": review.status if review is not None else (
+                "NOT_RUN" if self.peer_review_required else "NOT_CONFIGURED"
+            ),
+            "accepted_agent_ids": list(review.accepted_agent_ids) if review else [],
+            "blocked_agent_ids": list(review.blocked_agent_ids) if review else [],
+            "findings": list(review.findings[:8]) if review else [],
+            "accepted": self.success,
+        }
     @property
     def success(self) -> bool:
         if not self.distributed.success:
@@ -588,5 +611,6 @@ __all__ = [
     "ManagementObservation",
     "ModelManagementPlanner",
     "ModelPeerReviewer",
+    "build_local_peer_reviewer",
     "groq_management_call",
 ]
