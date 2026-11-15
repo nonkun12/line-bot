@@ -48,6 +48,7 @@ class AgentTeam:
     request_id: str
     agents: tuple[AgentInstance, ...]
     batches: tuple[object, ...]
+    reviewer_agents: tuple[AgentInstance, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -99,7 +100,24 @@ class RequestScopedAgentFactory:
                     context_key=digest,
                 )
             )
-        return AgentTeam(request_id, tuple(agents), batches)
+        reviewer_agents: tuple[AgentInstance, ...] = ()
+        # A one-task request still needs an independent reviewer. This bounded,
+        # review-only identity has no task assignment and is never an executor.
+        if len(agents) == 1:
+            target = agents[0]
+            digest = sha256(
+                (request_id + "|reviewer|" + target.agent_id).encode()
+            ).hexdigest()[:16]
+            reviewer_agents = (
+                AgentInstance(
+                    agent_id=f"{request_id}:reviewer:{digest}",
+                    request_id=request_id,
+                    role=target.role,
+                    task_ids=(),
+                    context_key=digest,
+                ),
+            )
+        return AgentTeam(request_id, tuple(agents), batches, reviewer_agents)
 
 
 class PeerReviewCoordinator:
@@ -121,13 +139,14 @@ class PeerReviewCoordinator:
         if len(review_list) > self.max_reviews:
             raise ValueError("review count exceeds configured limit")
 
-        known = {agent.agent_id for agent in team.agents}
+        targets = {agent.agent_id for agent in team.agents}
+        known_reviewers = targets | {agent.agent_id for agent in team.reviewer_agents}
         seen: set[tuple[str, str]] = set()
-        by_target: dict[str, list[PeerReview]] = {agent_id: [] for agent_id in known}
+        by_target: dict[str, list[PeerReview]] = {agent_id: [] for agent_id in targets}
         findings: list[str] = []
 
         for review in review_list:
-            if review.reviewer_id not in known or review.target_agent_id not in known:
+            if review.reviewer_id not in known_reviewers or review.target_agent_id not in targets:
                 raise ValueError("review references an agent outside this request")
             if review.reviewer_id == review.target_agent_id:
                 raise ValueError("self-review is not allowed")
