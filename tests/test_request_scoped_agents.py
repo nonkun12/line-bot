@@ -139,3 +139,50 @@ def test_review_only_agent_cannot_be_review_target() -> None:
                 verdict=ReviewVerdict.PASS,
             )],
         )
+
+
+def test_needs_revision_creates_bounded_targeted_revision_request() -> None:
+    team = RequestScopedAgentFactory().create(
+        "revision-request",
+        [
+            AgentTask("a", AgentRole.VOICE, "Prepare voice."),
+            AgentTask("b", AgentRole.NEWS, "Collect news."),
+        ],
+    )
+    reviewer, target = team.agents
+    decision = PeerReviewCoordinator().decide(
+        team,
+        [PeerReview(
+            reviewer_id=reviewer.agent_id,
+            target_agent_id=target.agent_id,
+            verdict=ReviewVerdict.NEEDS_REVISION,
+            findings=("Add a source timestamp.",),
+        )],
+    )
+    assert decision.status == "NEEDS_REVISION"
+    assert target.agent_id in decision.blocked_agent_ids
+    assert len(decision.revision_requests) == 1
+    request = decision.revision_requests[0]
+    assert request.reviewer_id == reviewer.agent_id
+    assert request.target_agent_id == target.agent_id
+    assert request.findings == ("Add a source timestamp.",)
+
+
+def test_hard_block_takes_precedence_over_revision_requests() -> None:
+    team = RequestScopedAgentFactory().create(
+        "revision-and-block",
+        [
+            AgentTask("a", AgentRole.VOICE, "Prepare voice."),
+            AgentTask("b", AgentRole.NEWS, "Collect news."),
+        ],
+    )
+    first, second = team.agents
+    decision = PeerReviewCoordinator().decide(
+        team,
+        [
+            PeerReview(first.agent_id, second.agent_id, ReviewVerdict.NEEDS_REVISION, ("Fix citation.",)),
+            PeerReview(second.agent_id, first.agent_id, ReviewVerdict.BLOCKED, ("Unsafe output.",)),
+        ],
+    )
+    assert decision.status == "BLOCKED"
+    assert len(decision.revision_requests) == 1
