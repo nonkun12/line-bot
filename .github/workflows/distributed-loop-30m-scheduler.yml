@@ -1,0 +1,109 @@
+name: Distributed Loop 30-Minute Scheduler
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+# Never accumulate a backlog of scheduled dispatchers.
+concurrency:
+  group: distributed-loop-30m-scheduler
+  cancel-in-progress: false
+
+jobs:
+  dispatch-one-bounded-cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
+      MONTHLY_REPOSITORY_MINUTE_BUDGET: '1800'
+    steps:
+      - name: Checkout trusted main for stop-file check
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Stop when Control Tower or repository kill switch is active
+        id: kill
+        run: |
+          set -euo pipefail
+          if [ "${CONTROL_TOWER_KILL_SWITCH,,}" = "true" ] || [ -f .autonomous-loop.stop ]; then
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            echo "Scheduler stopped: kill switch is active." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "dispatch=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Measure this repository's current-month Actions usage
+        id: budget
+        if: steps.kill.outputs.dispatch == 'true'
+        run: |
+          set -euo pipefail
+          month_start="$(date -u +%Y-%m-01)"
+          gh api --paginate --slurp \
+            "repos/$REPOSITORY/actions/runs?per_page=100&created=%3E%3D$month_start" \
+            > /tmp/actions-runs-pages.json
+          : > /tmp/actions-jobs.jsonl
+          while IFS= read -r run_id; do
+            [ -n "$run_id" ] || continue
+            gh api --paginate --slurp \
+              "repos/$REPOSITORY/actions/runs/$run_id/jobs?per_page=100" \
+              | jq -c '.[].jobs[]?' >> /tmp/actions-jobs.jsonl
+          done < <(jq -r '.[].workflow_runs[]?.id' /tmp/actions-runs-pages.json)
+          set +e
+          python -m scripts.distributed_loop_budget_gate \
+            --jobs-jsonl /tmp/actions-jobs.jsonl \
+            --budget-minutes "$MONTHLY_REPOSITORY_MINUTE_BUDGET"
+          result=$?
+          set -e
+          if [ "$result" -eq 0 ]; then
+            echo "dispatch=true" >> "$GITHUB_OUTPUT"
+          elif [ "$result" -eq 1 ]; then
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            echo "Budget ceiling reached; no development run dispatched." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Budget evidence invalid; fail closed without dispatch." >> "$GITHUB_STEP_SUMMARY"
+            exit "$result"
+          fi
+
+      - name: Avoid duplicate active distributed loops
+        id: active
+        if: steps.kill.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true'
+        run: |
+          set -euo pipefail
+          active="$(gh api \
+            "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=100" \
+            --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
+          if [ "$active" -gt 0 ]; then
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            echo "Existing distributed loop is queued/running; skipping this slot." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "dispatch=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dispatch one-task distributed development cycle
+        if: steps.kill.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true' && steps.active.outputs.dispatch == 'true'
+        run: |
+          set -euo pipefail
+          gh workflow run distributed-autonomous-loop.yml \
+            --repo "$REPOSITORY" --ref main -f max_tasks=1
+          echo "Dispatched exactly one bounded cycle; queue approval, HOLD, evidence, and publish gates remain in the target workflow." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report scheduler decision
+        if: always()
+        run: |
+          {
+            echo "# 30-minute Distributed LOOP Scheduler"
+            echo "- Trigger: ${GITHUB_EVENT_NAME}"
+            echo "- Kill switch: ${CONTROL_TOWER_KILL_SWITCH}"
+            echo "- Repository-local monthly budget: ${MONTHLY_REPOSITORY_MINUTE_BUDGET} minutes"
+            echo "- Target task limit: 1"
+            echo "- Merge/deploy: not performed by scheduler"
+          } >> "$GITHUB_STEP_SUMMARY"
