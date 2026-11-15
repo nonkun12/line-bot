@@ -52,11 +52,19 @@ class AgentTeam:
 
 
 @dataclass(frozen=True)
+class RevisionRequest:
+    reviewer_id: str
+    target_agent_id: str
+    findings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ReviewDecision:
     status: str
     accepted_agent_ids: tuple[str, ...]
     blocked_agent_ids: tuple[str, ...]
     findings: tuple[str, ...]
+    revision_requests: tuple[RevisionRequest, ...] = ()
 
 
 class RequestScopedAgentFactory:
@@ -144,6 +152,7 @@ class PeerReviewCoordinator:
         seen: set[tuple[str, str]] = set()
         by_target: dict[str, list[PeerReview]] = {agent_id: [] for agent_id in targets}
         findings: list[str] = []
+        revision_requests: list[RevisionRequest] = []
 
         for review in review_list:
             if review.reviewer_id not in known_reviewers or review.target_agent_id not in targets:
@@ -163,6 +172,14 @@ class PeerReviewCoordinator:
                 raise ValueError("review findings exceed bounds")
             by_target[review.target_agent_id].append(review)
             findings.extend(review.findings)
+            if review.verdict is ReviewVerdict.NEEDS_REVISION:
+                revision_requests.append(
+                    RevisionRequest(
+                        reviewer_id=review.reviewer_id,
+                        target_agent_id=review.target_agent_id,
+                        findings=review.findings,
+                    )
+                )
 
         accepted: list[str] = []
         blocked: list[str] = []
@@ -175,12 +192,22 @@ class PeerReviewCoordinator:
             else:
                 blocked.append(agent_id)
 
-        status = "PASS" if not blocked else "BLOCKED"
+        has_hard_block = any(
+            item.verdict is ReviewVerdict.BLOCKED
+            for target_reviews in by_target.values()
+            for item in target_reviews
+        )
+        status = (
+            "PASS" if not blocked
+            else "BLOCKED" if has_hard_block or not revision_requests
+            else "NEEDS_REVISION"
+        )
         return ReviewDecision(
             status=status,
             accepted_agent_ids=tuple(sorted(accepted)),
             blocked_agent_ids=tuple(sorted(blocked)),
             findings=tuple(findings),
+            revision_requests=tuple(revision_requests),
         )
 
 
@@ -191,5 +218,6 @@ __all__ = [
     "PeerReviewCoordinator",
     "RequestScopedAgentFactory",
     "ReviewDecision",
+    "RevisionRequest",
     "ReviewVerdict",
 ]
