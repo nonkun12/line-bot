@@ -86,7 +86,9 @@ and must not be presented as current Orchestrator activity.
 
 The Mac-local OpenClaw and Obsidian LINE queues are also closed. Requests to
 those legacy routes are rejected without enqueueing because this migration
-does not use a Mac worker.
+does not use a Mac worker. The standalone Free Deterministic LOOP workflow is
+reduced to pull-request contract tests only: its 30-minute schedule and manual
+task-execution entry point are removed in this migration branch.
 
 ## LINE integration contract
 
