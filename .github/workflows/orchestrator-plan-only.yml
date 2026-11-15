@@ -5,10 +5,19 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "app.py"
+      - "core/orchestrator_status.py"
       - "scripts/orchestrator_core.py"
       - "scripts/orchestrator_live_adapter.py"
       - "scripts/orchestrator_dashboard.py"
+      - "distributed_loop_trigger.py"
+      - "recovery_review_trigger.py"
+      - "tests/test_orchestrator_core.py"
       - "tests/test_orchestrator_live_adapter.py"
+      - "tests/test_orchestrator_status.py"
+      - "tests/test_line_direct_routing.py"
+      - "tests/test_distributed_loop_trigger.py"
+      - "tests/test_recovery_review_trigger.py"
       - ".github/workflows/orchestrator-plan-only.yml"
       - ".github/autonomous-loop-tasks.json"
       - ".github/autonomous-loop-task-catalog.json"
@@ -41,8 +50,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \
-            fetch --no-tags --depth=1 origin \
+          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \\
+            fetch --no-tags --depth=1 origin \\
             refs/heads/autonomous-loop-state:refs/remotes/origin/autonomous-loop-state
           git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/orchestrator-durable-state.json
           python -m json.tool /tmp/orchestrator-durable-state.json >/dev/null
@@ -51,10 +60,10 @@ jobs:
         id: snapshot
         run: |
           set +e
-          python -m scripts.orchestrator_live_adapter \
-            --queue .github/autonomous-loop-tasks.json \
-            --catalog .github/autonomous-loop-task-catalog.json \
-            --state /tmp/orchestrator-durable-state.json \
+          python -m scripts.orchestrator_live_adapter \\
+            --queue .github/autonomous-loop-tasks.json \\
+            --catalog .github/autonomous-loop-task-catalog.json \\
+            --state /tmp/orchestrator-durable-state.json \\
             > /tmp/orchestrator-snapshot.json
           code=$?
           set -e
@@ -74,7 +83,7 @@ jobs:
           if payload.get("status") not in {"PLAN_READY", "NO_TASK", "BLOCKED"}:
               raise SystemExit("unknown snapshot status")
           Path("/tmp/orchestrator-snapshot-status.txt").write_text(
-              str(payload["status"]) + "\n", encoding="utf-8"
+              str(payload["status"]) + "\\n", encoding="utf-8"
           )
           PY
           if [ "$code" -ne 0 ] && [ "$(cat /tmp/orchestrator-snapshot-status.txt)" != "BLOCKED" ]; then
