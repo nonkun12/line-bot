@@ -119,8 +119,8 @@ verdict. Test fixtures must not be described as evidence of real macOS identity.
   background workers.
 - Bound request size, response size, connection count, and request duration.
 - Fail closed on missing peer-signing enforcement, signing-requirement mismatch,
-  ambiguous identity, session lookup failure, or broker restart; issue a new
-  ephemeral instance challenge after every restart.
+  ambiguous identity or session lookup failure; on broker restart, destroy all
+  existing connections and their challenges, then issue fresh per-connection challenges.
 - The broker must not load plugins, run shell commands, open documents, or call
   any CAD/Excel/Calc API.
 - Remove test signing identities and temporary artifacts after test completion
