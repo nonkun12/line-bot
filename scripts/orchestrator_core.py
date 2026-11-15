@@ -36,7 +36,9 @@ def _validate(document: Any) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]
     if document.get("schema_version") != 1:
         raise PlanError("unsupported_schema_version")
 
-    global_hold = document.get("global_hold", False)
+    if "global_hold" not in document:
+        raise PlanError("missing_global_hold")
+    global_hold = document["global_hold"]
     if not isinstance(global_hold, bool):
         raise PlanError("invalid_global_hold")
     budget = document.get("budget")
