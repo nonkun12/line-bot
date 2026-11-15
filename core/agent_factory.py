@@ -7,7 +7,7 @@ files, executes generated code, grants tools, or activates an agent implicitly.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Mapping, Protocol
+from typing import Protocol
 
 from .agent_governance import AgentGovernance, AgentGovernanceRecord
 from .agent_specs import AgentLifecycle, AgentSpec
@@ -111,6 +111,7 @@ class AgentFactory:
         if errors:
             raise ValueError("agent specification invalid: " + "; ".join(errors))
         self._validate_capabilities(spec)
+        spec = spec.transition(AgentLifecycle.VALIDATED)
 
         build = self.builder.build(spec)
         if not isinstance(build, AgentBuild):
@@ -126,12 +127,16 @@ class AgentFactory:
             raise TypeError("sandbox must return an AgentTestReport")
         if not tests.passed or not tests.evidence or tests.failures:
             raise ValueError("agent sandbox tests did not pass with evidence")
+        tested_spec = spec.transition(AgentLifecycle.TESTED)
+        build = replace(build, spec=tested_spec)
 
         review = self.reviewer.review(build, tests)
         if not isinstance(review, AgentReviewReport):
             raise TypeError("reviewer must return an AgentReviewReport")
         if not review.approved or review.blockers:
             raise ValueError("agent review did not approve the candidate")
+        reviewed_spec = tested_spec.transition(AgentLifecycle.REVIEWED)
+        build = replace(build, spec=reviewed_spec)
 
         record = AgentCreationRecord(
             build=build,
@@ -164,10 +169,7 @@ class AgentFactory:
         if record.lifecycle != AgentLifecycle.REVIEWED:
             raise ValueError("candidate is not in REVIEWED lifecycle")
 
-        enabled_spec = record.build.spec.transition(AgentLifecycle.VALIDATED)
-        enabled_spec = enabled_spec.transition(AgentLifecycle.TESTED)
-        enabled_spec = enabled_spec.transition(AgentLifecycle.REVIEWED)
-        enabled_spec = enabled_spec.transition(AgentLifecycle.ENABLED)
+        enabled_spec = record.build.spec.transition(AgentLifecycle.ENABLED)
         if version.agent_name != enabled_spec.name:
             raise ValueError("agent and version names must match")
         enabled_version = replace(version, lifecycle=AgentLifecycle.ENABLED)
