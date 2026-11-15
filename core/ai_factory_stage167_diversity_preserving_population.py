@@ -189,7 +189,9 @@ class EvolutionaryPopulationDiversifier:
             ((items[0].revised_prior, strategy, items[0]) for strategy, items in by_strategy.items()),
             key=lambda row: (-row[0], row[1], row[2].candidate_id),
         )
-        target_coverage = min(minimum_strategy_coverage, len(strategies), max_cohort_size)
+        target_coverage = min(len(strategies), max_cohort_size)
+        if target_coverage < min(minimum_strategy_coverage, len(strategies)):
+            raise EvolutionaryPopulationDiversityError("cohort capacity cannot meet minimum strategy coverage")
         for _, strategy, item in first_pass:
             if len(selected) >= target_coverage:
                 break
