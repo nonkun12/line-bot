@@ -84,7 +84,7 @@ approvals, mint capabilities, or call desktop APIs.
 1. Review this design against supported macOS versions and signing/distribution
    model.
 2. Build a no-op XPC identity probe with no approval or desktop APIs.
-3. Test audit-token and code-signing validation using positive and negative
+3. Test OS-enforced peer code-signing requirements using positive and negative
    signed test clients.
 4. Test session lifecycle and invalidation behavior.
 5. Implement preview-only UI; verify it cannot issue a capability.
