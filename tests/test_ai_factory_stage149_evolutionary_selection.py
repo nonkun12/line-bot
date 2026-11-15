@@ -156,7 +156,7 @@ def test_capacity_is_bounded_and_fail_closed():
     _, candidate, report, recipe, signed, parents = fixture()
     population = EvolutionaryPopulation(
         AuthenticatedEvidenceVerifier({KEY_ID: TrustedEvaluatorKey("independent-evaluator", SECRET)}),
-        max_population=1,
+        max_population=1, max_survivors=1,
     )
     population.admit(candidate, report, recipe, signed, parents, expected_artifact_digest=ARTIFACT)
     assert len(population.snapshot().entries) == 1
