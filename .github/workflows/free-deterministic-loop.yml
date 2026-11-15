@@ -37,11 +37,13 @@ jobs:
       - name: Validate free runner and queue contract
         run: |
           set -euo pipefail
-          python -m pytest -q tests/test_free_deterministic_loop.py
           mkdir -p artifacts/free-deterministic-loop
+          evidence="artifacts/free-deterministic-loop/task-evidence.jsonl"
+          trap 'rc=$?; if [ ! -s "$evidence" ]; then printf "{\"task_id\":null,\"status\":\"BLOCKED\",\"failure_reason\":\"pilot_step_failed\",\"persisted\":false}\\n" > "$evidence"; fi' EXIT
+          python -m pytest -q tests/test_free_deterministic_loop.py
           python scripts/free_deterministic_loop.py \
             --queue .autonomous-loop/free-deterministic-queue.json \
-            --evidence artifacts/free-deterministic-loop/task-evidence.jsonl
+            --evidence "$evidence"
 
       - name: Publish pilot summary
         if: always()
