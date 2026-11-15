@@ -6,9 +6,7 @@ from core.ai_factory_stage141_evolution import Fitness
 from core.ai_factory_stage154_merge_strategy_evaluation import (
     MergeAlgorithm, MergeEvaluationPlan, MergeEvaluationPlanReport, MergeStrategyParameters,
 )
-from core.ai_factory_stage158_evolutionary_merge_tournament import (
-    MergeTournamentReport, StrategyScore,
-)
+from core.ai_factory_stage158_evolutionary_merge_tournament import MergeTournamentReport, StrategyScore
 from core.ai_factory_stage159_evolutionary_experiment_handoff import (
     EvolutionaryExperimentHandoff, ExperimentHandoffError,
 )
@@ -19,8 +17,8 @@ PARENT_A = "c" * 64
 PARENT_B = "d" * 64
 
 
-def make_plan():
-    return MergeEvaluationPlan(
+def make_reports():
+    plan = MergeEvaluationPlan(
         plan_id="plan-slerp", candidate_id="candidate-1", generation=5,
         algorithm=MergeAlgorithm.SLERP,
         parameters=MergeStrategyParameters(interpolation=.5),
@@ -29,16 +27,10 @@ def make_plan():
         candidate_artifact_digest=ARTIFACT, evaluation_suite_digest=SUITE,
         recipe_digest="e" * 64, strategy="parameter_merge",
     )
-
-
-def make_reports():
-    plan = make_plan()
     plans = MergeEvaluationPlanReport(SUITE, "9" * 64, (plan,), (), "8" * 64)
     fitness = Fitness(.93, .92, .99, 95, 480, 0, SUITE)
-    score = StrategyScore(
-        "candidate-1", "slerp", 2, ("evaluator-a", "evaluator-b"),
-        fitness, True, (), True, "f" * 64,
-    )
+    score = StrategyScore("candidate-1", "slerp", 2, ("evaluator-a", "evaluator-b"),
+                          fitness, True, (), True, "f" * 64)
     tournament = MergeTournamentReport(
         plans.digest, SUITE, (score,), (("candidate-1", "slerp"),), (), "7" * 64,
     )
@@ -112,14 +104,14 @@ def test_hold_kill_switch_and_budget_fail_closed(flags):
         EvolutionaryExperimentHandoff().prepare(plans=plans, tournament=tournament, **flags)
 
 
-def test_rejects_upstream_authority_and_capacity_overflow():
+def test_rejects_upstream_authority_and_duplicate_preferences():
     plans, tournament = make_reports()
     with pytest.raises(ExperimentHandoffError, match="authority"):
         EvolutionaryExperimentHandoff().prepare(
             plans=plans, tournament=replace(tournament, merge_authorized=True)
         )
-    with pytest.raises(ExperimentHandoffError, match="capacity"):
-        EvolutionaryExperimentHandoff(max_proposals=1).prepare(
+    with pytest.raises(ExperimentHandoffError, match="duplicate Pareto preference"):
+        EvolutionaryExperimentHandoff().prepare(
             plans=plans,
             tournament=replace(tournament, proposed_preferences=(
                 ("candidate-1", "slerp"), ("candidate-1", "slerp"),
