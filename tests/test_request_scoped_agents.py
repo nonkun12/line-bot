@@ -104,3 +104,38 @@ def test_peer_review_rejects_cross_request_agent_identity() -> None:
             team,
             [PeerReview("foreign-agent", b.agent_id, ReviewVerdict.PASS)],
         )
+
+
+def test_single_task_team_gets_distinct_review_only_agent() -> None:
+    team = RequestScopedAgentFactory().create(
+        "single-review",
+        [AgentTask("one", AgentRole.NEWS, "Summarize evidence.")],
+    )
+    assert len(team.agents) == 1
+    assert len(team.reviewer_agents) == 1
+    assert team.reviewer_agents[0].agent_id != team.agents[0].agent_id
+    assert team.reviewer_agents[0].task_ids == ()
+    review = PeerReview(
+        reviewer_id=team.reviewer_agents[0].agent_id,
+        target_agent_id=team.agents[0].agent_id,
+        verdict=ReviewVerdict.PASS,
+    )
+    decision = PeerReviewCoordinator().decide(team, [review])
+    assert decision.status == "PASS"
+    assert decision.accepted_agent_ids == (team.agents[0].agent_id,)
+
+
+def test_review_only_agent_cannot_be_review_target() -> None:
+    team = RequestScopedAgentFactory().create(
+        "single-review-target",
+        [AgentTask("one", AgentRole.NEWS, "Summarize evidence.")],
+    )
+    with pytest.raises(ValueError, match="outside this request"):
+        PeerReviewCoordinator().decide(
+            team,
+            [PeerReview(
+                reviewer_id=team.agents[0].agent_id,
+                target_agent_id=team.reviewer_agents[0].agent_id,
+                verdict=ReviewVerdict.PASS,
+            )],
+        )
