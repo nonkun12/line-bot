@@ -114,7 +114,7 @@ def test_bad_trust_key_and_nonce_are_rejected():
         TrustedEvaluatorKey("lab", b"short")
     evidence = make_evidence()
     with pytest.raises(EvidenceVerificationError, match="canonicalization"):
-        verify(verifier(), evidence, nonce="bad nonce")
+        verify(verifier(), evidence, nonce="bad nonce", signature="0" * 64)
 
 
 def test_digest_tampering_is_rejected_before_signature_check():
