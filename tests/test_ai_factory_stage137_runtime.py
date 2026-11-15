@@ -45,7 +45,7 @@ def test_stage137_wires_concrete_builder_sandbox_and_independent_reviewer():
 def test_stage137_rejects_same_builder_and_reviewer_model():
     with pytest.raises(ValueError, match="distinct model identities"):
         build_stage137_runtime(
-            config=config("builder-model"), roles=roles(), test_gate=test_gate, review_gate=review_gate,
+            config=config("builder-model"), roles=roles(), test_gate=_test_gate, review_gate=review_gate,
             sandbox_runner=lambda *a, **k: None,
         )
 
@@ -53,13 +53,13 @@ def test_stage137_rejects_model_factory_returning_same_client():
     shared = FakeClient(None)
     with pytest.raises(ValueError, match="separate model client"):
         build_stage137_runtime(
-            config=config(), roles=roles(), test_gate=test_gate, review_gate=review_gate,
+            config=config(), roles=roles(), test_gate=_test_gate, review_gate=review_gate,
             sandbox_runner=lambda *a, **k: None, model_client_factory=lambda cfg: shared,
         )
 
 def test_stage137_has_no_implicit_permission_or_approval_grants():
     runtime = build_stage137_runtime(
-        config=config(), roles=roles(), test_gate=test_gate, review_gate=review_gate,
+        config=config(), roles=roles(), test_gate=_test_gate, review_gate=review_gate,
         sandbox_runner=lambda *a, **k: None, model_client_factory=FakeClient,
     )
     factory = runtime.pipeline.factory.factory_adapter.factory
