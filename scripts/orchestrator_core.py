@@ -157,8 +157,9 @@ def build_plan(document: Any) -> dict[str, Any]:
         ]
         if fitting:
             selected = fitting[0]["id"]
-            if not any(row["execution_approved"] for row in fitting):
-                reasons.append("approval_evidence_unverified")
+            # No authoritative approval verifier is wired in yet. This remains
+            # true even when a task carries execution_approved=true.
+            reasons.append("approval_evidence_unverified")
         else:
             reasons.append("insufficient_remaining_budget")
     elif tasks and not ready and not reasons:
