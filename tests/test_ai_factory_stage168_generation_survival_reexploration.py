@@ -26,7 +26,7 @@ def cohort():
     return EvolutionaryPopulationCohort(
         "c" * 64, SUITE, 4, 5,
         (CohortCandidate("candidate-a", "slerp", .05, "d" * 64, 1, 1),
-         CohortCandidate("candidate-b", "ties", .02, "e" * 64, 1, 2)),
+         CohortCandidate("candidate-b", "ties", .02, "e" * 64, 2, 2)),
         (), (), 2, 2, 1.0, COHORT_DIGEST,
     )
 
