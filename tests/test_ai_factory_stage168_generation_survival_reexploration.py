@@ -34,8 +34,8 @@ def cohort():
 def record(candidate, evaluator, *, metrics=METRICS, baseline=BASELINE, signature=None):
     item = CandidateEvaluationEvidence(
         candidate, "slerp" if candidate == "candidate-a" else "ties",
-        COHORT_DIGEST, SUITE, 5, evaluator, "trusted-key-" + evaluator,
-        signature or "sig-" + candidate + "-" + evaluator, metrics, baseline,
+        COHORT_DIGEST, SUITE, 5, evaluator, "trial-" + (signature or candidate + "-" + evaluator),
+        "trusted-key-" + evaluator, signature or "sig-" + candidate + "-" + evaluator, metrics, baseline,
     )
     return item
 
