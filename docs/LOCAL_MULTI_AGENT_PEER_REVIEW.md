@@ -66,3 +66,16 @@ Each completed orchestration attempt writes only a bounded collaboration summary
 `GET /api/dashboard/orchestrator/collaboration?limit=10`
 
 This endpoint reports evidence only. It cannot approve tasks, grant permissions, dispatch work, or change the execution queue. The authenticated dashboard page renders a read-only collaboration panel with the latest agent roster, task assignments, peer-review status, acceptance result, and bounded findings. It refreshes on demand and every 60 seconds. The panel cannot dispatch or approve work.
+
+
+## Evidence-only revision draft stage
+
+`core/revision_workflow.py` adds a separately callable, injected-model workflow for the next stage:
+
+1. A revision identity prepares a bounded inert-text draft for one target task using the original result and bounded review findings.
+2. The draft records the original reviewer and target identities. The revision identity must differ from both.
+3. A fourth identity performs independent re-review; it must differ from the revision identity, target identity, and original reviewer.
+4. The reviewer returns only `PASS`, `NEEDS_REVISION`, or `BLOCKED` plus bounded findings. Malformed output fails closed.
+5. Neither draft nor review can set execution authority. Even `PASS` is review evidence only, not approval to execute or apply a patch.
+
+The model call is dependency-injected and is not automatically invoked by the runtime. No files, queue entries, Issues, PRs, or production state are changed by this workflow. Dashboard persistence/wiring and a separately approved integration trial remain future work.
