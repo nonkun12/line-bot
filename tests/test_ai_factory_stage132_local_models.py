@@ -115,6 +115,18 @@ def test_producer_map_requires_independent_test_and_review_gates():
     assert gates[CollaborationStage.REVIEW] is not producer
 
 
+def test_local_model_cannot_be_reused_as_test_or_review_gate():
+    producer = LocalModelRoleProducer(
+        client=FakeClient(),
+        role_by_stage={
+            CollaborationStage.DESIGN: "architect-ai",
+            CollaborationStage.BUILD: "builder-ai",
+        },
+    )
+    with pytest.raises(ValueError, match="cannot be reused"):
+        build_stage132_producers(local_model=producer, test_gate=producer, review_gate=lambda *_: None)
+
+
 def test_designer_creates_inert_generated_spec_from_strict_json():
     payload = {
         "name": "repository-auditor",
