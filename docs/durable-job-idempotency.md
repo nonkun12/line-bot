@@ -3,9 +3,11 @@
 ## Contract
 
 Job registration may supply an optional `idempotency_key`. The key is persisted
-in SQLite and protected by a unique partial index. Repeating the same key with
-the same request payload returns the original job ID. Reusing a key for a
-different payload raises `ValueError` and does not create another job.
+in SQLite and protected by a unique partial index scoped to `user_id`.
+Repeating the same key for the same user and request payload returns the
+original job ID. Reusing that user's key for a different payload raises
+`ValueError` and does not create another job. Different users may use the same
+key independently.
 
 The request fingerprint covers user ID, message, job type, source, parent job
 ID, and retry limit. The key lookup and insert run inside `BEGIN IMMEDIATE`,
