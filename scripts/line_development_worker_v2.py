@@ -934,6 +934,9 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
 
 def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
     """Preflight every bounded change before writing any file."""
+    from core.emergency_stop import local_stop_active
+    if local_stop_active(ROOT):
+        return False, "emergency_stop_active", []
     if not isinstance(plan, dict):
         return False, "invalid_plan", []
     if plan.get("no_change") is True:
@@ -969,10 +972,15 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
             return False, f"anchor_count_{path}:{count}", []
         prepared.append((path, target, original, old, new))
 
+    # Recheck after all preflight reads and immediately before the first write.
+    if local_stop_active(ROOT):
+        return False, "emergency_stop_active", []
     touched: list[str] = []
     current_index = -1
     try:
         for current_index, (path, target, original, old, new) in enumerate(prepared):
+            if current_index == 0 and local_stop_active(ROOT):
+                return False, "emergency_stop_active", []
             target.write_text(original.replace(old, new, 1), encoding="utf-8")
             touched.append(path)
     except OSError as exc:
