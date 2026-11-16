@@ -72,6 +72,7 @@ def build_report(catalog: dict[str, Any], state: dict[str, Any]) -> dict[str, An
         blockers.append("orca_queue_invalid")
         queue = []
     queued_ids = set()
+    seen_queue_ids = set()
     for item in queue:
         if (not isinstance(item, dict)
                 or not isinstance(item.get("task_id"), str)
@@ -80,8 +81,9 @@ def build_report(catalog: dict[str, Any], state: dict[str, Any]) -> dict[str, An
                 or not item["status"].strip()):
             blockers.append("orca_queue_entry_invalid")
             continue
-        if item["task_id"] in queued_ids:
-            blockers.append("orca_queue_duplicate_queued_task_id")
+        if item["task_id"] in seen_queue_ids:
+            blockers.append("orca_queue_duplicate_task_id")
+        seen_queue_ids.add(item["task_id"])
         if item.get("status") == "queued":
             queued_ids.add(item["task_id"])
     if len(queued_ids) > 1:
