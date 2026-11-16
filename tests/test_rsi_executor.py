@@ -36,6 +36,7 @@ def make_executor(tmp_path, *, execution_enabled=False, hold=False, budget_known
         control_provider=lambda: control,
         verify_approval=lambda approval: approval.signature == "valid",
         verify_evaluation=lambda evaluation: evaluation.signature == "valid",
+        verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
         executor_id="local-executor",
     )
     return executor, ledger
@@ -46,6 +47,7 @@ def sample_plan(executor):
         Observation("obs-1", H, "model", "FAIL", "held-out quality fell", 1),
         Observation("obs-2", "b" * 64, "model", "REGRESSED", "repeat quality regression", 2),
     )
+    observations = seed_observations(executor.ledger, observations)
     diagnoses = executor.observe(observations)
     hypotheses = executor.hypothesize(diagnoses)
     plans = executor.plan(
@@ -191,3 +193,22 @@ def test_control_rejects_boolean_budget_and_non_boolean_flags(tmp_path):
                 Observation("invalid-control-" + str(invalid_states.index(invalid)),
                             H, "model", "PASS", "baseline", 1),
             ))
+
+
+
+def seed_observations(ledger, observations):
+    from dataclasses import replace
+    seeded = []
+    for item in observations:
+        event_id = "source-evidence:" + item.observation_id
+        digest = ledger.append_observation_evidence(
+            event_id, observation=item,
+            experiment_id="source-" + item.observation_id,
+            candidate_digest="c" * 64,
+            protocol_digest="d" * 64,
+            result_digest="e" * 64,
+            producer_id="test-producer",
+            sign_digest=lambda value: "sig:" + value,
+        )
+        seeded.append(replace(item, evidence_digest=digest, evidence_event_id=event_id))
+    return tuple(seeded)
