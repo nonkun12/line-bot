@@ -49,7 +49,7 @@ class LocalRSIExperimentRunner:
         model_id: str,
         ledger: EvidenceLedger,
         cases: Sequence[BenchmarkCase] = _DEFAULT_CASES,
-        sign_evidence: Callable[[str], str] | None = None,
+        sign_evidence: Callable[[str], str],
     ) -> None:
         if not callable(getattr(client, "chat", None)):
             raise TypeError("Stage 132 local model client is required")
