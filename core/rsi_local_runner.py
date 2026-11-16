@@ -105,7 +105,7 @@ class LocalRSIExperimentRunner:
                 "output_digest": hashlib.sha256(output.encode()).hexdigest(),
                 "output_text": output,
                 "expected_text": case.expected_text,
-                "matched": case.expected_text in output,
+                "matched": output.strip() == case.expected_text,
             })
         score = sum(1 for item in observations if item["matched"]) / len(observations)
         evidence_digest = self._ledger.append(
