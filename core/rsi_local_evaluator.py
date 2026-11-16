@@ -9,9 +9,11 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import time
 from typing import Callable
 
 from .ai_factory_stage132_local_models import LocalModelClient
+from .rsi_baseline import FrozenBaseline, verify_frozen_baseline
 from .rsi_executor import (
     EvidenceLedger, ExperimentPlan, ExperimentResult, IndependentEvaluation,
     RSIError, canonical_digest, _bounded_id, _digest,
@@ -25,25 +27,26 @@ class LocalRSIIndependentEvaluator:
         *,
         evaluator_id: str,
         ledger: EvidenceLedger,
-        baseline_quality: float,
+        baseline: FrozenBaseline,
+        verify_baseline_signature: Callable[[str, str], bool],
         sign_digest: Callable[[str], str],
+        clock: Callable[[], float] = time.time,
     ) -> None:
         if not callable(getattr(client, "chat", None)):
             raise TypeError("a separate local evaluator client is required")
         _bounded_id(evaluator_id, "evaluator id")
         if not isinstance(ledger, EvidenceLedger):
             raise TypeError("verified evidence ledger is required")
-        if (not isinstance(baseline_quality, (int, float))
-                or isinstance(baseline_quality, bool)
-                or not math.isfinite(baseline_quality)
-                or not 0 <= baseline_quality <= 1):
-            raise ValueError("trusted baseline quality must be between 0 and 1")
-        if not callable(sign_digest):
-            raise TypeError("evaluator-held signing callback is required")
+        if not isinstance(baseline, FrozenBaseline):
+            raise TypeError("signed frozen baseline is required")
+        if not callable(verify_baseline_signature) or not callable(sign_digest) or not callable(clock):
+            raise TypeError("baseline verifier, evaluator signer, and clock are required")
         self._client = client
         self.evaluator_id = evaluator_id
         self._ledger = ledger
-        self._baseline_quality = float(baseline_quality)
+        self._baseline = baseline
+        self._verify_baseline_signature = verify_baseline_signature
+        self._clock = clock
         self._sign_digest = sign_digest
 
     def evaluate(
@@ -58,6 +61,14 @@ class LocalRSIIndependentEvaluator:
         _digest(result.result_digest, "result")
         _digest(result.evidence_digest, "result evidence")
 
+        if plan.baseline_digest != self._baseline.digest:
+            raise RSIError("experiment plan does not bind to the frozen baseline digest")
+        baseline_quality = verify_frozen_baseline(
+            self._baseline,
+            verify_signature=self._verify_baseline_signature,
+            expected_protocol_digest=plan.protocol_digest,
+            now=int(self._clock()),
+        )
         evidence, event_digest = self._ledger.read_event(
             "benchmark-evidence:" + plan.experiment_id
         )
@@ -106,9 +117,9 @@ class LocalRSIIndependentEvaluator:
         })
         if result.result_digest != expected_result_digest:
             raise RSIError("result digest does not bind to the reported metrics and evidence")
-        if recomputed_quality > self._baseline_quality:
+        if recomputed_quality > baseline_quality:
             decision = "IMPROVED"
-        elif recomputed_quality < self._baseline_quality:
+        elif recomputed_quality < baseline_quality:
             decision = "REGRESSED"
         else:
             decision = "NO_CHANGE"
@@ -117,7 +128,10 @@ class LocalRSIIndependentEvaluator:
             "experiment_id": plan.experiment_id,
             "plan_digest": plan.plan_digest,
             "baseline_digest": plan.baseline_digest,
-            "baseline_quality": self._baseline_quality,
+            "baseline_quality": baseline_quality,
+            "baseline_digest": self._baseline.digest,
+            "baseline_model_digest": self._baseline.model_digest,
+            "baseline_sample_count": self._baseline.sample_count,
             "candidate_digest": plan.candidate_digest,
             "protocol_digest": plan.protocol_digest,
             "result_digest": result.result_digest,
