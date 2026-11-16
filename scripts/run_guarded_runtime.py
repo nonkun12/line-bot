@@ -124,10 +124,15 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
     Repository variables, catalog flags, and ordinary environment variables are
     deliberately not accepted as proof of human approval.
     """
+    instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
+    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
     blocked = {
         "gate": "BLOCKED",
         "reason_code": "independent_execution_approval_missing_or_invalid",
         "execution_authorized": False,
+        "expected_task_id": task_id,
+        "expected_instruction_sha256": instruction_digest,
+        "expected_base_sha": start_sha,
     }
     if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
         return blocked
@@ -145,8 +150,6 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         return blocked
     actor = str(sender.get("login", ""))
     repo_name = str(repository.get("full_name", ""))
-    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
-    instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
     if (
         actor != "nonkun12"
         or os.environ.get("GITHUB_ACTOR", "") != actor
