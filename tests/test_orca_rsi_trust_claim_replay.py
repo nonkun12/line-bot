@@ -166,3 +166,19 @@ def test_malformed_replay_ledger_fails_closed():
     with pytest.raises(TrustClaimReplayRejected, match="trust_replay_ledger_invalid"):
         _consume_approval(store)
     assert store.writes == 0
+
+
+def test_budget_authorization_replay_is_rejected_without_second_write():
+    store = FakeCASStore()
+    _consume_budget(store)
+    with pytest.raises(TrustClaimReplayRejected, match="trust_claim_nonce_replayed"):
+        _consume_budget(store)
+    assert store.writes == 1
+
+
+def test_budget_cas_conflict_is_not_retried():
+    store = FakeCASStore()
+    store.conflict = True
+    with pytest.raises(RuntimeError, match="github_ref_fast_forward_conflict"):
+        _consume_budget(store)
+    assert store.writes == 1
