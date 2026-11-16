@@ -35,6 +35,7 @@ class FakeCASStore:
             "schema_version": 1, "revision": 3, "global_hold": True,
             "emergency_stop": False, "tasks": [], "active_lease": None,
             "consumed_approval_ids": [],
+            "rsi_review_replay": {"used_nonces": [], "used_attestation_hashes": []},
         })
         self.writes = 0
         self.conflict = False
