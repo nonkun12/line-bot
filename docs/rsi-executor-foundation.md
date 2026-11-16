@@ -253,3 +253,16 @@ ledger integrity before and after append; persistence failure downgrades the
 review to BLOCKED. The event stores identity/digest bindings, decision and
 score, and a digest of Critic feedback rather than raw model text.
 
+## Control Tower status bridge
+
+`scripts/rsi_orchestra_control_tower_adapter.py` converts the typed Orchestra
+batch into a sanitized Control Tower status row only after re-reading each
+review event from the append-only ledger and matching repository, exact HEAD,
+plan/candidate/evidence digests, status, and authority flags. It maps a complete
+REA pass to `PASS / REQUEST_HUMAN_REVIEW`, a Critic failure to
+`FAIL / REPORT_REVIEW_REQUIRED`, and missing or inconsistent evidence to
+`BLOCKED / HOLD_AND_REPORT`. Every result sets `allow_continue=false` and
+keeps execution, patch, HOLD-clear, merge/deploy, scheduling, and model
+activation disabled. This is a status-ingestion adapter; it does not yet wire
+the result into the live Orca dashboard or distributed worker dispatcher.
+
