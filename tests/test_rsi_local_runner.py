@@ -93,3 +93,19 @@ def test_loopback_runner_factory_pins_local_endpoint_and_disables_thinking(tmp_p
     assert runner._client.config.base_url == "http://127.0.0.1:11434"
     assert runner._client.config.think is False
     assert runner._client.config.max_output_tokens == 128
+
+
+def test_runner_rejects_partial_token_match(tmp_path):
+    candidate = "f" * 64
+    cases = (BenchmarkCase("exact", "say token", "TOKEN-EXACT"),)
+    client = FakeLocalClient(["prefix TOKEN-EXACT suffix"])
+    runner = LocalRSIExperimentRunner(
+        client,
+        executor_id="local-runner",
+        candidate_digest=candidate,
+        model_id="fixture-model",
+        ledger=EvidenceLedger(tmp_path / "partial.sqlite"),
+        cases=cases,
+    )
+    result = runner(plan(candidate, benchmark_protocol_digest(cases), cost=1))
+    assert result.metrics["quality"] == 0.0
