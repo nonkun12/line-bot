@@ -20,6 +20,21 @@ worker and does not treat ordinary queue completion as self-improvement.
    execution, approval binding, evaluator separation, digest validation,
    duplicate evidence, and append-only ledger behavior.
 
+## Local-model advisory integration
+
+`core/rsi_local_advisor.py` reuses Stage 132's `LocalModelClient` and provides
+`build_loopback_rsi_advisor()` pinned to `http://127.0.0.1:11434` with bounded
+output. It supplies one alternative hypothesis and falsification test as
+append-only proposal evidence. The model output is strict-schema validated and
+cannot authorize execution, certify evaluation, grant approval, or activate a
+model. This is advisory support; deterministic executor decisions remain the
+source of the experiment plan and selection.
+
+The existing Stage 160 gate governs the separate Stage 159 evolutionary merge
+proposal contract. It is not silently treated as an adapter for generic RSI
+plans: those types and authority scopes differ and require an explicit reviewed
+bridge before any evolutionary merge experiment can be dispatched.
+
 ## Authority boundary
 
 - Global HOLD, non-FREE paths, paid fallback, unknown budget, and insufficient
@@ -35,14 +50,16 @@ worker and does not treat ordinary queue completion as self-improvement.
 
 ## Validation status
 
-GitHub Actions validation for commit `085c99d` completed successfully:
-Python syntax scan, the focused RSI-inclusive Pytest run, and the repository's
-free deterministic-loop workflow all reported success. The deterministic-loop
-workflow had an empty task queue and executed no RSI task. A later resource
-lifecycle fix closes SQLite connections explicitly; that follow-up commit must
-receive its own CI run before it is considered validated.
+GitHub Actions validation for commit `57f0878` completed successfully:
+Python syntax scan, the full Pytest workflow, and the repository's free
+deterministic-loop workflow all reported success. The deterministic-loop
+workflow had an empty task queue and executed no RSI task. The local-model
+advisory adapter and its tests were added afterward and require their own CI
+run before they are considered validated.
 
-Live local-model integration, a trusted budget source, and runtime control-plane
-wiring are not claimed. The next integration task is to connect the control
-provider, local runner, and independent evaluator to verified local adapters
-while preserving the default execution-off state.
+Live Ollama execution, a trusted budget source, a concrete experiment runner,
+a signed independent-evaluator adapter, and runtime control-plane wiring are
+not claimed. The generic RSI executor remains execution-off by default. The
+next integration task is to provide verified local experiment/evaluation
+adapters and a trusted read-only control/budget provider, then run them only in
+an isolated local environment after explicit approval.
