@@ -51,7 +51,7 @@ def _state():
         "revision": 7,
         "global_hold": False,
         "emergency_stop": False,
-        "tasks": [{"task_id": "preflight-task", "status": "queued"}],
+        "tasks": [{"task_id": "preflight-task", "task_digest": "a" * 64, "status": "queued"}],
         "active_lease": None,
         "rsi_review_replay": dict(empty),
         "rsi_task_approval_replay": dict(empty),
@@ -149,3 +149,27 @@ def test_preflight_blocks_unsupported_state_schema():
     report = run_preflight(_env(), ReadOnlyStateStore(state))
     assert report["status"] == "BLOCKED"
     assert "orca_state_schema_invalid" in report["blockers"]
+
+
+def test_preflight_blocks_queued_task_without_immutable_digest():
+    state = _state()
+    del state["tasks"][0]["task_digest"]
+    report = run_preflight(_env(), ReadOnlyStateStore(state))
+    assert report["status"] == "BLOCKED"
+    assert "persisted_queued_task_digest_invalid" in report["blockers"]
+
+
+def test_preflight_blocks_malformed_queued_task_digest():
+    state = _state()
+    state["tasks"][0]["task_digest"] = "not-a-digest"
+    report = run_preflight(_env(), ReadOnlyStateStore(state))
+    assert report["status"] == "BLOCKED"
+    assert "persisted_queued_task_digest_invalid" in report["blockers"]
+
+
+def test_preflight_blocks_unhashable_replay_ledger_values_cleanly():
+    state = _state()
+    state["rsi_review_replay"]["used_nonces"] = [{}]
+    report = run_preflight(_env(), ReadOnlyStateStore(state))
+    assert report["status"] == "BLOCKED"
+    assert "rsi_review_replay_invalid" in report["blockers"]
