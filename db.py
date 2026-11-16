@@ -82,6 +82,15 @@ def init_db():
         }
         if "claim_token" not in columns:
             conn.execute("ALTER TABLE jobs ADD COLUMN claim_token TEXT")
+        if "idempotency_key" not in columns:
+            conn.execute("ALTER TABLE jobs ADD COLUMN idempotency_key TEXT")
+        if "request_fingerprint" not in columns:
+            conn.execute("ALTER TABLE jobs ADD COLUMN request_fingerprint TEXT")
+        conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_idempotency_key
+        ON jobs(idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+        """)
         conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at
         ON jobs(status, created_at)
@@ -169,15 +178,77 @@ def load_history(user_id):
     return list(reversed(rows))
 
 
-def create_job(user_id, message, job_type="ai_task", source="line", parent_job_id=None, max_retries=3):
-    """非同期実行用Jobをpending状態で登録する。"""
+def create_job(
+    user_id,
+    message,
+    job_type="ai_task",
+    source="line",
+    parent_job_id=None,
+    max_retries=3,
+    idempotency_key=None,
+):
+    """Create a pending job; optionally make request registration idempotent.
+
+    Reusing a key with the same request returns the original job ID. Reusing it
+    with different request data fails closed rather than silently aliasing work.
+    """
+    if idempotency_key is None:
+        with get_conn() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO jobs(user_id, job_type, source, parent_job_id, message, status, max_retries)
+                VALUES (?, ?, ?, ?, ?, 'pending', ?)
+                """,
+                (user_id, job_type, source, parent_job_id, message, max_retries),
+            )
+            return cursor.lastrowid
+
+    if (
+        not isinstance(idempotency_key, str)
+        or not idempotency_key.strip()
+        or len(idempotency_key) > 200
+    ):
+        raise ValueError("idempotency_key must be a non-empty string of at most 200 characters")
+
+    fingerprint_payload = {
+        "user_id": user_id,
+        "message": message,
+        "job_type": job_type,
+        "source": source,
+        "parent_job_id": parent_job_id,
+        "max_retries": max_retries,
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(
+            fingerprint_payload, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"), default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+
     with get_conn() as conn:
+        # Serialize key lookup + insert so concurrent retries cannot create twins.
+        conn.execute("BEGIN IMMEDIATE")
+        existing = conn.execute(
+            "SELECT id, request_fingerprint FROM jobs WHERE idempotency_key=?",
+            (idempotency_key.strip(),),
+        ).fetchone()
+        if existing is not None:
+            if existing[1] != fingerprint:
+                raise ValueError("idempotency_key was already used for a different request")
+            return existing[0]
+
         cursor = conn.execute(
             """
-            INSERT INTO jobs(user_id, job_type, source, parent_job_id, message, status, max_retries)
-            VALUES (?, ?, ?, ?, ?, 'pending', ?)
+            INSERT INTO jobs(
+                user_id, job_type, source, parent_job_id, message, status,
+                max_retries, idempotency_key, request_fingerprint
+            )
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
             """,
-            (user_id, job_type, source, parent_job_id, message, max_retries),
+            (
+                user_id, job_type, source, parent_job_id, message, max_retries,
+                idempotency_key.strip(), fingerprint,
+            ),
         )
         return cursor.lastrowid
 
