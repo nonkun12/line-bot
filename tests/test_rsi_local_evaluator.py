@@ -53,6 +53,7 @@ def make_result(tmp_path, output="TOKEN"):
     runner = LocalRSIExperimentRunner(
         FakeClient(output), executor_id="local-runner",
         candidate_digest=plan.candidate_digest, model_id="fixture-model", ledger=ledger, cases=cases,
+        sign_evidence=lambda digest: "sig:" + digest,
     )
     result = runner(plan)
     return plan, result, ledger
@@ -63,6 +64,7 @@ def make_evaluator(ledger, client, baseline, signer=lambda _: "signature"):
         client, evaluator_id="separate-evaluator", ledger=ledger,
         baseline=baseline,
         verify_baseline_signature=lambda digest, signature: signature == "sig:" + digest,
+        verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
         sign_digest=signer, clock=lambda: 10_100,
     )
 
@@ -93,6 +95,7 @@ def test_evaluator_rejects_executor_identity_and_unbound_result(tmp_path):
         FakeClient("{}"), evaluator_id="local-runner", ledger=ledger,
         baseline=baseline,
         verify_baseline_signature=lambda digest, signature: signature == "sig:" + digest,
+        verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
         sign_digest=lambda _: "sig", clock=lambda: 10_100,
     )
     with pytest.raises(RSIError, match="identities must differ"):
