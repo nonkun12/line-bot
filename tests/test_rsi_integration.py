@@ -36,6 +36,7 @@ def control_snapshot(now, *, execution_enabled, nonce):
         "issued_at": now,
         "expires_at": now + 60,
         "nonce": nonce,
+        "generation": 1,
     }
     digest = canonical_digest(payload)
     return SignedRSIControlSnapshot(**payload, signature=sign_digest(digest))

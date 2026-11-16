@@ -15,6 +15,7 @@ def make_snapshot(now, **overrides):
         "issued_at": now,
         "expires_at": now + 60,
         "nonce": "control-nonce-1",
+        "generation": 1,
     }
     data.update(overrides)
     digest = canonical_digest(data)
