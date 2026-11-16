@@ -177,7 +177,7 @@ class EvidenceLedger:
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
         if len(encoded.encode("utf-8")) > self.max_payload_bytes:
             raise RSIError("evidence payload exceeds configured bound")
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             try:
                 if db.execute("SELECT 1 FROM rsi_evidence WHERE event_id=?", (event_id,)).fetchone():
@@ -201,7 +201,7 @@ class EvidenceLedger:
 
     def verify(self) -> bool:
         previous = "0" * 64
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             rows = db.execute("SELECT * FROM rsi_evidence ORDER BY seq").fetchall()
         for row in rows:
             if row["previous_digest"] != previous:
