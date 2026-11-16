@@ -33,6 +33,7 @@ class LocalModelConfig:
     base_url: str = "http://127.0.0.1:11434"
     timeout_seconds: float = 20.0
     max_output_tokens: int = 768
+    think: bool | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.model, str) or not self.model.strip():
@@ -43,6 +44,8 @@ class LocalModelConfig:
             raise ValueError("timeout_seconds must be between 0.1 and 60")
         if not 1 <= self.max_output_tokens <= 2048:
             raise ValueError("max_output_tokens must be between 1 and 2048")
+        if self.think is not None and not isinstance(self.think, bool):
+            raise ValueError("think must be a boolean or None")
         parsed = urlsplit(self.base_url)
         if (
             parsed.scheme != "http"
@@ -77,18 +80,18 @@ class OllamaLoopbackClient:
             raise ValueError("system and prompt are required")
         if len(system) + len(prompt) > _MAX_PROMPT_CHARS:
             raise ValueError("model prompt exceeds maximum length")
-        payload = json.dumps(
-            {
-                "model": self.config.model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-                "stream": False,
-                "options": {"num_predict": self.config.max_output_tokens},
-            },
-            ensure_ascii=False,
-        ).encode("utf-8")
+        request_payload = {
+            "model": self.config.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "options": {"num_predict": self.config.max_output_tokens},
+        }
+        if self.config.think is not None:
+            request_payload["think"] = self.config.think
+        payload = json.dumps(request_payload, ensure_ascii=False).encode("utf-8")
         request = Request(
             self.config.base_url.rstrip("/") + "/api/chat",
             data=payload,
