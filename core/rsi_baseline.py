@@ -49,6 +49,8 @@ def verify_frozen_baseline(
     """Verify signature, artifact/protocol binding, score bounds, and freshness."""
     if not isinstance(baseline, FrozenBaseline):
         raise RSIError("a signed frozen baseline is required")
+    if type(now) is not int or type(max_age_seconds) is not int or not 1 <= max_age_seconds <= 31_536_000:
+        raise RSIError("baseline verification time bounds are invalid")
     _bounded_id(baseline.baseline_id, "baseline id")
     _digest(baseline.model_digest, "baseline model")
     _digest(baseline.protocol_digest, "baseline protocol")
