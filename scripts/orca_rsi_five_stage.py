@@ -131,9 +131,10 @@ def continuation_decision(
     if not isinstance(expected_commit_sha, str) or len(expected_commit_sha) != 40:
         reasons.append("expected_commit_sha_invalid")
 
+    verified_review_hash = None
     if valid_cycle and isinstance(expected_commit_sha, str) and len(expected_commit_sha) == 40:
         try:
-            verify_independent_review(
+            verified_review = verify_independent_review(
                 independent_review_attestation,
                 review_public_key_pem,
                 repository=repository,
@@ -144,6 +145,7 @@ def continuation_decision(
                 now=now,
                 allowed_reviewers=allowed_reviewers,
             )
+            verified_review_hash = verified_review.attestation_hash
         except ReviewAttestationRejected as exc:
             reasons.append(f"independent_review_rejected:{exc}")
     else:
@@ -153,5 +155,7 @@ def continuation_decision(
         "status": "PASS" if not reasons else "BLOCKED",
         "continue": not reasons,
         "next_cycle_limit": 1 if not reasons else 0,
+        "verified_review_attestation_hash": verified_review_hash,
+        "verified_review_nonce": review_nonce if verified_review_hash else None,
         "reasons": reasons,
     }
