@@ -57,9 +57,9 @@ def test_stage178_fails_closed_on_over_budget_and_cloud_fallback():
     report=Stage178LocalResourceGate().build(LocalResourceEstimate(8,9000,0,30000,1800,40),
         LocalResourceEnvelope(4,8192,0,20000,1200,20))
     assert not report.feasible and len(report.reasons)==5
-    cloud=Stage178LocalResourceGate().build(LocalResourceEstimate(1,1024,0,1000,60,1),
-        LocalResourceEnvelope(4,8192,0,20000,1200,20,cloud_fallback_allowed=True))
-    assert not cloud.feasible and any("cloud fallback" in x for x in cloud.reasons)
+    with pytest.raises(MergeReadinessError,match="fallback"):
+        Stage178LocalResourceGate().build(LocalResourceEstimate(1,1024,0,1000,60,1),
+            LocalResourceEnvelope(4,8192,0,20000,1200,20,cloud_fallback_allowed=True))
 def test_stage179_rejects_contamination_and_low_coverage():
     m=manifest(); items=holdouts(m)
     with pytest.raises(MergeReadinessError,match="contamination"):
