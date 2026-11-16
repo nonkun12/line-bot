@@ -76,7 +76,7 @@ def test_provider_fails_closed_on_unknown_budget_and_replayed_nonce(tmp_path):
     current = [first]
     provider = VerifiedRSIControlProvider(
         lambda: current[0], verify_signature=lambda *_: True,
-        ledger=ledger, clock=lambda: now,
+        ledger=replay_ledger, clock=lambda: now,
     )
     provider()
     current[0] = second
