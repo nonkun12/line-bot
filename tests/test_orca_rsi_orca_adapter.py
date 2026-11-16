@@ -47,6 +47,7 @@ def _candidate(**overrides):
         "commit_sha": COMMIT, "review_attestation": _attestation(),
         "review_public_key_pem": PUBLIC_PEM, "expected_nonce": NONCE,
         "used_attestation_hashes": [], "allowed_reviewers": ["trusted-reviewer"],
+        "public_key_reviewer_id": "trusted-reviewer", "implementer_id": "worker-author",
         "now": NOW, "evaluation": {"tests_passed": True, "critic_verdict": "pass"},
     }
     values.update(overrides)
@@ -70,6 +71,7 @@ def test_adapter_rejects_cycle_id_mismatch_between_argument_and_cycle():
                 "commit_sha": COMMIT, "review_attestation": _attestation(),
                 "review_public_key_pem": PUBLIC_PEM, "expected_nonce": NONCE,
                 "used_attestation_hashes": [], "allowed_reviewers": ["trusted-reviewer"],
+                "public_key_reviewer_id": "trusted-reviewer", "implementer_id": "worker-author",
                 "now": NOW, "evaluation": {},
             }.items()
         })
