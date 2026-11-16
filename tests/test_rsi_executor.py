@@ -188,6 +188,7 @@ def test_control_rejects_boolean_budget_and_non_boolean_flags(tmp_path):
             control_provider=lambda invalid=invalid: invalid,
             verify_approval=lambda _: False,
             verify_evaluation=lambda _: False,
+            verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
             executor_id="rsi-planner",
         )
         with pytest.raises(RSIError, match="invalid"):
