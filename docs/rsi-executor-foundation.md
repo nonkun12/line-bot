@@ -100,3 +100,20 @@ interface with a hard 1..4 cycle limit. Each cycle re-enters the executor's
 control gate. It stops when no improvement target exists and never invokes a
 runner, timer, daemon, or scheduler. This prepares a bounded control surface
 for later scheduling review without starting continuous execution.
+
+
+## Local LFM3 connectivity smoke check (2026-11-16)
+
+The user manually verified the local `lfm3:1.7b-qad-q4_0` Ollama
+`/api/chat` endpoint on the Mac using `think=false`, `temperature=0`,
+and the same three fixed prompts as the local runner. All three expected
+tokens were returned exactly (3/3). This confirms local model/API prompt
+execution only; it is not a runner invocation, append-only ledger record,
+independent evaluation, or evidence of improvement over a frozen baseline.
+
+The Stage 132 client now supports an explicit optional `think` setting, and
+`build_loopback_rsi_runner()` pins the endpoint to loopback, sets
+`think=false`, and caps output at 128 tokens. The runner and evaluator both
+require exact stripped-output equality; a response that merely contains the
+expected token is scored as a mismatch. The latest CI run validates this
+hardening separately from the earlier full-suite baseline run.
