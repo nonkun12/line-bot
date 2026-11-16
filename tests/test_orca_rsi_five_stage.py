@@ -424,3 +424,20 @@ def test_queued_task_without_valid_digest_blocks_before_replay_write():
     assert decision["continue"] is False
     assert "persisted_queued_task_digest_invalid" in decision["reasons"]
     assert store.writes == 0
+
+
+def test_reviewer_approver_and_budget_issuer_must_be_three_distinct_identities():
+    store, gates = _gates()
+    gates["budget_key_signer_map"] = {"budget-key-v1": "trusted-approver"}
+    gates["allowed_budget_issuers"] = ["trusted-approver"]
+    gates["budget_claim"] = _budget_claim(b"trusted collector evidence v1")
+    gates["budget_claim"]["issuer_id"] = "trusted-approver"
+    # Re-sign the modified issuer identity with the valid budget key.
+    gates["budget_claim"] = _signed_claim(
+        {k: v for k, v in gates["budget_claim"].items() if k != "signature"},
+        BUDGET_PRIVATE,
+    )
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert "trust_signer_identities_not_independent" in decision["reasons"]
+    assert store.writes == 0
