@@ -51,5 +51,6 @@ def test_baseline_rejects_bool_score_and_stale_snapshot():
     stale = make_baseline(sealed_at=1)
     with pytest.raises(RSIError, match="stale"):
         verify_frozen_baseline(
-            stale, verify_signature=verify, expected_protocol_digest="b" * 64, now=40_000
+            stale, verify_signature=verify, expected_protocol_digest="b" * 64, now=40_000,
+            max_age_seconds=3_600
         )
