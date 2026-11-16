@@ -87,10 +87,12 @@ def test_approved_local_execution_and_independent_evaluation(tmp_path):
                                    {"quality": 0.9}, "f" * 64),
     )
     evaluation = IndependentEvaluation(
-        plan.experiment_id, "independent-evaluator", "IMPROVED",
+        plan.experiment_id, result.result_digest, "independent-evaluator", "IMPROVED",
         "reproduced on frozen holdout", "1" * 64, "valid",
     )
     assert executor.evaluate(result, evaluation).decision == "IMPROVED"
+    with pytest.raises(RSIError, match="duplicate evidence"):
+        executor.execute_approved(plan, approval, lambda p: pytest.fail("replayed approval invoked runner"))
     assert ledger.verify()
 
 
@@ -98,10 +100,10 @@ def test_executor_cannot_self_evaluate_or_accept_invalid_signature(tmp_path):
     executor, _ = make_executor(tmp_path, execution_enabled=True)
     plan = sample_plan(executor)
     result = ExperimentResult(plan.experiment_id, "local-executor", H, {"quality": 0.8}, "f" * 64)
-    self_review = IndependentEvaluation(plan.experiment_id, "local-executor", "IMPROVED", "self", H, "valid")
+    self_review = IndependentEvaluation(plan.experiment_id, result.result_digest, "local-executor", "IMPROVED", "self", H, "valid")
     with pytest.raises(RSIError, match="cannot evaluate"):
         executor.evaluate(result, self_review)
-    forged = IndependentEvaluation(plan.experiment_id, "reviewer", "IMPROVED", "forged", H, "bad")
+    forged = IndependentEvaluation(plan.experiment_id, result.result_digest, "reviewer", "IMPROVED", "forged", H, "bad")
     with pytest.raises(RSIError, match="signature"):
         executor.evaluate(result, forged)
 
