@@ -43,7 +43,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: orca-rsi-cycle-\${{ github.run_id }}
+          name: orca-rsi-cycle-${{ github.run_id }}
           path: artifacts/orca-rsi/cycle.json
           if-no-files-found: warn
           retention-days: 30
@@ -51,8 +51,8 @@ jobs:
       - name: Fail closed if runner validation or cycle failed
         if: always()
         env:
-          RUNNER_TEST_OUTCOME: \${{ steps.runner_tests.outcome }}
-          CYCLE_OUTCOME: \${{ steps.cycle.outcome }}
+          RUNNER_TEST_OUTCOME: ${{ steps.runner_tests.outcome }}
+          CYCLE_OUTCOME: ${{ steps.cycle.outcome }}
         run: |
           set -euo pipefail
           test "\${RUNNER_TEST_OUTCOME}" = "success"
