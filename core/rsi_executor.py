@@ -418,7 +418,7 @@ class RSIExecutor:
             raise RSIError("runner executor identity mismatch")
         _digest(result.result_digest, "result")
         _digest(result.evidence_digest, "result evidence")
-        if any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in result.metrics.values()):
+        if not result.metrics or any(not isinstance(v, (int, float)) or isinstance(v, bool) or not math.isfinite(v) for v in result.metrics.values()):
             raise RSIError("result contains invalid metrics")
         self.ledger.append("result:" + plan.experiment_id, "experiment_result", asdict(result))
         return result
