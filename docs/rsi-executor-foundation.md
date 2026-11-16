@@ -266,3 +266,35 @@ keeps execution, patch, HOLD-clear, merge/deploy, scheduling, and model
 activation disabled. This is a status-ingestion adapter; it does not yet wire
 the result into the live Orca dashboard or distributed worker dispatcher.
 
+
+
+## Local REA model wiring and Orca status projection
+
+`core/rsi_rea_local.py` provides a concrete loopback-only Creator/Critic factory.
+It binds two distinct Ollama model identities to separate role clients at
+`127.0.0.1:11434`; it does not configure a remote provider or tool execution.
+Callers must still supply the independently trusted evidence verifier required
+by `OrchestraRSIBatch`, and model output remains proposal/review material only.
+
+The Orca snapshot sanitizer and publisher accept an optional `rsi_review`
+summary. The summary is allowlisted, bounded, strips raw feedback, and rejects
+any true execution, patch, continuation, HOLD-clear, merge/deploy, scheduler,
+or model-activation authority flag. `/api/dashboard/orca` exposes only that
+sanitized summary. It is a status projection, not a dispatch integration.
+
+`DistributedTaskScheduler` now rejects duplicate task IDs within one submitted
+plan before invoking any executor. Existing resource/dependency batching remains
+in place. This is an in-run duplicate guard; it does not claim cross-run durable
+idempotency for arbitrary external dispatchers.
+
+## Remaining live integration boundaries
+
+- Real Creator/Critic model calls require the configured local Ollama service and
+  verified model digests at deployment time.
+- A trusted evidence producer/verifier and signer remain externally injected.
+- The status summary must be supplied by a trusted, already-verified caller; the
+  dashboard HMAC authenticates the publisher but does not independently prove
+  the underlying REA review.
+- The Orca worker/queue dispatcher is not automatically connected to this
+  adapter. No live scheduling, task execution, HOLD release, or activation is
+  performed by these changes.
