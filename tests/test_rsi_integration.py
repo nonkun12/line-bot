@@ -41,6 +41,8 @@ def control_snapshot(now, *, execution_enabled, nonce):
 
 
 class FakeLocalClient:
+    config = type("Config", (), {"model": "fixture-model"})()
+
     def __init__(self, outputs):
         self.outputs = list(outputs)
         self.calls = []
@@ -98,7 +100,7 @@ def test_integrated_propose_approve_run_and_independent_evaluate(tmp_path):
 
     runner_client = FakeLocalClient(["RSI-READY", "SAFE-BOUNDARY", "EVIDENCE-LOCKED"])
     runner = LocalRSIExperimentRunner(
-        runner_client, executor_id="rsi-executor", candidate_digest=candidate_digest, ledger=ledger,
+        runner_client, executor_id="rsi-executor", candidate_digest=candidate_digest, model_id="fixture-model", ledger=ledger,
     )
     approval = HumanApproval(
         "human-reviewer", plan.plan_digest, "once-1",
@@ -138,7 +140,7 @@ def test_execution_disabled_blocks_before_runner_invocation(tmp_path):
     ))
     client = FakeLocalClient(["should-not-run"])
     runner = LocalRSIExperimentRunner(
-        client, executor_id="rsi-executor", candidate_digest=candidate, ledger=executor.ledger,
+        client, executor_id="rsi-executor", candidate_digest=candidate, model_id="fixture-model", ledger=executor.ledger,
     )
     approval = HumanApproval(
         "human-reviewer", plan.plan_digest, "once-2",
