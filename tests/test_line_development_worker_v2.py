@@ -2,6 +2,16 @@ import json
 import os
 import subprocess
 import sys
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _allow_patch_application_for_unit_tests(monkeypatch, request):
+    # Existing apply_plan contract tests exercise the authorized write path.
+    # Dedicated fail-closed tests explicitly remove/disable this setting.
+    monkeypatch.setenv("AUTO_APPLY_PATCH", "true")
+    if not request.node.name.startswith("test_rea_write_gate_"):
+        monkeypatch.setattr(worker, "_rea_write_gate_passes", lambda: True)
 
 import scripts.line_development_worker_v2 as worker
 
@@ -543,6 +553,72 @@ def test_apply_plan_requires_unique_anchor(tmp_path, monkeypatch):
     assert detail == "anchor_count_app.py:2"
     assert touched == []
     assert target.read_text(encoding="utf-8") == "x\nx\n"
+
+
+def test_apply_plan_blocks_write_when_patch_application_is_not_explicitly_enabled(tmp_path, monkeypatch):
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    target = tmp_path / "app.py"
+    original = "before\nTARGET\nafter\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.delenv("AUTO_APPLY_PATCH", raising=False)
+
+    def forbidden_write(*args, **kwargs):
+        raise AssertionError("write_text must not be called while patch application is disabled")
+
+    monkeypatch.setattr(type(target), "write_text", forbidden_write)
+    plan = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "TARGET", "new": "REPLACED"}],
+    }
+
+    ok, detail, touched = worker.apply_plan(plan)
+
+    assert ok is False
+    assert detail == "patch_application_disabled"
+    assert touched == []
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_apply_plan_requires_exact_true_patch_authorization(tmp_path, monkeypatch):
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    target = tmp_path / "app.py"
+    target.write_text("before\nTARGET\nafter\n", encoding="utf-8")
+    monkeypatch.setenv("AUTO_APPLY_PATCH", "1")
+    plan = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "TARGET", "new": "REPLACED"}],
+    }
+
+    ok, detail, touched = worker.apply_plan(plan)
+
+    assert ok is False
+    assert detail == "patch_application_disabled"
+    assert touched == []
+    assert "TARGET" in target.read_text(encoding="utf-8")
+
+
+def test_apply_plan_blocks_write_when_rea_gate_is_blocked(tmp_path, monkeypatch):
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    target = tmp_path / "app.py"
+    original = "before\\nTARGET\\nafter\\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setenv("AUTO_APPLY_PATCH", "true")
+    monkeypatch.setattr(worker, "_rea_write_gate_passes", lambda: False)
+
+    def forbidden_write(*args, **kwargs):
+        raise AssertionError("write_text must not be called when REA is blocked")
+
+    monkeypatch.setattr(type(target), "write_text", forbidden_write)
+    plan = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "TARGET", "new": "REPLACED"}],
+    }
+
+    ok, detail, touched = worker.apply_plan(plan)
+
+    assert ok is False
+    assert detail == "rea_gate_blocked"
+    assert touched == []
 
 
 def test_apply_plan_changes_one_exact_anchor(tmp_path, monkeypatch):
@@ -1594,4 +1670,44 @@ def test_every_deterministic_task_mapping_has_an_executable_plan():
         if plan is None and error is None:
             missing.append(task_id)
     assert missing == []
+
+
+def test_rea_write_gate_requires_evidence_bound_to_current_head(monkeypatch):
+    from types import SimpleNamespace
+    from scripts import rea_control_tower_adapter as adapter
+
+    head = "a" * 40
+    evidence = {"gate": "PASS", "target_sha": head}
+    calls = []
+    monkeypatch.setattr(worker, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=head + "\n"))
+    monkeypatch.setattr(adapter, "prepare_rea_evidence", lambda root, expected_sha: calls.append(("prepare", expected_sha)) or evidence)
+    monkeypatch.setattr(adapter, "rea_evidence_is_valid_pass", lambda item, expected_sha: calls.append(("validate", expected_sha)) or item["target_sha"] == expected_sha)
+
+    assert worker._rea_write_gate_passes() is True
+    assert calls == [("prepare", head), ("validate", head)]
+
+
+def test_rea_write_gate_rejects_stale_or_mismatched_evidence(monkeypatch):
+    from types import SimpleNamespace
+    from scripts import rea_control_tower_adapter as adapter
+
+    head = "b" * 40
+    stale_evidence = {"gate": "PASS", "target_sha": "c" * 40}
+    monkeypatch.setattr(worker, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=head))
+    monkeypatch.setattr(adapter, "prepare_rea_evidence", lambda root, expected_sha: stale_evidence)
+    monkeypatch.setattr(adapter, "rea_evidence_is_valid_pass", lambda item, expected_sha: item.get("target_sha") == expected_sha)
+
+    assert worker._rea_write_gate_passes() is False
+
+
+def test_rea_write_gate_fails_closed_on_invalid_head_or_adapter_error(monkeypatch):
+    from types import SimpleNamespace
+    from scripts import rea_control_tower_adapter as adapter
+
+    monkeypatch.setattr(worker, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="not-a-commit"))
+    assert worker._rea_write_gate_passes() is False
+
+    monkeypatch.setattr(worker, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="d" * 40))
+    monkeypatch.setattr(adapter, "prepare_rea_evidence", lambda root, expected_sha: (_ for _ in ()).throw(RuntimeError("scanner unavailable")))
+    assert worker._rea_write_gate_passes() is False
 

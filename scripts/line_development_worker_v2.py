@@ -932,12 +932,35 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
     return True, chosen
 
 
+def _rea_write_gate_passes() -> bool:
+    """Require fresh, complete, SHA-bound REA evidence immediately before writes."""
+    try:
+        head_result = run(["git", "rev-parse", "HEAD"], timeout=10)
+        target_sha = head_result.stdout.strip() if head_result.returncode == 0 else ""
+        if not re.fullmatch(r"[0-9a-f]{40}", target_sha):
+            return False
+        from scripts.rea_control_tower_adapter import (
+            prepare_rea_evidence,
+            rea_evidence_is_valid_pass,
+        )
+        evidence = prepare_rea_evidence(ROOT, expected_sha=target_sha)
+        return rea_evidence_is_valid_pass(evidence, expected_sha=target_sha)
+    except Exception:
+        # Missing scanner, dirty/incomplete worktree, or any uncertainty blocks writes.
+        return False
+
+
 def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
     """Preflight every bounded change before writing any file."""
     if not isinstance(plan, dict):
         return False, "invalid_plan", []
     if plan.get("no_change") is True:
         return True, "NO_CHANGE", []
+    # Model output and task execution approval do not authorize repository writes.
+    # The workflow must explicitly enable patch application through its protected
+    # control plane; absent, false, or ambiguous values fail closed.
+    if os.environ.get("AUTO_APPLY_PATCH", "false").strip().casefold() != "true":
+        return False, "patch_application_disabled", []
     changes = plan.get("changes")
     if not isinstance(changes, list) or not 1 <= len(changes) <= MAX_FILES:
         return False, "invalid_change_count", []
@@ -968,6 +991,10 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
         if count != 1:
             return False, f"anchor_count_{path}:{count}", []
         prepared.append((path, target, original, old, new))
+
+    # Re-scan after all anchors are preflighted, as close as possible to the first write.
+    if not _rea_write_gate_passes():
+        return False, "rea_gate_blocked", []
 
     touched: list[str] = []
     current_index = -1
