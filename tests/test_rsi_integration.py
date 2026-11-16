@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from core.rsi_baseline import FrozenBaseline
 from core.rsi_control import SignedRSIControlSnapshot, VerifiedRSIControlProvider
 from core.rsi_executor import (
     EvidenceLedger, HumanApproval, Observation, RSIControl, RSIError, RSIExecutor,
@@ -91,8 +92,17 @@ def test_integrated_propose_approve_run_and_independent_evaluate(tmp_path):
     hypotheses = executor.hypothesize(diagnoses)
     candidate_digest = "c" * 64
     protocol_digest = benchmark_protocol_digest()
+    baseline_unsigned = FrozenBaseline(
+        "integration-baseline", "d" * 64, protocol_digest, 0.5, 100, 10_000, "pending"
+    )
+    baseline = FrozenBaseline(
+        baseline_unsigned.baseline_id, baseline_unsigned.model_digest,
+        baseline_unsigned.protocol_digest, baseline_unsigned.quality,
+        baseline_unsigned.sample_count, baseline_unsigned.sealed_at,
+        sign_digest(baseline_unsigned.digest),
+    )
     plans = executor.plan(
-        hypotheses, baseline_digest="d" * 64,
+        hypotheses, baseline_digest=baseline.digest,
         candidate_digest=candidate_digest, protocol_digest=protocol_digest,
         expected_cost_units=3,
     )
@@ -113,7 +123,8 @@ def test_integrated_propose_approve_run_and_independent_evaluate(tmp_path):
     })])
     evaluator = LocalRSIIndependentEvaluator(
         evaluator_client, evaluator_id="independent-evaluator", ledger=ledger,
-        baseline_quality=0.5, sign_digest=sign_digest,
+        baseline=baseline, verify_baseline_signature=verify_digest,
+        sign_digest=sign_digest, clock=lambda: 10_000,
     )
     evaluation = evaluator.evaluate(plan, result)
     executor.evaluate(result, evaluation)
