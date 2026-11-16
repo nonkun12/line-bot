@@ -42,7 +42,7 @@ def make_result(tmp_path, output="TOKEN"):
     plan, cases = make_plan()
     ledger = EvidenceLedger(tmp_path / "evaluator.sqlite")
     runner = LocalRSIExperimentRunner(
-        FakeClient([output]), executor_id="local-runner",
+        FakeClient(output), executor_id="local-runner",
         candidate_digest=plan.candidate_digest, model_id="fixture-model", ledger=ledger, cases=cases,
     )
     result = runner(plan)
