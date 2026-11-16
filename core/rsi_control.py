@@ -251,7 +251,7 @@ class VerifiedRSIControlProvider:
             "generation": snapshot.generation,
         }
         digest = canonical_digest(signed)
-        if not self._verify(digest, snapshot.signature):
+        if self._verify(digest, snapshot.signature) is not True:
             raise RSIError("control snapshot signature verification failed")
 
         release = None
@@ -275,7 +275,7 @@ class VerifiedRSIControlProvider:
                 "expires_at": release.expires_at,
             }
             release_digest = canonical_digest(release_payload)
-            if not isinstance(release.signature, str) or not release.signature.strip() or not self._verify_release(release_digest, release.signature):
+            if not isinstance(release.signature, str) or not release.signature.strip() or self._verify_release(release_digest, release.signature) is not True:
                 raise RSIError("HOLD release approval signature verification failed")
         _persist_control_snapshot(self._ledger, snapshot, digest, release, now, self._max_age)
 
