@@ -131,3 +131,38 @@ does not match. A caller-supplied floating-point score is no longer sufficient
 to declare IMPROVED/NO_CHANGE/REGRESSED. Signing keys and trusted baseline
 measurement remain external prerequisites; the included tests use test-only
 signatures and do not constitute a production trust root.
+
+
+## P0 hardening: evidence provenance and monotonic control state
+
+- Observation evidence now requires a ledger event of the explicit
+  `trusted_observation_evidence` type. The event digest must match the
+  observation reference, its signed payload must exactly match the observation,
+  and its experiment, candidate, protocol, and result digests must match the
+  typed reference. The producer identity/signature is checked by an injected
+  independent verifier.
+- The complete hash chain, source-event lookup, signature verification, and
+  observation append run under one SQLite `BEGIN IMMEDIATE` transaction.
+  Missing, forbidden, mismatched, unsigned, forged, or tampered evidence is
+  rejected before an observation enters the ledger.
+- The local benchmark runner now requires an injected producer signer. Its
+  signature covers the experiment, candidate, protocol, recomputed result
+  digest, and raw observations. The independent evaluator verifies that
+  signature and all plan/result bindings before recomputing the score.
+- Signed control snapshots now require a generation number covered by the
+  signature. Generation and issued-at values are checked against the durable
+  append-only ledger, not process memory. Replayed nonces, generation
+  rollback/equivocation, issue-time rollback, invalid legacy history, and
+  ledger corruption fail closed. The history check and append are serialized
+  in one `BEGIN IMMEDIATE` transaction, including across provider restarts.
+- A transition from Global HOLD to HOLD-clear requires a separate
+  `HumanControlReleaseApproval` signed by an independently injected verifier,
+  bound to the previous HOLD generation and exact release snapshot digest,
+  generation, nonce, approver, and validity window. Experiment approval cannot
+  release Global HOLD.
+
+These are secure interfaces, not a claim that production trust roots are
+provisioned. The observation producer signer/verifier, benchmark signer,
+trusted control snapshot issuer, control-release approver/verifier, and FREE
+budget source remain external dependencies. No generation advancement,
+scheduler activation, merge, deployment, or model activation is performed.
