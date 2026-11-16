@@ -1,6 +1,6 @@
 import json
 
-from scripts.orca_rsi_preparation_loop import build_report
+from scripts.orca_rsi_preparation_loop import _task_digest, build_report
 
 
 def _catalog():
@@ -86,3 +86,12 @@ def test_preparation_loop_blocks_duplicate_or_malformed_catalog_tasks():
         assert str(exc) == "catalog_task_invalid"
     else:
         raise AssertionError("duplicate catalog task IDs must be rejected")
+
+
+def test_task_digest_binds_approval_and_all_catalog_metadata():
+    task = _catalog()["tasks"][0]
+    original = _task_digest(task)
+    changed = dict(task, execution_approved=False)
+    assert _task_digest(changed) != original
+    changed = dict(task, review_policy="independent-review-required")
+    assert _task_digest(changed) != original
