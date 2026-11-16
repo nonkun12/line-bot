@@ -10,7 +10,9 @@ from dataclasses import asdict, dataclass
 import hashlib
 from typing import Sequence
 
-from .ai_factory_stage132_local_models import LocalModelClient
+from .ai_factory_stage132_local_models import (
+    LocalModelClient, LocalModelConfig, OllamaLoopbackClient,
+)
 from .rsi_executor import EvidenceLedger, ExperimentPlan, ExperimentResult, RSIError, canonical_digest, _bounded_id, _digest
 
 
@@ -128,4 +130,34 @@ class LocalRSIExperimentRunner:
         )
 
 
-__all__ = ["BenchmarkCase", "LocalRSIExperimentRunner", "benchmark_protocol_digest"]
+def build_loopback_rsi_runner(
+    *,
+    model: str,
+    executor_id: str,
+    candidate_digest: str,
+    ledger: EvidenceLedger,
+    timeout_seconds: float = 30.0,
+    cases: Sequence[BenchmarkCase] = _DEFAULT_CASES,
+) -> LocalRSIExperimentRunner:
+    """Build the RSI runner against local Ollama with thinking explicitly disabled."""
+    config = LocalModelConfig(
+        model=model,
+        base_url="http://127.0.0.1:11434",
+        timeout_seconds=timeout_seconds,
+        max_output_tokens=128,
+        think=False,
+    )
+    return LocalRSIExperimentRunner(
+        OllamaLoopbackClient(config),
+        executor_id=executor_id,
+        candidate_digest=candidate_digest,
+        model_id=model,
+        ledger=ledger,
+        cases=cases,
+    )
+
+
+__all__ = [
+    "BenchmarkCase", "LocalRSIExperimentRunner", "benchmark_protocol_digest",
+    "build_loopback_rsi_runner",
+]
