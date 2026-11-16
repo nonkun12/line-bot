@@ -98,7 +98,7 @@ def test_integrated_propose_approve_run_and_independent_evaluate(tmp_path):
 
     runner_client = FakeLocalClient(["RSI-READY", "SAFE-BOUNDARY", "EVIDENCE-LOCKED"])
     runner = LocalRSIExperimentRunner(
-        runner_client, executor_id="rsi-executor", candidate_digest=candidate_digest,
+        runner_client, executor_id="rsi-executor", candidate_digest=candidate_digest, ledger=ledger,
     )
     approval = HumanApproval(
         "human-reviewer", plan.plan_digest, "once-1",
@@ -107,11 +107,11 @@ def test_integrated_propose_approve_run_and_independent_evaluate(tmp_path):
     result = executor.execute_approved(plan, approval, runner)
 
     evaluator_client = FakeLocalClient([json.dumps({
-        "decision": "IMPROVED", "rationale": "All fixed benchmark checks passed."
+        "rationale": "All fixed benchmark checks passed."
     })])
     evaluator = LocalRSIIndependentEvaluator(
-        evaluator_client, evaluator_id="independent-evaluator",
-        sign_digest=sign_digest,
+        evaluator_client, evaluator_id="independent-evaluator", ledger=ledger,
+        baseline_quality=0.5, sign_digest=sign_digest,
     )
     evaluation = evaluator.evaluate(plan, result)
     executor.evaluate(result, evaluation)
@@ -138,7 +138,7 @@ def test_execution_disabled_blocks_before_runner_invocation(tmp_path):
     ))
     client = FakeLocalClient(["should-not-run"])
     runner = LocalRSIExperimentRunner(
-        client, executor_id="rsi-executor", candidate_digest=candidate,
+        client, executor_id="rsi-executor", candidate_digest=candidate, ledger=executor.ledger,
     )
     approval = HumanApproval(
         "human-reviewer", plan.plan_digest, "once-2",
