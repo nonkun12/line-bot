@@ -242,6 +242,11 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
     monkeypatch.delenv("GITHUB_ENV", raising=False)
 
+    monkeypatch.setattr(
+        guarded_runtime,
+        "_consume_execution_approval",
+        lambda evidence, start_sha: {"gate": "PASS", "reason_code": "approval_consumed_once", "marker_ref": "refs/heads/rsi-approval-consumed/test", "marker_sha": start_sha},
+    )
     assert guarded_runtime.main() == 0
     summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
     assert summary["status"] == "PASS"
@@ -400,3 +405,36 @@ def test_execution_approval_rejects_dispatch_from_non_default_branch(tmp_path, m
     assert evidence["gate"] == "BLOCKED"
     assert evidence["execution_authorized"] is False
 
+
+
+def test_execution_approval_consumption_requires_github_token(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    evidence = {
+        "execution_authorized": True,
+        "actor": "nonkun12",
+        "task_id": "task-1",
+        "instruction_sha256": "a" * 64,
+    }
+    result = guarded_runtime._consume_execution_approval(evidence, "b" * 40)
+    assert result["gate"] == "BLOCKED"
+    assert result["reason_code"] == "approval_ledger_token_missing"
+
+
+def test_execution_approval_consumption_blocks_duplicate_ref(monkeypatch):
+    import urllib.error
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    def duplicate_ref(request, timeout):
+        raise urllib.error.HTTPError(request.full_url, 422, "already exists", {}, None)
+
+    monkeypatch.setattr(guarded_runtime.urllib.request, "urlopen", duplicate_ref)
+    evidence = {
+        "execution_authorized": True,
+        "actor": "nonkun12",
+        "task_id": "task-1",
+        "instruction_sha256": "a" * 64,
+    }
+    result = guarded_runtime._consume_execution_approval(evidence, "b" * 40)
+    assert result["gate"] == "BLOCKED"
+    assert result["reason_code"] == "approval_already_consumed"
