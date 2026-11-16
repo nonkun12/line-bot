@@ -124,6 +124,7 @@ class LocalRSIIndependentEvaluator:
             "executor_id": result.executor_id,
             "candidate_digest": plan.candidate_digest,
             "protocol_digest": plan.protocol_digest,
+            "observations_digest": canonical_digest(observations),
             "metrics": metrics,
         })
         if result.result_digest != expected_result_digest:
