@@ -6,11 +6,12 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _allow_patch_application_for_unit_tests(monkeypatch):
+def _allow_patch_application_for_unit_tests(monkeypatch, request):
     # Existing apply_plan contract tests exercise the authorized write path.
     # Dedicated fail-closed tests explicitly remove/disable this setting.
     monkeypatch.setenv("AUTO_APPLY_PATCH", "true")
-    monkeypatch.setattr(worker, "_rea_write_gate_passes", lambda: True)
+    if not request.node.name.startswith("test_rea_write_gate_"):
+        monkeypatch.setattr(worker, "_rea_write_gate_passes", lambda: True)
 
 import scripts.line_development_worker_v2 as worker
 
