@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 
 from scripts.orca_rsi_five_stage import RSI_STAGES, new_cycle, record_stage
@@ -5,6 +7,7 @@ from scripts.orca_rsi_orca_adapter import (
     RSIExecutionAdapterRejected,
     to_orca_improvement_candidate,
 )
+from tests.test_orca_rsi_review_attestation import KEY, NOW, _attestation
 
 
 def _cycle():
@@ -20,7 +23,12 @@ def _cycle():
 def _candidate(**overrides):
     values = {
         "cycle_id": "a" * 64,
-        "independent_review_evidence": ["review:run-123"],
+        "repository": "nonkun12/line-bot",
+        "commit_sha": "b" * 40,
+        "review_attestation": _attestation(),
+        "review_signing_key": KEY,
+        "allowed_reviewers": ["trusted-reviewer"],
+        "now": NOW,
         "evaluation": {
             "tests_passed": True,
             "critic_verdict": "pass",
@@ -32,30 +40,24 @@ def _candidate(**overrides):
     return to_orca_improvement_candidate(_cycle(), **values)
 
 
-def test_adapter_maps_five_rsi_stages_to_six_orca_evidence_stages():
+def test_adapter_maps_rsi_stages_only_with_verified_external_review():
     candidate = _candidate()
     assert set(candidate["evidence"]) == {
         "observed", "diagnosed", "proposed", "tested", "reviewed", "evaluated"
     }
-    assert candidate["evidence"]["reviewed"] == ["review:run-123"]
-    assert candidate["evidence"]["evaluated"] == ["final evaluation evidence"]
+    assert candidate["evidence"]["reviewed"] == ["actions://review/123"]
 
 
-def test_adapter_never_derives_independent_review_from_rsi_cycle():
-    with pytest.raises(RSIExecutionAdapterRejected, match="independent_review_evidence_missing"):
-        _candidate(independent_review_evidence=[])
+def test_adapter_rejects_unsigned_or_tampered_review():
+    forged = _attestation()
+    forged["evidence_refs"] = ["actions://forged"]
+    with pytest.raises(RSIExecutionAdapterRejected, match="review_signature_invalid"):
+        _candidate(review_attestation=forged)
 
 
-def test_adapter_rejects_non_pass_rsi_cycle():
-    cycle = new_cycle("not-pass")
-    for stage in RSI_STAGES[:-1]:
-        cycle = record_stage(cycle, stage=stage, evidence="evidence")
-    cycle = record_stage(cycle, stage="select_evolve", evidence="blocked", result="BLOCKED")
-    with pytest.raises(RSIExecutionAdapterRejected, match="rsi_cycle_result_not_pass"):
-        to_orca_improvement_candidate(
-            cycle, cycle_id="a" * 64,
-            independent_review_evidence=["review:run-123"], evaluation={},
-        )
+def test_adapter_rejects_review_bound_to_another_commit():
+    with pytest.raises(RSIExecutionAdapterRejected, match="review_commit_mismatch"):
+        _candidate(review_attestation=_attestation(commit_sha="c" * 40))
 
 
 def test_adapter_keeps_all_execution_switches_false():
