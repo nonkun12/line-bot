@@ -1,8 +1,4 @@
-"""Strict adapter from five-stage RSI evidence to Orca's six-stage gate.
-
-Independent review provenance is verified with a key held outside the worker.
-Evaluation metrics are still revalidated by the downstream execution gate.
-"""
+"""Strict adapter from five-stage RSI evidence to Orca's six-stage gate."""
 from __future__ import annotations
 
 import re
@@ -29,13 +25,15 @@ def to_orca_improvement_candidate(
     repository: str,
     commit_sha: str,
     review_attestation: Any,
-    review_signing_key: str,
+    review_public_key_pem: str | bytes,
+    expected_nonce: str,
+    used_attestation_hashes: Iterable[str],
     allowed_reviewers: Iterable[str],
     now: datetime,
     evaluation: Any,
 ) -> dict[str, Any]:
-    """Map RSI evidence only after verifying a fresh external review signature."""
-    if not isinstance(cycle, dict) or cycle.get("schema_version") != 1:
+    """Map evidence only after verifying a reviewer signature with a public key."""
+    if not isinstance(cycle, dict) or type(cycle.get("schema_version")) is not int or cycle["schema_version"] != 1:
         raise RSIExecutionAdapterRejected("rsi_cycle_missing_or_invalid")
     if cycle.get("completed_stages") != list(RSI_STAGES):
         raise RSIExecutionAdapterRejected("rsi_cycle_incomplete")
@@ -48,15 +46,19 @@ def to_orca_improvement_candidate(
         raise RSIExecutionAdapterRejected("rsi_cycle_evidence_invalid")
     if not isinstance(cycle_id, str) or not _HEX_64.fullmatch(cycle_id):
         raise RSIExecutionAdapterRejected("orca_cycle_id_invalid")
+    if cycle.get("cycle_id") != cycle_id:
+        raise RSIExecutionAdapterRejected("rsi_cycle_id_mismatch")
     if not isinstance(evaluation, dict):
         raise RSIExecutionAdapterRejected("independent_evaluation_missing")
     try:
         review = verify_independent_review(
             review_attestation,
-            review_signing_key,
+            review_public_key_pem,
             repository=repository,
             cycle_id=cycle_id,
             commit_sha=commit_sha,
+            expected_nonce=expected_nonce,
+            used_attestation_hashes=used_attestation_hashes,
             now=now,
             allowed_reviewers=allowed_reviewers,
         )
@@ -72,12 +74,14 @@ def to_orca_improvement_candidate(
         "auto_apply": False,
         "auto_merge": False,
         "auto_deploy": False,
+        "review_attestation_hash": review.attestation_hash,
+        "review_nonce": review.nonce,
         "evidence": {
             "observed": [evidence["evaluate"]],
             "diagnosed": [evidence["diagnose"]],
             "proposed": [evidence["hypothesize"]],
             "tested": [evidence["experiment"]],
-            "reviewed": review["evidence_refs"],
+            "reviewed": list(review.evidence_refs),
             "evaluated": [evidence["select_evolve"]],
         },
         "details": {"evaluation": dict(evaluation)},
