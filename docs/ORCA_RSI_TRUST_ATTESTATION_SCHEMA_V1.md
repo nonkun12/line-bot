@@ -87,7 +87,10 @@ payload using the common canonicalization rules. Any payload mutation requires
 a new approval.
 
 The approval authority MUST be human-controlled and separate from the worker.
-The worker MUST NOT mint or rewrite approval claims. Missing approver identity,
+The worker MUST NOT mint or rewrite approval claims. The review verifier MUST
+also receive the implementer identity from a trusted orchestration identity
+source and reject `reviewer_id == implementer_id`; a caller-provided identity
+string without a trusted binding is not sufficient. Missing approver identity,
 unknown key ID, non-APPROVED verdict, stale claim, digest mismatch, or replay
 means BLOCKED.
 
@@ -157,7 +160,8 @@ A future preflight may return `READY` only if all of the following are true:
 6. Reviewer is independent of task implementer and approver; task approver and
    budget issuer identities satisfy their separate policies.
 7. The current repository, task, task digest, cycle, and commit match every
-   claim.
+   claim; reviewer identity is independently bound to its review key and is
+   distinct from the trusted implementer identity.
 8. Required evidence is retrievable and content digests match.
 
 The preflight result is advisory authorization only. It MUST return
