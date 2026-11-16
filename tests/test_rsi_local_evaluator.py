@@ -63,7 +63,7 @@ def make_evaluator(ledger, client, baseline, signer=lambda _: "signature"):
     return LocalRSIIndependentEvaluator(
         client, evaluator_id="separate-evaluator", ledger=ledger,
         baseline=baseline,
-        verify_baseline_signature=lambda producer_id, digest, signature: producer_id == "local-runner" and signature == "sig:" + digest,
+        verify_baseline_signature=lambda digest, signature: signature == "sig:" + digest,
         verify_evidence_signature=lambda producer_id, digest, signature: producer_id == "local-runner" and signature == "sig:" + digest,
         sign_digest=signer, clock=lambda: 10_100,
     )
@@ -94,7 +94,7 @@ def test_evaluator_rejects_executor_identity_and_unbound_result(tmp_path):
     same = LocalRSIIndependentEvaluator(
         FakeClient("{}"), evaluator_id="local-runner", ledger=ledger,
         baseline=baseline,
-        verify_baseline_signature=lambda producer_id, digest, signature: producer_id == "local-runner" and signature == "sig:" + digest,
+        verify_baseline_signature=lambda digest, signature: signature == "sig:" + digest,
         verify_evidence_signature=lambda producer_id, digest, signature: producer_id == "local-runner" and signature == "sig:" + digest,
         sign_digest=lambda _: "sig", clock=lambda: 10_100,
     )
