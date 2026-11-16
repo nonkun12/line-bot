@@ -75,7 +75,7 @@ def test_runner_rejects_unbounded_or_wrong_capability_plan(tmp_path):
     with pytest.raises(ValueError, match="1..4"):
         LocalRSIExperimentRunner(
             FakeLocalClient([]), executor_id="local-runner",
-            candidate_digest=candidate, model_id="fixture-model", ledger=EvidenceLedger(tmp_path / "runner4.sqlite"), cases=tuple(
+            candidate_digest=candidate, model_id="fixture-model", ledger=EvidenceLedger(tmp_path / "runner4.sqlite"), sign_evidence=lambda d: "sig:" + d, cases=tuple(
                 BenchmarkCase(str(i), "prompt", "expected") for i in range(5)
             ),
         )
