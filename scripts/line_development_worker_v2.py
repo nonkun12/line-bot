@@ -961,8 +961,6 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
     # control plane; absent, false, or ambiguous values fail closed.
     if os.environ.get("AUTO_APPLY_PATCH", "false").strip().casefold() != "true":
         return False, "patch_application_disabled", []
-    if not _rea_write_gate_passes():
-        return False, "rea_gate_blocked", []
     changes = plan.get("changes")
     if not isinstance(changes, list) or not 1 <= len(changes) <= MAX_FILES:
         return False, "invalid_change_count", []
@@ -993,6 +991,10 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
         if count != 1:
             return False, f"anchor_count_{path}:{count}", []
         prepared.append((path, target, original, old, new))
+
+    # Re-scan after all anchors are preflighted, as close as possible to the first write.
+    if not _rea_write_gate_passes():
+        return False, "rea_gate_blocked", []
 
     touched: list[str] = []
     current_index = -1
