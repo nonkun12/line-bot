@@ -44,7 +44,7 @@ def _verify(attestation=None, **kwargs):
         "repository": "nonkun12/line-bot", "cycle_id": "a" * 64,
         "commit_sha": "b" * 40, "expected_nonce": NONCE,
         "used_attestation_hashes": [], "now": NOW,
-        "allowed_reviewers": ["trusted-reviewer"], "implementer_id": "worker-author",
+        "allowed_reviewers": ["trusted-reviewer"], "public_key_reviewer_id": "trusted-reviewer", "implementer_id": "worker-author",
     }
     options.update(kwargs)
     return verify_independent_review(attestation or _attestation(), PUBLIC_PEM, **options)
@@ -113,7 +113,8 @@ def test_rejects_wrong_key_type():
             _attestation(), wrong_pem, repository="nonkun12/line-bot",
             cycle_id="a" * 64, commit_sha="b" * 40, expected_nonce=NONCE,
             used_attestation_hashes=[], now=NOW,
-            allowed_reviewers=["trusted-reviewer"], implementer_id="worker-author",
+            allowed_reviewers=["trusted-reviewer"], public_key_reviewer_id="trusted-reviewer",
+            implementer_id="worker-author",
         )
 
 
@@ -124,3 +125,9 @@ def test_rejects_implementer_as_reviewer():
         match="reviewer_must_be_independent_of_implementer",
     ):
         _verify(implementer_id="trusted-reviewer")
+
+
+
+def test_rejects_review_identity_not_bound_to_configured_public_key():
+    with pytest.raises(ReviewAttestationRejected, match="review_key_signer_mismatch"):
+        _verify(public_key_reviewer_id="different-reviewer")
