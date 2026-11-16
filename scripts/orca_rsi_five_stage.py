@@ -92,29 +92,41 @@ def continuation_decision(
     if not isinstance(cycle, dict) or cycle.get("schema_version") != 1:
         reasons.append("cycle_missing_or_invalid")
     else:
+        if not isinstance(cycle.get("cycle_id"), str) or not cycle["cycle_id"].strip():
+            reasons.append("cycle_id_invalid")
         if cycle.get("completed_stages") != list(RSI_STAGES):
             reasons.append("rsi_cycle_incomplete")
         if cycle.get("result") != "PASS":
             reasons.append("rsi_result_not_pass")
         evidence = cycle.get("evidence")
-        if not isinstance(evidence, dict) or any(
-            not isinstance(evidence.get(stage), str) or not evidence[stage].strip()
-            for stage in RSI_STAGES
-        ):
+        if (not isinstance(evidence, dict) or set(evidence) != set(RSI_STAGES)
+                or any(not isinstance(evidence.get(stage), str) or not evidence[stage].strip()
+                       for stage in RSI_STAGES)):
             reasons.append("rsi_evidence_incomplete")
-    if not queue_has_pending:
+    boolean_gates = {
+        "queue_has_pending": queue_has_pending,
+        "global_hold": global_hold,
+        "emergency_stop": emergency_stop,
+        "budget_verified": budget_verified,
+        "approval_verified": approval_verified,
+        "independent_review_pass": independent_review_pass,
+        "kill_switch": kill_switch,
+    }
+    if any(type(value) is not bool for value in boolean_gates.values()):
+        reasons.append("gate_input_not_boolean")
+    if queue_has_pending is not True:
         reasons.append("queue_empty")
-    if global_hold:
+    if global_hold is not False:
         reasons.append("global_hold_active")
-    if emergency_stop:
+    if emergency_stop is not False:
         reasons.append("emergency_stop_active")
-    if not budget_verified:
+    if budget_verified is not True:
         reasons.append("budget_evidence_missing_or_invalid")
-    if not approval_verified:
+    if approval_verified is not True:
         reasons.append("task_approval_missing_or_invalid")
-    if not independent_review_pass:
+    if independent_review_pass is not True:
         reasons.append("independent_review_not_pass")
-    if kill_switch:
+    if kill_switch is not False:
         reasons.append("kill_switch_active")
     return {
         "status": "PASS" if not reasons else "BLOCKED",
