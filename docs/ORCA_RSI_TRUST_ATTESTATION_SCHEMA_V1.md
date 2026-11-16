@@ -145,8 +145,10 @@ Each ledger contains parallel, unique arrays `used_nonces` and
 `used_attestation_hashes`. Both arrays must have equal lengths and valid
 entries. Claim verification and replay consumption are one logical gate;
 consumption uses the existing GitHub state store's non-force revision CAS.
-Missing branch/document, malformed ledger, full ledger, network error, or CAS
-conflict blocks the attempt. Do not initialize or clear a missing state ref.
+Missing branch/document, missing individual ledger, malformed ledger, full ledger,
+network error, or CAS conflict blocks the attempt. All three ledger objects must
+already exist in the provisioned state document; claim consumption must never
+create a missing ledger. Do not initialize or clear a missing state ref.
 
 ## 6. Execution preflight contract
 
