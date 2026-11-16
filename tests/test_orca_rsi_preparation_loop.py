@@ -42,6 +42,9 @@ def test_preparation_loop_identifies_candidate_without_authorizing_execution():
     candidate = report["candidates"][0]
     assert candidate["task_id"] == "safe-regression-task"
     assert len(candidate["task_digest"]) == 64
+    assert candidate["catalog_candidate_flag"] is True
+    assert candidate["execution_approved"] is False
+    assert candidate["human_execution_approval_required"] is True
     assert candidate["dispatch_authorized"] is False
     assert report["worker_started"] is False
     assert report["queue_written"] is False
@@ -95,3 +98,14 @@ def test_task_digest_binds_approval_and_all_catalog_metadata():
     assert _task_digest(changed) != original
     changed = dict(task, review_policy="independent-review-required")
     assert _task_digest(changed) != original
+
+
+def test_catalog_execution_approved_flag_never_becomes_human_execution_authority():
+    report = build_report(_catalog(), _state())
+    candidate = report["candidates"][0]
+    assert report["catalog_candidate_flag_count"] == 1
+    assert "execution_approved_count" not in report
+    assert candidate["catalog_candidate_flag"] is True
+    assert candidate["execution_approved"] is False
+    assert candidate["human_execution_approval_required"] is True
+    assert report["execution_authorized"] is False
