@@ -67,6 +67,10 @@ class Observation:
     detail: str
     created_at: int
     evidence_event_id: str = ""
+    experiment_id: str = ""
+    candidate_digest: str = ""
+    protocol_digest: str = ""
+    result_digest: str = ""
 
 
 @dataclass(frozen=True)
@@ -327,6 +331,11 @@ class EvidenceLedger:
                             raise RSIError("observation source evidence does not match the observation")
                     _bounded_id(source.get("experiment_id"), "source experiment id")
                     _bounded_id(producer_id, "evidence producer id")
+                    if (source.get("experiment_id") != item.experiment_id
+                            or source.get("candidate_digest") != item.candidate_digest
+                            or source.get("protocol_digest") != item.protocol_digest
+                            or source.get("result_digest") != item.result_digest):
+                        raise RSIError("observation source evidence experiment binding mismatch")
                     for key, label in (("candidate_digest", "candidate"), ("protocol_digest", "protocol"), ("result_digest", "result")):
                         _digest(source.get(key), "source " + label)
                     if not isinstance(signature, str) or not signature.strip():
@@ -421,6 +430,9 @@ class RSIExecutor:
                 raise RSIError("duplicate observation")
             seen.add(item.observation_id)
             _bounded_id(item.evidence_event_id, "source evidence event id")
+            _bounded_id(item.experiment_id, "observation experiment id")
+            for value, label in ((item.candidate_digest, "candidate"), (item.protocol_digest, "protocol"), (item.result_digest, "result")):
+                _digest(value, "observation " + label)
             if item.capability not in {"model", "evaluator", "experiment_design"}:
                 raise RSIError("unknown RSI capability")
             if item.outcome not in {"PASS", "FAIL", "REGRESSED", "INCONCLUSIVE"}:
