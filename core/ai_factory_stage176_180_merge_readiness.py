@@ -37,6 +37,27 @@ def _require_id(value: str, label: str) -> None:
         raise EvolutionaryReadinessError(f"{label} identity invalid")
 
 
+def _manifest_payload(manifest: "ImmutableArtifactManifest") -> dict:
+    return {
+        "candidate_id": manifest.candidate_id,
+        "candidate_artifact_digest": manifest.candidate_artifact_digest,
+        "parent_model_ids": list(manifest.parent_model_ids),
+        "parent_artifact_digests": list(manifest.parent_artifact_digests),
+        "evaluation_suite_digest": manifest.evaluation_suite_digest,
+        "selection_digest": manifest.selection_digest,
+        "source_generation": manifest.source_generation,
+        "proposed_generation": manifest.proposed_generation,
+        "strategy": manifest.strategy,
+        "license_id": manifest.license_id,
+    }
+
+
+def _verify_manifest(manifest: "ImmutableArtifactManifest") -> None:
+    _require_digest(manifest.manifest_digest, "manifest")
+    if _hash(_manifest_payload(manifest)) != manifest.manifest_digest:
+        raise EvolutionaryReadinessError("immutable manifest content digest mismatch")
+
+
 @dataclass(frozen=True)
 class SelectedMergeCandidate:
     candidate_id: str
@@ -102,6 +123,8 @@ class Stage176ArtifactManifestBuilder:
         if (not isinstance(candidate.source_generation, int)
                 or isinstance(candidate.source_generation, bool)
                 or candidate.source_generation < 0
+                or not isinstance(candidate.proposed_generation, int)
+                or isinstance(candidate.proposed_generation, bool)
                 or candidate.proposed_generation != candidate.source_generation + 1):
             raise EvolutionaryReadinessError("candidate generation lineage is not adjacent")
         payload = {
@@ -172,7 +195,7 @@ class Stage177ReproducibilityVerifier:
                 or manifest.artifact_write_authorized or manifest.model_merge_authorized
                 or manifest.weight_mutation_authorized or manifest.generation_advanced):
             raise EvolutionaryReadinessError("unsafe or mutable Stage 176 manifest")
-        _require_digest(manifest.manifest_digest, "manifest")
+        _verify_manifest(manifest)
         if not callable(verify_signature) or not isinstance(minimum_runs, int) or isinstance(minimum_runs, bool) or not 2 <= minimum_runs <= 8:
             raise EvolutionaryReadinessError("independent signature verifier and bounded repeats required")
         if not isinstance(runs, Sequence) or not minimum_runs <= len(runs) <= 8:
@@ -364,6 +387,7 @@ class Stage179HoldoutRobustnessGate:
         if not isinstance(evidence, Sequence) or not minimum_trials <= len(evidence) <= 16:
             raise EvolutionaryReadinessError("holdout evidence count outside bounds")
         trials, evaluators, digests = set(), set(), set()
+        holdout_suites = set()
         reasons = []
         for item in evidence:
             if not isinstance(item, HoldoutEvidence):
@@ -379,6 +403,7 @@ class Stage179HoldoutRobustnessGate:
                 _require_id(value, label)
             if item.manifest_digest != manifest.manifest_digest or item.candidate_artifact_digest != manifest.candidate_artifact_digest:
                 raise EvolutionaryReadinessError("holdout candidate lineage mismatch")
+            holdout_suites.add(item.holdout_suite_digest)
             if item.trial_id in trials or item.evaluator_id in evaluators or item.evidence_digest in digests:
                 raise EvolutionaryReadinessError("holdout evidence replay or evaluator reuse")
             if not item.signature or len(item.signature) > 8192 or not verify_signature(item):
@@ -392,6 +417,8 @@ class Stage179HoldoutRobustnessGate:
                 reasons.append("holdout contamination check failed")
             if item.robustness_score < minimum_robustness:
                 reasons.append("holdout robustness below threshold")
+        if len(holdout_suites) != 1:
+            raise EvolutionaryReadinessError("holdout suite drift prevents comparison")
         passed = not reasons
         payload = {
             "manifest": manifest.manifest_digest, "suite": evidence[0].holdout_suite_digest,
