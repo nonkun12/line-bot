@@ -88,8 +88,10 @@ a new approval.
 
 The approval authority MUST be human-controlled and separate from the worker.
 The worker MUST NOT mint or rewrite approval claims. The review verifier MUST
-also receive the implementer identity from a trusted orchestration identity
-source and reject `reviewer_id == implementer_id`; a caller-provided identity
+also receive both the review-key-bound `public_key_reviewer_id` and the
+implementer identity from trusted orchestration configuration. It MUST reject
+any mismatch between `reviewer_id` and `public_key_reviewer_id`, and reject
+`reviewer_id == implementer_id`; a caller-provided identity
 string without a trusted binding is not sufficient. Missing approver identity,
 unknown key ID, non-APPROVED verdict, stale claim, digest mismatch, or replay
 means BLOCKED.
