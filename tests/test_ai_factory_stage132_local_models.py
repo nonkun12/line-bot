@@ -9,6 +9,7 @@ from core.ai_factory_stage132_local_models import (
     LocalModelConfig,
     LocalModelRoleProducer,
     OllamaCapabilityGapDesigner,
+    OllamaLoopbackClient,
     build_stage132_producers,
 )
 
@@ -50,6 +51,13 @@ def test_local_model_config_accepts_loopback_only():
 def test_local_model_config_rejects_non_loopback_or_ambiguous_urls(url):
     with pytest.raises(ValueError):
         LocalModelConfig("model", url)
+
+
+def test_local_model_config_supports_explicit_thinking_control():
+    assert LocalModelConfig("lfm3", think=False).think is False
+    assert LocalModelConfig("lfm3", think=True).think is True
+    with pytest.raises(ValueError, match="think must"):
+        LocalModelConfig("lfm3", think="false")
 
 
 def test_local_model_config_bounds_timeout_and_output():
@@ -211,3 +219,52 @@ def test_designer_rejects_missing_tests():
     }
     with pytest.raises(ValueError, match="validation tests"):
         OllamaCapabilityGapDesigner(FakeClient(json.dumps(payload))).design(gap())
+
+
+class FakeHTTPResponse:
+    def __init__(self, payload):
+        self.payload = json.dumps(payload).encode()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def read(self, limit):
+        return self.payload[:limit]
+
+
+class FakeTagsOpener:
+    def __init__(self, payload):
+        self.payload = payload
+        self.request = None
+
+    def open(self, request, timeout):
+        self.request = request
+        assert request.get_method() == "GET"
+        assert request.full_url == "http://127.0.0.1:11434/api/tags"
+        assert timeout == 20.0
+        return FakeHTTPResponse(self.payload)
+
+
+def test_ollama_client_verifies_exact_local_model_digest():
+    digest = "7" * 64
+    client = OllamaLoopbackClient(LocalModelConfig("lfm3:1.7b-qad-q4_0"))
+    opener = FakeTagsOpener({
+        "models": [{"name": "lfm3:1.7b-qad-q4_0", "digest": digest}]
+    })
+    client._opener = opener
+    assert client.verify_model_digest(digest) is True
+    assert opener.request.full_url.endswith("/api/tags")
+
+
+def test_ollama_client_rejects_wrong_or_missing_model_digest():
+    client = OllamaLoopbackClient(LocalModelConfig("lfm3:1.7b-qad-q4_0"))
+    client._opener = FakeTagsOpener({
+        "models": [{"name": "lfm3:1.7b-qad-q4_0", "digest": "8" * 64}]
+    })
+    with pytest.raises(ValueError, match="does not match"):
+        client.verify_model_digest("7" * 64)
+    with pytest.raises(ValueError, match="lowercase SHA-256"):
+        client.verify_model_digest("not-a-digest")

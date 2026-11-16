@@ -57,7 +57,8 @@ def test_collect_snapshot_requires_terminal_handle():
 
 def test_build_streams_never_claims_unmatched_streams_are_active():
     streams = build_streams([], [], [])
-    assert len(streams) == 5
+    assert len(streams) == 6
+    assert {item["key"] for item in streams} == {"main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control", "side_core_vocabulary"}
     assert all(item["status"] == "unknown" for item in streams)
 
 

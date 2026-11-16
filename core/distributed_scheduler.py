@@ -54,6 +54,12 @@ class DistributedTaskScheduler:
 
     def run(self, tasks: Sequence[AgentTask]) -> DistributedRun:
         """Plan and execute all tasks, failing closed on the first bad result."""
+        task_ids = [task.task_id for task in tasks]
+        if len(task_ids) != len(set(task_ids)):
+            duplicate = next(task_id for index, task_id in enumerate(task_ids) if task_id in task_ids[:index])
+            raise DistributedExecutionError(
+                duplicate, ValueError(f"duplicate task_id in one dispatch batch: {duplicate}"),
+            )
         batches = plan_batches(tasks)
         if not batches:
             raise DistributedExecutionError(

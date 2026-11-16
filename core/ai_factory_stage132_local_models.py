@@ -33,6 +33,7 @@ class LocalModelConfig:
     base_url: str = "http://127.0.0.1:11434"
     timeout_seconds: float = 20.0
     max_output_tokens: int = 768
+    think: bool | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.model, str) or not self.model.strip():
@@ -43,6 +44,8 @@ class LocalModelConfig:
             raise ValueError("timeout_seconds must be between 0.1 and 60")
         if not 1 <= self.max_output_tokens <= 2048:
             raise ValueError("max_output_tokens must be between 1 and 2048")
+        if self.think is not None and not isinstance(self.think, bool):
+            raise ValueError("think must be a boolean or None")
         parsed = urlsplit(self.base_url)
         if (
             parsed.scheme != "http"
@@ -70,6 +73,41 @@ class OllamaLoopbackClient:
         self.config = config
         self._opener = build_opener(ProxyHandler({}))
 
+    def verify_model_digest(self, expected_digest: str) -> bool:
+        """Verify the configured model tag resolves to the exact expected Ollama digest."""
+        if (
+            not isinstance(expected_digest, str)
+            or len(expected_digest) != 64
+            or any(char not in "0123456789abcdef" for char in expected_digest)
+        ):
+            raise ValueError("expected model digest must be a lowercase SHA-256 digest")
+        request = Request(
+            self.config.base_url.rstrip("/") + "/api/tags",
+            headers={"Accept": "application/json"},
+            method="GET",
+        )
+        try:
+            with self._opener.open(request, timeout=self.config.timeout_seconds) as response:
+                raw = response.read(_MAX_RESPONSE_BYTES + 1)
+        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            raise RuntimeError(f"local model identity check failed: {type(exc).__name__}") from exc
+        if len(raw) > _MAX_RESPONSE_BYTES:
+            raise ValueError("local model identity response exceeds maximum size")
+        try:
+            decoded = json.loads(raw.decode("utf-8"))
+            models = decoded["models"]
+        except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise ValueError("local model identity response is invalid") from exc
+        if not isinstance(models, list):
+            raise ValueError("local model identity list is invalid")
+        matches = [
+            item for item in models
+            if isinstance(item, dict) and item.get("name") == self.config.model
+        ]
+        if len(matches) != 1 or matches[0].get("digest") != expected_digest:
+            raise ValueError("configured Ollama model does not match the approved candidate digest")
+        return True
+
     def chat(self, *, system: str, prompt: str) -> str:
         if not isinstance(system, str) or not isinstance(prompt, str):
             raise TypeError("system and prompt must be strings")
@@ -77,18 +115,18 @@ class OllamaLoopbackClient:
             raise ValueError("system and prompt are required")
         if len(system) + len(prompt) > _MAX_PROMPT_CHARS:
             raise ValueError("model prompt exceeds maximum length")
-        payload = json.dumps(
-            {
-                "model": self.config.model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-                "stream": False,
-                "options": {"num_predict": self.config.max_output_tokens},
-            },
-            ensure_ascii=False,
-        ).encode("utf-8")
+        request_payload = {
+            "model": self.config.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "options": {"num_predict": self.config.max_output_tokens},
+        }
+        if self.config.think is not None:
+            request_payload["think"] = self.config.think
+        payload = json.dumps(request_payload, ensure_ascii=False).encode("utf-8")
         request = Request(
             self.config.base_url.rstrip("/") + "/api/chat",
             data=payload,

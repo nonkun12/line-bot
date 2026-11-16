@@ -290,6 +290,23 @@ def _sanitize_orca_payload(payload):
             "worker_count": max(0, min(int(item.get("worker_count", 0)), 100)),
             "evidence": "matched_runtime_records" if item.get("evidence") == "matched_runtime_records" else "no_matching_stream_metadata",
         })
+    review = payload.get("rsi_review")
+    if review is not None:
+        if not isinstance(review, dict):
+            raise ValueError("invalid RSI review summary")
+        if review.get("status") not in {"PASS", "FAIL", "BLOCKED", "NO_CHANGE"}:
+            raise ValueError("invalid RSI review status")
+        flags = ("allow_continue", "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized", "scheduler_started", "model_activated")
+        if any(review.get(flag) is not False for flag in flags) or review.get("proposal_only") is not True:
+            raise ValueError("RSI review authority flags must remain false and proposal-only")
+        count = review.get("review_count")
+        if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 20:
+            raise ValueError("invalid RSI review count")
+        event_ids = review.get("review_evidence_event_ids", [])
+        if not isinstance(event_ids, list) or len(event_ids) > 20 or any(not isinstance(x, str) or not x.startswith("orchestra-rea:") or len(x) > 180 for x in event_ids):
+            raise ValueError("invalid RSI review evidence references")
+        allowed_review = {"phase", "status", "reason_code", "next_action", "repository", "head_sha", "review_count", "review_evidence_event_ids", "allow_continue", "proposal_only", "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized", "scheduler_started", "model_activated"}
+        clean["rsi_review"] = {k: v for k, v in review.items() if k in allowed_review and ((isinstance(v, (str, int, bool)) and len(str(v)) <= 300) or (k == "review_evidence_event_ids" and isinstance(v, list)))}
     return clean, captured
 
 
@@ -347,7 +364,7 @@ def orca_status():
             row = conn.execute("SELECT payload, received_at FROM orca_status WHERE id=1").fetchone()
         if not row:
             return jsonify({"ok": True, "status": "offline", "age_sec": None,
-                            "tasks": [], "dispatches": [], "workers": [], "streams": []})
+                            "tasks": [], "dispatches": [], "workers": [], "streams": [], "rsi_review": None})
         payload = json.loads(row[0])
         captured = _orca_snapshot_timestamp_allow_stale(payload.get("captured_at"))
         age = max(0, now - captured)
@@ -355,7 +372,7 @@ def orca_status():
         return jsonify({"ok": True, "status": status, "age_sec": round(age),
                         "received_at": row[1], "captured_at": payload.get("captured_at"),
                         "tasks": payload.get("tasks", []), "dispatches": payload.get("dispatches", []),
-                        "workers": payload.get("workers", []), "streams": payload.get("streams", [])})
+                        "workers": payload.get("workers", []), "streams": payload.get("streams", []), "rsi_review": payload.get("rsi_review")})
     except Exception:
         current_app.logger.exception("DASHBOARD ORCA STATUS READ ERROR")
         return jsonify({"ok": False, "status": "error"}), 500
