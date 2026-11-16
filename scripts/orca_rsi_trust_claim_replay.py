@@ -31,7 +31,9 @@ class TrustClaimReplayRejected(ValueError):
 def _read_ledger(state: Any, key: str) -> dict[str, list[str]]:
     if not isinstance(state, dict):
         raise TrustClaimReplayRejected("trust_replay_snapshot_missing")
-    raw = state.get(key, {"used_nonces": [], "used_attestation_hashes": []})
+    if key not in state:
+        raise TrustClaimReplayRejected("trust_replay_ledger_missing")
+    raw = state[key]
     if not isinstance(raw, dict) or set(raw) != {"used_nonces", "used_attestation_hashes"}:
         raise TrustClaimReplayRejected("trust_replay_ledger_invalid")
     nonces, hashes = raw["used_nonces"], raw["used_attestation_hashes"]
