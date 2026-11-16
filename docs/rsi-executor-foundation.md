@@ -218,11 +218,11 @@ text alone are not proof of execution or success.
 
 ### Implementation status
 
-This section defines the target contract only. It does not claim that a unified
-Orchestra runtime, REA adapter, cross-agent hand-off protocol, or dashboard
-integration is already implemented or active. The existing RSI foundation
-remains execution-off by default; no scheduler, continuous loop, merge,
-deployment, or model activation is enabled by this design.
+The full multi-stream Orchestra runtime, production REA provider wiring,
+cross-agent dispatch, and dashboard integration remain future work. The
+bounded proposal/review hand-off below is implemented as a non-dispatching
+adapter only. The existing RSI foundation remains execution-off by default;
+no scheduler, continuous loop, merge, deployment, or model activation is enabled.
 
 ## Bounded Orchestra -> RSI -> REA proposal/review hand-off
 
@@ -232,7 +232,7 @@ plan it creates a hand-off envelope bound to repository, exact HEAD SHA,
 experiment ID, plan digest, Creator candidate digest, and evidence digest.
 A mandatory independent evidence-verifier callback must validate the evidence
 against that exact envelope before the Critic is called. Creator and Critic
-must use distinct model-call identities; a shared callable is rejected.
+must use distinct injected callable objects; a shared callable is rejected.
 
 The Critic receives the immutable hand-off bindings together with measured
 evidence. A review is PASS only when the Critic's evidence is unchanged and
