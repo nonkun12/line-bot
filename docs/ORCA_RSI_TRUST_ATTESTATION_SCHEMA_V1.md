@@ -41,8 +41,13 @@ Ed25519 over canonical JSON after removing only the `signature` field:
 
 The signed payload MUST include a purpose-specific `claim_type` and exact
 `schema_version=1`. The verifier MUST check the key ID against the allowlist
-for that claim type before accepting the signature. No truthy/falsy coercion
-is permitted; booleans are not integers.
+for that claim type before accepting the signature. A trusted, separately
+provisioned `key_id -> signer_id` mapping MUST bind each public key to exactly
+one identity; the claim's `approver_id` or `issuer_id` MUST equal the identity
+mapped to its `key_id`. A general signer allowlist alone is insufficient,
+because it would let one allowed key assert another allowed identity. The
+review, approval, and budget key-to-identity maps MUST remain separate. No
+truthy/falsy coercion is permitted; booleans are not integers.
 
 All timestamps are timezone-aware RFC 3339 UTC strings ending in `Z`.
 Claims are short-lived, have explicit `issued_at` and `expires_at`, and are
