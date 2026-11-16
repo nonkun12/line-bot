@@ -12,7 +12,10 @@ import re
 from datetime import datetime
 from typing import Any, Iterable
 
-from scripts.orca_rsi_review_attestation import verify_independent_review
+from scripts.orca_rsi_review_attestation import (
+    ReviewAttestationRejected,
+    verify_independent_review,
+)
 
 _HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 _LEDGER_KEY = "rsi_review_replay"
@@ -37,8 +40,10 @@ def _ledger(state: Any) -> dict[str, list[str]]:
             or len(nonces) != len(set(nonces))
             or len(hashes) != len(set(hashes))):
         raise ReviewReplayStateRejected("review_replay_ledger_invalid")
-    if len(nonces) != len(hashes) or len(nonces) > _MAX_LEDGER_ENTRIES:
-        raise ReviewReplayStateRejected("review_replay_ledger_inconsistent_or_full")
+    if len(nonces) != len(hashes):
+        raise ReviewReplayStateRejected("review_replay_ledger_invalid")
+    if len(nonces) > _MAX_LEDGER_ENTRIES:
+        raise ReviewReplayStateRejected("review_replay_ledger_full")
     return {"used_nonces": list(nonces), "used_attestation_hashes": list(hashes)}
 
 
@@ -74,17 +79,20 @@ def verify_and_consume_review_once(
     if len(ledger["used_nonces"]) >= _MAX_LEDGER_ENTRIES:
         raise ReviewReplayStateRejected("review_replay_ledger_full")
 
-    verified = verify_independent_review(
-        attestation,
-        public_key_pem,
-        repository=repository,
-        cycle_id=cycle_id,
-        commit_sha=commit_sha,
-        expected_nonce=expected_nonce,
-        used_attestation_hashes=ledger["used_attestation_hashes"],
-        now=now,
-        allowed_reviewers=allowed_reviewers,
-    )
+    try:
+        verified = verify_independent_review(
+            attestation,
+            public_key_pem,
+            repository=repository,
+            cycle_id=cycle_id,
+            commit_sha=commit_sha,
+            expected_nonce=expected_nonce,
+            used_attestation_hashes=ledger["used_attestation_hashes"],
+            now=now,
+            allowed_reviewers=allowed_reviewers,
+        )
+    except ReviewAttestationRejected as exc:
+        raise ReviewReplayStateRejected(str(exc)) from None
     if verified.attestation_hash in ledger["used_attestation_hashes"]:
         raise ReviewReplayStateRejected("review_attestation_replayed")
 
