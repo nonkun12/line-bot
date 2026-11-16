@@ -181,3 +181,74 @@ def test_hold_release_requires_separate_signed_control_approval(tmp_path):
     )
     assert provider().global_hold is False
     assert ledger.verify()
+
+
+
+def test_same_generation_with_altered_snapshot_is_rejected(tmp_path):
+    now = 6000
+    ledger = EvidenceLedger(tmp_path / "same-generation.sqlite")
+    first = make_snapshot(now, generation=7, nonce="same-7")
+    VerifiedRSIControlProvider(
+        lambda: first, verify_signature=lambda d, s: s == "sig:" + d,
+        ledger=ledger, clock=lambda: now,
+    )()
+    altered = make_snapshot(now + 1, generation=7, nonce="same-7-alt", budget_remaining_units=1)
+    with pytest.raises(RSIError, match="generation rollback"):
+        VerifiedRSIControlProvider(
+            lambda: altered, verify_signature=lambda d, s: s == "sig:" + d,
+            ledger=EvidenceLedger(tmp_path / "same-generation.sqlite"), clock=lambda: now + 1,
+        )()
+
+
+def test_legacy_control_history_without_generation_fails_closed(tmp_path):
+    now = 7000
+    ledger = EvidenceLedger(tmp_path / "legacy.sqlite")
+    ledger.append("legacy-control", "verified_control_snapshot", {
+        "digest": "a" * 64, "issued_at": now,
+    })
+    snapshot = make_snapshot(now + 1, generation=1, nonce="new-control")
+    with pytest.raises(RSIError, match="legacy control history"):
+        VerifiedRSIControlProvider(
+            lambda: snapshot, verify_signature=lambda d, s: s == "sig:" + d,
+            ledger=ledger, clock=lambda: now + 1,
+        )()
+
+
+def test_concurrent_control_providers_cannot_accept_two_same_generation_values(tmp_path):
+    import threading
+
+    now = 8000
+    path = tmp_path / "concurrent.sqlite"
+    ledger = EvidenceLedger(path)
+    initial = make_snapshot(now, generation=10, nonce="concurrent-10")
+    VerifiedRSIControlProvider(
+        lambda: initial, verify_signature=lambda d, s: s == "sig:" + d,
+        ledger=ledger, clock=lambda: now,
+    )()
+    snapshots = [
+        make_snapshot(now + 1, generation=11, nonce="concurrent-11-a", budget_remaining_units=4),
+        make_snapshot(now + 1, generation=11, nonce="concurrent-11-b", budget_remaining_units=3),
+    ]
+    barrier = threading.Barrier(2)
+    outcomes = []
+
+    def accept(snapshot):
+        provider = VerifiedRSIControlProvider(
+            lambda: snapshot, verify_signature=lambda d, s: s == "sig:" + d,
+            ledger=EvidenceLedger(path), clock=lambda: now + 1,
+        )
+        barrier.wait()
+        try:
+            provider()
+            outcomes.append("accepted")
+        except RSIError:
+            outcomes.append("rejected")
+
+    threads = [threading.Thread(target=accept, args=(snapshot,)) for snapshot in snapshots]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+    assert outcomes.count("accepted") == 1
+    assert outcomes.count("rejected") == 1
+    assert ledger.verify()
