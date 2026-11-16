@@ -29,7 +29,9 @@ class ReviewReplayStateRejected(ValueError):
 def _ledger(state: Any) -> dict[str, list[str]]:
     if not isinstance(state, dict):
         raise ReviewReplayStateRejected("review_replay_state_invalid")
-    raw = state.get(_LEDGER_KEY, {"used_nonces": [], "used_attestation_hashes": []})
+    if _LEDGER_KEY not in state:
+        raise ReviewReplayStateRejected("review_replay_ledger_missing")
+    raw = state[_LEDGER_KEY]
     if not isinstance(raw, dict) or set(raw) != {"used_nonces", "used_attestation_hashes"}:
         raise ReviewReplayStateRejected("review_replay_ledger_invalid")
     nonces = raw["used_nonces"]
