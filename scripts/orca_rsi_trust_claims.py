@@ -84,6 +84,7 @@ def _verify_common(
     expected_type: str,
     fields: set[str],
     keyring: Mapping[str, str | bytes],
+    key_signer_map: Mapping[str, str],
     allowed_signers: set[str] | frozenset[str] | tuple[str, ...] | list[str],
     signer_field: str,
     repository: str,
@@ -134,6 +135,12 @@ def _verify_common(
     signer = claim.get(signer_field)
     if not isinstance(signer, str) or signer not in set(allowed_signers):
         raise TrustClaimRejected("claim_signer_not_allowlisted")
+    if (not isinstance(key_signer_map, Mapping)
+            or any(not isinstance(k, str) or not isinstance(v, str) or not v
+                   for k, v in key_signer_map.items())):
+        raise TrustClaimRejected("claim_key_signer_map_invalid")
+    if key_signer_map.get(key_id) != signer:
+        raise TrustClaimRejected("claim_key_signer_mismatch")
 
     nonce = claim.get("nonce")
     if not isinstance(nonce, str) or not _NONCE.fullmatch(nonce):
@@ -180,6 +187,7 @@ def _verify_common(
 
 def verify_task_approval(
     claim: Any, *, keyring: Mapping[str, str | bytes],
+    key_signer_map: Mapping[str, str],
     allowed_approvers: set[str] | frozenset[str] | tuple[str, ...] | list[str],
     repository: str, task_id: str, task_digest: str, cycle_id: str,
     commit_sha: str, now: datetime, implementer_id: str,
@@ -190,7 +198,7 @@ def verify_task_approval(
     verified = _verify_common(
         claim, expected_type="orca_rsi_task_approval",
         fields=_APPROVAL_FIELDS, keyring=keyring,
-        allowed_signers=allowed_approvers, signer_field="approver_id",
+        key_signer_map=key_signer_map, allowed_signers=allowed_approvers, signer_field="approver_id",
         repository=repository, task_id=task_id, task_digest=task_digest,
         cycle_id=cycle_id, commit_sha=commit_sha, now=now,
         max_lifetime=timedelta(minutes=10),
@@ -204,6 +212,7 @@ def verify_task_approval(
 
 def verify_budget_authorization(
     claim: Any, *, keyring: Mapping[str, str | bytes],
+    key_signer_map: Mapping[str, str],
     allowed_issuers: set[str] | frozenset[str] | tuple[str, ...] | list[str],
     repository: str, task_id: str, task_digest: str, cycle_id: str,
     commit_sha: str, now: datetime, expected_budget_unit: str,
@@ -215,7 +224,7 @@ def verify_budget_authorization(
     verified = _verify_common(
         claim, expected_type="orca_rsi_budget_authorization",
         fields=_BUDGET_FIELDS, keyring=keyring,
-        allowed_signers=allowed_issuers, signer_field="issuer_id",
+        key_signer_map=key_signer_map, allowed_signers=allowed_issuers, signer_field="issuer_id",
         repository=repository, task_id=task_id, task_digest=task_digest,
         cycle_id=cycle_id, commit_sha=commit_sha, now=now,
         max_lifetime=timedelta(minutes=5),
