@@ -198,8 +198,11 @@ def continuation_decision(
         if state.get("active_lease") is not None:
             reasons.append("worker_lease_already_active")
 
-    if (isinstance(public_key_reviewer_id, str) and public_key_reviewer_id.strip()):
+    if isinstance(public_key_reviewer_id, str) and public_key_reviewer_id.strip():
         signer_ids = [public_key_reviewer_id]
+        # Missing claims are rejected at their own verification stage. Do not
+        # pre-empt the ordered consume-once flow; present claims must still
+        # prove distinct identities before any replay consumption.
         if isinstance(approval_claim, dict):
             signer_ids.append(approval_claim.get("approver_id"))
         if isinstance(budget_claim, dict):
