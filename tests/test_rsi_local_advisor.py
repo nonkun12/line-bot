@@ -23,7 +23,7 @@ def make_cycle(tmp_path):
         control_provider=lambda: RSIControl(False, False, True, True, 5, False),
         verify_approval=lambda _: False,
         verify_evaluation=lambda _: False,
-        verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
+        verify_evidence_signature=lambda producer_id, digest, signature: producer_id == "test-producer" and signature == "sig:" + digest,
         executor_id="rsi-planner",
     )
     observations = (
