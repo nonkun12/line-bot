@@ -147,7 +147,7 @@ def test_creator_and_critic_cannot_share_the_same_model_callable(tmp_path):
     executor = make_executor(tmp_path)
     source = seed_input(executor, make_input())
     shared = lambda _prompt: "shared model output"
-    with pytest.raises(RSIError, match="distinct model-call identities"):
+    with pytest.raises(RSIError, match="distinct injected callables"):
         run_orchestra_rsi_batch(
             executor, lambda: source,
             creator=CreatorAgent(shared), critic=CriticAgent(shared),
