@@ -79,3 +79,15 @@ Planning now checks the known remaining FREE budget against the requested
 experiment cost before creating plans; selection excludes plans that are no
 longer affordable. The budget value is still supplied by an injected provider,
 not claimed to be a trusted live account-wide quota measurement.
+
+
+## Local execution and independent evaluation adapters
+
+- `core/rsi_local_runner.py` provides an allowlisted, inference-only local benchmark runner. It accepts only a fixed 1..4-case suite, checks the exact candidate and protocol digests, uses the Stage 132 loopback client, and emits bounded metrics/evidence digests. It has no shell, file, network, model-weight, or activation interface.
+- `core/rsi_local_evaluator.py` provides a distinct local evaluator identity/client. It consumes the exact plan/result digest pair, validates a strict decision schema, and requires an injected evaluator-held signing callback. The executor still verifies the signature independently. No key material or signing authority is generated or stored by this module.
+- `core/rsi_control.py` accepts only typed, signed, freshness-bounded control snapshots from an injected trusted source. Signature verification is mandatory; stale, expired, malformed, replayed, or unknown-budget snapshots fail closed. It does not treat GitHub Actions minutes, environment variables, or dashboard text as an account-wide FREE budget.
+- `tests/test_rsi_integration.py` covers a full proposal -> exact human approval -> local inference run -> separately signed evaluation path, plus execution-disabled blocking before the runner is invoked.
+
+## Deployment prerequisites still not met
+
+These adapters are testable contracts, not a live deployment. The trusted control snapshot issuer, evaluator-held signing key/public-key verifier, local Ollama process, immutable candidate artifact registry, and runtime operator/scheduler are not wired into production. The current local benchmark tests prompt-following on an existing local model; it does not mutate or merge weights and does not establish evolutionary model-merging capability. No scheduler is enabled. Global HOLD and execution OFF remain the required default until those external trust roots are provisioned and reviewed.
