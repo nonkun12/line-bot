@@ -72,3 +72,26 @@ def test_validate_snapshot_accepts_sixth_core_vocabulary_stream():
     clean = validate_snapshot(data)
     assert len(clean["streams"]) == 2
     assert clean["streams"][1]["key"] == "side_core_vocabulary"
+
+
+def test_validate_snapshot_accepts_fail_closed_rsi_review_summary():
+    data = payload()
+    data["rsi_review"] = {"status": "PASS", "review_count": 1, "review_evidence_event_ids": ["orchestra-rea:event-1"],
+        "proposal_only": True, "allow_continue": False, "execution_authorized": False,
+        "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False,
+        "scheduler_started": False, "model_activated": False, "raw_feedback": "secret"}
+    clean = validate_snapshot(data)
+    assert clean["rsi_review"]["status"] == "PASS"
+    assert "raw_feedback" not in clean["rsi_review"]
+
+
+@pytest.mark.parametrize("field", ["allow_continue", "execution_authorized", "patch_authorized",
+    "hold_clear_authorized", "merge_deploy_authorized", "scheduler_started", "model_activated"])
+def test_validate_snapshot_rejects_rsi_authority_escalation(field):
+    data = payload()
+    data["rsi_review"] = {"status": "PASS", "review_count": 0, "review_evidence_event_ids": [],
+        "proposal_only": True, "allow_continue": False, "execution_authorized": False,
+        "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False,
+        "scheduler_started": False, "model_activated": False}
+    data["rsi_review"][field] = True
+    with pytest.raises(ValueError): validate_snapshot(data)
