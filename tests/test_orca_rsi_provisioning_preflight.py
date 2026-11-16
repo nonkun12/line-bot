@@ -123,3 +123,29 @@ def test_preflight_blocks_missing_configuration_without_reading_state():
     assert report["status"] == "BLOCKED"
     assert store.reads == 0
     assert store.writes == 0
+
+
+def test_preflight_blocks_malformed_queue_entries_instead_of_ignoring_them():
+    state = _state()
+    state["tasks"].append(None)
+    store = ReadOnlyStateStore(state)
+    report = run_preflight(_env(), store)
+    assert report["status"] == "BLOCKED"
+    assert "persisted_queue_entry_invalid" in report["blockers"]
+    assert store.writes == 0
+
+
+def test_preflight_blocks_duplicate_queue_task_ids():
+    state = _state()
+    state["tasks"].append(dict(state["tasks"][0]))
+    report = run_preflight(_env(), ReadOnlyStateStore(state))
+    assert report["status"] == "BLOCKED"
+    assert "persisted_queue_duplicate_task_id" in report["blockers"]
+
+
+def test_preflight_blocks_unsupported_state_schema():
+    state = _state()
+    state["schema_version"] = 2
+    report = run_preflight(_env(), ReadOnlyStateStore(state))
+    assert report["status"] == "BLOCKED"
+    assert "orca_state_schema_invalid" in report["blockers"]
