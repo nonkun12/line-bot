@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -7,7 +10,31 @@ from scripts.orca_rsi_orca_adapter import (
     RSIExecutionAdapterRejected,
     to_orca_improvement_candidate,
 )
-from tests.test_orca_rsi_review_attestation import KEY, NOW, _attestation
+
+KEY = "test-review-key-that-is-at-least-32-bytes"
+NOW = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)
+
+
+def _attestation(**overrides):
+    value = {
+        "schema_version": 1,
+        "repository": "nonkun12/line-bot",
+        "cycle_id": "a" * 64,
+        "commit_sha": "b" * 40,
+        "reviewer_id": "trusted-reviewer",
+        "verdict": "PASS",
+        "evidence_refs": ["actions://review/123"],
+        "reviewed_at": NOW.isoformat(),
+    }
+    value.update(overrides)
+    unsigned = {key: item for key, item in value.items() if key != "signature"}
+    value["signature"] = hmac.new(
+        KEY.encode(), json.dumps(
+            unsigned, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False,
+        ).encode(), hashlib.sha256,
+    ).hexdigest()
+    return value
 
 
 def _cycle():
