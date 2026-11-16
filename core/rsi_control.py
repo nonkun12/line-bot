@@ -100,8 +100,10 @@ def _persist_control_snapshot(
                     return
                 raise RSIError("control snapshot nonce was reused")
             if previous is None:
-                if snapshot.generation < 1:
-                    raise RSIError("control generation must start at 1 or greater")
+                if snapshot.generation != 1:
+                    raise RSIError("initial control generation must be exactly 1")
+                if snapshot.global_hold is not True:
+                    raise RSIError("initial control snapshot must assert Global HOLD")
             else:
                 if snapshot.generation <= previous["generation"]:
                     raise RSIError("control generation rollback or equivocation rejected")
