@@ -224,3 +224,26 @@ integration is already implemented or active. The existing RSI foundation
 remains execution-off by default; no scheduler, continuous loop, merge,
 deployment, or model activation is enabled by this design.
 
+## Bounded Orchestra -> RSI -> REA proposal/review hand-off
+
+`core/rsi_orchestra.py` now coordinates the existing bounded RSI proposal
+supervisor with separate injected Creator and Critic agents. For each selected
+plan it creates a hand-off envelope bound to repository, exact HEAD SHA,
+experiment ID, plan digest, Creator candidate digest, and evidence digest.
+A mandatory independent evidence-verifier callback must validate the evidence
+against that exact envelope before the Critic is called. Creator and Critic
+must use distinct model-call identities; a shared callable is rejected.
+
+The Critic receives the immutable hand-off bindings together with measured
+evidence. A review is PASS only when the Critic's evidence is unchanged and
+its deterministic evidence thresholds pass. Missing or invalid evidence,
+adapter errors, and binding mismatches produce BLOCKED; a failed review remains
+REVIEW_REQUIRED. The result explicitly keeps dispatch, execution, scheduling,
+patch, merge/deploy, HOLD-clear, and model activation authority false.
+
+This is a proposal/review integration only. The evidence verifier must be
+wired to a real trusted test/evidence source before operational use. The
+Orchestra module does not create queue items, dispatch workers, mutate files,
+run experiments, or start a continuous loop. Existing Control Tower and
+human-approval gates remain mandatory for any later privileged action.
+
