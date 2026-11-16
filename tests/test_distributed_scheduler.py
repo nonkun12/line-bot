@@ -191,3 +191,17 @@ def test_agent_task_rejects_oversized_or_invalid_fields() -> None:
 
     with pytest.raises(ValueError, match="between -10 and 10"):
         AgentTask("test", AgentRole.TESTER, "test", priority=11)
+
+
+def test_scheduler_rejects_duplicate_task_ids_before_any_executor_runs():
+    from core.distributed_scheduler import DistributedExecutionError, DistributedTaskScheduler
+    from core.multi_agent import AgentTask
+    executor = FakeExecutor()
+    scheduler = DistributedTaskScheduler({AgentRole.VOICE: executor})
+    tasks = (
+        AgentTask(task_id="same-id", role=AgentRole.VOICE, instruction="first", resources=frozenset({"request:same-id"})),
+        AgentTask(task_id="same-id", role=AgentRole.VOICE, instruction="duplicate", resources=frozenset({"request:same-id"})),
+    )
+    with pytest.raises(DistributedExecutionError, match="duplicate task_id"):
+        scheduler.run(tasks)
+    assert executor.calls == []
