@@ -316,8 +316,9 @@ class RSIExecutor:
             raise RSIError("experiment cost outside bound")
         plans = []
         for hypothesis in hypotheses[:self.max_experiments_per_cycle]:
-            payload = {"hypothesis": hypothesis.hypothesis_id, "baseline": baseline_digest,
-                "candidate": candidate_digest, "protocol": protocol_digest, "cost": expected_cost_units}
+            payload = {"hypothesis": hypothesis.hypothesis_id, "capability": hypothesis.capability,
+                "baseline": baseline_digest, "candidate": candidate_digest, "protocol": protocol_digest,
+                "cost": expected_cost_units, "risk": 0.1, "information_value": 0.5}
             pid = canonical_digest(payload)
             plan = ExperimentPlan(pid[:32], hypothesis.hypothesis_id, hypothesis.capability,
                 baseline_digest, candidate_digest, protocol_digest, expected_cost_units,
@@ -334,9 +335,15 @@ class RSIExecutor:
             raise RSIError("experiment candidate batch exceeds bound")
         for plan in plans:
             _digest(plan.plan_digest, "plan")
-            if canonical_digest({"hypothesis": plan.hypothesis_id, "baseline": plan.baseline_digest,
-                "candidate": plan.candidate_digest, "protocol": plan.protocol_digest,
-                "cost": plan.expected_cost_units}) != plan.plan_digest:
+            if (not math.isfinite(plan.risk) or not math.isfinite(plan.information_value)
+                or not 0 <= plan.risk <= 1 or not 0 <= plan.information_value <= 1
+                or not isinstance(plan.expected_cost_units, int) or isinstance(plan.expected_cost_units, bool)
+                or plan.expected_cost_units < 1):
+                raise RSIError("experiment plan metrics or cost invalid")
+            if canonical_digest({"hypothesis": plan.hypothesis_id, "capability": plan.capability,
+                "baseline": plan.baseline_digest, "candidate": plan.candidate_digest,
+                "protocol": plan.protocol_digest, "cost": plan.expected_cost_units,
+                "risk": plan.risk, "information_value": plan.information_value}) != plan.plan_digest:
                 raise RSIError("experiment plan digest mismatch")
         eligible = [p for p in plans if p.risk <= 0.25 and p.expected_cost_units > 0]
         if not eligible:
@@ -351,6 +358,14 @@ class RSIExecutor:
     def execute_approved(self, plan: ExperimentPlan, approval: HumanApproval,
                          runner: LocalRunner) -> ExperimentResult:
         self._control(require_execution=True, cost=plan.expected_cost_units)
+        _digest(plan.plan_digest, "plan")
+        if (not math.isfinite(plan.risk) or not math.isfinite(plan.information_value)
+            or not 0 <= plan.risk <= 1 or not 0 <= plan.information_value <= 1
+            or canonical_digest({"hypothesis": plan.hypothesis_id, "capability": plan.capability,
+                "baseline": plan.baseline_digest, "candidate": plan.candidate_digest,
+                "protocol": plan.protocol_digest, "cost": plan.expected_cost_units,
+                "risk": plan.risk, "information_value": plan.information_value}) != plan.plan_digest):
+            raise RSIError("experiment plan digest mismatch")
         if not callable(runner):
             raise RSIError("local runner is unavailable")
         _bounded_id(approval.approver_id, "approver id")
