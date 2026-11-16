@@ -120,7 +120,7 @@ def test_control_issued_at_rollback_is_rejected(tmp_path):
         ledger=ledger, clock=lambda: now,
     )()
     rollback = make_snapshot(now - 1, generation=2, nonce="issued-2")
-    with pytest.raises(RSIError, match="stale"):
+    with pytest.raises(RSIError, match="issued_at rollback"):
         VerifiedRSIControlProvider(
             lambda: rollback, verify_signature=lambda d, s: s == "sig:" + d,
             ledger=ledger, clock=lambda: now,
