@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import pytest
@@ -229,13 +230,23 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     monkeypatch.setattr(guarded_runtime, "_augment_with_hermes_advice", lambda instruction, path: instruction)
     monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: 0)
     monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
-    monkeypatch.setenv("DEV_INSTRUCTION", "safe test instruction")
+    instruction = "safe test instruction"
+    monkeypatch.setenv("DEV_INSTRUCTION", instruction)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-test-task")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    event_path = tmp_path / "event.json"
+    event_path.write_text(json.dumps({"sender": {"login": "nonkun12"}, "repository": {"full_name": "nonkun12/line-bot"}, "inputs": {"execution_approval": "APPROVE_EXECUTION", "approval_task_id": "rsi-test-task", "approval_instruction_sha256": hashlib.sha256(instruction.encode()).hexdigest(), "approval_base_sha": sha}}), encoding="utf-8")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
     monkeypatch.delenv("GITHUB_ENV", raising=False)
 
     assert guarded_runtime.main() == 0
     summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
     assert summary["status"] == "PASS"
     assert summary["rea"] == rea
+    assert summary["execution_approval"]["gate"] == "PASS"
+    assert summary["execution_approval"]["scope"] == "execution"
 
 
 def test_write_summary_preserves_only_allowlisted_failure_code(tmp_path, monkeypatch):
@@ -264,3 +275,26 @@ def test_write_summary_drops_untrusted_failure_text(tmp_path, monkeypatch):
     guarded_runtime._write_summary("FAIL", 1, "a" * 40, summary)
 
     assert "failure_code" not in json.loads(summary.read_text(encoding="utf-8"))
+
+
+def test_common_runtime_blocks_without_independent_approval_even_if_env_claims_approval(monkeypatch, tmp_path):
+    sha = "c" * 40
+    rea = {"gate": "PASS", "target_sha": sha, "scanner_status": "PASS", "finding_count": 0, "critical_count": 0, "blocking_count": 0, "findings": [], "execution_authorized": False, "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False}
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: sha if args == ("rev-parse", "HEAD") else "test-branch")
+    monkeypatch.setattr("scripts.rea_control_tower_adapter.prepare_rea_evidence", lambda root, expected_sha: rea)
+    monkeypatch.setattr("scripts.rea_control_tower_adapter.rea_evidence_is_valid_pass", lambda evidence, expected_sha: True)
+    monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: (_ for _ in ()).throw(AssertionError("runtime must not execute")))
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
+    monkeypatch.setenv("DEV_INSTRUCTION", "safe test instruction")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-test-task")
+    monkeypatch.setenv("AUTONOMOUS_EXECUTION_APPROVED", "true")
+    monkeypatch.setenv("EXECUTION_APPROVED", "true")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
+    monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+    assert guarded_runtime.main() == 81
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert summary["status"] == "BLOCKED"
+    assert summary["exit_code"] == 81
+    assert summary["execution_approval"]["gate"] == "BLOCKED"
+    assert summary["execution_approval"]["execution_authorized"] is False
