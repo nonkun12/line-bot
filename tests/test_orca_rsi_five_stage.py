@@ -17,7 +17,15 @@ NONCE = "one-time-challenge-nonce-123456"
 CYCLE_ID = "a" * 64
 COMMIT = "b" * 40
 PRIVATE = Ed25519PrivateKey.from_private_bytes(bytes(range(1, 33)))
+APPROVAL_PRIVATE = Ed25519PrivateKey.from_private_bytes(bytes(range(33, 65)))
+BUDGET_PRIVATE = Ed25519PrivateKey.from_private_bytes(bytes(range(65, 97)))
 PUBLIC_PEM = PRIVATE.public_key().public_bytes(
+    serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+).decode()
+APPROVAL_PUBLIC_PEM = APPROVAL_PRIVATE.public_key().public_bytes(
+    serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+).decode()
+BUDGET_PUBLIC_PEM = BUDGET_PRIVATE.public_key().public_bytes(
     serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
 ).decode()
 
@@ -75,9 +83,9 @@ def _signed_review(**overrides):
     return value
 
 
-def _signed_claim(payload):
+def _signed_claim(payload, private_key):
     payload = dict(payload)
-    payload["signature"] = base64.b64encode(PRIVATE.sign(json.dumps(
+    payload["signature"] = base64.b64encode(private_key.sign(json.dumps(
         payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
     ).encode())).decode()
     return payload
@@ -92,7 +100,7 @@ def _approval_claim():
         "approver_id": "trusted-approver", "verdict": "APPROVED",
         "nonce": "d" * 32, "issued_at": "2026-11-16T11:59:00Z",
         "expires_at": "2026-11-16T12:05:00Z",
-    })
+    }, APPROVAL_PRIVATE)
 
 
 def _budget_claim(evidence):
@@ -110,7 +118,7 @@ def _budget_claim(evidence):
         "evidence_sha256": hashlib.sha256(bundle).hexdigest(),
         "nonce": "e" * 32, "issued_at": "2026-11-16T11:59:00Z",
         "expires_at": "2026-11-16T12:04:00Z",
-    })
+    }, BUDGET_PRIVATE)
 
 
 def _gates(store=None, **overrides):
@@ -118,11 +126,11 @@ def _gates(store=None, **overrides):
     budget_evidence = b"trusted collector evidence v1"
     values = {
         "approval_claim": _approval_claim(),
-        "approval_keyring": {"approval-key-v1": PUBLIC_PEM},
+        "approval_keyring": {"approval-key-v1": APPROVAL_PUBLIC_PEM},
         "approval_key_signer_map": {"approval-key-v1": "trusted-approver"},
         "allowed_approvers": ["trusted-approver"],
         "budget_claim": _budget_claim(budget_evidence),
-        "budget_keyring": {"budget-key-v1": PUBLIC_PEM},
+        "budget_keyring": {"budget-key-v1": BUDGET_PUBLIC_PEM},
         "budget_key_signer_map": {"budget-key-v1": "trusted-budget"},
         "allowed_budget_issuers": ["trusted-budget"],
         "expected_budget_unit": "github_actions_minutes",
@@ -313,6 +321,15 @@ def test_approval_and_budget_ledgers_must_be_preprovisioned():
     assert store.writes == 2
     assert "rsi_budget_authorization_replay" not in store.snapshot.state
 
+
+
+def test_three_trust_domains_must_use_distinct_public_keys():
+    store, gates = _gates()
+    gates["approval_keyring"] = {"approval-key-v1": PUBLIC_PEM}
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert "trust_signing_keys_not_independent" in decision["reasons"]
+    assert store.writes == 0
 
 def test_verified_boolean_keywords_are_not_accepted_as_trust_evidence():
     store, gates = _gates()
