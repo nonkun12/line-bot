@@ -127,7 +127,8 @@ def test_integrated_propose_approve_run_and_independent_evaluate(tmp_path):
     evaluator = LocalRSIIndependentEvaluator(
         evaluator_client, evaluator_id="independent-evaluator", ledger=ledger,
         baseline=baseline, verify_baseline_signature=verify_digest,
-        verify_evidence_signature=verify_digest, sign_digest=sign_digest, clock=lambda: 10_000,
+        verify_evidence_signature=lambda producer_id, digest, signature: producer_id == "rsi-executor" and verify_digest(digest, signature),
+        sign_digest=sign_digest, clock=lambda: 10_000,
     )
     evaluation = evaluator.evaluate(plan, result)
     executor.evaluate(result, evaluation)
