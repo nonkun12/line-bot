@@ -118,6 +118,7 @@ class LocalRSIExperimentRunner:
             "executor_id": self.executor_id,
             "candidate_digest": self.candidate_digest,
             "protocol_digest": self.protocol_digest,
+            "observations_digest": canonical_digest(observations),
             "metrics": metrics,
         })
         evidence_payload = {
