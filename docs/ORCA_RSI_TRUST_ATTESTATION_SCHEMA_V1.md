@@ -1,6 +1,18 @@
-# ORCA RSI trust attestation schema v1 (proposal)
+# ORCA RSI trust attestation schema v1
 
-Status: **SPECIFICATION ONLY — NOT IMPLEMENTED OR PROVISIONED**
+Status: **VERIFIER AND FIVE-STAGE GATE INTEGRATION IMPLEMENTED IN CODE; TRUST SERVICES AND PRODUCTION PROVISIONING NOT IMPLEMENTED**
+
+The five-stage continuation gate now requires three actual signed claims:
+independent review, task approval, and budget authorization. It verifies and
+consumes each claim through its own pre-provisioned replay ledger, passing the
+latest CAS snapshot forward after every successful write. Caller-supplied
+`approval_verified` and `budget_verified` booleans are not accepted.
+
+This is not production authorization. No independent signing service, trusted
+public-key configuration, human approval service, budget evidence collector,
+or production replay-state document has been provisioned. The gate returns
+`execution_started=false`; no worker is started by this integration. Tests
+have been added, but their execution and CI result must be verified separately.
 
 This document defines the trust boundary required before an RSI worker may execute
 a queued task. It does not authorize execution, create signing keys, provision
