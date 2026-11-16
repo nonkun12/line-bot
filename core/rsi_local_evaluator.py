@@ -28,7 +28,7 @@ class LocalRSIIndependentEvaluator:
         ledger: EvidenceLedger,
         baseline: FrozenBaseline,
         verify_baseline_signature: Callable[[str, str], bool],
-        verify_evidence_signature: Callable[[str, str], bool],
+        verify_evidence_signature: Callable[[str, str, str], bool],
         sign_digest: Callable[[str], str],
         clock: Callable[[], float] = time.time,
     ) -> None:
