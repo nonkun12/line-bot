@@ -118,3 +118,16 @@ execution, sets `think=false`, and caps output at 128 tokens. The runner and eva
 require exact stripped-output equality; a response that merely contains the
 expected token is scored as a mismatch. The latest CI run validates this
 hardening separately from the earlier full-suite baseline run.
+
+
+## Signed frozen baseline contract
+
+`core/rsi_baseline.py` adds a signed `FrozenBaseline` record binding the
+baseline score to an immutable baseline model digest, the exact benchmark
+protocol digest, sample count, baseline identifier, and sealing timestamp.
+The independent evaluator now requires this record, verifies its external
+signature and freshness, and rejects a plan whose baseline digest or protocol
+does not match. A caller-supplied floating-point score is no longer sufficient
+to declare IMPROVED/NO_CHANGE/REGRESSED. Signing keys and trusted baseline
+measurement remain external prerequisites; the included tests use test-only
+signatures and do not constitute a production trust root.
