@@ -4,6 +4,26 @@ run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || 
 on:
   workflow_dispatch:
     inputs:
+      execution_approval:
+        description: 'Explicitly approve one task-bound execution'
+        required: false
+        default: 'DENY'
+        type: choice
+        options:
+          - 'DENY'
+          - 'APPROVE_EXECUTION'
+      approval_task_id:
+        description: 'Exact task ID from the selected queue item'
+        required: false
+        type: string
+      approval_instruction_sha256:
+        description: 'SHA-256 of the exact selected task instruction'
+        required: false
+        type: string
+      approval_base_sha:
+        description: 'Exact base commit SHA shown by the blocked preflight'
+        required: false
+        type: string
       max_tasks:
         description: 'Manual run task limit (1–4 tasks; all safety gates still apply)'
         required: false
