@@ -349,7 +349,11 @@ class RSIExecutor:
                 "protocol": plan.protocol_digest, "cost": plan.expected_cost_units,
                 "risk": plan.risk, "information_value": plan.information_value}) != plan.plan_digest:
                 raise RSIError("experiment plan digest mismatch")
-        eligible = [p for p in plans if p.risk <= 0.25 and p.expected_cost_units > 0\n                    and p.expected_cost_units <= control.budget_remaining_units]
+        eligible = [
+            p for p in plans
+            if p.risk <= 0.25 and p.expected_cost_units > 0
+            and p.expected_cost_units <= control.budget_remaining_units
+        ]
         if not eligible:
             raise RSIError("no safe experiment candidate")
         chosen = min(eligible, key=lambda p: (
