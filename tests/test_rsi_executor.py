@@ -247,6 +247,12 @@ def test_observation_rejects_source_payload_mismatch_and_forbidden_event_type(tm
     altered = replace(raw, evidence_digest=digest, evidence_event_id=event_id, detail="altered detail")
     with pytest.raises(RSIError, match="does not match"):
         executor.observe((altered,))
+    wrong_binding = replace(
+        raw, evidence_digest=digest, evidence_event_id=event_id,
+        experiment_id="different-experiment",
+    )
+    with pytest.raises(RSIError, match="experiment binding mismatch"):
+        executor.observe((wrong_binding,))
 
     forbidden_id = "forbidden-source"
     forbidden_digest = ledger.append(forbidden_id, "observation", {"evidence": H})
