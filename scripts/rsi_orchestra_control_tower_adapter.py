@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from core.rsi_executor import EvidenceLedger
+from core.rsi_executor import EvidenceLedger, canonical_digest
 from core.rsi_orchestra import OrchestraRSIBatch
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -66,6 +66,19 @@ def coordinate_rsi_orchestra_batch(
             payload, _event_digest = ledger.read_event(review.evidence_event_id)
         except Exception:
             return _blocked("review_evidence_missing_or_tampered")
+        candidate = review.candidate
+        evaluation = review.evaluation
+        if candidate is None:
+            return _blocked("review_candidate_missing")
+        candidate_digest = canonical_digest({
+            "candidate_id": candidate.candidate_id,
+            "objective": candidate.objective,
+            "proposal": candidate.proposal,
+            "constraints": list(candidate.constraints),
+            "evidence": dict(candidate.evidence),
+        })
+        if candidate_digest != handoff.candidate_digest:
+            return _blocked("candidate_digest_mismatch")
         expected = {
             "task_id": handoff.task_id,
             "repository": handoff.repository,
@@ -75,6 +88,10 @@ def coordinate_rsi_orchestra_batch(
             "candidate_digest": handoff.candidate_digest,
             "evidence_digest": handoff.evidence_digest,
             "status": review.status,
+            "candidate_id": candidate.candidate_id,
+            "critic_decision": evaluation.passed if evaluation else None,
+            "critic_score": evaluation.score if evaluation else None,
+            "critic_feedback_digest": canonical_digest(evaluation.feedback) if evaluation else None,
             "execution_authorized": False,
             "patch_authorized": False,
             "merge_deploy_authorized": False,
