@@ -66,6 +66,7 @@ class Observation:
     outcome: str
     detail: str
     created_at: int
+    evidence_event_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -239,6 +240,123 @@ class EvidenceLedger:
             previous = expected
         return True
 
+    def append_observation_evidence(
+        self, event_id: str, *, observation: Observation, experiment_id: str,
+        candidate_digest: str, protocol_digest: str, result_digest: str,
+        producer_id: str, sign_digest: Callable[[str], str],
+    ) -> str:
+        """Append externally signed, plan-bound source evidence for an observation."""
+        _bounded_id(event_id, "source evidence event id")
+        _bounded_id(experiment_id, "source experiment id")
+        _bounded_id(producer_id, "evidence producer id")
+        for value, label in ((candidate_digest, "candidate"), (protocol_digest, "protocol"), (result_digest, "result")):
+            _digest(value, label)
+        if not callable(sign_digest):
+            raise RSIError("independent evidence producer signer is required")
+        payload = {
+            "observation_id": observation.observation_id,
+            "capability": observation.capability,
+            "outcome": observation.outcome,
+            "detail": observation.detail,
+            "created_at": observation.created_at,
+            "experiment_id": experiment_id,
+            "candidate_digest": candidate_digest,
+            "protocol_digest": protocol_digest,
+            "result_digest": result_digest,
+            "producer_id": producer_id,
+        }
+        signature = sign_digest(canonical_digest(payload))
+        if not isinstance(signature, str) or not signature.strip() or len(signature) > 4096:
+            raise RSIError("evidence producer signer returned an invalid signature")
+        return self.append(event_id, "trusted_observation_evidence", {
+            **payload, "producer_signature": signature,
+        })
+
+    def append_verified_observations(
+        self, observations: tuple[Observation, ...],
+        verify_producer_signature: Callable[[str, str], bool],
+    ) -> None:
+        """Verify source provenance and append observations in one SQLite transaction."""
+        if not callable(verify_producer_signature):
+            raise RSIError("independent evidence producer verifier is required")
+        with closing(self._connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                previous = "0" * 64
+                rows = db.execute("SELECT * FROM rsi_evidence ORDER BY seq").fetchall()
+                for row in rows:
+                    if row["previous_digest"] != previous:
+                        raise RSIError("evidence ledger integrity verification failed")
+                    payload = json.loads(row["payload"])
+                    expected = canonical_digest({
+                        "event_id": row["event_id"], "event_type": row["event_type"],
+                        "payload": payload, "previous_digest": previous, "created_at": row["created_at"],
+                    })
+                    if expected != row["event_digest"]:
+                        raise RSIError("evidence ledger integrity verification failed")
+                    previous = expected
+
+                for item in observations:
+                    _bounded_id(item.evidence_event_id, "source evidence event id")
+                    row = db.execute(
+                        "SELECT event_type,payload,event_digest FROM rsi_evidence WHERE event_id=?",
+                        (item.evidence_event_id,),
+                    ).fetchone()
+                    if row is None:
+                        raise RSIError("observation source evidence event is missing")
+                    if row["event_type"] not in {"trusted_observation_evidence"}:
+                        raise RSIError("observation source evidence event type is not allowed")
+                    if row["event_digest"] != item.evidence_digest:
+                        raise RSIError("observation evidence digest does not match its source event")
+                    try:
+                        source = json.loads(row["payload"])
+                    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                        raise RSIError("observation source evidence payload is invalid") from exc
+                    if not isinstance(source, dict):
+                        raise RSIError("observation source evidence payload must be an object")
+                    signature = source.pop("producer_signature", None)
+                    producer_id = source.get("producer_id")
+                    for key, value in {
+                        "observation_id": item.observation_id,
+                        "capability": item.capability,
+                        "outcome": item.outcome,
+                        "detail": item.detail,
+                        "created_at": item.created_at,
+                    }.items():
+                        if source.get(key) != value:
+                            raise RSIError("observation source evidence does not match the observation")
+                    _bounded_id(source.get("experiment_id"), "source experiment id")
+                    _bounded_id(producer_id, "evidence producer id")
+                    for key, label in (("candidate_digest", "candidate"), ("protocol_digest", "protocol"), ("result_digest", "result")):
+                        _digest(source.get(key), "source " + label)
+                    if not isinstance(signature, str) or not signature.strip():
+                        raise RSIError("observation source evidence producer signature is missing")
+                    if not verify_producer_signature(canonical_digest(source), signature):
+                        raise RSIError("observation source evidence producer signature verification failed")
+
+                for item in observations:
+                    event_id = "observation:" + item.observation_id
+                    if db.execute("SELECT 1 FROM rsi_evidence WHERE event_id=?", (event_id,)).fetchone():
+                        raise RSIError("duplicate evidence event")
+                    payload = asdict(item)
+                    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
+                    if len(encoded.encode("utf-8")) > self.max_payload_bytes:
+                        raise RSIError("evidence payload exceeds configured bound")
+                    created_at = int(time.time())
+                    digest = canonical_digest({
+                        "event_id": event_id, "event_type": "observation", "payload": payload,
+                        "previous_digest": previous, "created_at": created_at,
+                    })
+                    db.execute(
+                        "INSERT INTO rsi_evidence(event_id,event_type,payload,previous_digest,event_digest,created_at) VALUES(?,?,?,?,?,?)",
+                        (event_id, "observation", encoded, previous, digest, created_at),
+                    )
+                    previous = digest
+                db.execute("COMMIT")
+            except Exception:
+                db.execute("ROLLBACK")
+                raise
+
 
 class RSIExecutor:
     """Bounded RSI cycle: observe -> diagnose -> hypothesize -> plan -> gated run -> evaluate."""
@@ -250,6 +368,7 @@ class RSIExecutor:
         control_provider: Callable[[], RSIControl],
         verify_approval: Callable[[HumanApproval], bool],
         verify_evaluation: Callable[[IndependentEvaluation], bool],
+        verify_evidence_signature: Callable[[str, str], bool] | None = None,
         executor_id: str,
         max_experiments_per_cycle: int = 4,
     ) -> None:
@@ -260,6 +379,7 @@ class RSIExecutor:
         self.control_provider = control_provider
         self.verify_approval = verify_approval
         self.verify_evaluation = verify_evaluation
+        self.verify_evidence_signature = verify_evidence_signature
         self.executor_id = executor_id
         self.max_experiments_per_cycle = max_experiments_per_cycle
 
@@ -297,6 +417,7 @@ class RSIExecutor:
         for item in observations:
             _bounded_id(item.observation_id, "observation id")
             _digest(item.evidence_digest, "observation evidence")
+            _bounded_id(item.evidence_event_id, "source evidence event id")
             if item.observation_id in seen:
                 raise RSIError("duplicate observation")
             seen.add(item.observation_id)
@@ -307,8 +428,9 @@ class RSIExecutor:
             if not item.detail or len(item.detail) > 2000:
                 raise RSIError("observation detail invalid")
             groups.setdefault(item.capability, []).append(item)
-        for item in observations:
-            self.ledger.append("observation:" + item.observation_id, "observation", asdict(item))
+        if self.verify_evidence_signature is None:
+            raise RSIError("independent evidence producer verifier is not configured")
+        self.ledger.append_verified_observations(observations, self.verify_evidence_signature)
         diagnoses = []
         for capability, rows in sorted(groups.items()):
             failures = [x for x in rows if x.outcome in {"FAIL", "REGRESSED"}]
