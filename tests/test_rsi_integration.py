@@ -179,7 +179,7 @@ def seed_observations(ledger, observations):
             protocol_digest="d" * 64,
             result_digest="e" * 64,
             producer_id="test-producer",
-            sign_digest=lambda value: "sig:" + value,
+            sign_digest=sign_digest,
         )
         seeded.append(replace(item, evidence_digest=digest, evidence_event_id=event_id, experiment_id="source-" + item.observation_id, candidate_digest="c" * 64, protocol_digest="d" * 64, result_digest="e" * 64))
     return tuple(seeded)
