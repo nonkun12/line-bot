@@ -106,6 +106,7 @@ def test_evaluator_rejects_executor_identity_and_unbound_result(tmp_path):
 
 def test_evaluator_rejects_model_authority_fields_and_bad_signatures(tmp_path):
     plan, result, ledger = make_result(tmp_path)
+    _, _, baseline = make_plan()
     client = FakeClient(json.dumps({"rationale": "ok", "execution_authorized": True}))
     with pytest.raises(RSIError, match="unexpected schema"):
         make_evaluator(ledger, client, baseline).evaluate(plan, result)
