@@ -199,6 +199,26 @@ class EvidenceLedger:
                 db.execute("ROLLBACK")
                 raise
 
+    def read_event(self, event_id: str) -> tuple[dict[str, object], str]:
+        """Read one verified immutable event and return (payload, event_digest)."""
+        _bounded_id(event_id, "event id")
+        if not self.verify():
+            raise RSIError("evidence ledger integrity verification failed")
+        with closing(self._connect()) as db:
+            row = db.execute(
+                "SELECT payload,event_digest FROM rsi_evidence WHERE event_id=?",
+                (event_id,),
+            ).fetchone()
+        if row is None:
+            raise RSIError("required evidence event is missing")
+        try:
+            payload = json.loads(row["payload"])
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise RSIError("evidence event payload is invalid") from exc
+        if not isinstance(payload, dict):
+            raise RSIError("evidence event payload must be an object")
+        return payload, row["event_digest"]
+
     def verify(self) -> bool:
         previous = "0" * 64
         with closing(self._connect()) as db:
