@@ -19,6 +19,7 @@ PUBLIC = PRIVATE.public_key().public_bytes(
     serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
 ).decode()
 KEYRING = {"approval-key-v1": PUBLIC, "budget-key-v1": PUBLIC}
+KEY_SIGNER_MAP = {"approval-key-v1": "human-approver", "budget-key-v1": "budget-authority"}
 REPO = "nonkun12/line-bot"
 TASK = "task-001"
 TASK_DIGEST = "a" * 64
@@ -60,6 +61,7 @@ def _approval(**overrides):
 def _verify_approval(claim=None, **overrides):
     args = {
         "keyring": KEYRING,
+        "key_signer_map": KEY_SIGNER_MAP,
         "allowed_approvers": ["human-approver"],
         "repository": REPO,
         "task_id": TASK,
@@ -107,6 +109,7 @@ def _verify_budget(claim=None, **overrides):
     evidence = b"trusted collector evidence v1"
     args = {
         "keyring": KEYRING,
+        "key_signer_map": KEY_SIGNER_MAP,
         "allowed_issuers": ["budget-authority"],
         "repository": REPO,
         "task_id": TASK,
@@ -218,3 +221,23 @@ def test_budget_claim_rejects_tampered_signature():
     claim["remaining_units"] = 79
     with pytest.raises(TrustClaimRejected, match="claim_signature_invalid"):
         _verify_budget(claim)
+
+
+
+def test_approval_key_cannot_claim_another_allowlisted_identity():
+    forged_identity = _approval(approver_id="budget-authority")
+    with pytest.raises(TrustClaimRejected, match="claim_key_signer_mismatch"):
+        _verify_approval(
+            forged_identity,
+            allowed_approvers=["human-approver", "budget-authority"],
+        )
+
+
+def test_budget_key_cannot_claim_another_allowlisted_identity():
+    evidence = b"trusted collector evidence v1"
+    forged_identity = _budget(evidence, issuer_id="human-approver")
+    with pytest.raises(TrustClaimRejected, match="claim_key_signer_mismatch"):
+        _verify_budget(
+            forged_identity,
+            allowed_issuers=["human-approver", "budget-authority"],
+        )
