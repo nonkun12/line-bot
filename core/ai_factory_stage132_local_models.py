@@ -61,6 +61,41 @@ class LocalModelConfig:
 
 
 class LocalModelClient(Protocol):
+    def verify_model_digest(self, expected_digest: str) -> bool:
+        """Verify the configured model tag resolves to the exact expected Ollama digest."""
+        if (
+            not isinstance(expected_digest, str)
+            or len(expected_digest) != 64
+            or any(char not in "0123456789abcdef" for char in expected_digest)
+        ):
+            raise ValueError("expected model digest must be a lowercase SHA-256 digest")
+        request = Request(
+            self.config.base_url.rstrip("/") + "/api/tags",
+            headers={"Accept": "application/json"},
+            method="GET",
+        )
+        try:
+            with self._opener.open(request, timeout=self.config.timeout_seconds) as response:
+                raw = response.read(_MAX_RESPONSE_BYTES + 1)
+        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            raise RuntimeError(f"local model identity check failed: {type(exc).__name__}") from exc
+        if len(raw) > _MAX_RESPONSE_BYTES:
+            raise ValueError("local model identity response exceeds maximum size")
+        try:
+            decoded = json.loads(raw.decode("utf-8"))
+            models = decoded["models"]
+        except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise ValueError("local model identity response is invalid") from exc
+        if not isinstance(models, list):
+            raise ValueError("local model identity list is invalid")
+        matches = [
+            item for item in models
+            if isinstance(item, dict) and item.get("name") == self.config.model
+        ]
+        if len(matches) != 1 or matches[0].get("digest") != expected_digest:
+            raise ValueError("configured Ollama model does not match the approved candidate digest")
+        return True
+
     def chat(self, *, system: str, prompt: str) -> str:
         """Return bounded plain text from a local model."""
         ...
