@@ -121,3 +121,64 @@ def test_idempotency_key_validation_rejects_blank_and_oversized_values(tmp_path,
         job_store.create_job("U-test", "request", idempotency_key="  ")
     with pytest.raises(ValueError, match="idempotency_key"):
         job_store.create_job("U-test", "request", idempotency_key="x" * 201)
+
+
+def test_idempotency_key_serializes_concurrent_registration(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    db_path = tmp_path / "jobs.sqlite"
+    monkeypatch.setattr(db, "DB", str(db_path))
+    db.init_db()
+
+    def register(_):
+        return job_store.create_job(
+            "U-test", "concurrent request", idempotency_key="line:event-concurrent"
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        job_ids = list(pool.map(register, range(24)))
+
+    assert len(set(job_ids)) == 1
+
+
+def test_init_db_migrates_existing_jobs_table(tmp_path, monkeypatch):
+    import sqlite3
+
+    db_path = tmp_path / "legacy.sqlite"
+    monkeypatch.setattr(db, "DB", str(db_path))
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+            CREATE TABLE jobs(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                job_type TEXT NOT NULL DEFAULT 'ai_task',
+                source TEXT NOT NULL DEFAULT 'line',
+                parent_job_id INTEGER,
+                message TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                max_retries INTEGER NOT NULL DEFAULT 3,
+                last_error TEXT,
+                result TEXT,
+                claim_token TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute(
+            "INSERT INTO jobs(user_id, message) VALUES (?, ?)",
+            ("U-legacy", "existing job"),
+        )
+
+    db.init_db()
+    columns = {
+        row[1]
+        for row in sqlite3.connect(db_path).execute("PRAGMA table_info(jobs)").fetchall()
+    }
+    assert {"idempotency_key", "request_fingerprint"} <= columns
+
+    migrated = job_store.create_job(
+        "U-test", "new request", idempotency_key="line:event-after-migration"
+    )
+    assert migrated is not None
+    assert job_store.get_job(1)["message"] == "existing job"
