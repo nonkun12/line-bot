@@ -58,6 +58,7 @@ def verify_and_consume_review_once(
     commit_sha: str,
     expected_nonce: str,
     allowed_reviewers: Iterable[str],
+    implementer_id: str,
     now: datetime,
 ) -> dict[str, Any]:
     """Verify a review and atomically persist its nonce/hash before work starts.
