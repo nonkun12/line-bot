@@ -1,0 +1,44 @@
+name: Orca RSI — 30-minute GitHub-native test cycle
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orca-rsi-30m-test-cycle
+  cancel-in-progress: false
+
+jobs:
+  five-stage-rsi:
+    if: github.repository == 'nonkun12/line-bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout without persistent credentials
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Execute bounded five-stage RSI cycle
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_orca_github_rsi_test_cycle.py' -v
+          python scripts/orca_github_rsi_test_cycle.py --output artifacts/orca-rsi/cycle.json
+
+      - name: Preserve cycle evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: orca-rsi-cycle-\${{ github.run_id }}
+          path: artifacts/orca-rsi/cycle.json
+          if-no-files-found: error
+          retention-days: 30
