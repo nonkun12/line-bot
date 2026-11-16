@@ -230,9 +230,13 @@ class Stage183ParetoDiversitySelector:
         _verify_intergeneration_report(report)
         if not 1 <= max_selected <= 32:
             raise EvolutionError("selection bound invalid")
-        items = {x.candidate_id: x for x in evaluations}
-        if len(items) != len(tuple(evaluations)) if not isinstance(evaluations, tuple) else False:
+        evidence = tuple(evaluations)
+        items = {x.candidate_id: x for x in evidence}
+        if len(items) != len(evidence):
             raise EvolutionError("duplicate selection evidence")
+        expected_digests = tuple(sorted(_digest(asdict(x)) for x in evidence))
+        if expected_digests != report.candidate_digests:
+            raise EvolutionError("selection evidence differs from Stage 181 evidence")
         eligible = [items[x] for x in report.eligible_candidate_ids if x in items]
         if len(eligible) != len(report.eligible_candidate_ids):
             raise EvolutionError("selection evidence missing")
@@ -332,6 +336,26 @@ class Stage185EvolutionReadinessPackager:
             raise EvolutionError("Stage 182 signature verification failed")
         if not verify_cohort_signature(cohort.cohort_digest, cohort.signature):
             raise EvolutionError("Stage 184 signature verification failed")
+        expected_selection = _digest({"report": report.report_digest,
+            "selected": selection.selected_candidate_ids, "rejected": selection.rejected_candidate_ids})
+        if expected_selection != selection.selection_digest:
+            raise EvolutionError("selection digest mismatch")
+        expected_variations = _digest({"report": variations.inter_generation_report_digest,
+            "proposals": [asdict(p) for p in variations.proposals]})
+        if expected_variations != variations.proposal_set_digest:
+            raise EvolutionError("variation proposal-set digest mismatch")
+        for proposal in variations.proposals:
+            expected_proposal = _digest({"candidate": proposal.candidate_id, "parents": proposal.parent_ids,
+                "source": proposal.source_generation, "target": proposal.target_generation,
+                "recipe": proposal.recipe_digest, "seed": proposal.deterministic_seed_digest,
+                "budget": proposal.mutation_budget})
+            if expected_proposal != proposal.proposal_digest:
+                raise EvolutionError("variation proposal digest mismatch")
+        expected_cohort = _digest({"source": cohort.source_generation, "target": cohort.target_generation,
+            "selection": cohort.selection_digest, "variations": cohort.mutation_proposal_set_digest,
+            "cohort": cohort.cohort_candidate_ids})
+        if expected_cohort != cohort.cohort_digest:
+            raise EvolutionError("cohort digest mismatch")
         if selection.inter_generation_report_digest != report.report_digest:
             raise EvolutionError("selection lineage mismatch")
         if variations.inter_generation_report_digest != report.report_digest:
