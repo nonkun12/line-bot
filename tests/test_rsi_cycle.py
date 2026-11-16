@@ -18,6 +18,7 @@ def make_executor(tmp_path):
         control_provider=lambda: RSIControl(False, False, True, True, 5, False),
         verify_approval=lambda _: False,
         verify_evaluation=lambda _: False,
+        verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
         executor_id="rsi-planner",
     ), ledger
 
@@ -29,6 +30,7 @@ def test_proposal_cycle_runs_end_to_end_without_execution(tmp_path):
         Observation("cycle-obs-1", "a" * 64, "model", "FAIL", "quality fell", 1),
         Observation("cycle-obs-2", "b" * 64, "model", "REGRESSED", "repeat regression", 2),
     )
+    observations = seed_observations(ledger, observations)
     cycle = run_proposal_cycle(
         executor,
         observations,
@@ -50,9 +52,10 @@ def test_proposal_cycle_runs_end_to_end_without_execution(tmp_path):
 
 def test_pass_only_cycle_stops_without_inventing_a_hypothesis(tmp_path):
     executor, ledger = make_executor(tmp_path)
+    observations = seed_observations(ledger, (Observation("pass-obs", "a" * 64, "model", "PASS", "baseline stable", 1),))
     cycle = run_proposal_cycle(
         executor,
-        (Observation("pass-obs", "a" * 64, "model", "PASS", "baseline stable", 1),),
+        observations,
         baseline_digest="b" * 64,
         candidate_digest="c" * 64,
         protocol_digest="d" * 64,
@@ -70,10 +73,11 @@ def test_advisor_failure_cannot_authorize_execution(tmp_path):
         def advise(self, diagnosis, hypothesis):
             raise RuntimeError("local model unavailable")
 
+    observations = seed_observations(executor.ledger, (Observation("fail-obs", "a" * 64, "model", "FAIL", "quality fell", 1),))
     try:
         run_proposal_cycle(
             executor,
-            (Observation("fail-obs", "a" * 64, "model", "FAIL", "quality fell", 1),),
+            observations,
             baseline_digest="b" * 64,
             candidate_digest="c" * 64,
             protocol_digest="d" * 64,
@@ -83,3 +87,22 @@ def test_advisor_failure_cannot_authorize_execution(tmp_path):
         assert str(exc) == "local model unavailable"
     else:
         raise AssertionError("advisor failure should stop proposal cycle")
+
+
+
+def seed_observations(ledger, observations):
+    from dataclasses import replace
+    seeded = []
+    for item in observations:
+        event_id = "source-evidence:" + item.observation_id
+        digest = ledger.append_observation_evidence(
+            event_id, observation=item,
+            experiment_id="source-" + item.observation_id,
+            candidate_digest="c" * 64,
+            protocol_digest="d" * 64,
+            result_digest="e" * 64,
+            producer_id="test-producer",
+            sign_digest=lambda value: "sig:" + value,
+        )
+        seeded.append(replace(item, evidence_digest=digest, evidence_event_id=event_id))
+    return tuple(seeded)
