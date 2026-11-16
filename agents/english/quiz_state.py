@@ -147,6 +147,7 @@ def grade_pending_quiz(user_id: str, answer: str) -> str | None:
             return None
         word, correct = row
         conn.execute("DELETE FROM english_pending_quiz WHERE user_id=?", (_user_key(user_id),))
+        conn.commit()
     entry = _ENTRIES.get(word)
     explanation = entry.core_image if entry else word
     if value == correct:
