@@ -69,11 +69,21 @@ def record_stage(cycle: Any, *, stage: str, evidence: str,
 def continuation_decision(
     cycle: Any,
     *,
-    budget_verified: bool,
-    approval_verified: bool,
     independent_review_attestation: Any,
     review_public_key_pem: str | bytes,
     review_nonce: str,
+    approval_claim: Any,
+    approval_keyring: Any,
+    approval_key_signer_map: Any,
+    allowed_approvers: Iterable[str],
+    budget_claim: Any,
+    budget_keyring: Any,
+    budget_key_signer_map: Any,
+    allowed_budget_issuers: Iterable[str],
+    expected_budget_unit: str,
+    resolved_budget_evidence: Any,
+    task_id: str,
+    task_digest: str,
     replay_store: Any,
     replay_snapshot: Any,
     repository: str,
@@ -84,13 +94,19 @@ def continuation_decision(
     expected_commit_sha: str,
     kill_switch: bool,
 ) -> dict[str, Any]:
-    """Continue once only after signature verification AND durable CAS consumption.
+    """Verify and consume review, approval, and budget evidence in sequence.
 
-    The review nonce and fingerprint are committed before this gate can return
-    continue=True. A missing state store, malformed ledger, or CAS conflict
-    fails closed. A successful consumption may burn the review if a later
-    worker step fails; this is intentional and safer than permitting replay.
+    Each successful CAS advances the snapshot used by the next claim. A later
+    failure may burn earlier claims; this is intentional fail-closed behavior.
+    This gate never starts a worker and never accepts caller-supplied verified
+    booleans as evidence.
     """
+    from scripts.orca_rsi_trust_claim_replay import (
+        TrustClaimReplayRejected,
+        verify_and_consume_budget_authorization_once,
+        verify_and_consume_task_approval_once,
+    )
+
     reasons: list[str] = []
     valid_cycle = (isinstance(cycle, dict)
                    and type(cycle.get("schema_version")) is int
@@ -98,7 +114,7 @@ def continuation_decision(
     if not valid_cycle:
         reasons.append("cycle_missing_or_invalid")
     else:
-        if not isinstance(cycle.get("cycle_id"), str) or not cycle["cycle_id"].strip():
+        if not isinstance(cycle.get("cycle_id"), str) or not _HEX_64.fullmatch(cycle["cycle_id"]):
             reasons.append("cycle_id_invalid")
         if cycle.get("completed_stages") != list(RSI_STAGES):
             reasons.append("rsi_cycle_incomplete")
@@ -110,71 +126,101 @@ def continuation_decision(
                        for stage in RSI_STAGES)):
             reasons.append("rsi_evidence_incomplete")
 
-    persisted_state = getattr(replay_snapshot, "state", None)
-    if not isinstance(persisted_state, dict):
+    state = getattr(replay_snapshot, "state", None)
+    if not isinstance(state, dict):
         reasons.append("replay_state_snapshot_missing")
     else:
-        if persisted_state.get("global_hold") is not False:
+        if state.get("global_hold") is not False:
             reasons.append("global_hold_active")
-        if persisted_state.get("emergency_stop") is not False:
+        if state.get("emergency_stop") is not False:
             reasons.append("emergency_stop_active")
-        tasks = persisted_state.get("tasks")
+        tasks = state.get("tasks")
         if not isinstance(tasks, list):
             reasons.append("persisted_queue_invalid")
-        elif not any(isinstance(task, dict) and task.get("status") == "queued"
-                     for task in tasks):
-            reasons.append("queue_empty")
-        if persisted_state.get("active_lease") is not None:
+        else:
+            queued = [task for task in tasks
+                      if isinstance(task, dict) and task.get("status") == "queued"]
+            if len(queued) != 1:
+                reasons.append("queued_task_count_not_exactly_one")
+            elif (queued[0].get("task_id") != task_id
+                  or queued[0].get("task_digest") != task_digest):
+                reasons.append("queued_task_binding_mismatch")
+        if state.get("active_lease") is not None:
             reasons.append("worker_lease_already_active")
 
-    boolean_gates = {
-        "budget_verified": budget_verified,
-        "approval_verified": approval_verified,
-        "kill_switch": kill_switch,
-    }
-    if any(type(value) is not bool for value in boolean_gates.values()):
-        reasons.append("gate_input_not_boolean")
-    if budget_verified is not True:
-        reasons.append("budget_evidence_missing_or_invalid")
-    if approval_verified is not True:
-        reasons.append("task_approval_missing_or_invalid")
+    if not isinstance(task_id, str) or not task_id.strip():
+        reasons.append("task_id_invalid")
+    if not isinstance(task_digest, str) or not _HEX_64.fullmatch(task_digest):
+        reasons.append("task_digest_invalid")
+    if not isinstance(repository, str) or repository.count("/") != 1:
+        reasons.append("repository_invalid")
+    if not isinstance(expected_commit_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", expected_commit_sha):
+        reasons.append("expected_commit_sha_invalid")
+    if not isinstance(implementer_id, str) or not implementer_id.strip():
+        reasons.append("implementer_identity_missing")
+    if type(kill_switch) is not bool:
+        reasons.append("kill_switch_not_boolean")
     if kill_switch is not False:
         reasons.append("kill_switch_active")
-    if not isinstance(expected_commit_sha, str) or len(expected_commit_sha) != 40:
-        reasons.append("expected_commit_sha_invalid")
 
-    consumed = None
+    consumed_review = consumed_approval = consumed_budget = None
+    current_snapshot = replay_snapshot
     if not reasons:
         try:
-            consumed = verify_and_consume_review_once(
-                store=replay_store,
-                snapshot=replay_snapshot,
+            consumed_review = verify_and_consume_review_once(
+                store=replay_store, snapshot=current_snapshot,
                 attestation=independent_review_attestation,
                 public_key_pem=review_public_key_pem,
-                repository=repository,
-                cycle_id=cycle["cycle_id"],
-                commit_sha=expected_commit_sha,
-                expected_nonce=review_nonce,
+                repository=repository, cycle_id=cycle["cycle_id"],
+                commit_sha=expected_commit_sha, expected_nonce=review_nonce,
                 allowed_reviewers=allowed_reviewers,
                 public_key_reviewer_id=public_key_reviewer_id,
-                implementer_id=implementer_id,
-                now=now,
+                implementer_id=implementer_id, now=now,
             )
-        except ReviewReplayStateRejected as exc:
-            reasons.append(f"independent_review_rejected:{exc}")
+            current_snapshot = consumed_review["snapshot"]
         except Exception as exc:
-            # State-store conflicts and unavailable persistence are terminal
-            # for this attempt. Never retry using a fresh snapshot here.
-            reasons.append(f"review_replay_persistence_failed:{type(exc).__name__}")
+            reasons.append(f"independent_review_rejected:{type(exc).__name__}:{exc}")
+
+    if not reasons:
+        try:
+            consumed_approval = verify_and_consume_task_approval_once(
+                store=replay_store, snapshot=current_snapshot, claim=approval_claim,
+                keyring=approval_keyring, key_signer_map=approval_key_signer_map,
+                allowed_approvers=allowed_approvers,
+                repository=repository, task_id=task_id, task_digest=task_digest,
+                cycle_id=cycle["cycle_id"], commit_sha=expected_commit_sha,
+                now=now, implementer_id=implementer_id,
+            )
+            current_snapshot = consumed_approval["snapshot"]
+        except Exception as exc:
+            reasons.append(f"task_approval_rejected:{type(exc).__name__}:{exc}")
+
+    if not reasons:
+        try:
+            consumed_budget = verify_and_consume_budget_authorization_once(
+                store=replay_store, snapshot=current_snapshot, claim=budget_claim,
+                keyring=budget_keyring, key_signer_map=budget_key_signer_map,
+                allowed_issuers=allowed_budget_issuers,
+                repository=repository, task_id=task_id, task_digest=task_digest,
+                cycle_id=cycle["cycle_id"], commit_sha=expected_commit_sha,
+                now=now, expected_budget_unit=expected_budget_unit,
+                resolved_evidence=resolved_budget_evidence,
+            )
+            current_snapshot = consumed_budget["snapshot"]
+        except Exception as exc:
+            reasons.append(f"budget_authorization_rejected:{type(exc).__name__}:{exc}")
 
     return {
         "status": "PASS" if not reasons else "BLOCKED",
         "continue": not reasons,
         "next_cycle_limit": 1 if not reasons else 0,
-        "review_replay_status": consumed.get("status") if consumed else None,
-        "review_attestation_hash": consumed.get("attestation_hash") if consumed else None,
-        "review_nonce": consumed.get("nonce") if consumed else None,
-        "review_replay_snapshot": consumed.get("snapshot") if consumed else None,
+        "review_replay_status": consumed_review.get("status") if consumed_review else None,
+        "approval_replay_status": consumed_approval.get("status") if consumed_approval else None,
+        "budget_replay_status": consumed_budget.get("status") if consumed_budget else None,
+        "review_replay_snapshot": consumed_review.get("snapshot") if consumed_review else None,
+        "approval_replay_snapshot": consumed_approval.get("snapshot") if consumed_approval else None,
+        "budget_replay_snapshot": consumed_budget.get("snapshot") if consumed_budget else None,
+        "final_snapshot": current_snapshot if not reasons else None,
         "execution_started": False,
         "reasons": reasons,
     }
