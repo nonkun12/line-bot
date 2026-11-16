@@ -166,3 +166,61 @@ provisioned. The observation producer signer/verifier, benchmark signer,
 trusted control snapshot issuer, control-release approver/verifier, and FREE
 budget source remain external dependencies. No generation advancement,
 scheduler activation, merge, deployment, or model activation is performed.
+
+## Orchestra AI and REA integration contract (design; not yet activated)
+
+The intended orchestration hierarchy is:
+
+1. **Orchestra AI / Orca** is the coordination layer. It decomposes approved goals
+   into bounded work items, assigns them to eligible workers, deduplicates tasks,
+   tracks dependencies, and consolidates evidence-backed status across the
+   distributed streams. It may propose queue replenishment, but queue creation
+   and dispatch remain subject to the existing task-approval and control gates.
+2. **RSA / RSI** performs evidence-backed diagnosis, hypothesis generation,
+   bounded experiment planning, and (only after separate approval) isolated
+   experiment execution and evaluation.
+3. **REA (Creator-Critic Runtime)** provides a separate proposal-quality loop:
+   Creator drafts a candidate change; Critic independently checks objective
+   alignment, safety constraints, test evidence, regression risk, and whether
+   the proposed change is falsifiable. Creator and Critic identities and
+   evidence must remain distinguishable. A Creator cannot approve its own
+   proposal, and a Critic pass is not execution or merge authority.
+4. **Control Tower** remains the authority boundary. It validates task identity,
+   exact HEAD/patch digests, evidence provenance, budget state, approvals, and
+   HOLD status immediately before any privileged action. Orchestra, RSA, REA,
+   worker agents, and dashboards cannot override it.
+
+### Required hand-off envelope
+
+Every cross-agent hand-off must carry a stable task ID, parent/child lineage,
+repository and exact commit SHA, candidate/patch digest where applicable,
+objective and acceptance criteria, evidence references, assigned role, and
+explicit allowed actions. The receiver must reject missing or mismatched
+identity/digest fields. Results are append-only evidence; summaries or model
+text alone are not proof of execution or success.
+
+### Fail-closed orchestration rules
+
+- Missing Orchestra worker, REA Critic, evidence, budget, or required approval
+  results in BLOCKED/HOLD, not an inferred pass.
+- Queue replenishment may create proposals only; it must not self-authorize
+  execution. Empty queues are reported separately from successful work.
+- Parallel workers receive disjoint bounded tasks or explicit dependency locks;
+  conflicting writes and duplicate execution are rejected.
+- Critic review must be independent of the Creator and must bind to the exact
+  candidate digest and test evidence it reviewed.
+- A passing REA review does not release Global HOLD, grant human approval,
+  enable execution, merge a PR, deploy, or activate a model.
+- Orchestra may coordinate status and request work, but may not change safety
+  policy, credentials, trust roots, scheduler state, or deployment permissions.
+- Every run records PASS, FAIL, NO_CHANGE, or BLOCKED with evidence references;
+  scheduled ticks and empty-queue checks are not counted as completed RSI work.
+
+### Implementation status
+
+This section defines the target contract only. It does not claim that a unified
+Orchestra runtime, REA adapter, cross-agent hand-off protocol, or dashboard
+integration is already implemented or active. The existing RSI foundation
+remains execution-off by default; no scheduler, continuous loop, merge,
+deployment, or model activation is enabled by this design.
+
