@@ -52,6 +52,13 @@ def test_local_model_config_rejects_non_loopback_or_ambiguous_urls(url):
         LocalModelConfig("model", url)
 
 
+def test_local_model_config_supports_explicit_thinking_control():
+    assert LocalModelConfig("lfm3", think=False).think is False
+    assert LocalModelConfig("lfm3", think=True).think is True
+    with pytest.raises(ValueError, match="think must"):
+        LocalModelConfig("lfm3", think="false")
+
+
 def test_local_model_config_bounds_timeout_and_output():
     with pytest.raises(ValueError):
         LocalModelConfig("model", timeout_seconds=90)
