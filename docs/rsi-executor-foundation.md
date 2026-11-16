@@ -112,8 +112,9 @@ execution only; it is not a runner invocation, append-only ledger record,
 independent evaluation, or evidence of improvement over a frozen baseline.
 
 The Stage 132 client now supports an explicit optional `think` setting, and
-`build_loopback_rsi_runner()` pins the endpoint to loopback, sets
-`think=false`, and caps output at 128 tokens. The runner and evaluator both
+`build_loopback_rsi_runner()` pins the endpoint to loopback, verifies the exact
+configured Ollama tag digest against the approved candidate digest before
+execution, sets `think=false`, and caps output at 128 tokens. The runner and evaluator both
 require exact stripped-output equality; a response that merely contains the
 expected token is scored as a mismatch. The latest CI run validates this
 hardening separately from the earlier full-suite baseline run.
