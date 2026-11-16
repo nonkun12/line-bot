@@ -80,9 +80,10 @@ def build_report(catalog: dict[str, Any], state: dict[str, Any]) -> dict[str, An
         seen.add(task_id)
         normalized.append(task)
 
-    approved = [task for task in normalized if task.get("execution_approved") is True]
+    # Legacy catalog flag is candidate eligibility only, never human execution approval.
+    catalog_candidates = [task for task in normalized if task.get("execution_approved") is True]
     candidates = []
-    for task in approved:
+    for task in catalog_candidates:
         task_id = task["id"]
         if task_id in queued_ids:
             continue
@@ -91,7 +92,9 @@ def build_report(catalog: dict[str, Any], state: dict[str, Any]) -> dict[str, An
             "task_digest": _task_digest(task),
             "allowed_paths": task["allowed_paths"],
             "instruction_length": len(task["instruction"]),
-            "execution_approved": True,
+            "catalog_candidate_flag": True,
+            "execution_approved": False,
+            "human_execution_approval_required": True,
             "dispatch_authorized": False,
         })
 
@@ -102,7 +105,7 @@ def build_report(catalog: dict[str, Any], state: dict[str, Any]) -> dict[str, An
         "schema_version": 1,
         "status": "READY_FOR_HUMAN_REVIEW" if ready else "BLOCKED",
         "catalog_task_count": len(normalized),
-        "execution_approved_count": len(approved),
+        "catalog_candidate_flag_count": len(catalog_candidates),
         "candidate_count": len(candidates),
         "candidates": candidates[:catalog["max_additions_per_run"]],
         "blockers": sorted(set(blockers)),
