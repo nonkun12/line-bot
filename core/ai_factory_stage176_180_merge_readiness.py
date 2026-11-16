@@ -144,6 +144,7 @@ class ReproducibilityReport:
     result_digest: str
     metrics_digest: str
     digest: str
+    signature: str = ""
     proposal_only: bool = True
 
 class Stage177ReproducibilityVerifier:
