@@ -25,6 +25,47 @@ def _check_id(value: str, label: str) -> None:
     if not isinstance(value, str) or not _ID.fullmatch(value):
         raise MergeReadinessError(f"{label} is invalid")
 
+def _manifest_payload(m: "MergeArtifactManifest") -> dict:
+    return {"candidate":m.candidate_id,"artifact":m.candidate_artifact_digest,
+        "parents":list(zip(m.parent_model_ids,m.parent_artifact_digests)),
+        "compatibility":m.compatibility_digest,"evaluation":m.evaluation_report_digest,
+        "selection":m.selection_digest,"suite":m.evaluation_suite_digest,
+        "source_generation":m.source_generation,"proposed_generation":m.proposed_generation,
+        "licenses":m.license_ids,"provenance":m.provenance_digest,"rollback":m.rollback_artifact_digest}
+
+def _verify_manifest(m: "MergeArtifactManifest") -> None:
+    if not isinstance(m,MergeArtifactManifest): raise MergeReadinessError("typed Stage 176 manifest is required")
+    _check_id(m.candidate_id,"candidate id")
+    for value,label in ((m.candidate_artifact_digest,"candidate artifact"),(m.compatibility_digest,"compatibility"),
+        (m.evaluation_report_digest,"evaluation report"),(m.selection_digest,"selection"),
+        (m.evaluation_suite_digest,"evaluation suite"),(m.provenance_digest,"provenance"),
+        (m.rollback_artifact_digest,"rollback artifact")): _check_digest(value,label)
+    if len(m.parent_model_ids)<2 or len(m.parent_model_ids)>8 or len(m.parent_model_ids)!=len(m.parent_artifact_digests):
+        raise MergeReadinessError("manifest parent lineage is invalid")
+    for x in m.parent_model_ids: _check_id(x,"parent model id")
+    for x in m.parent_artifact_digests: _check_digest(x,"parent artifact")
+    if len(set(m.parent_model_ids))!=len(m.parent_model_ids): raise MergeReadinessError("manifest parent identities are duplicated")
+    if m.proposed_generation!=m.source_generation+1: raise MergeReadinessError("manifest generation lineage is invalid")
+    if not m.license_ids or any(not isinstance(x,str) or not x.strip() for x in m.license_ids):
+        raise MergeReadinessError("manifest license evidence is invalid")
+    _check_digest(m.digest,"manifest")
+    if _digest(_manifest_payload(m))!=m.digest: raise MergeReadinessError("manifest digest verification failed")
+
+def _verify_reproduction_report(r: "ReproducibilityReport") -> None:
+    payload={"manifest":r.manifest_digest,"runs":list(r.run_ids),"evaluators":list(r.evaluator_ids),
+        "executors":list(r.executor_ids),"result":r.result_digest,"metrics":r.metrics_digest}
+    if not r.proposal_only or _digest(payload)!=r.digest: raise MergeReadinessError("reproducibility report digest verification failed")
+
+def _verify_resource_report(r: "ResourceFeasibilityReport") -> None:
+    expected=_digest({"feasible":r.feasible,"reasons":list(r.reasons),"estimate":r.estimate_digest,"envelope":r.envelope_digest})
+    if not r.proposal_only or not r.local_only or _digest({"feasible":r.feasible,"reasons":r.reasons,"estimate":r.estimate_digest,"envelope":r.envelope_digest})!=r.digest:
+        raise MergeReadinessError("resource report digest verification failed")
+
+def _verify_holdout_report(r: "HoldoutRobustnessReport") -> None:
+    payload={"manifest":r.manifest_digest,"evidence":r.evidence_digests,"evaluators":list(r.evaluator_ids),
+        "dataset":r.holdout_dataset_digest,"adversarial":r.adversarial_suite_digest,"passed":r.passed}
+    if not r.proposal_only or _digest(payload)!=r.digest: raise MergeReadinessError("holdout report digest verification failed")
+
 @dataclass(frozen=True)
 class MergeArtifactManifest:
     candidate_id: str
@@ -75,13 +116,12 @@ class Stage176ArtifactManifestBuilder:
         if not raw_licenses or any(not isinstance(x,str) or not x.strip() for x in raw_licenses):
             raise MergeReadinessError("explicit non-empty license identifiers are required")
         licenses=tuple(sorted(set(raw_licenses)))
-        payload={"candidate":candidate_id,"artifact":candidate_artifact_digest,"parents":list(zip(ids,digests)),
-                 "compatibility":compatibility_digest,"evaluation":evaluation_report_digest,"selection":selection_digest,
-                 "suite":evaluation_suite_digest,"source_generation":source_generation,"proposed_generation":proposed_generation,
-                 "licenses":licenses,"provenance":provenance_digest,"rollback":rollback_artifact_digest}
+        provisional=MergeArtifactManifest(candidate_id,candidate_artifact_digest,ids,digests,compatibility_digest,
+            evaluation_report_digest,selection_digest,evaluation_suite_digest,source_generation,proposed_generation,
+            licenses,provenance_digest,rollback_artifact_digest,"0"*64)
         return MergeArtifactManifest(candidate_id,candidate_artifact_digest,ids,digests,compatibility_digest,
             evaluation_report_digest,selection_digest,evaluation_suite_digest,source_generation,proposed_generation,
-            licenses,provenance_digest,rollback_artifact_digest,_digest(payload))
+            licenses,provenance_digest,rollback_artifact_digest,_digest(_manifest_payload(provisional)))
 
 @dataclass(frozen=True)
 class ReproductionRun:
@@ -114,7 +154,7 @@ class Stage177ReproducibilityVerifier:
         if hold_active: raise MergeReadinessError("HOLD blocks Stage 177")
         if not manifest.proposal_only or manifest.weight_mutation_authorized or manifest.generation_advance_authorized:
             raise MergeReadinessError("unsafe Stage 176 manifest")
-        _check_digest(manifest.digest,"manifest")
+        _verify_manifest(manifest)
         if (not isinstance(minimum_runs,int) or isinstance(minimum_runs,bool)
                 or not isinstance(maximum_runs,int) or isinstance(maximum_runs,bool)
                 or not 2 <= minimum_runs <= maximum_runs <= 8):
@@ -224,6 +264,7 @@ class Stage179HoldoutRobustnessGate:
               verify_signature:Callable[[HoldoutEvidence],bool],hold_active:bool=False,
               minimum_evaluators:int=2,minimum_coverage:float=0.95)->HoldoutRobustnessReport:
         if hold_active: raise MergeReadinessError("HOLD blocks Stage 179")
+        _verify_manifest(manifest)
         if not 2<=len(evidence)<=8 or not 2<=minimum_evaluators<=8: raise MergeReadinessError("holdout evidence count is outside bounds")
         if any(not isinstance(x,HoldoutEvidence) for x in evidence):
             raise MergeReadinessError("typed holdout attestations are required")
@@ -279,6 +320,10 @@ class Stage180HumanApprovalPackager:
             raise MergeReadinessError("unsafe manifest authority")
         if not isinstance(reproduction,ReproducibilityReport) or not isinstance(resources,ResourceFeasibilityReport) or not isinstance(holdout,HoldoutRobustnessReport):
             raise MergeReadinessError("typed Stage 177-179 reports are required")
+        _verify_manifest(manifest)
+        _verify_reproduction_report(reproduction)
+        _verify_resource_report(resources)
+        _verify_holdout_report(holdout)
         for value,label in ((reproduction.digest,"reproducibility report"),(resources.digest,"resource report"),(holdout.digest,"holdout report")):
             _check_digest(value,label)
         if reproduction.manifest_digest!=manifest.digest or holdout.manifest_digest!=manifest.digest:
