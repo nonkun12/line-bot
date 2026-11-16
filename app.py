@@ -367,7 +367,7 @@ def _handle_ai_gateway_request(ai_request):
             "MCP接続診断（読み取り専用）\n"
             f"HTTP health: {report['health']}\n"
             f"Database ready: {report['ready']}\n"
-            f"MCP initialize: {report['initialize']}\n"
+            f"MCP認証: {report['mcp_auth']}\n"
             f"tools/list: {report['tools_list']}\n"
             f"ツール数: {report['tool_count']}\n"
             f"所要時間: {report['elapsed_ms']} ms\n"
