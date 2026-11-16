@@ -217,11 +217,11 @@ def seed_observations(ledger, observations):
 
 def test_observation_rejects_missing_source_evidence_and_invalid_producer_signature(tmp_path):
     executor, ledger = make_executor(tmp_path)
-    raw = Observation("missing-source", H, "model", "FAIL", "quality fell", 1, "absent-source-event")
+    raw = Observation("missing-source", H, "model", "FAIL", "quality fell", 1, "absent-source-event", "experiment-missing", "c" * 64, "d" * 64, "e" * 64)
     with pytest.raises(RSIError, match="missing"):
         executor.observe((raw,))
 
-    raw = Observation("bad-signature", H, "model", "FAIL", "quality fell", 1)
+    raw = Observation("bad-signature", H, "model", "FAIL", "quality fell", 1, "", "experiment-1", "c" * 64, "d" * 64, "e" * 64)
     event_id = "source-evidence:bad-signature"
     digest = ledger.append_observation_evidence(
         event_id, observation=raw, experiment_id="experiment-1",
@@ -236,7 +236,7 @@ def test_observation_rejects_missing_source_evidence_and_invalid_producer_signat
 
 def test_observation_rejects_source_payload_mismatch_and_forbidden_event_type(tmp_path):
     executor, ledger = make_executor(tmp_path)
-    raw = Observation("payload-mismatch", H, "model", "FAIL", "original detail", 1)
+    raw = Observation("payload-mismatch", H, "model", "FAIL", "original detail", 1, "", "experiment-2", "c" * 64, "d" * 64, "e" * 64)
     event_id = "source-evidence:payload-mismatch"
     digest = ledger.append_observation_evidence(
         event_id, observation=raw, experiment_id="experiment-2",
@@ -252,7 +252,7 @@ def test_observation_rejects_source_payload_mismatch_and_forbidden_event_type(tm
     forbidden_digest = ledger.append(forbidden_id, "observation", {"evidence": H})
     forbidden = Observation(
         "forbidden-observation", forbidden_digest, "model", "FAIL",
-        "detail", 2, forbidden_id,
+        "detail", 2, forbidden_id, "experiment-forbidden", "c" * 64, "d" * 64, "e" * 64,
     )
     with pytest.raises(RSIError, match="event type is not allowed"):
         executor.observe((forbidden,))
@@ -260,7 +260,7 @@ def test_observation_rejects_source_payload_mismatch_and_forbidden_event_type(tm
 
 def test_observation_rejects_tampered_hash_chain_before_acceptance(tmp_path):
     executor, ledger = make_executor(tmp_path)
-    raw = Observation("tampered-source", H, "model", "FAIL", "quality fell", 1)
+    raw = Observation("tampered-source", H, "model", "FAIL", "quality fell", 1, "", "experiment-3", "c" * 64, "d" * 64, "e" * 64)
     event_id = "source-evidence:tampered-source"
     digest = ledger.append_observation_evidence(
         event_id, observation=raw, experiment_id="experiment-3",
