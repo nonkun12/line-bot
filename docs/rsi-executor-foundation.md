@@ -35,8 +35,14 @@ worker and does not treat ordinary queue completion as self-improvement.
 
 ## Validation status
 
-The test file is added but has not been executed in this change. A passing
-GitHub Actions run, live local-model integration, trusted budget source, and
-runtime control-plane wiring are not claimed. The next integration task is to
-connect the control provider, local runner, and independent evaluator to
-verified local adapters while preserving the default execution-off state.
+GitHub Actions validation for commit `085c99d` completed successfully:
+Python syntax scan, the focused RSI-inclusive Pytest run, and the repository's
+free deterministic-loop workflow all reported success. The deterministic-loop
+workflow had an empty task queue and executed no RSI task. A later resource
+lifecycle fix closes SQLite connections explicitly; that follow-up commit must
+receive its own CI run before it is considered validated.
+
+Live local-model integration, a trusted budget source, and runtime control-plane
+wiring are not claimed. The next integration task is to connect the control
+provider, local runner, and independent evaluator to verified local adapters
+while preserving the default execution-off state.
