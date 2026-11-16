@@ -143,3 +143,30 @@ def test_plan_digest_prevents_priority_tampering(tmp_path):
     altered = replace(plan, information_value=1.0)
     with pytest.raises(RSIError, match="digest mismatch"):
         executor.select_next((altered,))
+
+
+
+def test_planning_rejects_experiment_cost_above_known_free_budget(tmp_path):
+    ledger = EvidenceLedger(tmp_path / "budget.sqlite")
+    executor = RSIExecutor(
+        ledger,
+        control_provider=lambda: __import__("core.rsi_executor", fromlist=["RSIControl"]).RSIControl(
+            False, False, True, True, 1, False
+        ),
+        verify_approval=lambda _: False,
+        verify_evaluation=lambda _: False,
+        executor_id="rsi-planner",
+    )
+    observations = (
+        Observation("budget-obs-1", H, "model", "FAIL", "quality fell", 1),
+        Observation("budget-obs-2", "b" * 64, "model", "REGRESSED", "repeat regression", 2),
+    )
+    hypotheses = executor.hypothesize(executor.observe(observations))
+    with pytest.raises(RSIError, match="budget unknown or insufficient"):
+        executor.plan(
+            hypotheses,
+            baseline_digest="c" * 64,
+            candidate_digest="d" * 64,
+            protocol_digest="e" * 64,
+            expected_cost_units=2,
+        )
