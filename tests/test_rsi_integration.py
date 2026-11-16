@@ -5,7 +5,7 @@ import json
 import pytest
 
 from core.rsi_baseline import FrozenBaseline
-from core.rsi_control import SignedRSIControlSnapshot, VerifiedRSIControlProvider
+from core.rsi_control import HumanControlReleaseApproval, SignedRSIControlSnapshot, VerifiedRSIControlProvider
 from core.rsi_executor import (
     EvidenceLedger, HumanApproval, Observation, RSIControl, RSIError, RSIExecutor,
     canonical_digest,
@@ -25,9 +25,9 @@ def verify_digest(digest, signature):
     return hmac.compare_digest(sign_digest(digest), signature)
 
 
-def control_snapshot(now, *, execution_enabled, nonce):
+def control_snapshot(now, *, execution_enabled, nonce, global_hold=False, generation=1):
     payload = {
-        "global_hold": False,
+        "global_hold": global_hold,
         "execution_enabled": execution_enabled,
         "free_only": True,
         "budget_known": True,
@@ -36,7 +36,7 @@ def control_snapshot(now, *, execution_enabled, nonce):
         "issued_at": now,
         "expires_at": now + 60,
         "nonce": nonce,
-        "generation": 1,
+        "generation": generation,
     }
     digest = canonical_digest(payload)
     return SignedRSIControlSnapshot(**payload, signature=sign_digest(digest))
@@ -57,11 +57,49 @@ class FakeLocalClient:
 def build_pipeline(tmp_path, *, execution_enabled):
     now = 10_000
     ledger = EvidenceLedger(tmp_path / "integrated.sqlite")
-    snapshot = control_snapshot(now, execution_enabled=execution_enabled, nonce="snapshot-1")
-    control = VerifiedRSIControlProvider(
-        lambda: snapshot, verify_signature=verify_digest,
-        ledger=ledger, clock=lambda: now,
+    initial_hold = control_snapshot(
+        now, execution_enabled=False, nonce="snapshot-hold-1",
+        global_hold=True, generation=1,
     )
+    snapshot = control_snapshot(
+        now + 1, execution_enabled=execution_enabled, nonce="snapshot-release-2",
+        global_hold=False, generation=2,
+    )
+    signed_snapshot = {
+        "global_hold": snapshot.global_hold,
+        "execution_enabled": snapshot.execution_enabled,
+        "free_only": snapshot.free_only,
+        "budget_known": snapshot.budget_known,
+        "budget_remaining_units": snapshot.budget_remaining_units,
+        "paid_fallback_enabled": snapshot.paid_fallback_enabled,
+        "issued_at": snapshot.issued_at,
+        "expires_at": snapshot.expires_at,
+        "nonce": snapshot.nonce,
+        "generation": snapshot.generation,
+    }
+    approval_fields = {
+        "previous_hold_generation": 1,
+        "release_generation": 2,
+        "snapshot_digest": canonical_digest(signed_snapshot),
+        "snapshot_nonce": snapshot.nonce,
+        "approver_id": "human-operator",
+        "nonce": "integration-release-approval",
+        "issued_at": now + 1,
+        "expires_at": now + 30,
+    }
+    approval = HumanControlReleaseApproval(
+        **approval_fields, signature=sign_digest(canonical_digest(approval_fields)),
+    )
+    current = [initial_hold]
+    control = VerifiedRSIControlProvider(
+        lambda: current[0], verify_signature=verify_digest,
+        verify_control_release=verify_digest,
+        release_approval_source=lambda: approval,
+        ledger=ledger, clock=lambda: now + 1,
+    )
+    control()
+    current[0] = snapshot
+    control()
     executor = RSIExecutor(
         ledger, control_provider=control,
         verify_approval=lambda approval: (
