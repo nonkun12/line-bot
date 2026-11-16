@@ -40,7 +40,7 @@ def test_runner_executes_only_fixed_loopback_benchmark_cases(tmp_path):
     )
     client = FakeLocalClient(["TOKEN-A", "wrong"])
     runner = LocalRSIExperimentRunner(
-        client, executor_id="local-runner", candidate_digest=candidate, model_id="fixture-model", ledger=EvidenceLedger(tmp_path / "runner.sqlite"), cases=cases
+        client, executor_id="local-runner", candidate_digest=candidate, model_id="fixture-model", ledger=EvidenceLedger(tmp_path / "runner.sqlite"), cases=cases, sign_evidence=lambda d: "sig:" + d
     )
     result = runner(plan(candidate, benchmark_protocol_digest(cases)))
     assert runner.is_local is True
@@ -55,7 +55,7 @@ def test_runner_rejects_unbound_candidate_or_protocol(tmp_path):
     cases = (BenchmarkCase("one", "say token A", "TOKEN-A"),)
     runner = LocalRSIExperimentRunner(
         FakeLocalClient(["TOKEN-A"]), executor_id="local-runner",
-        candidate_digest=candidate, model_id="fixture-model", ledger=EvidenceLedger(tmp_path / "runner2.sqlite"), cases=cases,
+        candidate_digest=candidate, model_id="fixture-model", ledger=EvidenceLedger(tmp_path / "runner2.sqlite"), cases=cases, sign_evidence=lambda d: "sig:" + d,
     )
     with pytest.raises(RSIError, match="candidate digest"):
         runner(plan("c" * 64, runner.protocol_digest, cost=1))
@@ -68,7 +68,7 @@ def test_runner_rejects_unbounded_or_wrong_capability_plan(tmp_path):
     cases = (BenchmarkCase("one", "say token A", "TOKEN-A"),)
     runner = LocalRSIExperimentRunner(
         FakeLocalClient(["TOKEN-A"]), executor_id="local-runner",
-        candidate_digest=candidate, model_id="fixture-model", ledger=EvidenceLedger(tmp_path / "runner3.sqlite"), cases=cases,
+        candidate_digest=candidate, model_id="fixture-model", ledger=EvidenceLedger(tmp_path / "runner3.sqlite"), cases=cases, sign_evidence=lambda d: "sig:" + d,
     )
     with pytest.raises(RSIError, match="only supports model"):
         runner(plan(candidate, runner.protocol_digest, cost=1, capability="evaluator"))
@@ -91,6 +91,7 @@ def test_loopback_runner_factory_pins_local_endpoint_and_disables_thinking(tmp_p
         executor_id="local-runner",
         candidate_digest="e" * 64,
         ledger=EvidenceLedger(tmp_path / "factory.sqlite"),
+        sign_evidence=lambda d: "sig:" + d,
     )
     assert runner.is_local is True
     assert runner.paid_fallback_enabled is False
@@ -109,7 +110,7 @@ def test_runner_rejects_partial_token_match(tmp_path):
         candidate_digest=candidate,
         model_id="fixture-model",
         ledger=EvidenceLedger(tmp_path / "partial.sqlite"),
-        cases=cases,
+        cases=cases, sign_evidence=lambda d: "sig:" + d,
     )
     result = runner(plan(candidate, benchmark_protocol_digest(cases), cost=1))
     assert result.metrics["quality"] == 0.0
