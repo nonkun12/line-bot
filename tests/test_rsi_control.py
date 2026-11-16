@@ -72,7 +72,7 @@ def test_provider_fails_closed_on_unknown_budget_and_replayed_nonce(tmp_path):
 
     replay_ledger = EvidenceLedger(tmp_path / "replay.sqlite")
     first = make_snapshot(now, nonce="replay-nonce")
-    second = make_snapshot(now, nonce="replay-nonce", global_hold=True)
+    second = make_snapshot(now, nonce="replay-nonce", execution_enabled=True)
     current = [first]
     provider = VerifiedRSIControlProvider(
         lambda: current[0], verify_signature=lambda *_: True,
@@ -95,7 +95,7 @@ def test_control_generation_is_monotonic_across_provider_restart(tmp_path):
     )
     provider()
 
-    rollback = make_snapshot(now + 1, generation=0, nonce="gen-0")
+    rollback = make_snapshot(now + 1, generation=1, nonce="gen-rollback")
     restarted = VerifiedRSIControlProvider(
         lambda: rollback, verify_signature=lambda d, s: s == "sig:" + d,
         ledger=EvidenceLedger(tmp_path / "generation.sqlite"), clock=lambda: now + 1,
