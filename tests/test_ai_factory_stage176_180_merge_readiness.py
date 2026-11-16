@@ -56,7 +56,7 @@ def test_stage177_requires_distinct_evaluators_and_executors():
 def test_stage178_fails_closed_on_over_budget_and_cloud_fallback():
     report=Stage178LocalResourceGate().build(LocalResourceEstimate(8,9000,0,30000,1800,40),
         LocalResourceEnvelope(4,8192,0,20000,1200,20))
-    assert not report.feasible and len(report.reasons)==6
+    assert not report.feasible and len(report.reasons)==5
     cloud=Stage178LocalResourceGate().build(LocalResourceEstimate(1,1024,0,1000,60,1),
         LocalResourceEnvelope(4,8192,0,20000,1200,20,cloud_fallback_allowed=True))
     assert not cloud.feasible and any("cloud fallback" in x for x in cloud.reasons)
