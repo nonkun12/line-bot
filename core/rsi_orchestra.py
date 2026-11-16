@@ -99,7 +99,7 @@ def run_orchestra_rsi_batch(
 ) -> OrchestraRSIBatch:
     """Run bounded RSI proposal ticks, then SHA/digest-bound REA reviews only.
 
-    Creator and Critic must use distinct model-call identities. The evidence
+    Creator and Critic must use distinct injected callable objects. The evidence
     verifier is mandatory and must validate the supplied evidence against the
     exact hand-off bindings before the Critic sees it.
     """
@@ -108,7 +108,7 @@ def run_orchestra_rsi_batch(
     if not isinstance(creator, CreatorAgent) or not isinstance(critic, CriticAgent):
         raise RSIError("separate typed REA Creator and Critic are required")
     if getattr(creator, "_model", None) is getattr(critic, "_model", None):
-        raise RSIError("REA Creator and Critic must use distinct model-call identities")
+        raise RSIError("REA Creator and Critic must use distinct injected callables")
     if not isinstance(repository, str) or not _REPO_RE.fullmatch(repository):
         raise RSIError("repository identity is invalid")
     if not isinstance(head_sha, str) or not _SHA_RE.fullmatch(head_sha):
