@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime
+import re
 from typing import Any, Iterable
 
 from scripts.orca_rsi_review_replay import (
@@ -13,6 +14,7 @@ from scripts.orca_rsi_review_replay import (
 RSI_STAGES = ("evaluate", "diagnose", "hypothesize", "experiment", "select_evolve")
 FINAL_RESULTS = {"PASS", "FAIL", "NO_CHANGE", "BLOCKED"}
 MAX_EVIDENCE_LENGTH = 2_000
+_HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class RSICycleRejected(ValueError):
@@ -21,7 +23,7 @@ class RSICycleRejected(ValueError):
 
 def new_cycle(cycle_id: str) -> dict[str, Any]:
     """Create an empty five-stage cycle; this does not persist it."""
-    if not isinstance(cycle_id, str) or not cycle_id.strip() or len(cycle_id) > 128:
+    if not isinstance(cycle_id, str) or not _HEX_64.fullmatch(cycle_id):
         raise RSICycleRejected("cycle_id_invalid")
     return {
         "schema_version": 1,
