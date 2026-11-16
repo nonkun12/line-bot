@@ -1,14 +1,19 @@
-"""Strict adapter from the five-stage RSI record to Orca's six-stage gate.
+"""Strict adapter from five-stage RSI evidence to Orca's six-stage gate.
 
-The adapter never manufactures independent-review evidence or evaluation
-metrics. Those must be supplied by their separate trusted producers.
+Independent review provenance is verified with a key held outside the worker.
+Evaluation metrics are still revalidated by the downstream execution gate.
 """
 from __future__ import annotations
 
 import re
-from typing import Any
+from datetime import datetime
+from typing import Any, Iterable
 
 from scripts.orca_rsi_five_stage import RSI_STAGES
+from scripts.orca_rsi_review_attestation import (
+    ReviewAttestationRejected,
+    verify_independent_review,
+)
 
 _HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -21,16 +26,15 @@ def to_orca_improvement_candidate(
     cycle: Any,
     *,
     cycle_id: str,
-    independent_review_evidence: Any,
+    repository: str,
+    commit_sha: str,
+    review_attestation: Any,
+    review_signing_key: str,
+    allowed_reviewers: Iterable[str],
+    now: datetime,
     evaluation: Any,
 ) -> dict[str, Any]:
-    """Map completed RSI evidence without asserting approval or execution.
-
-    independent_review_evidence must come from a separate reviewer; it is
-    intentionally not inferred from the RSI cycle's own select/evolve stage.
-    evaluation must contain independently measured metrics and test/critic
-    verdict. The downstream execution gate validates these again.
-    """
+    """Map RSI evidence only after verifying a fresh external review signature."""
     if not isinstance(cycle, dict) or cycle.get("schema_version") != 1:
         raise RSIExecutionAdapterRejected("rsi_cycle_missing_or_invalid")
     if cycle.get("completed_stages") != list(RSI_STAGES):
@@ -44,13 +48,20 @@ def to_orca_improvement_candidate(
         raise RSIExecutionAdapterRejected("rsi_cycle_evidence_invalid")
     if not isinstance(cycle_id, str) or not _HEX_64.fullmatch(cycle_id):
         raise RSIExecutionAdapterRejected("orca_cycle_id_invalid")
-    if (not isinstance(independent_review_evidence, list)
-            or not independent_review_evidence
-            or any(not isinstance(item, str) or not item.strip()
-                   for item in independent_review_evidence)):
-        raise RSIExecutionAdapterRejected("independent_review_evidence_missing")
     if not isinstance(evaluation, dict):
         raise RSIExecutionAdapterRejected("independent_evaluation_missing")
+    try:
+        review = verify_independent_review(
+            review_attestation,
+            review_signing_key,
+            repository=repository,
+            cycle_id=cycle_id,
+            commit_sha=commit_sha,
+            now=now,
+            allowed_reviewers=allowed_reviewers,
+        )
+    except ReviewAttestationRejected as exc:
+        raise RSIExecutionAdapterRejected(f"independent_review_rejected:{exc}") from None
 
     return {
         "schema_version": 1,
@@ -66,7 +77,7 @@ def to_orca_improvement_candidate(
             "diagnosed": [evidence["diagnose"]],
             "proposed": [evidence["hypothesize"]],
             "tested": [evidence["experiment"]],
-            "reviewed": list(independent_review_evidence),
+            "reviewed": review["evidence_refs"],
             "evaluated": [evidence["select_evolve"]],
         },
         "details": {"evaluation": dict(evaluation)},
