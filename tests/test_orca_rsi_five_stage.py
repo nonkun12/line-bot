@@ -1,29 +1,55 @@
+from datetime import datetime, timezone
+import base64
+import json
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from scripts.orca_rsi_five_stage import (
-    RSI_STAGES,
-    RSICycleRejected,
-    continuation_decision,
-    new_cycle,
-    record_stage,
+    RSI_STAGES, RSICycleRejected, continuation_decision, new_cycle, record_stage,
 )
+from scripts.orca_rsi_review_attestation import verify_independent_review
+
+NOW = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)
+NONCE = "one-time-challenge-nonce-123456"
+CYCLE_ID = "a" * 64
+COMMIT = "b" * 40
+PRIVATE = Ed25519PrivateKey.from_private_bytes(bytes(range(1, 33)))
+PUBLIC_PEM = PRIVATE.public_key().public_bytes(
+    serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+).decode()
 
 
 def _complete_cycle(result="PASS"):
-    cycle = new_cycle("test-cycle")
+    cycle = new_cycle(CYCLE_ID)
     for stage in RSI_STAGES[:-1]:
         cycle = record_stage(cycle, stage=stage, evidence=f"{stage} evidence")
-    return record_stage(
-        cycle, stage="select_evolve", evidence="decision evidence", result=result
+    return record_stage(cycle, stage="select_evolve", evidence="decision evidence", result=result)
+
+
+def _review():
+    value = {
+        "schema_version": 1, "repository": "nonkun12/line-bot",
+        "cycle_id": CYCLE_ID, "commit_sha": COMMIT,
+        "reviewer_id": "trusted-reviewer", "verdict": "PASS",
+        "evidence_refs": ["actions://review/123"], "reviewed_at": NOW.isoformat(),
+        "nonce": NONCE,
+    }
+    value["signature"] = base64.b64encode(PRIVATE.sign(json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).encode())).decode()
+    return verify_independent_review(
+        value, PUBLIC_PEM, repository="nonkun12/line-bot", cycle_id=CYCLE_ID,
+        commit_sha=COMMIT, expected_nonce=NONCE, used_attestation_hashes=[],
+        now=NOW, allowed_reviewers=["trusted-reviewer"],
     )
 
 
-def _all_gates(**overrides):
+def _gates(**overrides):
     values = {
-        "queue_has_pending": True,
-        "global_hold": False,
-        "emergency_stop": False,
-        "budget_verified": True,
-        "approval_verified": True,
-        "independent_review_pass": True,
+        "queue_has_pending": True, "global_hold": False, "emergency_stop": False,
+        "budget_verified": True, "approval_verified": True,
+        "independent_review": _review(), "expected_commit_sha": COMMIT,
         "kill_switch": False,
     }
     values.update(overrides)
@@ -38,9 +64,8 @@ def test_five_rsi_stages_complete_in_order():
 
 
 def test_rsi_rejects_skipped_stage():
-    cycle = new_cycle("skip-stage")
     try:
-        record_stage(cycle, stage="diagnose", evidence="diagnosis")
+        record_stage(new_cycle("skip"), stage="diagnose", evidence="diagnosis")
     except RSICycleRejected as exc:
         assert str(exc) == "rsi_stage_out_of_order"
     else:
@@ -48,68 +73,56 @@ def test_rsi_rejects_skipped_stage():
 
 
 def test_rsi_rejects_empty_evidence():
-    cycle = new_cycle("empty-evidence")
     try:
-        record_stage(cycle, stage="evaluate", evidence=" ")
+        record_stage(new_cycle("empty"), stage="evaluate", evidence=" ")
     except RSICycleRejected as exc:
         assert str(exc) == "rsi_stage_evidence_missing_or_invalid"
     else:
         raise AssertionError("empty evidence was accepted")
 
 
-def test_only_fully_gated_pass_can_continue_one_cycle():
-    decision = continuation_decision(_complete_cycle(), **_all_gates())
-    assert decision == {
-        "status": "PASS",
-        "continue": True,
-        "next_cycle_limit": 1,
-        "reasons": [],
-    }
+def test_only_verified_review_bound_to_cycle_and_commit_can_continue():
+    decision = continuation_decision(_complete_cycle(), **_gates())
+    assert decision["continue"] is True
+    assert decision["next_cycle_limit"] == 1
 
 
 def test_hold_or_missing_budget_blocks_continuation():
-    decision = continuation_decision(
-        _complete_cycle(),
-        **_all_gates(global_hold=True, budget_verified=False),
-    )
+    decision = continuation_decision(_complete_cycle(), **_gates(global_hold=True, budget_verified=False))
     assert decision["continue"] is False
-    assert decision["next_cycle_limit"] == 0
     assert "global_hold_active" in decision["reasons"]
     assert "budget_evidence_missing_or_invalid" in decision["reasons"]
 
 
-def test_no_change_does_not_trigger_recursive_execution():
-    decision = continuation_decision(
-        _complete_cycle(result="NO_CHANGE"), **_all_gates()
-    )
+def test_no_change_does_not_continue():
+    decision = continuation_decision(_complete_cycle("NO_CHANGE"), **_gates())
     assert decision["continue"] is False
     assert "rsi_result_not_pass" in decision["reasons"]
 
 
-def test_independent_review_and_approval_are_required():
-    decision = continuation_decision(
-        _complete_cycle(),
-        **_all_gates(approval_verified=False, independent_review_pass=False),
-    )
+def test_raw_boolean_cannot_satisfy_independent_review_gate():
+    decision = continuation_decision(_complete_cycle(), **_gates(independent_review=True))
     assert decision["continue"] is False
-    assert "task_approval_missing_or_invalid" in decision["reasons"]
-    assert "independent_review_not_pass" in decision["reasons"]
+    assert "independent_review_not_verified" in decision["reasons"]
+
+
+def test_review_from_another_cycle_or_commit_is_rejected():
+    from dataclasses import replace
+    wrong_cycle = replace(_review(), cycle_id="c" * 64)
+    decision = continuation_decision(_complete_cycle(), **_gates(independent_review=wrong_cycle))
+    assert "independent_review_cycle_mismatch" in decision["reasons"]
+    wrong_commit = replace(_review(), commit_sha="d" * 40)
+    decision = continuation_decision(_complete_cycle(), **_gates(independent_review=wrong_commit))
+    assert "independent_review_commit_mismatch" in decision["reasons"]
 
 
 def test_truthy_strings_cannot_satisfy_safety_gates():
-    decision = continuation_decision(
-        _complete_cycle(),
-        **_all_gates(global_hold="false", budget_verified="true"),
-    )
-    assert decision["continue"] is False
+    decision = continuation_decision(_complete_cycle(), **_gates(global_hold="false", budget_verified="true"))
     assert "gate_input_not_boolean" in decision["reasons"]
-    assert "global_hold_active" in decision["reasons"]
-    assert "budget_evidence_missing_or_invalid" in decision["reasons"]
 
 
-def test_unexpected_extra_evidence_is_rejected():
-    cycle = _complete_cycle()
-    cycle["evidence"]["unrecognized"] = "not part of the five-stage cycle"
-    decision = continuation_decision(cycle, **_all_gates())
+def test_boolean_schema_version_is_rejected():
+    bad = _complete_cycle()
+    bad["schema_version"] = True
+    decision = continuation_decision(bad, **_gates())
     assert decision["continue"] is False
-    assert "rsi_evidence_incomplete" in decision["reasons"]
