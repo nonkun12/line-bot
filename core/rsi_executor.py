@@ -267,6 +267,15 @@ class RSIExecutor:
         control = self.control_provider()
         if not isinstance(control, RSIControl):
             raise RSIError("control state unavailable")
+        boolean_fields = (
+            control.global_hold, control.execution_enabled, control.free_only,
+            control.budget_known, control.paid_fallback_enabled,
+        )
+        if any(type(value) is not bool for value in boolean_fields):
+            raise RSIError("control state contains invalid boolean fields")
+        if (type(control.budget_remaining_units) is not int
+                or not 0 <= control.budget_remaining_units <= 1_000_000):
+            raise RSIError("control budget units are invalid")
         if control.global_hold:
             raise RSIError("BLOCKED: Global HOLD")
         if not control.free_only or control.paid_fallback_enabled:
