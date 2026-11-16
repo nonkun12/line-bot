@@ -1,21 +1,12 @@
-"""Deterministic five-stage RSI cycle and fail-closed continuation gate.
-
-This module is deliberately provider-free and side-effect-free. It does not
-create patches, call models, dispatch workflows, or change repository state.
-A trusted worker may use its result only after separately verifying all gates.
-"""
+"""Deterministic five-stage RSI cycle and fail-closed continuation gate."""
 from __future__ import annotations
 
 from copy import deepcopy
 from typing import Any
 
-RSI_STAGES = (
-    "evaluate",
-    "diagnose",
-    "hypothesize",
-    "experiment",
-    "select_evolve",
-)
+from scripts.orca_rsi_review_attestation import VerifiedIndependentReview
+
+RSI_STAGES = ("evaluate", "diagnose", "hypothesize", "experiment", "select_evolve")
 FINAL_RESULTS = {"PASS", "FAIL", "NO_CHANGE", "BLOCKED"}
 MAX_EVIDENCE_LENGTH = 2_000
 
@@ -37,15 +28,11 @@ def new_cycle(cycle_id: str) -> dict[str, Any]:
     }
 
 
-def record_stage(
-    cycle: Any,
-    *,
-    stage: str,
-    evidence: str,
-    result: str | None = None,
-) -> dict[str, Any]:
+def record_stage(cycle: Any, *, stage: str, evidence: str,
+                 result: str | None = None) -> dict[str, Any]:
     """Record exactly the next RSI stage and return a copied cycle."""
-    if not isinstance(cycle, dict) or cycle.get("schema_version") != 1:
+    if (not isinstance(cycle, dict) or type(cycle.get("schema_version")) is not int
+            or cycle["schema_version"] != 1):
         raise RSICycleRejected("cycle_missing_or_invalid")
     if cycle.get("result") is not None:
         raise RSICycleRejected("cycle_already_finalized")
@@ -56,18 +43,15 @@ def record_stage(
         raise RSICycleRejected("cycle_stage_history_invalid")
     if len(completed) >= len(RSI_STAGES):
         raise RSICycleRejected("cycle_already_complete")
-    expected = RSI_STAGES[len(completed)]
-    if stage != expected:
+    if stage != RSI_STAGES[len(completed)]:
         raise RSICycleRejected("rsi_stage_out_of_order")
     if not isinstance(evidence, str) or not evidence.strip() or len(evidence) > MAX_EVIDENCE_LENGTH:
         raise RSICycleRejected("rsi_stage_evidence_missing_or_invalid")
-
     if stage == "select_evolve":
         if result not in FINAL_RESULTS:
             raise RSICycleRejected("rsi_final_result_missing_or_invalid")
     elif result is not None:
         raise RSICycleRejected("rsi_result_only_allowed_at_select_evolve")
-
     updated = deepcopy(cycle)
     updated["completed_stages"].append(stage)
     updated["evidence"][stage] = evidence.strip()
@@ -84,12 +68,14 @@ def continuation_decision(
     emergency_stop: bool,
     budget_verified: bool,
     approval_verified: bool,
-    independent_review_pass: bool,
+    independent_review: VerifiedIndependentReview | None,
+    expected_commit_sha: str,
     kill_switch: bool,
 ) -> dict[str, Any]:
-    """Allow one bounded next cycle only when every independent gate passes."""
+    """Continue once only with a verified review bound to this cycle and commit."""
     reasons: list[str] = []
-    if not isinstance(cycle, dict) or cycle.get("schema_version") != 1:
+    valid_cycle = isinstance(cycle, dict) and type(cycle.get("schema_version")) is int and cycle["schema_version"] == 1
+    if not valid_cycle:
         reasons.append("cycle_missing_or_invalid")
     else:
         if not isinstance(cycle.get("cycle_id"), str) or not cycle["cycle_id"].strip():
@@ -103,13 +89,13 @@ def continuation_decision(
                 or any(not isinstance(evidence.get(stage), str) or not evidence[stage].strip()
                        for stage in RSI_STAGES)):
             reasons.append("rsi_evidence_incomplete")
+
     boolean_gates = {
         "queue_has_pending": queue_has_pending,
         "global_hold": global_hold,
         "emergency_stop": emergency_stop,
         "budget_verified": budget_verified,
         "approval_verified": approval_verified,
-        "independent_review_pass": independent_review_pass,
         "kill_switch": kill_switch,
     }
     if any(type(value) is not bool for value in boolean_gates.values()):
@@ -124,10 +110,21 @@ def continuation_decision(
         reasons.append("budget_evidence_missing_or_invalid")
     if approval_verified is not True:
         reasons.append("task_approval_missing_or_invalid")
-    if independent_review_pass is not True:
-        reasons.append("independent_review_not_pass")
     if kill_switch is not False:
         reasons.append("kill_switch_active")
+
+    if not isinstance(independent_review, VerifiedIndependentReview):
+        reasons.append("independent_review_not_verified")
+    elif valid_cycle:
+        if independent_review.cycle_id != cycle.get("cycle_id"):
+            reasons.append("independent_review_cycle_mismatch")
+        if independent_review.commit_sha != expected_commit_sha:
+            reasons.append("independent_review_commit_mismatch")
+        if independent_review.verdict != "PASS":
+            reasons.append("independent_review_not_pass")
+    if not isinstance(expected_commit_sha, str) or len(expected_commit_sha) != 40:
+        reasons.append("expected_commit_sha_invalid")
+
     return {
         "status": "PASS" if not reasons else "BLOCKED",
         "continue": not reasons,
