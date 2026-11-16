@@ -73,7 +73,7 @@ def _verify_approval(claim=None, **overrides):
     return verify_task_approval(claim or _approval(), **args)
 
 
-def _budget(evidence):
+def _budget(evidence, **overrides):
     refs = ["collector://bundle/42"]
     bundle = (
         len(refs[0].encode()).to_bytes(4, "big") + refs[0].encode()
@@ -99,6 +99,7 @@ def _budget(evidence):
         "issued_at": "2026-11-16T11:59:00Z",
         "expires_at": "2026-11-16T12:04:00Z",
     }
+    value.update(overrides)
     return _sign(value)
 
 
