@@ -6,6 +6,8 @@ import json
 import os
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -294,6 +296,68 @@ def _write_summary(
             fh.write(f"AUTONOMOUS_SUMMARY_PATH={summary_path}\n")
 
 
+
+def _consume_execution_approval(approval_evidence: dict[str, object], start_sha: str) -> dict[str, object]:
+    """Atomically consume a task-bound approval using a unique Git ref.
+
+    GitHub's create-ref endpoint rejects an existing ref, making the marker a
+    durable, repository-native single-use ledger without a database or new secret.
+    """
+    if approval_evidence.get("execution_authorized") is not True:
+        return {"gate": "BLOCKED", "reason_code": "approval_not_verified"}
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token:
+        return {"gate": "BLOCKED", "reason_code": "approval_ledger_token_missing"}
+
+    identity = {
+        "repository": "nonkun12/line-bot",
+        "actor": approval_evidence.get("actor", ""),
+        "task_id": approval_evidence.get("task_id", ""),
+        "instruction_sha256": approval_evidence.get("instruction_sha256", ""),
+        "base_sha": start_sha,
+    }
+    if not all(isinstance(value, str) and value for value in identity.values()):
+        return {"gate": "BLOCKED", "reason_code": "approval_ledger_identity_invalid"}
+    marker = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    ref = f"refs/heads/rsi-approval-consumed/{marker}"
+    request = urllib.request.Request(
+        "https://api.github.com/repos/nonkun12/line-bot/git/refs",
+        data=json.dumps({"ref": ref, "sha": start_sha}).encode("utf-8"),
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "line-bot-rsi-approval-gate",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            if (
+                response.status != 201
+                or payload.get("ref") != ref
+                or not isinstance(payload.get("object"), dict)
+                or payload["object"].get("sha") != start_sha
+            ):
+                return {"gate": "BLOCKED", "reason_code": "approval_ledger_response_invalid"}
+    except urllib.error.HTTPError as exc:
+        if exc.code == 422:
+            return {"gate": "BLOCKED", "reason_code": "approval_already_consumed"}
+        return {"gate": "BLOCKED", "reason_code": f"approval_ledger_http_{exc.code}"}
+    except Exception as exc:
+        return {"gate": "BLOCKED", "reason_code": f"approval_ledger_error:{type(exc).__name__}"}
+    return {
+        "gate": "PASS",
+        "reason_code": "approval_consumed_once",
+        "marker_ref": ref,
+        "marker_sha": start_sha,
+    }
+
+
 def main() -> int:
     # Each guarded task owns its own failure evidence; never inherit a stale code.
     os.environ.pop("AUTONOMOUS_FAILURE_CODE", None)
@@ -340,9 +404,16 @@ def main() -> int:
 
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
     approval_evidence = _verify_execution_approval(start_sha, instruction)
+    if approval_evidence.get("execution_authorized") is True:
+        consumption = _consume_execution_approval(approval_evidence, start_sha)
+        approval_evidence["consumption"] = consumption
+        if consumption.get("gate") != "PASS":
+            approval_evidence["execution_authorized"] = False
+            approval_evidence["gate"] = "BLOCKED"
+            approval_evidence["reason_code"] = str(consumption.get("reason_code", "approval_consumption_blocked"))
     if approval_evidence.get("execution_authorized") is not True:
         _write_summary("BLOCKED", 81, start_sha, summary_path, rea_evidence, approval_evidence)
-        print("EXECUTION_APPROVAL=BLOCKED reason=independent_approval_missing_or_invalid", flush=True)
+        print("EXECUTION_APPROVAL=BLOCKED reason=approval_missing_invalid_or_consumed", flush=True)
         return 81
 
     worker.ask = guarded_ask
