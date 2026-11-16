@@ -522,6 +522,12 @@ jobs:
           set -euo pipefail
           : > /tmp/minimal-autonomous-loop.jsonl
           STOP_FILE=/tmp/line-bot-autonomous-loop.stop
+          # Check before launching any task; unknown remote state is a hard stop.
+          python -c 'from core.emergency_stop import get_status; import os; raise SystemExit(1 if get_status(os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"), os.environ["GITHUB_TOKEN"]) else 0)' || {
+            touch "$STOP_FILE"
+            echo "EMERGENCY_STOP=ACTIVE_OR_UNVERIFIABLE; refusing to start task runner."
+            exit 1
+          }
 
           (
             while sleep 5; do
