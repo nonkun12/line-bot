@@ -109,3 +109,44 @@ def test_catalog_execution_approved_flag_never_becomes_human_execution_authority
     assert candidate["execution_approved"] is False
     assert candidate["human_execution_approval_required"] is True
     assert report["execution_authorized"] is False
+
+
+
+def test_read_object_rejects_duplicate_json_keys(tmp_path):
+    from pathlib import Path
+    from scripts.orca_rsi_preparation_loop import _read_object
+
+    source = tmp_path / "ambiguous.json"
+    source.write_text('{"version": 1, "version": 2}', encoding="utf-8")
+    try:
+        _read_object(source, "catalog")
+    except ValueError as exc:
+        assert str(exc) == "catalog_unreadable_or_ambiguous"
+    else:
+        raise AssertionError("duplicate JSON keys must be rejected")
+
+
+def test_task_digest_rejects_nonfinite_numbers():
+    task = {
+        "id": "nonfinite",
+        "instruction": "Reject NaN",
+        "allowed_paths": ["tests/test_example.py"],
+        "metadata": float("nan"),
+    }
+    try:
+        _task_digest(task)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("non-finite numbers must not enter signed task digests")
+
+
+def test_preparation_loop_blocks_duplicate_queued_task_ids():
+    state = _state()
+    state["tasks"] = [
+        {"task_id": "duplicate", "status": "queued"},
+        {"task_id": "duplicate", "status": "queued"},
+    ]
+    report = build_report(_catalog(), state)
+    assert report["status"] == "BLOCKED"
+    assert "orca_queue_duplicate_queued_task_id" in report["blockers"]
