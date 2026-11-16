@@ -1,6 +1,6 @@
 import pytest
 
-from core.rsi_executor import ExperimentPlan, RSIError, canonical_digest
+from core.rsi_executor import EvidenceLedger, ExperimentPlan, RSIError, canonical_digest
 from core.rsi_local_runner import (
     BenchmarkCase, LocalRSIExperimentRunner, benchmark_protocol_digest,
 )
@@ -29,7 +29,7 @@ def plan(candidate, protocol, cost=2, capability="model"):
     )
 
 
-def test_runner_executes_only_fixed_loopback_benchmark_cases():
+def test_runner_executes_only_fixed_loopback_benchmark_cases(tmp_path):
     candidate = "b" * 64
     cases = (
         BenchmarkCase("one", "say token A", "TOKEN-A"),
@@ -37,7 +37,7 @@ def test_runner_executes_only_fixed_loopback_benchmark_cases():
     )
     client = FakeLocalClient(["TOKEN-A", "wrong"])
     runner = LocalRSIExperimentRunner(
-        client, executor_id="local-runner", candidate_digest=candidate, cases=cases
+        client, executor_id="local-runner", candidate_digest=candidate, ledger=EvidenceLedger(tmp_path / "runner.sqlite"), cases=cases
     )
     result = runner(plan(candidate, benchmark_protocol_digest(cases)))
     assert runner.is_local is True
@@ -47,12 +47,12 @@ def test_runner_executes_only_fixed_loopback_benchmark_cases():
     assert len(result.result_digest) == len(result.evidence_digest) == 64
 
 
-def test_runner_rejects_unbound_candidate_or_protocol():
+def test_runner_rejects_unbound_candidate_or_protocol(tmp_path):
     candidate = "b" * 64
     cases = (BenchmarkCase("one", "say token A", "TOKEN-A"),)
     runner = LocalRSIExperimentRunner(
         FakeLocalClient(["TOKEN-A"]), executor_id="local-runner",
-        candidate_digest=candidate, cases=cases,
+        candidate_digest=candidate, ledger=EvidenceLedger(tmp_path / "runner2.sqlite"), cases=cases,
     )
     with pytest.raises(RSIError, match="candidate digest"):
         runner(plan("c" * 64, runner.protocol_digest, cost=1))
@@ -60,19 +60,19 @@ def test_runner_rejects_unbound_candidate_or_protocol():
         runner(plan(candidate, "d" * 64, cost=1))
 
 
-def test_runner_rejects_unbounded_or_wrong_capability_plan():
+def test_runner_rejects_unbounded_or_wrong_capability_plan(tmp_path):
     candidate = "b" * 64
     cases = (BenchmarkCase("one", "say token A", "TOKEN-A"),)
     runner = LocalRSIExperimentRunner(
         FakeLocalClient(["TOKEN-A"]), executor_id="local-runner",
-        candidate_digest=candidate, cases=cases,
+        candidate_digest=candidate, ledger=EvidenceLedger(tmp_path / "runner3.sqlite"), cases=cases,
     )
     with pytest.raises(RSIError, match="only supports model"):
         runner(plan(candidate, runner.protocol_digest, cost=1, capability="evaluator"))
     with pytest.raises(ValueError, match="1..4"):
         LocalRSIExperimentRunner(
             FakeLocalClient([]), executor_id="local-runner",
-            candidate_digest=candidate, cases=tuple(
+            candidate_digest=candidate, ledger=EvidenceLedger(tmp_path / "runner4.sqlite"), cases=tuple(
                 BenchmarkCase(str(i), "prompt", "expected") for i in range(5)
             ),
         )
