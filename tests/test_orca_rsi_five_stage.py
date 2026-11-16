@@ -34,6 +34,7 @@ class FakeCASStore:
             "emergency_stop": False, "tasks": [{"task_id": "task-1", "status": "queued"}],
             "active_lease": None,
             "consumed_approval_ids": [],
+            "rsi_review_replay": {"used_nonces": [], "used_attestation_hashes": []},
         })
         self.writes = 0
         self.conflict = False
@@ -196,3 +197,13 @@ def test_cas_conflict_fails_closed_without_retry():
     assert decision["continue"] is False
     assert any("review_replay_persistence_failed" in reason for reason in decision["reasons"])
     assert store.writes == 1
+
+
+def test_missing_review_replay_ledger_fails_closed_without_initializing_it():
+    store, gates = _gates()
+    del store.snapshot.state["rsi_review_replay"]
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert any("review_replay_ledger_missing" in reason for reason in decision["reasons"])
+    assert store.writes == 0
+    assert "rsi_review_replay" not in store.snapshot.state
