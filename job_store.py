@@ -7,7 +7,15 @@ independent from SQL details so the storage can later move to Postgres.
 import db
 
 
-def create_job(user_id, message, job_type="ai_task", source="line", parent_job_id=None, max_retries=3):
+def create_job(
+    user_id,
+    message,
+    job_type="ai_task",
+    source="line",
+    parent_job_id=None,
+    max_retries=3,
+    idempotency_key=None,
+):
     return db.create_job(
         user_id=user_id,
         message=message,
@@ -15,6 +23,7 @@ def create_job(user_id, message, job_type="ai_task", source="line", parent_job_i
         source=source,
         parent_job_id=parent_job_id,
         max_retries=max_retries,
+        idempotency_key=idempotency_key,
     )
 
 
