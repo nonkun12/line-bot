@@ -50,12 +50,12 @@ bridge before any evolutionary merge experiment can be dispatched.
 
 ## Validation status
 
-GitHub Actions validation for commit `57f0878` completed successfully:
+GitHub Actions validation for commit `58b6c14` completed successfully:
 Python syntax scan, the full Pytest workflow, and the repository's free
 deterministic-loop workflow all reported success. The deterministic-loop
-workflow had an empty task queue and executed no RSI task. The local-model
-advisory adapter and its tests were added afterward and require their own CI
-run before they are considered validated.
+workflow had an empty task queue and executed no RSI task. The AI Code Review
+workflow also completed, but that workflow only checks out the repository and
+prints the diff; it is not a substantive independent code review.
 
 Live Ollama execution, a trusted budget source, a concrete experiment runner,
 a signed independent-evaluator adapter, and runtime control-plane wiring are
