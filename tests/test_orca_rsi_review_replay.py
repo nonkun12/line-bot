@@ -71,7 +71,8 @@ def _consume(store, snapshot=None, attestation=None, nonce=NONCE):
         store=store, snapshot=snapshot or store.snapshot,
         attestation=attestation or _attestation(), public_key_pem=PUBLIC,
         repository="nonkun12/line-bot", cycle_id=CYCLE, commit_sha=COMMIT,
-        expected_nonce=nonce, allowed_reviewers=["trusted-reviewer"], now=NOW,
+        expected_nonce=nonce, allowed_reviewers=["trusted-reviewer"],
+        implementer_id="worker-author", now=NOW,
     )
 
 
@@ -140,4 +141,21 @@ def test_ledger_limit_fails_closed_without_pruning_history():
     }
     with pytest.raises(ReviewReplayStateRejected, match="review_replay_ledger_full|review_replay_ledger_inconsistent_or_full"):
         _consume(store)
+    assert store.writes == 0
+
+
+
+def test_reviewer_cannot_be_the_implementer():
+    store = FakeCASStore()
+    with pytest.raises(
+        ReviewReplayStateRejected,
+        match="reviewer_must_be_independent_of_implementer",
+    ):
+        verify_and_consume_review_once(
+            store=store, snapshot=store.snapshot, attestation=_attestation(),
+            public_key_pem=PUBLIC, repository="nonkun12/line-bot",
+            cycle_id=CYCLE, commit_sha=COMMIT, expected_nonce=NONCE,
+            allowed_reviewers=["trusted-reviewer"],
+            implementer_id="trusted-reviewer", now=NOW,
+        )
     assert store.writes == 0
