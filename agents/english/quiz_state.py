@@ -36,7 +36,7 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
-def _user_key(user_id: str) -> str:
+def _user_key(user_id: str | None) -> str:
     return str(user_id or "anonymous").strip()[:200] or "anonymous"
 
 
