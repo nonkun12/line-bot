@@ -158,7 +158,7 @@ def test_task_approval_rejects_expired_claim():
 
 def test_task_approval_rejects_tampering_and_unknown_fields():
     claim = _approval()
-    claim["task_id"] = "forged-task"
+    claim["nonce"] = "f" * 32
     with pytest.raises(TrustClaimRejected, match="claim_signature_invalid"):
         _verify_approval(claim)
     claim = _approval()
