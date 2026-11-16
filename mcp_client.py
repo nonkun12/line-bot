@@ -449,7 +449,7 @@ def diagnose_mcp_connection(timeout=12.0):
             timeout=request_timeout,
             follow_redirects=False,
         )
-        result["mcp_auth"] = "PASS" if tools_response.status_code != 401 else "FAIL (401)"
+        result["mcp_auth"] = "PASS" if tools_response.status_code == 200 else f"FAIL ({tools_response.status_code})"
         tools_body = tools_response.json() if tools_response.status_code == 200 else {}
         tools = tools_body.get("result", {}).get("tools", []) if isinstance(tools_body, dict) else []
         if tools_response.status_code == 200 and isinstance(tools, list) and "error" not in tools_body:
@@ -458,7 +458,7 @@ def diagnose_mcp_connection(timeout=12.0):
         else:
             result["tools_list"] = f"FAIL ({tools_response.status_code})"
         tools_response.close()
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
         # Never return exception text, response bodies, URLs, or credentials to LINE.
         pass
     return _finish_mcp_diagnostic(result, started)
