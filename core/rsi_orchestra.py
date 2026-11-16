@@ -7,7 +7,8 @@ execution, merge, deployment, HOLD release, or model activation.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import uuid
 import re
 from typing import Callable, Mapping
 
@@ -51,6 +52,7 @@ class REAReview:
     patch_authorized: bool = False
     merge_deploy_authorized: bool = False
     hold_clear_authorized: bool = False
+    evidence_event_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -81,6 +83,44 @@ def _validate_evidence(evidence: object) -> Mapping[str, object]:
     if not isinstance(evidence_ref, str) or not evidence_ref.strip() or len(evidence_ref) > 512:
         raise RSIError("REA evidence reference is required")
     return evidence
+
+
+def _persist_review(executor: RSIExecutor, review: REAReview) -> REAReview:
+    """Persist a digest-only review record; ledger failure converts it to BLOCKED."""
+    try:
+        ledger = executor.ledger
+        if ledger.verify() is not True:
+            raise RSIError("RSI evidence ledger integrity check failed")
+        event_id = "orchestra-rea:" + uuid.uuid4().hex
+        evaluation = review.evaluation
+        payload = {
+            "task_id": review.handoff.task_id,
+            "repository": review.handoff.repository,
+            "head_sha": review.handoff.head_sha,
+            "experiment_id": review.handoff.experiment_id,
+            "plan_digest": review.handoff.plan_digest,
+            "candidate_digest": review.handoff.candidate_digest,
+            "evidence_digest": review.handoff.evidence_digest,
+            "status": review.status,
+            "reason_code": review.reason_code,
+            "candidate_id": review.candidate.candidate_id if review.candidate else None,
+            "critic_decision": evaluation.passed if evaluation else None,
+            "critic_score": evaluation.score if evaluation else None,
+            "critic_feedback_digest": canonical_digest(evaluation.feedback) if evaluation else None,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "merge_deploy_authorized": False,
+            "hold_clear_authorized": False,
+        }
+        ledger.append(event_id, "orchestra_rea_review", payload)
+        if ledger.verify() is not True:
+            raise RSIError("RSI evidence ledger failed post-append verification")
+        return replace(review, evidence_event_id=event_id)
+    except Exception:
+        return replace(
+            review, status="BLOCKED", reason_code="review_evidence_persistence_failed",
+            evidence_event_id=None,
+        )
 
 
 def run_orchestra_rsi_batch(
@@ -169,10 +209,10 @@ def run_orchestra_rsi_batch(
                 "evidence_digest": evidence_digest,
             }
             if verify_evidence(measured, binding) is not True:
-                reviews.append(REAReview(
+                reviews.append(_persist_review(executor, REAReview(
                     REAHandoff(**binding), candidate, None, "BLOCKED",
                     "evidence_verification_failed",
-                ))
+                )))
                 continue
             critic_input = {**dict(measured), **binding}
             evaluation = critic.evaluate(candidate, critic_input)
@@ -180,15 +220,15 @@ def run_orchestra_rsi_batch(
                 evaluation.candidate_id != candidate.candidate_id
                 or any(evaluation.evidence.get(key) != value for key, value in critic_input.items())
             ):
-                reviews.append(REAReview(
+                reviews.append(_persist_review(executor, REAReview(
                     REAHandoff(**binding), candidate, None, "BLOCKED",
                     "critic_binding_mismatch",
-                ))
+                )))
                 continue
-            reviews.append(REAReview(
+            reviews.append(_persist_review(executor, REAReview(
                 REAHandoff(**binding), candidate, evaluation,
                 "PASS" if evaluation.passed else "FAIL",
-            ))
+            )))
         except Exception as exc:
             # Keep diagnostics non-sensitive and never turn adapter failure into PASS.
             fallback_candidate_digest = (
@@ -205,10 +245,10 @@ def run_orchestra_rsi_batch(
                 "candidate_digest": fallback_candidate_digest,
                 "evidence_digest": "0" * 64,
             }
-            reviews.append(REAReview(
+            reviews.append(_persist_review(executor, REAReview(
                 REAHandoff(**binding), candidate, None, "BLOCKED",
                 "rea_adapter_" + type(exc).__name__,
-            ))
+            )))
 
     if not batch.cycles:
         status = "NO_WORK"
