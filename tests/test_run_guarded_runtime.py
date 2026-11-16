@@ -298,3 +298,74 @@ def test_common_runtime_blocks_without_independent_approval_even_if_env_claims_a
     assert summary["exit_code"] == 81
     assert summary["execution_approval"]["gate"] == "BLOCKED"
     assert summary["execution_approval"]["execution_authorized"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("sender", {"login": "someone-else"}),
+        ("repository", {"full_name": "someone-else/line-bot"}),
+        ("approval_task_id", "different-task"),
+        ("approval_instruction_sha256", "0" * 64),
+        ("approval_base_sha", "d" * 40),
+    ],
+)
+def test_execution_approval_rejects_mismatched_binding(tmp_path, monkeypatch, field, value):
+    instruction = "bound task instruction"
+    base_sha = "e" * 40
+    event = {
+        "sender": {"login": "nonkun12"},
+        "repository": {"full_name": "nonkun12/line-bot"},
+        "inputs": {
+            "execution_approval": "APPROVE_EXECUTION",
+            "approval_task_id": "bound-task",
+            "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
+            "approval_base_sha": base_sha,
+        },
+    }
+    if field in {"sender", "repository"}:
+        event[field] = value
+    else:
+        event["inputs"][field] = value
+    event_path = tmp_path / "event.json"
+    event_path.write_text(json.dumps(event), encoding="utf-8")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "bound-task")
+
+    evidence = guarded_runtime._verify_execution_approval(base_sha, instruction)
+
+    assert evidence["gate"] == "BLOCKED"
+    assert evidence["execution_authorized"] is False
+
+
+def test_execution_approval_rejects_actor_environment_mismatch(tmp_path, monkeypatch):
+    instruction = "bound task instruction"
+    base_sha = "f" * 40
+    event_path = tmp_path / "event.json"
+    event_path.write_text(
+        json.dumps({
+            "sender": {"login": "nonkun12"},
+            "repository": {"full_name": "nonkun12/line-bot"},
+            "inputs": {
+                "execution_approval": "APPROVE_EXECUTION",
+                "approval_task_id": "bound-task",
+                "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
+                "approval_base_sha": base_sha,
+            },
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    monkeypatch.setenv("GITHUB_ACTOR", "someone-else")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "bound-task")
+
+    evidence = guarded_runtime._verify_execution_approval(base_sha, instruction)
+
+    assert evidence["gate"] == "BLOCKED"
+    assert evidence["execution_authorized"] is False
+
