@@ -28,6 +28,7 @@ class LocalRSIIndependentEvaluator:
         ledger: EvidenceLedger,
         baseline: FrozenBaseline,
         verify_baseline_signature: Callable[[str, str], bool],
+        verify_evidence_signature: Callable[[str, str], bool],
         sign_digest: Callable[[str], str],
         clock: Callable[[], float] = time.time,
     ) -> None:
@@ -38,13 +39,14 @@ class LocalRSIIndependentEvaluator:
             raise TypeError("verified evidence ledger is required")
         if not isinstance(baseline, FrozenBaseline):
             raise TypeError("signed frozen baseline is required")
-        if not callable(verify_baseline_signature) or not callable(sign_digest) or not callable(clock):
+        if not callable(verify_baseline_signature) or not callable(verify_evidence_signature) or not callable(sign_digest) or not callable(clock):
             raise TypeError("baseline verifier, evaluator signer, and clock are required")
         self._client = client
         self.evaluator_id = evaluator_id
         self._ledger = ledger
         self._baseline = baseline
         self._verify_baseline_signature = verify_baseline_signature
+        self._verify_evidence_signature = verify_evidence_signature
         self._clock = clock
         self._sign_digest = sign_digest
 
@@ -73,6 +75,14 @@ class LocalRSIIndependentEvaluator:
         )
         if event_digest != result.evidence_digest:
             raise RSIError("result does not bind to immutable benchmark evidence")
+        if evidence.get("producer_id") != result.executor_id:
+            raise RSIError("benchmark evidence producer identity mismatch")
+        producer_signature = evidence.get("producer_signature")
+        producer_payload = dict(evidence)
+        producer_payload.pop("producer_signature", None)
+        if (not isinstance(producer_signature, str) or not producer_signature.strip()
+                or not self._verify_evidence_signature(canonical_digest(producer_payload), producer_signature)):
+            raise RSIError("benchmark evidence producer signature verification failed")
         if (evidence.get("experiment_id") != plan.experiment_id
                 or evidence.get("candidate_digest") != plan.candidate_digest
                 or evidence.get("protocol_digest") != plan.protocol_digest):
