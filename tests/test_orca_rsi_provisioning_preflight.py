@@ -49,9 +49,9 @@ def _state():
     return {
         "schema_version": 1,
         "revision": 7,
-        "global_hold": True,
-        "emergency_stop": True,
-        "tasks": [],
+        "global_hold": False,
+        "emergency_stop": False,
+        "tasks": [{"task_id": "preflight-task", "status": "queued"}],
         "active_lease": None,
         "rsi_review_replay": dict(empty),
         "rsi_task_approval_replay": dict(empty),
@@ -66,6 +66,26 @@ def test_preflight_passes_with_distinct_trust_domains_and_preprovisioned_ledgers
     assert report["worker_started"] is False
     assert report["production_execution_authorized"] is False
     assert store.reads == 1
+    assert store.writes == 0
+
+
+def test_preflight_blocks_global_hold_without_writing_state():
+    state = _state()
+    state["global_hold"] = True
+    store = ReadOnlyStateStore(state)
+    report = run_preflight(_env(), store)
+    assert report["status"] == "BLOCKED"
+    assert "global_hold_active" in report["blockers"]
+    assert store.writes == 0
+
+
+def test_preflight_blocks_when_queue_is_empty():
+    state = _state()
+    state["tasks"] = []
+    store = ReadOnlyStateStore(state)
+    report = run_preflight(_env(), store)
+    assert report["status"] == "BLOCKED"
+    assert "queued_task_count_not_exactly_one" in report["blockers"]
     assert store.writes == 0
 
 
