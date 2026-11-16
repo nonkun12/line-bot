@@ -89,6 +89,7 @@ def verify_independent_review(
     used_attestation_hashes: Iterable[str],
     now: datetime,
     allowed_reviewers: Iterable[str],
+    implementer_id: str,
 ) -> VerifiedIndependentReview:
     """Verify a fresh Ed25519 PASS attestation and reject previously used hashes."""
     if not isinstance(attestation, dict):
@@ -128,6 +129,10 @@ def verify_independent_review(
         raise ReviewAttestationRejected("reviewer_not_allowlisted")
     if attestation.get("verdict") != "PASS":
         raise ReviewAttestationRejected("independent_review_not_pass")
+    if not isinstance(implementer_id, str) or not implementer_id.strip():
+        raise ReviewAttestationRejected("review_implementer_identity_missing")
+    if reviewer == implementer_id:
+        raise ReviewAttestationRejected("reviewer_must_be_independent_of_implementer")
 
     refs = attestation.get("evidence_refs")
     if (not isinstance(refs, list) or not refs
