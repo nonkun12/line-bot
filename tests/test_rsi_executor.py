@@ -1,4 +1,5 @@
 import sqlite3
+from dataclasses import replace
 
 import pytest
 
@@ -8,6 +9,16 @@ from core.rsi_executor import (
 )
 
 H = "a" * 64
+
+
+class FreeLocalRunner:
+    is_local = True
+    paid_fallback_enabled = False
+
+    def __call__(self, plan):
+        result_digest = canonical_digest({"experiment": plan.experiment_id, "score": 0.9})
+        return ExperimentResult(plan.experiment_id, "local-executor", result_digest,
+                                {"quality": 0.9}, "f" * 64)
 
 
 def make_executor(tmp_path, *, execution_enabled=False, hold=False, budget_known=True, paid=False):
@@ -80,19 +91,14 @@ def test_approved_local_execution_and_independent_evaluation(tmp_path):
     executor, ledger = make_executor(tmp_path, execution_enabled=True)
     plan = sample_plan(executor)
     approval = HumanApproval("human-1", plan.plan_digest, "nonce-2", "valid")
-    result_digest = canonical_digest({"experiment": plan.experiment_id, "score": 0.9})
-    result = executor.execute_approved(
-        plan, approval,
-        lambda p: ExperimentResult(p.experiment_id, "local-executor", result_digest,
-                                   {"quality": 0.9}, "f" * 64),
-    )
+    result = executor.execute_approved(plan, approval, FreeLocalRunner())
     evaluation = IndependentEvaluation(
         plan.experiment_id, result.result_digest, "independent-evaluator", "IMPROVED",
         "reproduced on frozen holdout", "1" * 64, "valid",
     )
     assert executor.evaluate(result, evaluation).decision == "IMPROVED"
     with pytest.raises(RSIError, match="duplicate evidence"):
-        executor.execute_approved(plan, approval, lambda p: pytest.fail("replayed approval invoked runner"))
+        executor.execute_approved(plan, approval, FreeLocalRunner())
     assert ledger.verify()
 
 
@@ -128,3 +134,12 @@ def test_duplicate_observation_and_bad_digest_are_rejected(tmp_path):
     bad = Observation("bad", "not-a-digest", "model", "FAIL", "x", 1)
     with pytest.raises(RSIError, match="SHA-256"):
         executor.observe((bad,))
+
+
+
+def test_plan_digest_prevents_priority_tampering(tmp_path):
+    executor, _ = make_executor(tmp_path)
+    plan = sample_plan(executor)
+    altered = replace(plan, information_value=1.0)
+    with pytest.raises(RSIError, match="digest mismatch"):
+        executor.select_next((altered,))
