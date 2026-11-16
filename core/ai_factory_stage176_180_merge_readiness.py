@@ -150,7 +150,7 @@ class ReproducibilityReport:
 class Stage177ReproducibilityVerifier:
     """Verifies repeated independent attestations; does not rerun models."""
     def build(self,manifest:MergeArtifactManifest,runs:Sequence[ReproductionRun],*,
-              verify_signature:Callable[[ReproductionRun],bool],hold_active:bool=False,
+              verify_signature:Callable[[ReproductionRun],bool],sign_report:Callable[[str],str],hold_active:bool=False,
               minimum_runs:int=2,maximum_runs:int=8)->ReproducibilityReport:
         if hold_active: raise MergeReadinessError("HOLD blocks Stage 177")
         if not manifest.proposal_only or manifest.weight_mutation_authorized or manifest.generation_advance_authorized:
@@ -181,9 +181,12 @@ class Stage177ReproducibilityVerifier:
         payload={"manifest":manifest.digest,"runs":sorted(x.run_id for x in runs),
                  "evaluators":sorted(x.evaluator_id for x in runs),"executors":sorted(x.executor_id for x in runs),
                  "result":runs[0].result_digest,"metrics":runs[0].metrics_digest}
+        report_digest=_digest(payload)
+        signature=sign_report(report_digest)
+        if not isinstance(signature,str) or not signature.strip(): raise MergeReadinessError("reproducibility report signing failed")
         return ReproducibilityReport(manifest.digest,tuple(sorted(x.run_id for x in runs)),
             tuple(sorted(x.evaluator_id for x in runs)),tuple(sorted(x.executor_id for x in runs)),
-            runs[0].result_digest,runs[0].metrics_digest,_digest(payload))
+            runs[0].result_digest,runs[0].metrics_digest,report_digest,signature)
 
 @dataclass(frozen=True)
 class LocalResourceEstimate:
@@ -262,7 +265,7 @@ class HoldoutRobustnessReport:
 class Stage179HoldoutRobustnessGate:
     """Requires clean, independent holdout/adversarial evidence."""
     def build(self,manifest:MergeArtifactManifest,evidence:Sequence[HoldoutEvidence],*,
-              verify_signature:Callable[[HoldoutEvidence],bool],hold_active:bool=False,
+              verify_signature:Callable[[HoldoutEvidence],bool],sign_report:Callable[[str],str],hold_active:bool=False,
               minimum_evaluators:int=2,minimum_coverage:float=0.95)->HoldoutRobustnessReport:
         if hold_active: raise MergeReadinessError("HOLD blocks Stage 179")
         _verify_manifest(manifest)
@@ -288,8 +291,11 @@ class Stage179HoldoutRobustnessGate:
         ds=tuple(sorted(_digest(x.__dict__) for x in evidence))
         payload={"manifest":manifest.digest,"evidence":ds,"evaluators":sorted(evaluators),
                  "dataset":next(iter(datasets)),"adversarial":next(iter(adversarial)),"passed":passed}
+        report_digest=_digest(payload)
+        signature=sign_report(report_digest)
+        if not isinstance(signature,str) or not signature.strip(): raise MergeReadinessError("holdout report signing failed")
         return HoldoutRobustnessReport(manifest.digest,ds,tuple(sorted(evaluators)),next(iter(datasets)),
-            next(iter(adversarial)),passed,_digest(payload))
+            next(iter(adversarial)),passed,report_digest,signature)
 
 @dataclass(frozen=True)
 class MergeReadinessCertificate:
@@ -314,6 +320,8 @@ class Stage180HumanApprovalPackager:
     """Packages evidence for a human decision; cannot issue or simulate approval."""
     def build(self,manifest:MergeArtifactManifest,reproduction:ReproducibilityReport,
               resources:ResourceFeasibilityReport,holdout:HoldoutRobustnessReport,*,
+              verify_reproducibility_signature:Callable[[ReproducibilityReport],bool],
+              verify_holdout_signature:Callable[[HoldoutRobustnessReport],bool],
               hold_active:bool=False)->MergeReadinessCertificate:
         if hold_active: raise MergeReadinessError("HOLD blocks Stage 180")
         if not manifest.proposal_only or any((manifest.weight_mutation_authorized,
@@ -325,6 +333,10 @@ class Stage180HumanApprovalPackager:
         _verify_reproduction_report(reproduction)
         _verify_resource_report(resources)
         _verify_holdout_report(holdout)
+        if not reproduction.signature or not verify_reproducibility_signature(reproduction):
+            raise MergeReadinessError("reproducibility report signature verification failed")
+        if not holdout.signature or not verify_holdout_signature(holdout):
+            raise MergeReadinessError("holdout report signature verification failed")
         for value,label in ((reproduction.digest,"reproducibility report"),(resources.digest,"resource report"),(holdout.digest,"holdout report")):
             _check_digest(value,label)
         if reproduction.manifest_digest!=manifest.digest or holdout.manifest_digest!=manifest.digest:
