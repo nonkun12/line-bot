@@ -132,6 +132,9 @@ class IndependentEvaluation:
 
 
 class LocalRunner(Protocol):
+    is_local: bool
+    paid_fallback_enabled: bool
+
     def __call__(self, plan: ExperimentPlan) -> ExperimentResult: ...
 
 
@@ -366,8 +369,9 @@ class RSIExecutor:
                 "protocol": plan.protocol_digest, "cost": plan.expected_cost_units,
                 "risk": plan.risk, "information_value": plan.information_value}) != plan.plan_digest):
             raise RSIError("experiment plan digest mismatch")
-        if not callable(runner):
-            raise RSIError("local runner is unavailable")
+        if (not callable(runner) or getattr(runner, "is_local", False) is not True
+            or getattr(runner, "paid_fallback_enabled", True) is not False):
+            raise RSIError("verified FREE local runner is unavailable")
         _bounded_id(approval.approver_id, "approver id")
         _bounded_id(approval.nonce, "approval nonce")
         if approval.experiment_digest != plan.plan_digest or not approval.signature:
