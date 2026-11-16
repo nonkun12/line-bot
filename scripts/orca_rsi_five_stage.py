@@ -67,9 +67,6 @@ def record_stage(cycle: Any, *, stage: str, evidence: str,
 def continuation_decision(
     cycle: Any,
     *,
-    queue_has_pending: bool,
-    global_hold: bool,
-    emergency_stop: bool,
     budget_verified: bool,
     approval_verified: bool,
     independent_review_attestation: Any,
@@ -109,22 +106,30 @@ def continuation_decision(
                        for stage in RSI_STAGES)):
             reasons.append("rsi_evidence_incomplete")
 
+    persisted_state = getattr(replay_snapshot, "state", None)
+    if not isinstance(persisted_state, dict):
+        reasons.append("replay_state_snapshot_missing")
+    else:
+        if persisted_state.get("global_hold") is not False:
+            reasons.append("global_hold_active")
+        if persisted_state.get("emergency_stop") is not False:
+            reasons.append("emergency_stop_active")
+        tasks = persisted_state.get("tasks")
+        if not isinstance(tasks, list):
+            reasons.append("persisted_queue_invalid")
+        elif not any(isinstance(task, dict) and task.get("status") == "queued"
+                     for task in tasks):
+            reasons.append("queue_empty")
+        if persisted_state.get("active_lease") is not None:
+            reasons.append("worker_lease_already_active")
+
     boolean_gates = {
-        "queue_has_pending": queue_has_pending,
-        "global_hold": global_hold,
-        "emergency_stop": emergency_stop,
         "budget_verified": budget_verified,
         "approval_verified": approval_verified,
         "kill_switch": kill_switch,
     }
     if any(type(value) is not bool for value in boolean_gates.values()):
         reasons.append("gate_input_not_boolean")
-    if queue_has_pending is not True:
-        reasons.append("queue_empty")
-    if global_hold is not False:
-        reasons.append("global_hold_active")
-    if emergency_stop is not False:
-        reasons.append("emergency_stop_active")
     if budget_verified is not True:
         reasons.append("budget_evidence_missing_or_invalid")
     if approval_verified is not True:
