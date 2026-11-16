@@ -417,10 +417,10 @@ class RSIExecutor:
         for item in observations:
             _bounded_id(item.observation_id, "observation id")
             _digest(item.evidence_digest, "observation evidence")
-            _bounded_id(item.evidence_event_id, "source evidence event id")
             if item.observation_id in seen:
                 raise RSIError("duplicate observation")
             seen.add(item.observation_id)
+            _bounded_id(item.evidence_event_id, "source evidence event id")
             if item.capability not in {"model", "evaluator", "experiment_design"}:
                 raise RSIError("unknown RSI capability")
             if item.outcome not in {"PASS", "FAIL", "REGRESSED", "INCONCLUSIVE"}:
