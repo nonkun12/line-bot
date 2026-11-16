@@ -55,6 +55,7 @@ from mcp_client import (
     parse_mcp_json_list as _parse_mcp_json_list_impl,
     diagnose_mcp_connection,
 )
+from mcp_diagnostic_runner import start_mcp_diagnostic
 from ai_client import (
     generate_chat_completion,
     generate_secretary_report,
@@ -362,16 +363,16 @@ def _handle_ai_gateway_request(ai_request):
         }
         if not allowed_ids or user_id not in allowed_ids:
             return "MCP診断は許可された管理者アカウントからのみ実行できます。"
-        report = diagnose_mcp_connection()
+        started = start_mcp_diagnostic(
+            user_id,
+            diagnose_fn=diagnose_mcp_connection,
+            push_fn=_line_push,
+        )
+        if not started:
+            return "MCP診断はすでに実行中です。完了結果をこのLINEに通知します。"
         return (
-            "MCP接続診断（読み取り専用）\n"
-            f"HTTP health: {report['health']}\n"
-            f"Database ready: {report['ready']}\n"
-            f"MCP認証: {report['mcp_auth']}\n"
-            f"tools/list: {report['tools_list']}\n"
-            f"ツール数: {report['tool_count']}\n"
-            f"所要時間: {report['elapsed_ms']} ms\n"
-            f"総合判定: {report['status']}"
+            "MCP診断をバックグラウンドで開始しました（読み取り専用）。\n"
+            "Webhookは待機せず、診断結果をこのLINEに別メッセージで通知します。"
         )
 
     # Report deployment configuration deterministically; never ask the chat model
