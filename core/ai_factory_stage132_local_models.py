@@ -70,6 +70,9 @@ class OllamaLoopbackClient:
     """Small, synchronous Ollama /api/chat client with no proxy or tool support."""
 
     def __init__(self, config: LocalModelConfig) -> None:
+        self.config = config
+        self._opener = build_opener(ProxyHandler({}))
+
     def verify_model_digest(self, expected_digest: str) -> bool:
         """Verify the configured model tag resolves to the exact expected Ollama digest."""
         if (
@@ -104,9 +107,6 @@ class OllamaLoopbackClient:
         if len(matches) != 1 or matches[0].get("digest") != expected_digest:
             raise ValueError("configured Ollama model does not match the approved candidate digest")
         return True
-
-        self.config = config
-        self._opener = build_opener(ProxyHandler({}))
 
     def chat(self, *, system: str, prompt: str) -> str:
         if not isinstance(system, str) or not isinstance(prompt, str):
