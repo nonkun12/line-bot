@@ -1,6 +1,7 @@
 """Run the common bounded development runtime with a guarded JSON-only LLM adapter."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -117,6 +118,59 @@ def _git(*args: str) -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
+def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, object]:
+    """Verify a task-bound approval from an authenticated GitHub workflow_dispatch event.
+
+    Repository variables, catalog flags, and ordinary environment variables are
+    deliberately not accepted as proof of human approval.
+    """
+    blocked = {
+        "gate": "BLOCKED",
+        "reason_code": "independent_execution_approval_missing_or_invalid",
+        "execution_authorized": False,
+    }
+    if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+        return blocked
+    event_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
+    if not event_path:
+        return blocked
+    try:
+        event = json.loads(Path(event_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return blocked
+    sender = event.get("sender") if isinstance(event, dict) else None
+    repository = event.get("repository") if isinstance(event, dict) else None
+    inputs = event.get("inputs") if isinstance(event, dict) else None
+    if not isinstance(sender, dict) or not isinstance(repository, dict) or not isinstance(inputs, dict):
+        return blocked
+    actor = str(sender.get("login", ""))
+    repo_name = str(repository.get("full_name", ""))
+    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
+    if (
+        actor != "nonkun12"
+        or os.environ.get("GITHUB_ACTOR", "") != actor
+        or repo_name != "nonkun12/line-bot"
+        or os.environ.get("GITHUB_REPOSITORY", "") != repo_name
+        or not task_id
+        or str(inputs.get("execution_approval", "")) != "APPROVE_EXECUTION"
+        or str(inputs.get("approval_task_id", "")) != task_id
+        or str(inputs.get("approval_instruction_sha256", "")).lower() != instruction_digest
+        or str(inputs.get("approval_base_sha", "")) != start_sha
+    ):
+        return blocked
+    return {
+        "gate": "PASS",
+        "reason_code": "authenticated_workflow_dispatch_approval",
+        "execution_authorized": True,
+        "scope": "execution",
+        "actor": actor,
+        "task_id": task_id,
+        "instruction_sha256": instruction_digest,
+        "base_sha": start_sha,
+    }
+
+
 def _augment_instruction_with_history(instruction: str, history_path: Path) -> str:
     """Append bounded, explicitly untrusted recurring-failure evidence to the next run."""
     try:
@@ -204,6 +258,7 @@ def _write_summary(
     start_sha: str,
     summary_path: Path,
     rea_evidence: dict[str, object] | None = None,
+    approval_evidence: dict[str, object] | None = None,
 ) -> None:
     produced_sha = _git("rev-parse", "HEAD")
     branch = _git("branch", "--show-current")
@@ -220,6 +275,8 @@ def _write_summary(
     }
     if rea_evidence is not None:
         payload["rea"] = rea_evidence
+    if approval_evidence is not None:
+        payload["execution_approval"] = approval_evidence
     failure_code = extract_safe_failure_code(os.environ.get("AUTONOMOUS_FAILURE_CODE", ""))
     if failure_code is not None:
         payload["failure_code"] = failure_code
@@ -277,9 +334,15 @@ def main() -> int:
         )
         return 80
 
+    instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
+    approval_evidence = _verify_execution_approval(start_sha, instruction)
+    if approval_evidence.get("execution_authorized") is not True:
+        _write_summary("BLOCKED", 81, start_sha, summary_path, rea_evidence, approval_evidence)
+        print("EXECUTION_APPROVAL=BLOCKED reason=independent_approval_missing_or_invalid", flush=True)
+        return 81
+
     worker.ask = guarded_ask
     worker.ask_text = guarded_ask_text
-    instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
     history_path = Path(os.environ.get("SELF_IMPROVEMENT_HISTORY_PATH", "/tmp/line-bot-self-improvement.jsonl"))
     instruction = _augment_instruction_with_history(instruction, history_path)
     instruction = _augment_with_hermes_advice(instruction, history_path)
