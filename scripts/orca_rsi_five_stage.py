@@ -159,6 +159,11 @@ def continuation_decision(
     if not isinstance(state, dict):
         reasons.append("replay_state_snapshot_missing")
     else:
+        if type(state.get("schema_version")) is not int or state.get("schema_version") != 1:
+            reasons.append("persisted_state_schema_invalid")
+        revision = state.get("revision")
+        if type(revision) is not int or revision < 0:
+            reasons.append("persisted_state_revision_invalid")
         if state.get("global_hold") is not False:
             reasons.append("global_hold_active")
         if state.get("emergency_stop") is not False:
@@ -167,8 +172,24 @@ def continuation_decision(
         if not isinstance(tasks, list):
             reasons.append("persisted_queue_invalid")
         else:
-            queued = [task for task in tasks
-                      if isinstance(task, dict) and task.get("status") == "queued"]
+            task_ids: set[str] = set()
+            queued = []
+            for item in tasks:
+                if (not isinstance(item, dict)
+                        or not isinstance(item.get("task_id"), str)
+                        or not item["task_id"].strip()
+                        or not isinstance(item.get("status"), str)
+                        or not item["status"].strip()):
+                    reasons.append("persisted_queue_entry_invalid")
+                    continue
+                if item["task_id"] in task_ids:
+                    reasons.append("persisted_queue_duplicate_task_id")
+                    continue
+                task_ids.add(item["task_id"])
+                if item["status"] == "queued":
+                    if not isinstance(item.get("task_digest"), str) or not _HEX_64.fullmatch(item["task_digest"]):
+                        reasons.append("persisted_queued_task_digest_invalid")
+                    queued.append(item)
             if len(queued) != 1:
                 reasons.append("queued_task_count_not_exactly_one")
             elif (queued[0].get("task_id") != task_id
