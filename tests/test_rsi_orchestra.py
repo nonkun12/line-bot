@@ -24,7 +24,7 @@ def make_executor(tmp_path):
 
 def make_input(index=1):
     observation = Observation(
-        f"orchestra-{index}", str(index % 10) * 64, "local-model",
+        f"orchestra-{index}", str(index % 10) * 64, "model",
         "FAIL", "fixed benchmark evidence", index,
     )
     return RSIProposalInput(
