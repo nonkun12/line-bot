@@ -29,6 +29,8 @@ def to_orca_improvement_candidate(
     expected_nonce: str,
     used_attestation_hashes: Iterable[str],
     allowed_reviewers: Iterable[str],
+    public_key_reviewer_id: str,
+    implementer_id: str,
     now: datetime,
     evaluation: Any,
 ) -> dict[str, Any]:
@@ -61,6 +63,8 @@ def to_orca_improvement_candidate(
             used_attestation_hashes=used_attestation_hashes,
             now=now,
             allowed_reviewers=allowed_reviewers,
+            public_key_reviewer_id=public_key_reviewer_id,
+            implementer_id=implementer_id,
         )
     except ReviewAttestationRejected as exc:
         raise RSIExecutionAdapterRejected(f"independent_review_rejected:{exc}") from None
