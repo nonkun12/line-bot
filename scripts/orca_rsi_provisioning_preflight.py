@@ -148,6 +148,8 @@ def run_preflight(env: Mapping[str, str] | None = None, state_store: Any = None)
         state = getattr(snapshot, "state", None)
         if not isinstance(state, dict):
             raise ValueError("orca_state_document_invalid")
+        if type(state.get("schema_version")) is not int or state["schema_version"] != 1:
+            raise ValueError("orca_state_schema_invalid")
         if type(state.get("revision")) is not int or state["revision"] < 0:
             raise ValueError("orca_state_revision_invalid")
         if state.get("global_hold") is not False:
@@ -157,8 +159,20 @@ def run_preflight(env: Mapping[str, str] | None = None, state_store: Any = None)
         tasks = state.get("tasks")
         if not isinstance(tasks, list):
             raise ValueError("persisted_queue_invalid")
-        queued = [task for task in tasks
-                  if isinstance(task, dict) and task.get("status") == "queued"]
+        task_ids: set[str] = set()
+        queued = []
+        for task in tasks:
+            if (not isinstance(task, dict)
+                    or not isinstance(task.get("task_id"), str)
+                    or not task["task_id"].strip()
+                    or not isinstance(task.get("status"), str)
+                    or not task["status"].strip()):
+                raise ValueError("persisted_queue_entry_invalid")
+            if task["task_id"] in task_ids:
+                raise ValueError("persisted_queue_duplicate_task_id")
+            task_ids.add(task["task_id"])
+            if task["status"] == "queued":
+                queued.append(task)
         if len(queued) != 1:
             raise ValueError("queued_task_count_not_exactly_one")
         if state.get("active_lease") is not None:
