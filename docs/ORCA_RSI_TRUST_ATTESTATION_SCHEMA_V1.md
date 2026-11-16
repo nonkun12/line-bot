@@ -234,3 +234,19 @@ No workflow schedule is added by this specification. The autonomous workflow
 must remain manual-only until the complete trust chain and negative integration
 tests are reviewed. This document does not authorize merge, schedule activation,
 patch application, or deployment.
+
+
+## 10. Existing local RSI executor is not the ORCA production worker
+
+The repository also contains `core/rsi_executor.py`, a separate local
+experiment controller with an injected `LocalRunner` and callback-based
+`HumanApproval` verifier. It is not wired to the three Ed25519 claim
+verifiers, the ORCA GitHub state store, the three durable replay ledgers, or
+the ORCA task lease contract described here. Its local test doubles and
+`execution_enabled` control flag MUST NOT be treated as production trust
+evidence or as a substitute for the ORCA worker adapter.
+
+Do not connect that executor to the ORCA queue or invoke its runner as a
+production worker until a separately reviewed integration proves that the
+same signed claims, durable replay consumption, live HOLD/STOP revalidation,
+and atomic task lease are enforced immediately before handler invocation.
