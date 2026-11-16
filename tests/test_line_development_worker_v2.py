@@ -556,7 +556,7 @@ def test_apply_plan_requires_unique_anchor(tmp_path, monkeypatch):
 def test_apply_plan_blocks_write_when_patch_application_is_not_explicitly_enabled(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     target = tmp_path / "app.py"
-    original = "before\\nTARGET\\nafter\\n"
+    original = "before\nTARGET\nafter\n"
     target.write_text(original, encoding="utf-8")
     monkeypatch.delenv("AUTO_APPLY_PATCH", raising=False)
 
@@ -580,7 +580,7 @@ def test_apply_plan_blocks_write_when_patch_application_is_not_explicitly_enable
 def test_apply_plan_requires_exact_true_patch_authorization(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     target = tmp_path / "app.py"
-    target.write_text("before\\nTARGET\\nafter\\n", encoding="utf-8")
+    target.write_text("before\nTARGET\nafter\n", encoding="utf-8")
     monkeypatch.setenv("AUTO_APPLY_PATCH", "1")
     plan = {
         "no_change": False,
