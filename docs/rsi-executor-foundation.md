@@ -247,3 +247,9 @@ Orchestra module does not create queue items, dispatch workers, mutate files,
 run experiments, or start a continuous loop. Existing Control Tower and
 human-approval gates remain mandatory for any later privileged action.
 
+Each REA review, including BLOCKED outcomes, is also recorded as a digest-only
+`orchestra_rea_review` event in the RSI append-only ledger. The adapter checks
+ledger integrity before and after append; persistence failure downgrades the
+review to BLOCKED. The event stores identity/digest bindings, decision and
+score, and a digest of Critic feedback rather than raw model text.
+
