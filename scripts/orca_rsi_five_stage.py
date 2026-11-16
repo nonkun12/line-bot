@@ -6,10 +6,8 @@ from datetime import datetime
 import re
 from typing import Any, Iterable
 
-from scripts.orca_rsi_review_replay import (
-    ReviewReplayStateRejected,
-    verify_and_consume_review_once,
-)
+from scripts.orca_rsi_review_replay import verify_and_consume_review_once
+
 
 RSI_STAGES = ("evaluate", "diagnose", "hypothesize", "experiment", "select_evolve")
 FINAL_RESULTS = {"PASS", "FAIL", "NO_CHANGE", "BLOCKED"}
