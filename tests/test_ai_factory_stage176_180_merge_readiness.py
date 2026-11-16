@@ -93,7 +93,7 @@ def test_hold_blocks_every_stage(stage):
         else:
             r=Stage177ReproducibilityVerifier().build(m,runs(m),verify_signature=lambda x:True,sign_report=lambda d:'signed:'+d)
             h=Stage179HoldoutRobustnessGate().build(m,holdouts(m),verify_signature=lambda x:True,sign_report=lambda d:'signed:'+d)
-            Stage180HumanApprovalPackager().build(m,r,resource_report(),h,hold_active=True)
+            Stage180HumanApprovalPackager().build(m,r,resource_report(),h,verify_reproducibility_signature=lambda x:True,verify_holdout_signature=lambda x:True,hold_active=True)
 
 
 def test_stage177_and_stage180_reject_forged_manifest_or_report_digest():
