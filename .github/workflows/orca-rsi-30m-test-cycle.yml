@@ -38,7 +38,7 @@ jobs:
       - name: Preserve cycle evidence
         uses: actions/upload-artifact@v4
         with:
-          name: orca-rsi-cycle-\${{ github.run_id }}
+          name: orca-rsi-cycle-${{ github.run_id }}
           path: artifacts/orca-rsi/cycle.json
           if-no-files-found: error
           retention-days: 30
