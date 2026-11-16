@@ -94,3 +94,17 @@ def test_hold_blocks_every_stage(stage):
             r=Stage177ReproducibilityVerifier().build(m,runs(m),verify_signature=lambda x:True)
             h=Stage179HoldoutRobustnessGate().build(m,holdouts(m),verify_signature=lambda x:True)
             Stage180HumanApprovalPackager().build(m,r,resource_report(),h,hold_active=True)
+
+
+def test_stage177_and_stage180_reject_forged_manifest_or_report_digest():
+    m=manifest()
+    with pytest.raises(MergeReadinessError,match="manifest digest"):
+        Stage177ReproducibilityVerifier().build(replace(m,digest="f"*64),runs(m),verify_signature=lambda x:True)
+    r=Stage177ReproducibilityVerifier().build(m,runs(m),verify_signature=lambda x:True)
+    h=Stage179HoldoutRobustnessGate().build(m,holdouts(m),verify_signature=lambda x:True)
+    with pytest.raises(MergeReadinessError,match="reproducibility report digest"):
+        Stage180HumanApprovalPackager().build(m,replace(r,digest="f"*64),resource_report(),h)
+    with pytest.raises(MergeReadinessError,match="holdout report digest"):
+        Stage180HumanApprovalPackager().build(m,r,resource_report(),replace(h,digest="f"*64))
+    with pytest.raises(MergeReadinessError,match="resource report digest"):
+        Stage180HumanApprovalPackager().build(m,r,replace(resource_report(),digest="f"*64),h)
