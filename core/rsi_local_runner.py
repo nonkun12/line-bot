@@ -112,10 +112,19 @@ class LocalRSIExperimentRunner:
                 "matched": output.strip() == case.expected_text,
             })
         score = sum(1 for item in observations if item["matched"]) / len(observations)
+        metrics = {"quality": float(score), "case_count": float(len(observations))}
+        result_digest = canonical_digest({
+            "experiment_id": plan.experiment_id,
+            "executor_id": self.executor_id,
+            "candidate_digest": self.candidate_digest,
+            "protocol_digest": self.protocol_digest,
+            "metrics": metrics,
+        })
         evidence_payload = {
             "experiment_id": plan.experiment_id,
             "candidate_digest": self.candidate_digest,
             "protocol_digest": self.protocol_digest,
+            "result_digest": result_digest,
             "observations": observations,
             "producer_id": self.executor_id,
         }
@@ -127,13 +136,6 @@ class LocalRSIExperimentRunner:
             "local_benchmark_evidence",
             {**evidence_payload, "producer_signature": evidence_signature},
         )
-        metrics = {"quality": float(score), "case_count": float(len(observations))}
-        result_digest = canonical_digest({
-            "experiment_id": plan.experiment_id,
-            "executor_id": self.executor_id,
-            "evidence_digest": evidence_digest,
-            "metrics": metrics,
-        })
         return ExperimentResult(
             plan.experiment_id, self.executor_id, result_digest, metrics, evidence_digest
         )
