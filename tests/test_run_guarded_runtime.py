@@ -234,6 +234,7 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     monkeypatch.setenv("DEV_INSTRUCTION", instruction)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-test-task")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
     monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
     event_path = tmp_path / "event.json"
@@ -360,7 +361,37 @@ def test_execution_approval_rejects_actor_environment_mismatch(tmp_path, monkeyp
     )
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
     monkeypatch.setenv("GITHUB_ACTOR", "someone-else")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "bound-task")
+
+    evidence = guarded_runtime._verify_execution_approval(base_sha, instruction)
+
+    assert evidence["gate"] == "BLOCKED"
+    assert evidence["execution_authorized"] is False
+
+def test_execution_approval_rejects_dispatch_from_non_default_branch(tmp_path, monkeypatch):
+    instruction = "bound task instruction"
+    base_sha = "9" * 40
+    event_path = tmp_path / "event.json"
+    event_path.write_text(
+        json.dumps({
+            "sender": {"login": "nonkun12"},
+            "repository": {"full_name": "nonkun12/line-bot"},
+            "inputs": {
+                "execution_approval": "APPROVE_EXECUTION",
+                "approval_task_id": "bound-task",
+                "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
+                "approval_base_sha": base_sha,
+            },
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/unreviewed-feature")
+    monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "bound-task")
 
