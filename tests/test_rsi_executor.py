@@ -163,6 +163,7 @@ def test_planning_rejects_experiment_cost_above_known_free_budget(tmp_path):
         Observation("budget-obs-1", H, "model", "FAIL", "quality fell", 1),
         Observation("budget-obs-2", "b" * 64, "model", "REGRESSED", "repeat regression", 2),
     )
+    observations = seed_observations(ledger, observations)
     hypotheses = executor.hypothesize(executor.observe(observations))
     with pytest.raises(RSIError, match="budget unknown or insufficient"):
         executor.plan(
