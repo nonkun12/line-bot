@@ -10,7 +10,7 @@ def make_executor(tmp_path, *, hold=False):
         control_provider=lambda: RSIControl(hold, False, True, True, 10, False),
         verify_approval=lambda _: False,
         verify_evaluation=lambda _: False,
-        verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
+        verify_evidence_signature=lambda producer_id, digest, signature: producer_id == "test-producer" and signature == "sig:" + digest,
         executor_id="proposal-supervisor",
     )
 
@@ -57,7 +57,7 @@ def test_supervisor_revalidates_global_hold_on_each_tick(tmp_path):
     executor = RSIExecutor(
         EvidenceLedger(tmp_path / "hold.sqlite"), control_provider=control,
         verify_approval=lambda _: False, verify_evaluation=lambda _: False,
-        verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
+        verify_evidence_signature=lambda producer_id, digest, signature: producer_id == "test-producer" and signature == "sig:" + digest,
         executor_id="proposal-supervisor",
     )
 
