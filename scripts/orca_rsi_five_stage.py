@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+from datetime import datetime
+from typing import Any, Iterable
 
-from scripts.orca_rsi_review_attestation import VerifiedIndependentReview
+from scripts.orca_rsi_review_attestation import (
+    ReviewAttestationRejected,
+    verify_independent_review,
+)
 
 RSI_STAGES = ("evaluate", "diagnose", "hypothesize", "experiment", "select_evolve")
 FINAL_RESULTS = {"PASS", "FAIL", "NO_CHANGE", "BLOCKED"}
@@ -68,13 +72,25 @@ def continuation_decision(
     emergency_stop: bool,
     budget_verified: bool,
     approval_verified: bool,
-    independent_review: VerifiedIndependentReview | None,
+    independent_review_attestation: Any,
+    review_public_key_pem: str | bytes,
+    review_nonce: str,
+    used_attestation_hashes: Iterable[str],
+    repository: str,
+    allowed_reviewers: Iterable[str],
+    now: datetime,
     expected_commit_sha: str,
     kill_switch: bool,
 ) -> dict[str, Any]:
-    """Continue once only with a verified review bound to this cycle and commit."""
+    """Continue once only after this gate cryptographically verifies the review.
+
+    The caller must atomically reserve the one-time nonce and persist the
+    returned attestation hash in durable state before triggering any work.
+    """
     reasons: list[str] = []
-    valid_cycle = isinstance(cycle, dict) and type(cycle.get("schema_version")) is int and cycle["schema_version"] == 1
+    valid_cycle = (isinstance(cycle, dict)
+                   and type(cycle.get("schema_version")) is int
+                   and cycle["schema_version"] == 1)
     if not valid_cycle:
         reasons.append("cycle_missing_or_invalid")
     else:
@@ -112,18 +128,26 @@ def continuation_decision(
         reasons.append("task_approval_missing_or_invalid")
     if kill_switch is not False:
         reasons.append("kill_switch_active")
-
-    if not isinstance(independent_review, VerifiedIndependentReview):
-        reasons.append("independent_review_not_verified")
-    elif valid_cycle:
-        if independent_review.cycle_id != cycle.get("cycle_id"):
-            reasons.append("independent_review_cycle_mismatch")
-        if independent_review.commit_sha != expected_commit_sha:
-            reasons.append("independent_review_commit_mismatch")
-        if independent_review.verdict != "PASS":
-            reasons.append("independent_review_not_pass")
     if not isinstance(expected_commit_sha, str) or len(expected_commit_sha) != 40:
         reasons.append("expected_commit_sha_invalid")
+
+    if valid_cycle and isinstance(expected_commit_sha, str) and len(expected_commit_sha) == 40:
+        try:
+            verify_independent_review(
+                independent_review_attestation,
+                review_public_key_pem,
+                repository=repository,
+                cycle_id=cycle["cycle_id"],
+                commit_sha=expected_commit_sha,
+                expected_nonce=review_nonce,
+                used_attestation_hashes=used_attestation_hashes,
+                now=now,
+                allowed_reviewers=allowed_reviewers,
+            )
+        except ReviewAttestationRejected as exc:
+            reasons.append(f"independent_review_rejected:{exc}")
+    else:
+        reasons.append("independent_review_context_missing")
 
     return {
         "status": "PASS" if not reasons else "BLOCKED",
