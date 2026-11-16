@@ -67,7 +67,7 @@ def build_pipeline(tmp_path, *, execution_enabled):
         verify_approval=lambda approval: (
             approval.signature == "approval:" + approval.experiment_digest + ":" + approval.nonce
         ),
-        verify_evidence_signature=verify_digest,
+        verify_evidence_signature=lambda producer_id, digest, signature: producer_id == "test-producer" and verify_digest(digest, signature),
         verify_evaluation=lambda evaluation: verify_digest(
             canonical_digest({
                 "experiment_id": evaluation.experiment_id,
