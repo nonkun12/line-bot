@@ -117,7 +117,10 @@ def verify_independent_review(
         raise ReviewAttestationRejected("reviewer_allowlist_invalid")
     if not isinstance(allowed_reviewers, (list, tuple, set, frozenset)):
         raise ReviewAttestationRejected("reviewer_allowlist_invalid")
-    reviewers = set(allowed_reviewers)
+    try:
+        reviewers = set(allowed_reviewers)
+    except (TypeError, ValueError):
+        raise ReviewAttestationRejected("reviewer_allowlist_invalid") from None
     if not reviewers or any(not isinstance(item, str) or not item for item in reviewers):
         raise ReviewAttestationRejected("reviewer_allowlist_invalid")
     reviewer = attestation.get("reviewer_id")
