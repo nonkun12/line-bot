@@ -3,12 +3,13 @@ import json
 import pytest
 
 from core.rsi_executor import (
-    ExperimentPlan, ExperimentResult, RSIError, canonical_digest,
+    EvidenceLedger, ExperimentPlan, ExperimentResult, RSIError, canonical_digest,
 )
 from core.rsi_local_evaluator import LocalRSIIndependentEvaluator
+from core.rsi_local_runner import BenchmarkCase, LocalRSIExperimentRunner, benchmark_protocol_digest
 
 
-class FakeEvaluatorClient:
+class FakeClient:
     def __init__(self, content):
         self.content = content
         self.calls = []
@@ -20,82 +21,93 @@ class FakeEvaluatorClient:
 
 def make_plan():
     candidate = "b" * 64
+    cases = (BenchmarkCase("one", "say token", "TOKEN"),)
+    protocol = benchmark_protocol_digest(cases)
     payload = {
         "hypothesis": "hypothesis-id", "capability": "model",
-        "baseline": "a" * 64, "candidate": candidate, "protocol": "c" * 64,
+        "baseline": "a" * 64, "candidate": candidate, "protocol": protocol,
         "cost": 1, "risk": 0.1, "information_value": 0.5,
     }
     digest = canonical_digest(payload)
-    return ExperimentPlan(digest[:32], "hypothesis-id", "model", "a" * 64,
-                          candidate, "c" * 64, 1, 0.1, 0.5, digest)
+    plan = ExperimentPlan(
+        digest[:32], "hypothesis-id", "model", "a" * 64, candidate,
+        protocol, 1, 0.1, 0.5, digest,
+    )
+    return plan, cases
 
 
-def make_result(plan, executor_id="local-runner"):
-    evidence = "d" * 64
-    metrics = {"quality": 1.0}
-    digest = canonical_digest({
-        "experiment_id": plan.experiment_id,
-        "executor_id": executor_id,
-        "evidence_digest": evidence,
-        "metrics": metrics,
-    })
-    return ExperimentResult(plan.experiment_id, executor_id, digest, metrics, evidence)
+def make_result(tmp_path, output="TOKEN"):
+    plan, cases = make_plan()
+    ledger = EvidenceLedger(tmp_path / "evaluator.sqlite")
+    runner = LocalRSIExperimentRunner(
+        FakeClient([output]), executor_id="local-runner",
+        candidate_digest=plan.candidate_digest, ledger=ledger, cases=cases,
+    )
+    result = runner(plan)
+    return plan, result, ledger
 
 
-def test_independent_evaluator_returns_signed_result_bound_to_exact_digest():
-    plan = make_plan()
-    result = make_result(plan)
-    client = FakeEvaluatorClient(json.dumps({
-        "decision": "IMPROVED", "rationale": "Frozen benchmark score increased."
-    }))
+def make_evaluator(ledger, client, signer=lambda _: "signature", baseline_quality=0.0):
+    return LocalRSIIndependentEvaluator(
+        client, evaluator_id="separate-evaluator", ledger=ledger,
+        baseline_quality=baseline_quality, sign_digest=signer,
+    )
+
+
+def test_independent_evaluator_recomputes_evidence_and_signs_result(tmp_path):
+    plan, result, ledger = make_result(tmp_path)
+    client = FakeClient(json.dumps({"rationale": "Frozen benchmark score increased."}))
     signed = []
-    evaluator = LocalRSIIndependentEvaluator(
-        client, evaluator_id="separate-evaluator",
-        sign_digest=lambda digest: signed.append(digest) or "signed:" + digest,
+    evaluator = make_evaluator(
+        ledger, client,
+        signer=lambda digest: signed.append(digest) or "signed:" + digest,
+        baseline_quality=0.0,
     )
     evaluation = evaluator.evaluate(plan, result)
     assert evaluation.experiment_id == plan.experiment_id
     assert evaluation.result_digest == result.result_digest
     assert evaluation.evaluator_id != result.executor_id
     assert evaluation.decision == "IMPROVED"
-    assert signed == [signed[0]]
+    assert len(signed) == 1
     assert evaluation.signature.startswith("signed:")
     assert len(evaluation.evidence_digest) == 64
 
 
-def test_evaluator_rejects_executor_identity_and_unbound_result():
-    plan = make_plan()
-    result = make_result(plan, executor_id="same-identity")
-    evaluator = LocalRSIIndependentEvaluator(
-        FakeEvaluatorClient("{}"), evaluator_id="same-identity",
-        sign_digest=lambda _: "sig",
+def test_evaluator_rejects_executor_identity_and_unbound_result(tmp_path):
+    plan, result, ledger = make_result(tmp_path)
+    same = LocalRSIIndependentEvaluator(
+        FakeClient("{}"), evaluator_id="local-runner", ledger=ledger,
+        baseline_quality=0.0, sign_digest=lambda _: "sig",
     )
     with pytest.raises(RSIError, match="identities must differ"):
-        evaluator.evaluate(plan, result)
+        same.evaluate(plan, result)
     other = ExperimentResult("different", result.executor_id, result.result_digest,
                              result.metrics, result.evidence_digest)
-    evaluator = LocalRSIIndependentEvaluator(
-        FakeEvaluatorClient("{}"), evaluator_id="independent",
-        sign_digest=lambda _: "sig",
-    )
+    evaluator = make_evaluator(ledger, FakeClient("{}"))
     with pytest.raises(RSIError, match="does not bind"):
         evaluator.evaluate(plan, other)
 
 
-def test_evaluator_rejects_extra_authority_fields_and_bad_signatures():
-    plan, result = make_plan(), None
-    result = make_result(plan)
-    client = FakeEvaluatorClient(json.dumps({
-        "decision": "IMPROVED", "rationale": "ok", "execution_authorized": True
-    }))
-    evaluator = LocalRSIIndependentEvaluator(
-        client, evaluator_id="independent", sign_digest=lambda _: "sig"
-    )
+def test_evaluator_rejects_model_authority_fields_and_bad_signatures(tmp_path):
+    plan, result, ledger = make_result(tmp_path)
+    client = FakeClient(json.dumps({"rationale": "ok", "execution_authorized": True}))
     with pytest.raises(RSIError, match="unexpected schema"):
-        evaluator.evaluate(plan, result)
-    evaluator = LocalRSIIndependentEvaluator(
-        FakeEvaluatorClient(json.dumps({"decision": "IMPROVED", "rationale": "ok"})),
-        evaluator_id="independent", sign_digest=lambda _: "",
+        make_evaluator(ledger, client).evaluate(plan, result)
+    evaluator = make_evaluator(
+        ledger, FakeClient(json.dumps({"rationale": "ok"})), signer=lambda _: ""
     )
     with pytest.raises(RSIError, match="invalid signature"):
         evaluator.evaluate(plan, result)
+
+
+def test_evaluator_rejects_tampered_metrics_even_with_same_result_digest(tmp_path):
+    plan, result, ledger = make_result(tmp_path)
+    tampered = ExperimentResult(
+        result.experiment_id, result.executor_id, result.result_digest,
+        {"quality": 0.0, "case_count": 1.0}, result.evidence_digest,
+    )
+    evaluator = make_evaluator(
+        ledger, FakeClient(json.dumps({"rationale": "should not be reached"}))
+    )
+    with pytest.raises(RSIError, match="independently recomputed"):
+        evaluator.evaluate(plan, tampered)
