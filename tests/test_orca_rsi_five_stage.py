@@ -78,7 +78,7 @@ def _gates(store=None, **overrides):
         "review_public_key_pem": PUBLIC_PEM, "review_nonce": NONCE,
         "replay_store": store, "replay_snapshot": store.snapshot,
         "repository": "nonkun12/line-bot",
-        "allowed_reviewers": ["trusted-reviewer"], "now": NOW,
+        "allowed_reviewers": ["trusted-reviewer"], "implementer_id": "worker-author", "now": NOW,
         "expected_commit_sha": COMMIT, "kill_switch": False,
     }
     values.update(overrides)
