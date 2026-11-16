@@ -81,7 +81,7 @@ class LocalRSIIndependentEvaluator:
         producer_payload = dict(evidence)
         producer_payload.pop("producer_signature", None)
         if (not isinstance(producer_signature, str) or not producer_signature.strip()
-                or not self._verify_evidence_signature(canonical_digest(producer_payload), producer_signature)):
+                or self._verify_evidence_signature(canonical_digest(producer_payload), producer_signature) is not True):
             raise RSIError("benchmark evidence producer signature verification failed")
         if (evidence.get("experiment_id") != plan.experiment_id
                 or evidence.get("candidate_digest") != plan.candidate_digest
