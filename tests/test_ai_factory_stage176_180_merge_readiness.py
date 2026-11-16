@@ -6,8 +6,8 @@ from core.ai_factory_stage176_180_merge_readiness import (
     Stage178LocalResourceGate, Stage179HoldoutRobustnessGate, Stage180HumanApprovalPackager,
 )
 H="a"*64
-def manifest():
-    return Stage176ArtifactManifestBuilder().build(candidate_id="candidate-7",candidate_artifact_digest="1"*64,
+def manifest(candidate_id="candidate-7"):
+    return Stage176ArtifactManifestBuilder().build(candidate_id=candidate_id,candidate_artifact_digest="1"*64,
         parent_model_ids=("parent-a","parent-b"),parent_artifact_digests=("2"*64,"3"*64),
         compatibility_digest="4"*64,evaluation_report_digest="5"*64,selection_digest="6"*64,
         evaluation_suite_digest="7"*64,source_generation=10,proposed_generation=11,
@@ -70,7 +70,7 @@ def test_stage180_requires_matching_manifest_and_all_gates():
     m=manifest(); r=Stage177ReproducibilityVerifier().build(m,runs(m),verify_signature=lambda x:True)
     h=Stage179HoldoutRobustnessGate().build(m,holdouts(m),verify_signature=lambda x:True)
     with pytest.raises(MergeReadinessError,match="lineage"):
-        Stage180HumanApprovalPackager().build(replace(m,digest="f"*64),r,resource_report(),h)
+        Stage180HumanApprovalPackager().build(manifest("candidate-other"),r,resource_report(),h)
     blocked=Stage180HumanApprovalPackager().build(m,r,
         Stage178LocalResourceGate().build(LocalResourceEstimate(99,99999,0,99999,99999,999),
         LocalResourceEnvelope(1,1024,0,1024,60,1)),h)
