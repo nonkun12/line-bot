@@ -111,6 +111,13 @@ def test_orchestra_binds_rea_review_to_exact_head_plan_candidate_and_evidence(tm
     assert review.handoff.plan_digest == seen["plan"].plan_digest
     assert review.handoff.candidate_digest
     assert review.handoff.evidence_digest
+    assert review.evidence_event_id
+    persisted, _ = executor.ledger.read_event(review.evidence_event_id)
+    assert persisted["head_sha"] == HEAD
+    assert persisted["plan_digest"] == seen["plan"].plan_digest
+    assert persisted["candidate_digest"] == review.handoff.candidate_digest
+    assert persisted["execution_authorized"] is False
+    assert executor.ledger.verify()
     assert review.evaluation is not None and review.evaluation.passed
     assert result.dispatch_authorized is False
     assert result.execution_authorized is False
@@ -139,6 +146,9 @@ def test_unverified_evidence_blocks_before_critic_is_called(tmp_path):
     assert result.status == "BLOCKED"
     assert result.reviews[0].status == "BLOCKED"
     assert result.reviews[0].reason_code == "evidence_verification_failed"
+    assert result.reviews[0].evidence_event_id
+    persisted, _ = executor.ledger.read_event(result.reviews[0].evidence_event_id)
+    assert persisted["status"] == "BLOCKED"
     assert calls == []
     assert result.execution_authorized is False
 
