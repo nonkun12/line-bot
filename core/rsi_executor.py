@@ -384,7 +384,7 @@ class RSIExecutor:
         control_provider: Callable[[], RSIControl],
         verify_approval: Callable[[HumanApproval], bool],
         verify_evaluation: Callable[[IndependentEvaluation], bool],
-        verify_evidence_signature: Callable[[str, str], bool] | None = None,
+        verify_evidence_signature: Callable[[str, str], bool],
         executor_id: str,
         max_experiments_per_cycle: int = 4,
     ) -> None:
@@ -395,6 +395,8 @@ class RSIExecutor:
         self.control_provider = control_provider
         self.verify_approval = verify_approval
         self.verify_evaluation = verify_evaluation
+        if not callable(verify_evidence_signature):
+            raise TypeError("independent evidence producer verifier is required")
         self.verify_evidence_signature = verify_evidence_signature
         self.executor_id = executor_id
         self.max_experiments_per_cycle = max_experiments_per_cycle
@@ -448,8 +450,6 @@ class RSIExecutor:
             if not item.detail or len(item.detail) > 2000:
                 raise RSIError("observation detail invalid")
             groups.setdefault(item.capability, []).append(item)
-        if self.verify_evidence_signature is None:
-            raise RSIError("independent evidence producer verifier is not configured")
         self.ledger.append_verified_observations(observations, self.verify_evidence_signature)
         diagnoses = []
         for capability, rows in sorted(groups.items()):
