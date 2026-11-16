@@ -1670,3 +1670,43 @@ def test_every_deterministic_task_mapping_has_an_executable_plan():
             missing.append(task_id)
     assert missing == []
 
+
+def test_rea_write_gate_requires_evidence_bound_to_current_head(monkeypatch):
+    from types import SimpleNamespace
+    from scripts import rea_control_tower_adapter as adapter
+
+    head = "a" * 40
+    evidence = {"gate": "PASS", "target_sha": head}
+    calls = []
+    monkeypatch.setattr(worker, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=head + "\\n"))
+    monkeypatch.setattr(adapter, "prepare_rea_evidence", lambda root, expected_sha: calls.append(("prepare", expected_sha)) or evidence)
+    monkeypatch.setattr(adapter, "rea_evidence_is_valid_pass", lambda item, expected_sha: calls.append(("validate", expected_sha)) or item["target_sha"] == expected_sha)
+
+    assert worker._rea_write_gate_passes() is True
+    assert calls == [("prepare", head), ("validate", head)]
+
+
+def test_rea_write_gate_rejects_stale_or_mismatched_evidence(monkeypatch):
+    from types import SimpleNamespace
+    from scripts import rea_control_tower_adapter as adapter
+
+    head = "b" * 40
+    stale_evidence = {"gate": "PASS", "target_sha": "c" * 40}
+    monkeypatch.setattr(worker, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=head))
+    monkeypatch.setattr(adapter, "prepare_rea_evidence", lambda root, expected_sha: stale_evidence)
+    monkeypatch.setattr(adapter, "rea_evidence_is_valid_pass", lambda item, expected_sha: item.get("target_sha") == expected_sha)
+
+    assert worker._rea_write_gate_passes() is False
+
+
+def test_rea_write_gate_fails_closed_on_invalid_head_or_adapter_error(monkeypatch):
+    from types import SimpleNamespace
+    from scripts import rea_control_tower_adapter as adapter
+
+    monkeypatch.setattr(worker, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="not-a-commit"))
+    assert worker._rea_write_gate_passes() is False
+
+    monkeypatch.setattr(worker, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="d" * 40))
+    monkeypatch.setattr(adapter, "prepare_rea_evidence", lambda root, expected_sha: (_ for _ in ()).throw(RuntimeError("scanner unavailable")))
+    assert worker._rea_write_gate_passes() is False
+
