@@ -11,7 +11,7 @@ import hashlib
 from typing import Sequence
 
 from .ai_factory_stage132_local_models import LocalModelClient
-from .rsi_executor import ExperimentPlan, ExperimentResult, RSIError, canonical_digest, _bounded_id, _digest
+from .rsi_executor import EvidenceLedger, ExperimentPlan, ExperimentResult, RSIError, canonical_digest, _bounded_id, _digest
 
 
 @dataclass(frozen=True)
@@ -44,10 +44,13 @@ class LocalRSIExperimentRunner:
         *,
         executor_id: str,
         candidate_digest: str,
+        ledger: EvidenceLedger,
         cases: Sequence[BenchmarkCase] = _DEFAULT_CASES,
     ) -> None:
         if not callable(getattr(client, "chat", None)):
             raise TypeError("Stage 132 local model client is required")
+        if not isinstance(ledger, EvidenceLedger):
+            raise TypeError("verified RSI evidence ledger is required")
         _bounded_id(executor_id, "executor id")
         _digest(candidate_digest, "candidate model")
         if not 1 <= len(cases) <= 4:
@@ -63,6 +66,7 @@ class LocalRSIExperimentRunner:
                 raise ValueError("benchmark case exceeds bound")
             ids.add(case.case_id)
         self._client = client
+        self._ledger = ledger
         self.executor_id = executor_id
         self.candidate_digest = candidate_digest
         self.cases = tuple(cases)
@@ -92,15 +96,21 @@ class LocalRSIExperimentRunner:
                 "case_id": case.case_id,
                 "expected_digest": hashlib.sha256(case.expected_text.encode()).hexdigest(),
                 "output_digest": hashlib.sha256(output.encode()).hexdigest(),
+                "output_text": output,
+                "expected_text": case.expected_text,
                 "matched": case.expected_text in output,
             })
         score = sum(1 for item in observations if item["matched"]) / len(observations)
-        evidence_digest = canonical_digest({
-            "experiment_id": plan.experiment_id,
-            "candidate_digest": self.candidate_digest,
-            "protocol_digest": self.protocol_digest,
-            "observations": observations,
-        })
+        evidence_digest = self._ledger.append(
+            "benchmark-evidence:" + plan.experiment_id,
+            "local_benchmark_evidence",
+            {
+                "experiment_id": plan.experiment_id,
+                "candidate_digest": self.candidate_digest,
+                "protocol_digest": self.protocol_digest,
+                "observations": observations,
+            },
+        )
         metrics = {"quality": float(score), "case_count": float(len(observations))}
         result_digest = canonical_digest({
             "experiment_id": plan.experiment_id,
