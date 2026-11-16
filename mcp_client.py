@@ -395,3 +395,99 @@ def parse_mcp_json_list(raw):
         # "予定されているリマインダーはありません"). Do not treat that as
         # a JSON parsing failure or surface a noisy error in Render logs.
         return []
+
+
+def diagnose_mcp_connection(timeout=12.0):
+    """Run bounded, read-only health, readiness, and MCP tools/list checks."""
+    started = time.monotonic()
+    result = {
+        "health": "未確認",
+        "ready": "未確認",
+        "initialize": "未確認",
+        "tools_list": "未確認",
+        "tool_count": 0,
+        "elapsed_ms": 0,
+        "status": "FAIL",
+    }
+    base = urlsplit(MCP_SERVER_URL)
+    health_url = f"{base.scheme}://{base.netloc}/health"
+    ready_url = f"{base.scheme}://{base.netloc}/ready"
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "x-api-key": MCP_API_KEY,
+        "Connection": "close",
+    }
+    request_timeout = httpx.Timeout(timeout, connect=min(5.0, timeout))
+    try:
+        health = httpx.get(health_url, timeout=request_timeout, follow_redirects=False)
+        result["health"] = "PASS" if health.status_code == 200 and health.json().get("ok") is True else f"FAIL ({health.status_code})"
+        health.close()
+        if result["health"] != "PASS":
+            return _finish_mcp_diagnostic(result, started)
+
+        ready = httpx.get(ready_url, timeout=request_timeout, follow_redirects=False)
+        result["ready"] = "PASS" if ready.status_code == 200 and ready.json().get("ok") is True else f"FAIL ({ready.status_code})"
+        ready.close()
+        if result["ready"] != "PASS":
+            return _finish_mcp_diagnostic(result, started)
+
+        initialize_payload = {
+            "jsonrpc": "2.0",
+            "id": "line-mcp-diagnostic-init",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "line-mcp-diagnostic", "version": "1.0.0"},
+            },
+        }
+        initialized = httpx.post(
+            MCP_SERVER_URL,
+            json=initialize_payload,
+            headers=headers,
+            timeout=request_timeout,
+            follow_redirects=False,
+        )
+        init_body = initialized.json() if initialized.status_code == 200 else {}
+        result["initialize"] = (
+            "PASS"
+            if initialized.status_code == 200 and isinstance(init_body.get("result"), dict)
+            else f"FAIL ({initialized.status_code})"
+        )
+        initialized.close()
+        if result["initialize"] != "PASS":
+            return _finish_mcp_diagnostic(result, started)
+
+        tools_payload = {
+            "jsonrpc": "2.0",
+            "id": "line-mcp-diagnostic-tools",
+            "method": "tools/list",
+            "params": {},
+        }
+        tools_response = httpx.post(
+            MCP_SERVER_URL,
+            json=tools_payload,
+            headers=headers,
+            timeout=request_timeout,
+            follow_redirects=False,
+        )
+        tools_body = tools_response.json() if tools_response.status_code == 200 else {}
+        tools = tools_body.get("result", {}).get("tools", []) if isinstance(tools_body, dict) else []
+        if tools_response.status_code == 200 and isinstance(tools, list) and "error" not in tools_body:
+            result["tools_list"] = "PASS"
+            result["tool_count"] = len(tools)
+        else:
+            result["tools_list"] = f"FAIL ({tools_response.status_code})"
+        tools_response.close()
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        # Never return exception text, response bodies, URLs, or credentials to LINE.
+        pass
+    return _finish_mcp_diagnostic(result, started)
+
+
+def _finish_mcp_diagnostic(result, started):
+    result["elapsed_ms"] = int((time.monotonic() - started) * 1000)
+    checks = ("health", "ready", "initialize", "tools_list")
+    result["status"] = "PASS" if all(result[key] == "PASS" for key in checks) else "FAIL"
+    return result
