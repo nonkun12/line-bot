@@ -182,3 +182,20 @@ def test_init_db_migrates_existing_jobs_table(tmp_path, monkeypatch):
     )
     assert migrated is not None
     assert job_store.get_job(1)["message"] == "existing job"
+
+
+def test_idempotency_keys_are_scoped_per_user(tmp_path, monkeypatch):
+    db_path = tmp_path / "jobs.sqlite"
+    monkeypatch.setattr(db, "DB", str(db_path))
+    db.init_db()
+
+    first = job_store.create_job(
+        "U-one", "request one", idempotency_key="same-client-key"
+    )
+    second = job_store.create_job(
+        "U-two", "request two", idempotency_key="same-client-key"
+    )
+
+    assert first != second
+    assert job_store.get_job(first)["user_id"] == "U-one"
+    assert job_store.get_job(second)["user_id"] == "U-two"
