@@ -123,6 +123,7 @@ class ExperimentResult:
 @dataclass(frozen=True)
 class IndependentEvaluation:
     experiment_id: str
+    result_digest: str
     evaluator_id: str
     decision: str
     rationale: str
@@ -352,10 +353,18 @@ class RSIExecutor:
         self._control(require_execution=True, cost=plan.expected_cost_units)
         if not callable(runner):
             raise RSIError("local runner is unavailable")
-        if approval.experiment_digest != plan.plan_digest or not approval.nonce or not approval.signature:
+        _bounded_id(approval.approver_id, "approver id")
+        _bounded_id(approval.nonce, "approval nonce")
+        if approval.experiment_digest != plan.plan_digest or not approval.signature:
             raise RSIError("approval is not bound to the exact experiment")
         if not self.verify_approval(approval):
             raise RSIError("human approval signature verification failed")
+        # Persist the one-time approval before invoking the runner. A crash is
+        # treated as consumed/unknown and requires a fresh human approval.
+        self.ledger.append("approval:" + approval.nonce, "human_approval", {
+            "approver_id": approval.approver_id, "experiment_digest": approval.experiment_digest,
+            "nonce": approval.nonce,
+        })
         result = runner(plan)
         self._control(require_execution=True, cost=0)
         if not isinstance(result, ExperimentResult) or result.experiment_id != plan.experiment_id:
@@ -372,8 +381,8 @@ class RSIExecutor:
 
     def evaluate(self, result: ExperimentResult, evaluation: IndependentEvaluation) -> IndependentEvaluation:
         self._control()
-        if evaluation.experiment_id != result.experiment_id:
-            raise RSIError("evaluation experiment identity mismatch")
+        if evaluation.experiment_id != result.experiment_id or evaluation.result_digest != result.result_digest:
+            raise RSIError("evaluation experiment/result identity mismatch")
         _bounded_id(evaluation.evaluator_id, "evaluator id")
         if evaluation.evaluator_id == result.executor_id:
             raise RSIError("executor cannot evaluate its own result")
