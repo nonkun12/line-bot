@@ -112,32 +112,33 @@ def continuation_decision(
 
     # Trust domains must not share a signing key: separate key IDs and
     # allowlists alone do not establish independent authority.
-    try:
-        approval_key_id = approval_claim.get("key_id")
-        budget_key_id = budget_claim.get("key_id")
-        approval_pem = approval_keyring.get(approval_key_id)
-        budget_pem = budget_keyring.get(budget_key_id)
-        review_key = serialization.load_pem_public_key(
-            review_public_key_pem.encode("utf-8")
-            if isinstance(review_public_key_pem, str) else review_public_key_pem
-        )
-        approval_key = serialization.load_pem_public_key(
-            approval_pem.encode("utf-8") if isinstance(approval_pem, str) else approval_pem
-        )
-        budget_key = serialization.load_pem_public_key(
-            budget_pem.encode("utf-8") if isinstance(budget_pem, str) else budget_pem
-        )
-        if not all(isinstance(key, Ed25519PublicKey)
-                   for key in (review_key, approval_key, budget_key)):
-            raise ValueError("trust_key_type_invalid")
-        raw_keys = [
-            key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-            for key in (review_key, approval_key, budget_key)
-        ]
-        if len(set(raw_keys)) != 3 or approval_key_id == budget_key_id:
-            reasons.append("trust_signing_keys_not_independent")
-    except Exception:
-        reasons.append("trust_signing_keys_missing_or_invalid")
+    if isinstance(approval_claim, dict) and isinstance(budget_claim, dict):
+        try:
+            approval_key_id = approval_claim.get("key_id")
+            budget_key_id = budget_claim.get("key_id")
+            approval_pem = approval_keyring.get(approval_key_id)
+            budget_pem = budget_keyring.get(budget_key_id)
+            review_key = serialization.load_pem_public_key(
+                review_public_key_pem.encode("utf-8")
+                if isinstance(review_public_key_pem, str) else review_public_key_pem
+            )
+            approval_key = serialization.load_pem_public_key(
+                approval_pem.encode("utf-8") if isinstance(approval_pem, str) else approval_pem
+            )
+            budget_key = serialization.load_pem_public_key(
+                budget_pem.encode("utf-8") if isinstance(budget_pem, str) else budget_pem
+            )
+            if not all(isinstance(key, Ed25519PublicKey)
+                       for key in (review_key, approval_key, budget_key)):
+                raise ValueError("trust_key_type_invalid")
+            raw_keys = [
+                key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+                for key in (review_key, approval_key, budget_key)
+            ]
+            if len(set(raw_keys)) != 3 or approval_key_id == budget_key_id:
+                reasons.append("trust_signing_keys_not_independent")
+        except Exception:
+            reasons.append("trust_signing_keys_missing_or_invalid")
     valid_cycle = (isinstance(cycle, dict)
                    and type(cycle.get("schema_version")) is int
                    and cycle["schema_version"] == 1)
