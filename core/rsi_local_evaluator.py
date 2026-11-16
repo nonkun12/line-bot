@@ -85,7 +85,8 @@ class LocalRSIIndependentEvaluator:
             raise RSIError("benchmark evidence producer signature verification failed")
         if (evidence.get("experiment_id") != plan.experiment_id
                 or evidence.get("candidate_digest") != plan.candidate_digest
-                or evidence.get("protocol_digest") != plan.protocol_digest):
+                or evidence.get("protocol_digest") != plan.protocol_digest
+                or evidence.get("result_digest") != result.result_digest):
             raise RSIError("benchmark evidence does not bind to the exact plan")
         observations = evidence.get("observations")
         if not isinstance(observations, list) or not 1 <= len(observations) <= 4:
@@ -121,7 +122,8 @@ class LocalRSIIndependentEvaluator:
         expected_result_digest = canonical_digest({
             "experiment_id": result.experiment_id,
             "executor_id": result.executor_id,
-            "evidence_digest": result.evidence_digest,
+            "candidate_digest": plan.candidate_digest,
+            "protocol_digest": plan.protocol_digest,
             "metrics": metrics,
         })
         if result.result_digest != expected_result_digest:
