@@ -61,6 +61,15 @@ class LocalModelConfig:
 
 
 class LocalModelClient(Protocol):
+    def chat(self, *, system: str, prompt: str) -> str:
+        """Return bounded plain text from a local model."""
+        ...
+
+
+class OllamaLoopbackClient:
+    """Small, synchronous Ollama /api/chat client with no proxy or tool support."""
+
+    def __init__(self, config: LocalModelConfig) -> None:
     def verify_model_digest(self, expected_digest: str) -> bool:
         """Verify the configured model tag resolves to the exact expected Ollama digest."""
         if (
@@ -96,15 +105,6 @@ class LocalModelClient(Protocol):
             raise ValueError("configured Ollama model does not match the approved candidate digest")
         return True
 
-    def chat(self, *, system: str, prompt: str) -> str:
-        """Return bounded plain text from a local model."""
-        ...
-
-
-class OllamaLoopbackClient:
-    """Small, synchronous Ollama /api/chat client with no proxy or tool support."""
-
-    def __init__(self, config: LocalModelConfig) -> None:
         self.config = config
         self._opener = build_opener(ProxyHandler({}))
 
