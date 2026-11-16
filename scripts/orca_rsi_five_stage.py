@@ -177,6 +177,10 @@ def continuation_decision(
         if state.get("active_lease") is not None:
             reasons.append("worker_lease_already_active")
 
+    if (isinstance(approval_claim, dict)
+            and isinstance(public_key_reviewer_id, str)
+            and approval_claim.get("approver_id") == public_key_reviewer_id):
+        reasons.append("reviewer_must_be_independent_of_approver")
     if not isinstance(task_id, str) or not task_id.strip():
         reasons.append("task_id_invalid")
     if not isinstance(task_digest, str) or not _HEX_64.fullmatch(task_digest):
