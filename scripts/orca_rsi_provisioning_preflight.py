@@ -79,12 +79,13 @@ def _validate_ledger(state: Any, key: str) -> None:
         raise ValueError(f"{key}_invalid")
     nonces, hashes = ledger["used_nonces"], ledger["used_attestation_hashes"]
     if (not isinstance(nonces, list) or not isinstance(hashes, list)
-            or len(nonces) != len(hashes)
-            or len(nonces) != len(set(nonces))
-            or len(hashes) != len(set(hashes))
             or any(not isinstance(x, str) or not 32 <= len(x) <= 256 for x in nonces)
             or any(not isinstance(x, str) or len(x) != 64
                    or any(c not in "0123456789abcdef" for c in x) for x in hashes)):
+        raise ValueError(f"{key}_invalid")
+    if (len(nonces) != len(hashes)
+            or len(nonces) != len(set(nonces))
+            or len(hashes) != len(set(hashes))):
         raise ValueError(f"{key}_invalid")
 
 
@@ -172,6 +173,10 @@ def run_preflight(env: Mapping[str, str] | None = None, state_store: Any = None)
                 raise ValueError("persisted_queue_duplicate_task_id")
             task_ids.add(task["task_id"])
             if task["status"] == "queued":
+                digest = task.get("task_digest")
+                if (not isinstance(digest, str) or len(digest) != 64
+                        or any(char not in "0123456789abcdef" for char in digest)):
+                    raise ValueError("persisted_queued_task_digest_invalid")
                 queued.append(task)
         if len(queued) != 1:
             raise ValueError("queued_task_count_not_exactly_one")
