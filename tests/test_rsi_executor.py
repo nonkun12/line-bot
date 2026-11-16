@@ -36,7 +36,7 @@ def make_executor(tmp_path, *, execution_enabled=False, hold=False, budget_known
         control_provider=lambda: control,
         verify_approval=lambda approval: approval.signature == "valid",
         verify_evaluation=lambda evaluation: evaluation.signature == "valid",
-        verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
+        verify_evidence_signature=lambda producer_id, digest, signature: producer_id == "test-producer" and signature == "sig:" + digest,
         executor_id="local-executor",
     )
     return executor, ledger
@@ -157,7 +157,7 @@ def test_planning_rejects_experiment_cost_above_known_free_budget(tmp_path):
         ),
         verify_approval=lambda _: False,
         verify_evaluation=lambda _: False,
-        verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
+        verify_evidence_signature=lambda producer_id, digest, signature: producer_id == "test-producer" and signature == "sig:" + digest,
         executor_id="rsi-planner",
     )
     observations = (
@@ -188,7 +188,7 @@ def test_control_rejects_boolean_budget_and_non_boolean_flags(tmp_path):
             control_provider=lambda invalid=invalid: invalid,
             verify_approval=lambda _: False,
             verify_evaluation=lambda _: False,
-            verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
+            verify_evidence_signature=lambda producer_id, digest, signature: producer_id == "test-producer" and signature == "sig:" + digest,
             executor_id="rsi-planner",
         )
         with pytest.raises(RSIError, match="invalid"):
