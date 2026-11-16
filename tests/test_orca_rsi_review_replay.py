@@ -72,6 +72,7 @@ def _consume(store, snapshot=None, attestation=None, nonce=NONCE):
         attestation=attestation or _attestation(), public_key_pem=PUBLIC,
         repository="nonkun12/line-bot", cycle_id=CYCLE, commit_sha=COMMIT,
         expected_nonce=nonce, allowed_reviewers=["trusted-reviewer"],
+        public_key_reviewer_id="trusted-reviewer",
         implementer_id="worker-author", now=NOW,
     )
 
@@ -156,6 +157,7 @@ def test_reviewer_cannot_be_the_implementer():
             public_key_pem=PUBLIC, repository="nonkun12/line-bot",
             cycle_id=CYCLE, commit_sha=COMMIT, expected_nonce=NONCE,
             allowed_reviewers=["trusted-reviewer"],
+            public_key_reviewer_id="trusted-reviewer",
             implementer_id="trusted-reviewer", now=NOW,
         )
     assert store.writes == 0
