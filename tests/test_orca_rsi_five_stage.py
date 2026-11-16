@@ -8,7 +8,6 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from scripts.orca_rsi_five_stage import (
     RSI_STAGES, RSICycleRejected, continuation_decision, new_cycle, record_stage,
 )
-from scripts.orca_rsi_review_attestation import verify_independent_review
 
 NOW = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)
 NONCE = "one-time-challenge-nonce-123456"
@@ -27,7 +26,7 @@ def _complete_cycle(result="PASS"):
     return record_stage(cycle, stage="select_evolve", evidence="decision evidence", result=result)
 
 
-def _review():
+def _signed_review(**overrides):
     value = {
         "schema_version": 1, "repository": "nonkun12/line-bot",
         "cycle_id": CYCLE_ID, "commit_sha": COMMIT,
@@ -35,22 +34,23 @@ def _review():
         "evidence_refs": ["actions://review/123"], "reviewed_at": NOW.isoformat(),
         "nonce": NONCE,
     }
+    value.update(overrides)
     value["signature"] = base64.b64encode(PRIVATE.sign(json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+        {k: v for k, v in value.items() if k != "signature"},
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
     ).encode())).decode()
-    return verify_independent_review(
-        value, PUBLIC_PEM, repository="nonkun12/line-bot", cycle_id=CYCLE_ID,
-        commit_sha=COMMIT, expected_nonce=NONCE, used_attestation_hashes=[],
-        now=NOW, allowed_reviewers=["trusted-reviewer"],
-    )
+    return value
 
 
 def _gates(**overrides):
     values = {
         "queue_has_pending": True, "global_hold": False, "emergency_stop": False,
         "budget_verified": True, "approval_verified": True,
-        "independent_review": _review(), "expected_commit_sha": COMMIT,
-        "kill_switch": False,
+        "independent_review_attestation": _signed_review(),
+        "review_public_key_pem": PUBLIC_PEM, "review_nonce": NONCE,
+        "used_attestation_hashes": [], "repository": "nonkun12/line-bot",
+        "allowed_reviewers": ["trusted-reviewer"], "now": NOW,
+        "expected_commit_sha": COMMIT, "kill_switch": False,
     }
     values.update(overrides)
     return values
@@ -81,10 +81,28 @@ def test_rsi_rejects_empty_evidence():
         raise AssertionError("empty evidence was accepted")
 
 
-def test_only_verified_review_bound_to_cycle_and_commit_can_continue():
+def test_only_cryptographically_verified_review_can_continue():
     decision = continuation_decision(_complete_cycle(), **_gates())
     assert decision["continue"] is True
     assert decision["next_cycle_limit"] == 1
+
+
+def test_raw_boolean_cannot_satisfy_independent_review_gate():
+    decision = continuation_decision(_complete_cycle(), **_gates(independent_review_attestation=True))
+    assert decision["continue"] is False
+    assert any(reason.startswith("independent_review_rejected:review_attestation_missing")
+               for reason in decision["reasons"])
+
+
+def test_review_for_another_cycle_or_commit_is_rejected():
+    decision = continuation_decision(
+        _complete_cycle(), **_gates(independent_review_attestation=_signed_review(cycle_id="c" * 64))
+    )
+    assert any("review_cycle_mismatch" in reason for reason in decision["reasons"])
+    decision = continuation_decision(
+        _complete_cycle(), **_gates(independent_review_attestation=_signed_review(commit_sha="d" * 40))
+    )
+    assert any("review_commit_mismatch" in reason for reason in decision["reasons"])
 
 
 def test_hold_or_missing_budget_blocks_continuation():
@@ -100,20 +118,18 @@ def test_no_change_does_not_continue():
     assert "rsi_result_not_pass" in decision["reasons"]
 
 
-def test_raw_boolean_cannot_satisfy_independent_review_gate():
-    decision = continuation_decision(_complete_cycle(), **_gates(independent_review=True))
-    assert decision["continue"] is False
-    assert "independent_review_not_verified" in decision["reasons"]
-
-
-def test_review_from_another_cycle_or_commit_is_rejected():
-    from dataclasses import replace
-    wrong_cycle = replace(_review(), cycle_id="c" * 64)
-    decision = continuation_decision(_complete_cycle(), **_gates(independent_review=wrong_cycle))
-    assert "independent_review_cycle_mismatch" in decision["reasons"]
-    wrong_commit = replace(_review(), commit_sha="d" * 40)
-    decision = continuation_decision(_complete_cycle(), **_gates(independent_review=wrong_commit))
-    assert "independent_review_commit_mismatch" in decision["reasons"]
+def test_replayed_review_is_rejected_by_gate():
+    from scripts.orca_rsi_review_attestation import verify_independent_review
+    signed = _signed_review()
+    first = verify_independent_review(
+        signed, PUBLIC_PEM, repository="nonkun12/line-bot", cycle_id=CYCLE_ID,
+        commit_sha=COMMIT, expected_nonce=NONCE, used_attestation_hashes=[],
+        now=NOW, allowed_reviewers=["trusted-reviewer"],
+    )
+    decision = continuation_decision(
+        _complete_cycle(), **_gates(used_attestation_hashes=[first.attestation_hash])
+    )
+    assert any("review_attestation_replayed" in reason for reason in decision["reasons"])
 
 
 def test_truthy_strings_cannot_satisfy_safety_gates():
