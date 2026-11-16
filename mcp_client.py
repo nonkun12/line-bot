@@ -397,13 +397,14 @@ def parse_mcp_json_list(raw):
         return []
 
 
+
 def diagnose_mcp_connection(timeout=12.0):
-    """Run bounded, read-only health, readiness, and MCP tools/list checks."""
+    """Run bounded, read-only health, readiness, and authenticated tools/list checks."""
     started = time.monotonic()
     result = {
         "health": "未確認",
         "ready": "未確認",
-        "initialize": "未確認",
+        "mcp_auth": "未確認",
         "tools_list": "未確認",
         "tool_count": 0,
         "elapsed_ms": 0,
@@ -414,7 +415,7 @@ def diagnose_mcp_connection(timeout=12.0):
     ready_url = f"{base.scheme}://{base.netloc}/ready"
     headers = {
         "Content-Type": "application/json",
-        "Accept": "application/json",
+        "Accept": "application/json, text/event-stream",
         "x-api-key": MCP_API_KEY,
         "Connection": "close",
     }
@@ -432,33 +433,9 @@ def diagnose_mcp_connection(timeout=12.0):
         if result["ready"] != "PASS":
             return _finish_mcp_diagnostic(result, started)
 
-        initialize_payload = {
-            "jsonrpc": "2.0",
-            "id": "line-mcp-diagnostic-init",
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2025-03-26",
-                "capabilities": {},
-                "clientInfo": {"name": "line-mcp-diagnostic", "version": "1.0.0"},
-            },
-        }
-        initialized = httpx.post(
-            MCP_SERVER_URL,
-            json=initialize_payload,
-            headers=headers,
-            timeout=request_timeout,
-            follow_redirects=False,
-        )
-        init_body = initialized.json() if initialized.status_code == 200 else {}
-        result["initialize"] = (
-            "PASS"
-            if initialized.status_code == 200 and isinstance(init_body.get("result"), dict)
-            else f"FAIL ({initialized.status_code})"
-        )
-        initialized.close()
-        if result["initialize"] != "PASS":
-            return _finish_mcp_diagnostic(result, started)
-
+        # The MCP server intentionally uses stateless HTTP transport and creates
+        # a fresh server per POST, matching the existing tools/call client path.
+        # Therefore probe the authenticated tools/list request directly.
         tools_payload = {
             "jsonrpc": "2.0",
             "id": "line-mcp-diagnostic-tools",
@@ -472,6 +449,7 @@ def diagnose_mcp_connection(timeout=12.0):
             timeout=request_timeout,
             follow_redirects=False,
         )
+        result["mcp_auth"] = "PASS" if tools_response.status_code != 401 else "FAIL (401)"
         tools_body = tools_response.json() if tools_response.status_code == 200 else {}
         tools = tools_body.get("result", {}).get("tools", []) if isinstance(tools_body, dict) else []
         if tools_response.status_code == 200 and isinstance(tools, list) and "error" not in tools_body:
@@ -488,6 +466,6 @@ def diagnose_mcp_connection(timeout=12.0):
 
 def _finish_mcp_diagnostic(result, started):
     result["elapsed_ms"] = int((time.monotonic() - started) * 1000)
-    checks = ("health", "ready", "initialize", "tools_list")
+    checks = ("health", "ready", "mcp_auth", "tools_list")
     result["status"] = "PASS" if all(result[key] == "PASS" for key in checks) else "FAIL"
     return result
