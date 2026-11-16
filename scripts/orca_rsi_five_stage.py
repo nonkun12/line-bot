@@ -78,6 +78,7 @@ def continuation_decision(
     replay_snapshot: Any,
     repository: str,
     allowed_reviewers: Iterable[str],
+    public_key_reviewer_id: str,
     implementer_id: str,
     now: datetime,
     expected_commit_sha: str,
@@ -155,6 +156,7 @@ def continuation_decision(
                 commit_sha=expected_commit_sha,
                 expected_nonce=review_nonce,
                 allowed_reviewers=allowed_reviewers,
+                public_key_reviewer_id=public_key_reviewer_id,
                 implementer_id=implementer_id,
                 now=now,
             )
