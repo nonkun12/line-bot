@@ -212,3 +212,65 @@ def seed_observations(ledger, observations):
         )
         seeded.append(replace(item, evidence_digest=digest, evidence_event_id=event_id))
     return tuple(seeded)
+
+
+
+def test_observation_rejects_missing_source_evidence_and_invalid_producer_signature(tmp_path):
+    executor, ledger = make_executor(tmp_path)
+    raw = Observation("missing-source", H, "model", "FAIL", "quality fell", 1, "absent-source-event")
+    with pytest.raises(RSIError, match="missing"):
+        executor.observe((raw,))
+
+    raw = Observation("bad-signature", H, "model", "FAIL", "quality fell", 1)
+    event_id = "source-evidence:bad-signature"
+    digest = ledger.append_observation_evidence(
+        event_id, observation=raw, experiment_id="experiment-1",
+        candidate_digest="c" * 64, protocol_digest="d" * 64,
+        result_digest="e" * 64, producer_id="untrusted-producer",
+        sign_digest=lambda _: "forged",
+    )
+    forged = replace(raw, evidence_digest=digest, evidence_event_id=event_id)
+    with pytest.raises(RSIError, match="signature verification failed"):
+        executor.observe((forged,))
+
+
+def test_observation_rejects_source_payload_mismatch_and_forbidden_event_type(tmp_path):
+    executor, ledger = make_executor(tmp_path)
+    raw = Observation("payload-mismatch", H, "model", "FAIL", "original detail", 1)
+    event_id = "source-evidence:payload-mismatch"
+    digest = ledger.append_observation_evidence(
+        event_id, observation=raw, experiment_id="experiment-2",
+        candidate_digest="c" * 64, protocol_digest="d" * 64,
+        result_digest="e" * 64, producer_id="test-producer",
+        sign_digest=lambda value: "sig:" + value,
+    )
+    altered = replace(raw, evidence_digest=digest, evidence_event_id=event_id, detail="altered detail")
+    with pytest.raises(RSIError, match="does not match"):
+        executor.observe((altered,))
+
+    forbidden_id = "forbidden-source"
+    forbidden_digest = ledger.append(forbidden_id, "observation", {"evidence": H})
+    forbidden = Observation(
+        "forbidden-observation", forbidden_digest, "model", "FAIL",
+        "detail", 2, forbidden_id,
+    )
+    with pytest.raises(RSIError, match="event type is not allowed"):
+        executor.observe((forbidden,))
+
+
+def test_observation_rejects_tampered_hash_chain_before_acceptance(tmp_path):
+    executor, ledger = make_executor(tmp_path)
+    raw = Observation("tampered-source", H, "model", "FAIL", "quality fell", 1)
+    event_id = "source-evidence:tampered-source"
+    digest = ledger.append_observation_evidence(
+        event_id, observation=raw, experiment_id="experiment-3",
+        candidate_digest="c" * 64, protocol_digest="d" * 64,
+        result_digest="e" * 64, producer_id="test-producer",
+        sign_digest=lambda value: "sig:" + value,
+    )
+    with sqlite3.connect(ledger.path) as db:
+        db.execute("DROP TRIGGER rsi_evidence_no_update")
+        db.execute("UPDATE rsi_evidence SET payload='{}' WHERE event_id=?", (event_id,))
+    item = replace(raw, evidence_digest=digest, evidence_event_id=event_id)
+    with pytest.raises(RSIError, match="integrity verification failed"):
+        executor.observe((item,))
