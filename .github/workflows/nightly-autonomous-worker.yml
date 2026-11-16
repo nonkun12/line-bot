@@ -2,6 +2,27 @@ name: Autonomous Development Loop (legacy manual)
 
 on:
   workflow_dispatch:
+    inputs:
+      execution_approval:
+        description: 'Explicitly approve one task-bound execution'
+        required: false
+        default: 'DENY'
+        type: choice
+        options:
+          - 'DENY'
+          - 'APPROVE_EXECUTION'
+      approval_task_id:
+        description: 'Exact task ID shown by the prior BLOCKED run'
+        required: false
+        type: string
+      approval_instruction_sha256:
+        description: 'SHA-256 of the exact development instruction'
+        required: false
+        type: string
+      approval_base_sha:
+        description: 'Exact base commit SHA shown by the prior BLOCKED run'
+        required: false
+        type: string
   schedule:
     - cron: '0 4 * * *'
       timezone: 'Asia/Tokyo'
@@ -61,6 +82,7 @@ jobs:
           DEV_USER_ID: autonomous
           GITHUB_RUN_ID: ${{ github.run_id }}
           AUTONOMOUS_SUMMARY_PATH: ${{ runner.temp }}/autonomous_run_summary.json
+          AUTONOMOUS_TASK_ID: scheduled-distributed-development
         run: |
           python scripts/run_guarded_runtime.py
           echo "AUTONOMOUS_SUMMARY_PATH=${RUNNER_TEMP}/autonomous_run_summary.json" >> "$GITHUB_ENV"
