@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import hashlib
-from typing import Sequence
+from typing import Callable, Sequence
 
 from .ai_factory_stage132_local_models import (
     LocalModelClient, LocalModelConfig, OllamaLoopbackClient,
@@ -49,6 +49,7 @@ class LocalRSIExperimentRunner:
         model_id: str,
         ledger: EvidenceLedger,
         cases: Sequence[BenchmarkCase] = _DEFAULT_CASES,
+        sign_evidence: Callable[[str], str] | None = None,
     ) -> None:
         if not callable(getattr(client, "chat", None)):
             raise TypeError("Stage 132 local model client is required")
@@ -71,6 +72,9 @@ class LocalRSIExperimentRunner:
             if len(case.prompt) > 1000 or len(case.expected_text) > 200:
                 raise ValueError("benchmark case exceeds bound")
             ids.add(case.case_id)
+        if not callable(sign_evidence):
+            raise TypeError("external benchmark evidence signer is required")
+        self._sign_evidence = sign_evidence
         self._client = client
         self._ledger = ledger
         self.executor_id = executor_id
@@ -108,15 +112,20 @@ class LocalRSIExperimentRunner:
                 "matched": output.strip() == case.expected_text,
             })
         score = sum(1 for item in observations if item["matched"]) / len(observations)
+        evidence_payload = {
+            "experiment_id": plan.experiment_id,
+            "candidate_digest": self.candidate_digest,
+            "protocol_digest": self.protocol_digest,
+            "observations": observations,
+            "producer_id": self.executor_id,
+        }
+        evidence_signature = self._sign_evidence(canonical_digest(evidence_payload))
+        if not isinstance(evidence_signature, str) or not evidence_signature.strip() or len(evidence_signature) > 4096:
+            raise RSIError("benchmark evidence signer returned an invalid signature")
         evidence_digest = self._ledger.append(
             "benchmark-evidence:" + plan.experiment_id,
             "local_benchmark_evidence",
-            {
-                "experiment_id": plan.experiment_id,
-                "candidate_digest": self.candidate_digest,
-                "protocol_digest": self.protocol_digest,
-                "observations": observations,
-            },
+            {**evidence_payload, "producer_signature": evidence_signature},
         )
         metrics = {"quality": float(score), "case_count": float(len(observations))}
         result_digest = canonical_digest({
@@ -138,6 +147,7 @@ def build_loopback_rsi_runner(
     ledger: EvidenceLedger,
     timeout_seconds: float = 30.0,
     cases: Sequence[BenchmarkCase] = _DEFAULT_CASES,
+    sign_evidence: Callable[[str], str] | None = None,
 ) -> LocalRSIExperimentRunner:
     """Build the RSI runner against local Ollama with thinking explicitly disabled."""
     config = LocalModelConfig(
@@ -156,6 +166,7 @@ def build_loopback_rsi_runner(
         model_id=model,
         ledger=ledger,
         cases=cases,
+        sign_evidence=sign_evidence,
     )
 
 
