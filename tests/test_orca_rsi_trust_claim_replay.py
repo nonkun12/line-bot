@@ -8,10 +8,55 @@ from scripts.orca_rsi_trust_claim_replay import (
     verify_and_consume_budget_authorization_once,
     verify_and_consume_task_approval_once,
 )
-from tests.test_orca_rsi_trust_claims import (
-    NOW, KEYRING, REPO, TASK, TASK_DIGEST, CYCLE, COMMIT,
-    _approval, _budget,
-)
+import base64
+import hashlib
+import json
+from datetime import datetime, timezone
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+NOW = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)
+PRIVATE = Ed25519PrivateKey.from_private_bytes(bytes(range(1, 33)))
+PUBLIC = PRIVATE.public_key().public_bytes(
+    serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+).decode()
+KEYRING = {"approval-key-v1": PUBLIC, "budget-key-v1": PUBLIC}
+REPO, TASK = "nonkun12/line-bot", "task-001"
+TASK_DIGEST, CYCLE, COMMIT = "a" * 64, "b" * 64, "c" * 40
+
+
+def _sign(value):
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+    signed = dict(value)
+    signed["signature"] = base64.b64encode(PRIVATE.sign(raw)).decode()
+    return signed
+
+
+def _approval():
+    return _sign({
+        "claim_type": "orca_rsi_task_approval", "schema_version": 1,
+        "key_id": "approval-key-v1", "repository": REPO, "task_id": TASK,
+        "task_digest": TASK_DIGEST, "cycle_id": CYCLE, "commit_sha": COMMIT,
+        "approver_id": "human-approver", "verdict": "APPROVED",
+        "nonce": "d" * 32, "issued_at": "2026-11-16T11:59:00Z",
+        "expires_at": "2026-11-16T12:05:00Z",
+    })
+
+
+def _budget(evidence):
+    ref = "collector://bundle/42"
+    bundle = len(ref.encode()).to_bytes(4, "big") + ref.encode() + len(evidence).to_bytes(8, "big") + evidence
+    return _sign({
+        "claim_type": "orca_rsi_budget_authorization", "schema_version": 1,
+        "key_id": "budget-key-v1", "repository": REPO, "task_id": TASK,
+        "task_digest": TASK_DIGEST, "cycle_id": CYCLE, "commit_sha": COMMIT,
+        "issuer_id": "budget-authority", "budget_unit": "github_actions_minutes",
+        "authorized_limit_units": 100, "observed_spend_units": 20,
+        "remaining_units": 80, "evidence_refs": [ref],
+        "evidence_sha256": hashlib.sha256(bundle).hexdigest(),
+        "nonce": "e" * 32, "issued_at": "2026-11-16T11:59:00Z",
+        "expires_at": "2026-11-16T12:04:00Z",
+    })
 
 
 @dataclass
