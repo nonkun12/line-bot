@@ -157,6 +157,7 @@ def test_planning_rejects_experiment_cost_above_known_free_budget(tmp_path):
         ),
         verify_approval=lambda _: False,
         verify_evaluation=lambda _: False,
+        verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
         executor_id="rsi-planner",
     )
     observations = (
