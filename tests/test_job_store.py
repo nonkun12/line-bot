@@ -61,3 +61,63 @@ def test_parent_job_and_retry_metadata(tmp_path, monkeypatch):
     child = job_store.get_job(child_id)
     assert child["parent_job_id"] == parent_id
     assert child["max_retries"] == 5
+
+
+def test_idempotency_key_returns_existing_job_after_repeated_request(tmp_path, monkeypatch):
+    db_path = tmp_path / "jobs.sqlite"
+    monkeypatch.setattr(db, "DB", str(db_path))
+    db.init_db()
+
+    first = job_store.create_job(
+        "U-test", "same request", source="line", idempotency_key="line:event-123"
+    )
+    second = job_store.create_job(
+        "U-test", "same request", source="line", idempotency_key="line:event-123"
+    )
+
+    assert second == first
+    assert job_store.get_job(first)["status"] == "pending"
+
+
+def test_idempotency_key_rejects_different_request_payload(tmp_path, monkeypatch):
+    import pytest
+
+    db_path = tmp_path / "jobs.sqlite"
+    monkeypatch.setattr(db, "DB", str(db_path))
+    db.init_db()
+
+    job_store.create_job(
+        "U-test", "original request", idempotency_key="line:event-456"
+    )
+    with pytest.raises(ValueError, match="different request"):
+        job_store.create_job(
+            "U-test", "different request", idempotency_key="line:event-456"
+        )
+
+
+def test_idempotency_key_survives_database_reopen(tmp_path, monkeypatch):
+    db_path = tmp_path / "jobs.sqlite"
+    monkeypatch.setattr(db, "DB", str(db_path))
+    db.init_db()
+    first = job_store.create_job(
+        "U-test", "durable request", idempotency_key="line:event-789"
+    )
+
+    db.init_db()
+    second = job_store.create_job(
+        "U-test", "durable request", idempotency_key="line:event-789"
+    )
+    assert second == first
+
+
+def test_idempotency_key_validation_rejects_blank_and_oversized_values(tmp_path, monkeypatch):
+    import pytest
+
+    db_path = tmp_path / "jobs.sqlite"
+    monkeypatch.setattr(db, "DB", str(db_path))
+    db.init_db()
+
+    with pytest.raises(ValueError, match="idempotency_key"):
+        job_store.create_job("U-test", "request", idempotency_key="  ")
+    with pytest.raises(ValueError, match="idempotency_key"):
+        job_store.create_job("U-test", "request", idempotency_key="x" * 201)
