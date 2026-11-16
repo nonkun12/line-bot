@@ -7,6 +7,8 @@ from core.rsi_local_runner import (
 
 
 class FakeLocalClient:
+    config = type("Config", (), {"model": "fixture-model"})()
+
     def __init__(self, outputs):
         self.outputs = list(outputs)
         self.calls = []
@@ -37,7 +39,7 @@ def test_runner_executes_only_fixed_loopback_benchmark_cases(tmp_path):
     )
     client = FakeLocalClient(["TOKEN-A", "wrong"])
     runner = LocalRSIExperimentRunner(
-        client, executor_id="local-runner", candidate_digest=candidate, ledger=EvidenceLedger(tmp_path / "runner.sqlite"), cases=cases
+        client, executor_id="local-runner", candidate_digest=candidate, model_id="fixture-model", ledger=EvidenceLedger(tmp_path / "runner.sqlite"), cases=cases
     )
     result = runner(plan(candidate, benchmark_protocol_digest(cases)))
     assert runner.is_local is True
