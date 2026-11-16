@@ -147,8 +147,10 @@ def build_loopback_rsi_runner(
         max_output_tokens=128,
         think=False,
     )
+    client = OllamaLoopbackClient(config)
+    client.verify_model_digest(candidate_digest)
     return LocalRSIExperimentRunner(
-        OllamaLoopbackClient(config),
+        client,
         executor_id=executor_id,
         candidate_digest=candidate_digest,
         model_id=model,
