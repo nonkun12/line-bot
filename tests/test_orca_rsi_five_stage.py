@@ -1,5 +1,7 @@
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import base64
+import copy
 import json
 
 from cryptography.hazmat.primitives import serialization
@@ -19,6 +21,32 @@ PUBLIC_PEM = PRIVATE.public_key().public_bytes(
 ).decode()
 
 
+@dataclass
+class Snapshot:
+    ref_sha: str
+    state: dict
+
+
+class FakeCASStore:
+    def __init__(self):
+        self.snapshot = Snapshot("c" * 40, {
+            "schema_version": 1, "revision": 3, "global_hold": True,
+            "emergency_stop": False, "tasks": [], "active_lease": None,
+            "consumed_approval_ids": [],
+        })
+        self.writes = 0
+        self.conflict = False
+
+    def write(self, *, snapshot, next_state, expected_revision):
+        self.writes += 1
+        if self.conflict or snapshot.ref_sha != self.snapshot.ref_sha:
+            raise RuntimeError("github_ref_fast_forward_conflict")
+        if expected_revision != self.snapshot.state["revision"]:
+            raise RuntimeError("stale_state_revision")
+        self.snapshot = Snapshot("d" * 40, copy.deepcopy(next_state))
+        return self.snapshot
+
+
 def _complete_cycle(result="PASS"):
     cycle = new_cycle(CYCLE_ID)
     for stage in RSI_STAGES[:-1]:
@@ -36,24 +64,25 @@ def _signed_review(**overrides):
     }
     value.update(overrides)
     value["signature"] = base64.b64encode(PRIVATE.sign(json.dumps(
-        {k: v for k, v in value.items() if k != "signature"},
-        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
     ).encode())).decode()
     return value
 
 
-def _gates(**overrides):
+def _gates(store=None, **overrides):
+    store = store or FakeCASStore()
     values = {
         "queue_has_pending": True, "global_hold": False, "emergency_stop": False,
         "budget_verified": True, "approval_verified": True,
         "independent_review_attestation": _signed_review(),
         "review_public_key_pem": PUBLIC_PEM, "review_nonce": NONCE,
-        "used_attestation_hashes": [], "repository": "nonkun12/line-bot",
+        "replay_store": store, "replay_snapshot": store.snapshot,
+        "repository": "nonkun12/line-bot",
         "allowed_reviewers": ["trusted-reviewer"], "now": NOW,
         "expected_commit_sha": COMMIT, "kill_switch": False,
     }
     values.update(overrides)
-    return values
+    return store, values
 
 
 def test_five_rsi_stages_complete_in_order():
@@ -81,64 +110,88 @@ def test_rsi_rejects_empty_evidence():
         raise AssertionError("empty evidence was accepted")
 
 
-def test_only_cryptographically_verified_review_can_continue():
-    decision = continuation_decision(_complete_cycle(), **_gates())
+def test_only_signed_and_durably_consumed_review_can_continue():
+    store, gates = _gates()
+    decision = continuation_decision(_complete_cycle(), **gates)
     assert decision["continue"] is True
     assert decision["next_cycle_limit"] == 1
+    assert decision["review_replay_status"] == "REVIEW_CONSUMED"
+    assert decision["execution_started"] is False
+    assert store.writes == 1
+    assert store.snapshot.state["revision"] == 4
 
 
 def test_raw_boolean_cannot_satisfy_independent_review_gate():
-    decision = continuation_decision(_complete_cycle(), **_gates(independent_review_attestation=True))
+    store, gates = _gates(independent_review_attestation=True)
+    decision = continuation_decision(_complete_cycle(), **gates)
     assert decision["continue"] is False
-    assert any(reason.startswith("independent_review_rejected:review_attestation_missing")
-               for reason in decision["reasons"])
+    assert "independent_review_rejected:review_attestation_missing" in decision["reasons"]
+    assert store.writes == 0
 
 
 def test_review_for_another_cycle_or_commit_is_rejected():
-    decision = continuation_decision(
-        _complete_cycle(), **_gates(independent_review_attestation=_signed_review(cycle_id="c" * 64))
-    )
+    store, gates = _gates(independent_review_attestation=_signed_review(cycle_id="c" * 64))
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
     assert any("review_cycle_mismatch" in reason for reason in decision["reasons"])
-    decision = continuation_decision(
-        _complete_cycle(), **_gates(independent_review_attestation=_signed_review(commit_sha="d" * 40))
-    )
+    assert store.writes == 0
+
+    store, gates = _gates(independent_review_attestation=_signed_review(commit_sha="d" * 40))
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
     assert any("review_commit_mismatch" in reason for reason in decision["reasons"])
+    assert store.writes == 0
 
 
-def test_hold_or_missing_budget_blocks_continuation():
-    decision = continuation_decision(_complete_cycle(), **_gates(global_hold=True, budget_verified=False))
+def test_hold_or_missing_budget_blocks_without_consuming_review():
+    store, gates = _gates(global_hold=True, budget_verified=False)
+    decision = continuation_decision(_complete_cycle(), **gates)
     assert decision["continue"] is False
     assert "global_hold_active" in decision["reasons"]
     assert "budget_evidence_missing_or_invalid" in decision["reasons"]
+    assert store.writes == 0
 
 
-def test_no_change_does_not_continue():
-    decision = continuation_decision(_complete_cycle("NO_CHANGE"), **_gates())
+def test_no_change_does_not_consume_or_continue():
+    store, gates = _gates()
+    decision = continuation_decision(_complete_cycle("NO_CHANGE"), **gates)
     assert decision["continue"] is False
     assert "rsi_result_not_pass" in decision["reasons"]
+    assert store.writes == 0
 
 
-def test_replayed_review_is_rejected_by_gate():
-    from scripts.orca_rsi_review_attestation import verify_independent_review
-    signed = _signed_review()
-    first = verify_independent_review(
-        signed, PUBLIC_PEM, repository="nonkun12/line-bot", cycle_id=CYCLE_ID,
-        commit_sha=COMMIT, expected_nonce=NONCE, used_attestation_hashes=[],
-        now=NOW, allowed_reviewers=["trusted-reviewer"],
-    )
-    decision = continuation_decision(
-        _complete_cycle(), **_gates(used_attestation_hashes=[first.attestation_hash])
-    )
-    assert any("review_attestation_replayed" in reason for reason in decision["reasons"])
+def test_replayed_review_is_rejected_by_durable_gate():
+    store, gates = _gates()
+    first = continuation_decision(_complete_cycle(), **gates)
+    assert first["continue"] is True
+    # The persisted state from the first pass is the only accepted next snapshot.
+    store2, gates2 = _gates(store)
+    gates2["replay_snapshot"] = store.snapshot
+    second = continuation_decision(_complete_cycle(), **gates2)
+    assert second["continue"] is False
+    assert any("review_nonce_replayed" in reason for reason in second["reasons"])
 
 
 def test_truthy_strings_cannot_satisfy_safety_gates():
-    decision = continuation_decision(_complete_cycle(), **_gates(global_hold="false", budget_verified="true"))
+    store, gates = _gates(global_hold="false", budget_verified="true")
+    decision = continuation_decision(_complete_cycle(), **gates)
     assert "gate_input_not_boolean" in decision["reasons"]
+    assert store.writes == 0
 
 
 def test_boolean_schema_version_is_rejected():
+    store, gates = _gates()
     bad = _complete_cycle()
     bad["schema_version"] = True
-    decision = continuation_decision(bad, **_gates())
+    decision = continuation_decision(bad, **gates)
     assert decision["continue"] is False
+    assert store.writes == 0
+
+
+def test_cas_conflict_fails_closed_without_retry():
+    store, gates = _gates()
+    store.conflict = True
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert any("review_replay_persistence_failed" in reason for reason in decision["reasons"])
+    assert store.writes == 1
