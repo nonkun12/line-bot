@@ -1,4 +1,4 @@
-import json
+import pathlib
 
 import pytest
 
@@ -59,7 +59,7 @@ def test_local_stop_file_blocks(monkeypatch, tmp_path):
     stop_file = tmp_path / ".autonomous-loop.stop"
     monkeypatch.delenv("CONTROL_TOWER_KILL_SWITCH", raising=False)
     monkeypatch.delenv("AUTONOMOUS_STOP_FILE", raising=False)
-    monkeypatch.setattr(emergency_stop.Path, "exists", lambda self: self == stop_file)
+    monkeypatch.setattr(pathlib.Path, "exists", lambda self: self == stop_file)
     assert emergency_stop.local_stop_active(tmp_path) is True
 
 
