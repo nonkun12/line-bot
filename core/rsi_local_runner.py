@@ -44,6 +44,7 @@ class LocalRSIExperimentRunner:
         *,
         executor_id: str,
         candidate_digest: str,
+        model_id: str,
         ledger: EvidenceLedger,
         cases: Sequence[BenchmarkCase] = _DEFAULT_CASES,
     ) -> None:
@@ -52,6 +53,9 @@ class LocalRSIExperimentRunner:
         if not isinstance(ledger, EvidenceLedger):
             raise TypeError("verified RSI evidence ledger is required")
         _bounded_id(executor_id, "executor id")
+        _bounded_id(model_id, "local model id")
+        if getattr(getattr(client, "config", None), "model", None) != model_id:
+            raise ValueError("local model client identity does not match configured model_id")
         _digest(candidate_digest, "candidate model")
         if not 1 <= len(cases) <= 4:
             raise ValueError("benchmark suite must contain 1..4 fixed cases")
@@ -69,6 +73,7 @@ class LocalRSIExperimentRunner:
         self._ledger = ledger
         self.executor_id = executor_id
         self.candidate_digest = candidate_digest
+        self.model_id = model_id
         self.cases = tuple(cases)
         self.protocol_digest = benchmark_protocol_digest(self.cases)
 
