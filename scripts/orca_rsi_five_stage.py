@@ -78,6 +78,7 @@ def continuation_decision(
     replay_snapshot: Any,
     repository: str,
     allowed_reviewers: Iterable[str],
+    implementer_id: str,
     now: datetime,
     expected_commit_sha: str,
     kill_switch: bool,
@@ -154,6 +155,7 @@ def continuation_decision(
                 commit_sha=expected_commit_sha,
                 expected_nonce=review_nonce,
                 allowed_reviewers=allowed_reviewers,
+                implementer_id=implementer_id,
                 now=now,
             )
         except ReviewReplayStateRejected as exc:
