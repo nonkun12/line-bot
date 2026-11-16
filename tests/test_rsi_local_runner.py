@@ -81,7 +81,11 @@ def test_runner_rejects_unbounded_or_wrong_capability_plan(tmp_path):
         )
 
 
-def test_loopback_runner_factory_pins_local_endpoint_and_disables_thinking(tmp_path):
+def test_loopback_runner_factory_pins_local_endpoint_and_disables_thinking(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "core.rsi_local_runner.OllamaLoopbackClient.verify_model_digest",
+        lambda self, expected: True,
+    )
     runner = build_loopback_rsi_runner(
         model="lfm3:1.7b-qad-q4_0",
         executor_id="local-runner",
