@@ -71,3 +71,19 @@ class McpDiagnosticRunner:
         finally:
             with self._lock:
                 self._active = False
+
+
+_default_runner = McpDiagnosticRunner()
+
+
+def start_mcp_diagnostic(
+    user_id: str,
+    *,
+    diagnose_fn: Callable[[], dict],
+    push_fn: Callable[[str, str], None],
+) -> bool:
+    """Submit one read-only diagnostic without blocking the LINE webhook."""
+    user = str(user_id or "").strip()
+    if not user:
+        return False
+    return _default_runner.submit(user, diagnose_fn, push_fn)
