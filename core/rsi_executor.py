@@ -320,6 +320,13 @@ class EvidenceLedger:
                         raise RSIError("observation source evidence payload must be an object")
                     signature = source.pop("producer_signature", None)
                     producer_id = source.get("producer_id")
+                    expected_fields = {
+                        "observation_id", "capability", "outcome", "detail", "created_at",
+                        "experiment_id", "candidate_digest", "protocol_digest", "result_digest",
+                        "producer_id",
+                    }
+                    if set(source) != expected_fields:
+                        raise RSIError("observation source evidence schema is invalid")
                     for key, value in {
                         "observation_id": item.observation_id,
                         "capability": item.capability,
@@ -340,7 +347,7 @@ class EvidenceLedger:
                         _digest(source.get(key), "source " + label)
                     if not isinstance(signature, str) or not signature.strip():
                         raise RSIError("observation source evidence producer signature is missing")
-                    if not verify_producer_signature(canonical_digest(source), signature):
+                    if verify_producer_signature(canonical_digest(source), signature) is not True:
                         raise RSIError("observation source evidence producer signature verification failed")
 
                 for item in observations:
