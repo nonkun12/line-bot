@@ -29,16 +29,31 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Execute bounded five-stage RSI cycle
-        run: |
-          set -euo pipefail
-          python -m unittest discover -s tests -p 'test_orca_github_rsi_test_cycle.py' -v
-          python scripts/orca_github_rsi_test_cycle.py --output artifacts/orca-rsi/cycle.json
+      - name: Validate RSI runner
+        id: runner_tests
+        continue-on-error: true
+        run: python -m unittest discover -s tests -p 'test_orca_github_rsi_test_cycle.py' -v
 
-      - name: Preserve cycle evidence
+      - name: Execute bounded five-stage RSI cycle
+        id: cycle
+        continue-on-error: true
+        run: python scripts/orca_github_rsi_test_cycle.py --output artifacts/orca-rsi/cycle.json
+
+      - name: Preserve cycle evidence even on failure
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: orca-rsi-cycle-${{ github.run_id }}
+          name: orca-rsi-cycle-\${{ github.run_id }}
           path: artifacts/orca-rsi/cycle.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
+
+      - name: Fail closed if runner validation or cycle failed
+        if: always()
+        env:
+          RUNNER_TEST_OUTCOME: \${{ steps.runner_tests.outcome }}
+          CYCLE_OUTCOME: \${{ steps.cycle.outcome }}
+        run: |
+          set -euo pipefail
+          test "\${RUNNER_TEST_OUTCOME}" = "success"
+          test "\${CYCLE_OUTCOME}" = "success"
