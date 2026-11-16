@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass
 from enum import StrEnum
 import hashlib
 import json
+from contextlib import closing
 import math
 import sqlite3
 import time
@@ -144,7 +145,7 @@ class EvidenceLedger:
     def __init__(self, path: str | Path, *, max_payload_bytes: int = 64_000) -> None:
         self.path = str(path)
         self.max_payload_bytes = max_payload_bytes
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS rsi_evidence (
                     seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -277,6 +278,8 @@ class RSIExecutor:
             if not item.detail or len(item.detail) > 2000:
                 raise RSIError("observation detail invalid")
             groups.setdefault(item.capability, []).append(item)
+        for item in observations:
+            self.ledger.append("observation:" + item.observation_id, "observation", asdict(item))
         diagnoses = []
         for capability, rows in sorted(groups.items()):
             failures = [x for x in rows if x.outcome in {"FAIL", "REGRESSED"}]
@@ -288,8 +291,6 @@ class RSIExecutor:
             diagnoses.append(Diagnosis(did[:32], capability, pattern, 0.5 if len(failures) == 1 else 0.7,
                 tuple(x.observation_id for x in failures), "root cause is unverified; diagnosis is a testable lead"))
             self.ledger.append("diagnosis:" + did[:32], "diagnosis", asdict(diagnoses[-1]))
-        for item in observations:
-            self.ledger.append("observation:" + item.observation_id, "observation", asdict(item))
         return tuple(diagnoses)
 
     def hypothesize(self, diagnoses: tuple[Diagnosis, ...]) -> tuple[Hypothesis, ...]:
