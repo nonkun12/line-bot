@@ -92,6 +92,8 @@ def verify_and_consume_review_once(
             used_attestation_hashes=ledger["used_attestation_hashes"],
             now=now,
             allowed_reviewers=allowed_reviewers,
+            public_key_reviewer_id=public_key_reviewer_id,
+            implementer_id=implementer_id,
         )
     except ReviewAttestationRejected as exc:
         raise ReviewReplayStateRejected(str(exc)) from None
