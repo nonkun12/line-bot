@@ -313,11 +313,11 @@ class RSIExecutor:
 
     def plan(self, hypotheses: tuple[Hypothesis, ...], *, baseline_digest: str,
              candidate_digest: str, protocol_digest: str, expected_cost_units: int = 1) -> tuple[ExperimentPlan, ...]:
-        self._control()
         for value, label in ((baseline_digest, "baseline"), (candidate_digest, "candidate"), (protocol_digest, "protocol")):
             _digest(value, label)
-        if not 1 <= expected_cost_units <= 100:
+        if type(expected_cost_units) is not int or not 1 <= expected_cost_units <= 100:
             raise RSIError("experiment cost outside bound")
+        self._control(cost=expected_cost_units)
         plans = []
         for hypothesis in hypotheses[:self.max_experiments_per_cycle]:
             payload = {"hypothesis": hypothesis.hypothesis_id, "capability": hypothesis.capability,
@@ -332,7 +332,7 @@ class RSIExecutor:
         return tuple(plans)
 
     def select_next(self, plans: tuple[ExperimentPlan, ...]) -> ExperimentPlan:
-        self._control()
+        control = self._control()
         if not plans:
             raise RSIError("no experiment candidates")
         if len(plans) > self.max_experiments_per_cycle:
