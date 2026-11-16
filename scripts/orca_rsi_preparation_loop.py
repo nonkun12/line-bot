@@ -12,11 +12,28 @@ from pathlib import Path
 from typing import Any
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate_json_key")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(value: str) -> None:
+    raise ValueError("nonfinite_json_number")
+
+
 def _read_object(path: Path, label: str) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        raise ValueError(f"{label}_unreadable") from None
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_nonfinite_constant,
+        )
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+        raise ValueError(f"{label}_unreadable_or_ambiguous") from None
     if not isinstance(value, dict):
         raise ValueError(f"{label}_invalid_root")
     return value
@@ -25,7 +42,7 @@ def _read_object(path: Path, label: str) -> dict[str, Any]:
 def _task_digest(task: dict[str, Any]) -> str:
     # Bind the complete catalog record, including execution approval and any
     # future policy metadata, so a changed authorization cannot reuse a digest.
-    canonical = json.dumps(task, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    canonical = json.dumps(task, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -56,9 +73,15 @@ def build_report(catalog: dict[str, Any], state: dict[str, Any]) -> dict[str, An
         queue = []
     queued_ids = set()
     for item in queue:
-        if not isinstance(item, dict) or not isinstance(item.get("task_id"), str):
+        if (not isinstance(item, dict)
+                or not isinstance(item.get("task_id"), str)
+                or not item["task_id"].strip()
+                or not isinstance(item.get("status"), str)
+                or not item["status"].strip()):
             blockers.append("orca_queue_entry_invalid")
             continue
+        if item["task_id"] in queued_ids:
+            blockers.append("orca_queue_duplicate_queued_task_id")
         if item.get("status") == "queued":
             queued_ids.add(item["task_id"])
     if len(queued_ids) > 1:
