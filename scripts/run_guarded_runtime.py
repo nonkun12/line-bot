@@ -357,7 +357,7 @@ def main() -> int:
         os.environ["AUTONOMOUS_RUNTIME_ERROR"] = f"{type(exc).__name__}: {exc}"
         raise
     finally:
-        _write_summary("PASS" if exit_code == 0 else "FAIL", exit_code, start_sha, summary_path, rea_evidence)
+        _write_summary("PASS" if exit_code == 0 else "FAIL", exit_code, start_sha, summary_path, rea_evidence, approval_evidence)
 
 
 if __name__ == "__main__":
