@@ -278,7 +278,7 @@ class EvidenceLedger:
 
     def append_verified_observations(
         self, observations: tuple[Observation, ...],
-        verify_producer_signature: Callable[[str, str], bool],
+        verify_producer_signature: Callable[[str, str, str], bool],
     ) -> None:
         """Verify source provenance and append observations in one SQLite transaction."""
         if not callable(verify_producer_signature):
@@ -347,7 +347,7 @@ class EvidenceLedger:
                         _digest(source.get(key), "source " + label)
                     if not isinstance(signature, str) or not signature.strip():
                         raise RSIError("observation source evidence producer signature is missing")
-                    if verify_producer_signature(canonical_digest(source), signature) is not True:
+                    if verify_producer_signature(producer_id, canonical_digest(source), signature) is not True:
                         raise RSIError("observation source evidence producer signature verification failed")
 
                 for item in observations:
@@ -384,7 +384,7 @@ class RSIExecutor:
         control_provider: Callable[[], RSIControl],
         verify_approval: Callable[[HumanApproval], bool],
         verify_evaluation: Callable[[IndependentEvaluation], bool],
-        verify_evidence_signature: Callable[[str, str], bool],
+        verify_evidence_signature: Callable[[str, str, str], bool],
         executor_id: str,
         max_experiments_per_cycle: int = 4,
     ) -> None:
