@@ -22,7 +22,7 @@ def make_snapshot(now, **overrides):
     return SignedRSIControlSnapshot(**data, signature="sig:" + digest)
 
 
-def test_verified_control_provider_accepts_signed_fresh_free_snapshot(tmp_path):
+def test_verified_control_provider_accepts_signed_initial_hold_snapshot(tmp_path):
     now = 1000
     snapshot = make_snapshot(now)
     ledger = EvidenceLedger(tmp_path / "control.sqlite")
@@ -108,7 +108,7 @@ def test_control_generation_is_monotonic_across_provider_restart(tmp_path):
         lambda: next_snapshot, verify_signature=lambda d, s: s == "sig:" + d,
         ledger=EvidenceLedger(tmp_path / "generation.sqlite"), clock=lambda: now + 2,
     )
-    assert next_provider().global_hold is False
+    assert next_provider().global_hold is True
 
 
 def test_control_issued_at_rollback_is_rejected(tmp_path):
