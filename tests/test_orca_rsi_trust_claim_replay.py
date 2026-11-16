@@ -21,6 +21,7 @@ PUBLIC = PRIVATE.public_key().public_bytes(
     serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
 ).decode()
 KEYRING = {"approval-key-v1": PUBLIC, "budget-key-v1": PUBLIC}
+KEY_SIGNER_MAP = {"approval-key-v1": "human-approver", "budget-key-v1": "budget-authority"}
 REPO, TASK = "nonkun12/line-bot", "task-001"
 TASK_DIGEST, CYCLE, COMMIT = "a" * 64, "b" * 64, "c" * 40
 
@@ -87,7 +88,8 @@ class FakeCASStore:
 def _consume_approval(store):
     return verify_and_consume_task_approval_once(
         store=store, snapshot=store.snapshot, claim=_approval(),
-        keyring=KEYRING, allowed_approvers=["human-approver"],
+        keyring=KEYRING, key_signer_map=KEY_SIGNER_MAP,
+        allowed_approvers=["human-approver"],
         repository=REPO, task_id=TASK, task_digest=TASK_DIGEST,
         cycle_id=CYCLE, commit_sha=COMMIT, now=NOW,
         implementer_id="worker-author",
@@ -98,7 +100,8 @@ def _consume_budget(store):
     evidence = b"trusted collector evidence v1"
     return verify_and_consume_budget_authorization_once(
         store=store, snapshot=store.snapshot, claim=_budget(evidence),
-        keyring=KEYRING, allowed_issuers=["budget-authority"],
+        keyring=KEYRING, key_signer_map=KEY_SIGNER_MAP,
+        allowed_issuers=["budget-authority"],
         repository=REPO, task_id=TASK, task_digest=TASK_DIGEST,
         cycle_id=CYCLE, commit_sha=COMMIT, now=NOW,
         expected_budget_unit="github_actions_minutes",
@@ -150,7 +153,8 @@ def test_cas_conflict_is_not_retried_and_invalid_claim_does_not_write():
     with pytest.raises(ValueError, match="claim_signature_invalid"):
         verify_and_consume_task_approval_once(
             store=store, snapshot=store.snapshot, claim=forged,
-            keyring=KEYRING, allowed_approvers=["human-approver"],
+            keyring=KEYRING, key_signer_map=KEY_SIGNER_MAP,
+            allowed_approvers=["human-approver"],
             repository=REPO, task_id=TASK, task_digest=TASK_DIGEST,
             cycle_id=CYCLE, commit_sha=COMMIT, now=NOW,
             implementer_id="worker-author",
