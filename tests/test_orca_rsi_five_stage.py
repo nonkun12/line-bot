@@ -91,13 +91,13 @@ def _signed_claim(payload, private_key):
     return payload
 
 
-def _approval_claim():
+def _approval_claim(approver_id="trusted-approver"):
     return _signed_claim({
         "claim_type": "orca_rsi_task_approval", "schema_version": 1,
         "key_id": "approval-key-v1", "repository": "nonkun12/line-bot",
         "task_id": "task-1", "task_digest": "f" * 64,
         "cycle_id": CYCLE_ID, "commit_sha": COMMIT,
-        "approver_id": "trusted-approver", "verdict": "APPROVED",
+        "approver_id": approver_id, "verdict": "APPROVED",
         "nonce": "d" * 32, "issued_at": "2026-11-16T11:59:00Z",
         "expires_at": "2026-11-16T12:05:00Z",
     }, APPROVAL_PRIVATE)
@@ -330,6 +330,14 @@ def test_three_trust_domains_must_use_distinct_public_keys():
     assert decision["continue"] is False
     assert "trust_signing_keys_not_independent" in decision["reasons"]
     assert store.writes == 0
+
+def test_reviewer_must_be_independent_of_task_approver():
+    store, gates = _gates(approval_claim=_approval_claim("trusted-reviewer"))
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert "reviewer_must_be_independent_of_approver" in decision["reasons"]
+    assert store.writes == 0
+
 
 def test_verified_boolean_keywords_are_not_accepted_as_trust_evidence():
     store, gates = _gates()
