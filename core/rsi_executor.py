@@ -436,6 +436,7 @@ class RSIExecutor:
             if item.observation_id in seen:
                 raise RSIError("duplicate observation")
             seen.add(item.observation_id)
+        for item in observations:
             _bounded_id(item.evidence_event_id, "source evidence event id")
             _bounded_id(item.experiment_id, "observation experiment id")
             for value, label in ((item.candidate_digest, "candidate"), (item.protocol_digest, "protocol"), (item.result_digest, "result")):
