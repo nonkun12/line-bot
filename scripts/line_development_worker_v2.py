@@ -938,6 +938,11 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
         return False, "invalid_plan", []
     if plan.get("no_change") is True:
         return True, "NO_CHANGE", []
+    # Model output and task execution approval do not authorize repository writes.
+    # The workflow must explicitly enable patch application through its protected
+    # control plane; absent, false, or ambiguous values fail closed.
+    if os.environ.get("AUTO_APPLY_PATCH", "false").strip().casefold() != "true":
+        return False, "patch_application_disabled", []
     changes = plan.get("changes")
     if not isinstance(changes, list) or not 1 <= len(changes) <= MAX_FILES:
         return False, "invalid_change_count", []
