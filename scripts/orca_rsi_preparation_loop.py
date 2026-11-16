@@ -135,7 +135,7 @@ def main() -> int:
             "deploy_authorized": False,
         }
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\\n",
+    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
                            encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, sort_keys=True))
     return 0 if report["status"] == "READY_FOR_HUMAN_REVIEW" else 2
