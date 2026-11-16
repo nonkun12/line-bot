@@ -63,3 +63,19 @@ not claimed. The generic RSI executor remains execution-off by default. The
 next integration task is to provide verified local experiment/evaluation
 adapters and a trusted read-only control/budget provider, then run them only in
 an isolated local environment after explicit approval.
+
+
+## End-to-end proposal cycle
+
+`core/rsi_cycle.py` now orchestrates one bounded proposal cycle:
+observation -> deterministic diagnosis -> falsifiable hypothesis -> optional
+loopback local-model advisory note -> digest-bound plan -> deterministic
+selection. It returns an explicit `PROPOSAL_READY` or
+`NO_IMPROVEMENT_TARGET` state. It never invokes a runner, grants approval,
+certifies evaluation, or activates a model. Advisor failure stops the cycle
+rather than being interpreted as a pass.
+
+Planning now checks the known remaining FREE budget against the requested
+experiment cost before creating plans; selection excludes plans that are no
+longer affordable. The budget value is still supplied by an injected provider,
+not claimed to be a trusted live account-wide quota measurement.
