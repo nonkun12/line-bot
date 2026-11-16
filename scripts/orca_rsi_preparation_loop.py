@@ -23,8 +23,9 @@ def _read_object(path: Path, label: str) -> dict[str, Any]:
 
 
 def _task_digest(task: dict[str, Any]) -> str:
-    payload = {key: task[key] for key in ("id", "instruction", "allowed_paths")}
-    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    # Bind the complete catalog record, including execution approval and any
+    # future policy metadata, so a changed authorization cannot reuse a digest.
+    canonical = json.dumps(task, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
