@@ -198,10 +198,17 @@ def continuation_decision(
         if state.get("active_lease") is not None:
             reasons.append("worker_lease_already_active")
 
-    if (isinstance(approval_claim, dict)
-            and isinstance(public_key_reviewer_id, str)
-            and approval_claim.get("approver_id") == public_key_reviewer_id):
-        reasons.append("reviewer_must_be_independent_of_approver")
+    if (isinstance(public_key_reviewer_id, str) and public_key_reviewer_id.strip()):
+        signer_ids = [public_key_reviewer_id]
+        if isinstance(approval_claim, dict):
+            signer_ids.append(approval_claim.get("approver_id"))
+        if isinstance(budget_claim, dict):
+            signer_ids.append(budget_claim.get("issuer_id"))
+        if (any(not isinstance(identity, str) or not identity.strip() for identity in signer_ids)
+                or len(signer_ids) != len(set(signer_ids))):
+            reasons.append("trust_signer_identities_not_independent")
+    else:
+        reasons.append("reviewer_identity_missing")
     if not isinstance(task_id, str) or not task_id.strip():
         reasons.append("task_id_invalid")
     if not isinstance(task_digest, str) or not _HEX_64.fullmatch(task_digest):
