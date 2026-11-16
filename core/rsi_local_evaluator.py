@@ -86,7 +86,7 @@ class LocalRSIIndependentEvaluator:
             if (item.get("output_digest") != hashlib.sha256(output.encode()).hexdigest()
                     or item.get("expected_digest") != hashlib.sha256(expected.encode()).hexdigest()):
                 raise RSIError("benchmark evidence content digest mismatch")
-            matched = expected in output
+            matched = output.strip() == expected
             if item.get("matched") is not matched:
                 raise RSIError("benchmark evidence match flag is inconsistent")
             matched_count += int(matched)
