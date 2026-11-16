@@ -94,7 +94,7 @@ def test_five_rsi_stages_complete_in_order():
 
 def test_rsi_rejects_skipped_stage():
     try:
-        record_stage(new_cycle("skip"), stage="diagnose", evidence="diagnosis")
+        record_stage(new_cycle("f" * 64), stage="diagnose", evidence="diagnosis")
     except RSICycleRejected as exc:
         assert str(exc) == "rsi_stage_out_of_order"
     else:
@@ -103,7 +103,7 @@ def test_rsi_rejects_skipped_stage():
 
 def test_rsi_rejects_empty_evidence():
     try:
-        record_stage(new_cycle("empty"), stage="evaluate", evidence=" ")
+        record_stage(new_cycle("e" * 64), stage="evaluate", evidence=" ")
     except RSICycleRejected as exc:
         assert str(exc) == "rsi_stage_evidence_missing_or_invalid"
     else:
