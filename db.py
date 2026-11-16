@@ -86,9 +86,11 @@ def init_db():
             conn.execute("ALTER TABLE jobs ADD COLUMN idempotency_key TEXT")
         if "request_fingerprint" not in columns:
             conn.execute("ALTER TABLE jobs ADD COLUMN request_fingerprint TEXT")
+        # Idempotency keys are scoped per user to avoid cross-tenant collisions.
+        conn.execute("DROP INDEX IF EXISTS idx_jobs_idempotency_key")
         conn.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_idempotency_key
-        ON jobs(idempotency_key)
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_user_idempotency_key
+        ON jobs(user_id, idempotency_key)
         WHERE idempotency_key IS NOT NULL
         """)
         conn.execute("""
@@ -229,8 +231,8 @@ def create_job(
         # Serialize key lookup + insert so concurrent retries cannot create twins.
         conn.execute("BEGIN IMMEDIATE")
         existing = conn.execute(
-            "SELECT id, request_fingerprint FROM jobs WHERE idempotency_key=?",
-            (idempotency_key.strip(),),
+            "SELECT id, request_fingerprint FROM jobs WHERE user_id=? AND idempotency_key=?",
+            (user_id, idempotency_key.strip()),
         ).fetchone()
         if existing is not None:
             if existing[1] != fingerprint:
