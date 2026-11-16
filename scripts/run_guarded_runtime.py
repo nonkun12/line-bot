@@ -402,6 +402,12 @@ def main() -> int:
         )
         return 80
 
+    from core.emergency_stop import local_stop_active
+    if local_stop_active(ROOT):
+        _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "emergency_stop_active", "execution_authorized": False})
+        print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
+        return 82
+
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
     approval_evidence = _verify_execution_approval(start_sha, instruction)
     if approval_evidence.get("execution_authorized") is True:
