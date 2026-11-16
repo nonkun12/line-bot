@@ -178,7 +178,7 @@ def run_orchestra_rsi_batch(
             evaluation = critic.evaluate(candidate, critic_input)
             if (
                 evaluation.candidate_id != candidate.candidate_id
-                or dict(evaluation.evidence) != critic_input
+                or any(evaluation.evidence.get(key) != value for key, value in critic_input.items())
             ):
                 reviews.append(REAReview(
                     REAHandoff(**binding), candidate, None, "BLOCKED",
