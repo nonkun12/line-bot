@@ -56,7 +56,6 @@ from mcp_client import (
     diagnose_mcp_connection,
 )
 from mcp_diagnostic_runner import McpDiagnosticRunner
-from mcp_diagnostic_runner import start_mcp_diagnostic
 from ai_client import (
     generate_chat_completion,
     generate_secretary_report,
@@ -375,7 +374,7 @@ def _handle_ai_gateway_request(ai_request):
             return "MCP診断を開始できませんでした。サーバー状態を確認してください。"
         if not accepted:
             return "MCP診断はすでに実行中です。完了後に結果をLINEへ通知します。"
-        return "MCP診断を受け付けました（読み取り専用）。完了後、このLINEに結果を通知します。"
+        return "MCP診断を受け付けました（読み取り専用）。完了後に結果を通知しようとします。届かない場合は再度お試しください。"
 
     # Report deployment configuration deterministically; never ask the chat model
     # to guess whether GitHub integration is enabled, and never dispatch Actions here.
