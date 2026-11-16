@@ -138,7 +138,7 @@ def test_hold_release_requires_separate_signed_control_approval(tmp_path):
         ledger=ledger, clock=lambda: now,
     )()
 
-    release_snapshot = make_snapshot(now + 1, generation=2, nonce="release-snapshot")
+    release_snapshot = make_snapshot(now + 1, generation=2, nonce="release-snapshot", global_hold=False)
     with pytest.raises(RSIError, match="separate human control approval"):
         VerifiedRSIControlProvider(
             lambda: release_snapshot, verify_signature=lambda d, s: s == "sig:" + d,
