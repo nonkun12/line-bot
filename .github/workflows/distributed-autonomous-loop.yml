@@ -524,7 +524,13 @@ jobs:
           STOP_FILE=/tmp/line-bot-autonomous-loop.stop
 
           (
-            while sleep 15; do
+            while sleep 5; do
+              # A missing marker means continue; API/network/auth uncertainty means STOP.
+              python -c 'from core.emergency_stop import get_status; import os; raise SystemExit(1 if get_status(os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"), os.environ["GITHUB_TOKEN"]) else 0)' || {
+                touch "$STOP_FILE"
+                echo "EMERGENCY_STOP=ACTIVE_OR_UNVERIFIABLE"
+                exit 0
+              }
               if git fetch --quiet origin main 2>/dev/null && git cat-file -e FETCH_HEAD:.autonomous-loop.stop 2>/dev/null; then
                 touch "$STOP_FILE"
                 exit 0
