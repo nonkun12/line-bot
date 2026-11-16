@@ -112,7 +112,11 @@ def _persist_control_snapshot(
             if releasing:
                 if release is None:
                     raise RSIError("HOLD release requires separate human control approval")
-                if (release.previous_hold_generation != previous["generation"]
+                if (type(release.previous_hold_generation) is not int
+                        or type(release.release_generation) is not int
+                        or type(release.issued_at) is not int
+                        or type(release.expires_at) is not int
+                        or release.previous_hold_generation != previous["generation"]
                         or release.release_generation != snapshot.generation
                         or release.snapshot_digest != digest
                         or release.snapshot_nonce != snapshot.nonce
@@ -138,6 +142,7 @@ def _persist_control_snapshot(
                 }
                 _bounded_id(release.approver_id, "control release approver")
                 _bounded_id(release.nonce, "control release nonce")
+                _bounded_id("control-release:" + release.nonce, "control release event id")
                 encoded_approval = json.dumps(approval_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
                 previous_digest = rows[-1]["event_digest"] if rows else "0" * 64
                 created_at = int(time.time())
@@ -155,6 +160,7 @@ def _persist_control_snapshot(
             elif release is not None:
                 raise RSIError("unexpected HOLD release approval without a HOLD transition")
 
+            _bounded_id("control-snapshot:" + snapshot.nonce, "control snapshot event id")
             payload = {
                 "generation": snapshot.generation,
                 "digest": digest,
@@ -227,7 +233,7 @@ class VerifiedRSIControlProvider:
         if (type(snapshot.issued_at) is not int or type(snapshot.expires_at) is not int
                 or snapshot.expires_at <= snapshot.issued_at):
             raise RSIError("control snapshot time bounds are invalid")
-        if type(snapshot.generation) is not int or snapshot.generation < 1:
+        if type(snapshot.generation) is not int or not 1 <= snapshot.generation <= 9_223_372_036_854_775_807:
             raise RSIError("control snapshot generation is required")
         _bounded_id(snapshot.nonce, "control snapshot nonce")
         if not isinstance(snapshot.signature, str) or not snapshot.signature.strip():
