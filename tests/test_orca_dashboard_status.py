@@ -97,3 +97,28 @@ def test_dashboard_loop_lists_all_five_development_streams(orca_client):
     assert response.status_code == 200
     keys = [item["key"] for item in response.get_json()["loop"]["streams"]]
     assert keys == ["main_star_night", "side_task_supply", "side_media_ai", "side_self_improvement", "side_line_full_control", "side_core_vocabulary"]
+
+
+def test_orca_dashboard_exposes_sanitized_rsi_review_summary(orca_client):
+    review = {
+        "phase": "RSI_REVIEW", "status": "PASS", "reason_code": "rea_review_pass_proposal_only",
+        "next_action": "REQUEST_HUMAN_REVIEW", "repository": "nonkun12/line-bot", "head_sha": "a" * 40,
+        "review_count": 1, "review_evidence_event_ids": ["orchestra-rea:event-1"],
+        "allow_continue": False, "proposal_only": True, "execution_authorized": False,
+        "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False,
+        "scheduler_started": False, "model_activated": False, "raw_feedback": "must not leak",
+    }
+    assert post_snapshot(orca_client, snapshot(rsi_review=review)).status_code == 200
+    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
+    body = read.get_json()
+    assert body["rsi_review"]["status"] == "PASS"
+    assert body["rsi_review"]["allow_continue"] is False
+    assert "raw_feedback" not in body["rsi_review"]
+
+
+def test_orca_dashboard_rejects_rsi_review_authority_escalation(orca_client):
+    review = {"status": "PASS", "review_count": 0, "review_evidence_event_ids": [],
+        "proposal_only": True, "allow_continue": True, "execution_authorized": False,
+        "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False,
+        "scheduler_started": False, "model_activated": False}
+    assert post_snapshot(orca_client, snapshot(rsi_review=review)).status_code == 400
