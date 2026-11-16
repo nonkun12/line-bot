@@ -162,7 +162,18 @@ network error, or CAS conflict blocks the attempt. All three ledger objects must
 already exist in the provisioned state document; claim consumption must never
 create a missing ledger. Do not initialize or clear a missing state ref.
 
-## 6. Execution preflight contract
+## 6. Catalog candidate flag is not execution approval
+
+The legacy task-catalog field `execution_approved: true` is treated only as a
+candidate-discovery/triage flag by the read-only preparation loop. It MUST NOT
+be interpreted as human authorization to execute code. Preparation reports
+expose it as `catalog_candidate_flag`, explicitly set
+`execution_approved=false`, and set `human_execution_approval_required=true`.
+A separate signed task-approval claim bound to the immutable task digest,
+cycle, commit, and repository is mandatory before any execution authorization.
+This distinction applies even when task instructions say "after human review".
+
+## 7. Execution preflight contract
 
 A future preflight may return `READY` only if all of the following are true:
 
@@ -186,7 +197,7 @@ state, atomically acquire the task lease, and only then invoke an allowlisted
 handler. Missing handler, unsupported task, stale state, or any exception
 must produce BLOCKED without invoking a subprocess or modifying source.
 
-## 7. Required negative tests before integration
+## 8. Required negative tests before integration
 
 For each claim type, tests MUST demonstrate BLOCKED for: missing claim, unknown
 fields, duplicate JSON keys, malformed signature, wrong key or key ID, expired
@@ -206,7 +217,7 @@ Integration tests MUST prove that the worker handler is never called when any
 claim is missing/invalid, any safety stop is active, state is unavailable, a
 lease is active, or the task handler is not allowlisted.
 
-## 8. Provisioning and rollout gates
+## 9. Provisioning and rollout gates
 
 Before implementation can be connected to a worker, the project owner must
 explicitly choose and provision:
