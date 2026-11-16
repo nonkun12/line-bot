@@ -41,10 +41,11 @@ class FakeCASStore:
         })
         self.writes = 0
         self.conflict = False
+        self.fail_on_write = None
 
     def write(self, *, snapshot, next_state, expected_revision):
         self.writes += 1
-        if self.conflict or snapshot.ref_sha != self.snapshot.ref_sha:
+        if self.conflict or self.fail_on_write == self.writes or snapshot.ref_sha != self.snapshot.ref_sha:
             raise RuntimeError("github_ref_fast_forward_conflict")
         if expected_revision != self.snapshot.state["revision"]:
             raise RuntimeError("stale_state_revision")
@@ -311,6 +312,46 @@ def test_approval_and_budget_ledgers_must_be_preprovisioned():
     assert any("trust_replay_ledger_missing" in reason for reason in decision["reasons"])
     assert store.writes == 2
     assert "rsi_budget_authorization_replay" not in store.snapshot.state
+
+
+def test_verified_boolean_keywords_are_not_accepted_as_trust_evidence():
+    store, gates = _gates()
+    gates["approval_verified"] = True
+    try:
+        continuation_decision(_complete_cycle(), **gates)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("caller-supplied approval_verified boolean was accepted")
+    assert store.writes == 0
+
+    store, gates = _gates()
+    gates["budget_verified"] = True
+    try:
+        continuation_decision(_complete_cycle(), **gates)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("caller-supplied budget_verified boolean was accepted")
+    assert store.writes == 0
+
+
+def test_cas_failure_at_approval_or_budget_stops_without_retry():
+    store, gates = _gates()
+    store.fail_on_write = 2
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert decision["review_replay_status"] == "REVIEW_CONSUMED"
+    assert any("task_approval_rejected:RuntimeError" in reason for reason in decision["reasons"])
+    assert store.writes == 2
+
+    store, gates = _gates()
+    store.fail_on_write = 3
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert decision["approval_replay_status"] == "TRUST_CLAIM_CONSUMED"
+    assert any("budget_authorization_rejected:RuntimeError" in reason for reason in decision["reasons"])
+    assert store.writes == 3
 
 def test_missing_review_replay_ledger_fails_closed_without_initializing_it():
     store, gates = _gates()
