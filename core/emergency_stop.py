@@ -85,6 +85,24 @@ def clear_stop(repository: str, token: str) -> str:
     return "CLEARED"
 
 
+def local_stop_active(root=None) -> bool:
+    """Fail closed when the local emergency stop is set or cannot be inspected."""
+    from pathlib import Path
+    root_path = Path(root) if root is not None else Path(__file__).resolve().parents[1]
+    if os.environ.get("CONTROL_TOWER_KILL_SWITCH", "").strip().casefold() in {"1", "true", "yes", "on"}:
+        return True
+    configured = os.environ.get("AUTONOMOUS_STOP_FILE", "").strip()
+    candidates = [Path(configured)] if configured else []
+    candidates.extend((root_path / ".autonomous-loop.stop", Path("/tmp/line-bot-autonomous-loop.stop")))
+    for candidate in candidates:
+        try:
+            if candidate.exists():
+                return True
+        except OSError:
+            return True
+    return False
+
+
 def handle_line_command(message: str, user_id: str, token: str, repository: str) -> str | None:
     command = str(message or "").strip().casefold()
     commands = {
