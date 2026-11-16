@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import base64
 import copy
 import json
+import hashlib
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -31,10 +32,12 @@ class FakeCASStore:
     def __init__(self):
         self.snapshot = Snapshot("c" * 40, {
             "schema_version": 1, "revision": 3, "global_hold": False,
-            "emergency_stop": False, "tasks": [{"task_id": "task-1", "status": "queued"}],
+            "emergency_stop": False, "tasks": [{"task_id": "task-1", "task_digest": "f" * 64, "status": "queued"}],
             "active_lease": None,
             "consumed_approval_ids": [],
             "rsi_review_replay": {"used_nonces": [], "used_attestation_hashes": []},
+            "rsi_task_approval_replay": {"used_nonces": [], "used_attestation_hashes": []},
+            "rsi_budget_authorization_replay": {"used_nonces": [], "used_attestation_hashes": []},
         })
         self.writes = 0
         self.conflict = False
@@ -71,10 +74,59 @@ def _signed_review(**overrides):
     return value
 
 
+def _signed_claim(payload):
+    payload = dict(payload)
+    payload["signature"] = base64.b64encode(PRIVATE.sign(json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).encode())).decode()
+    return payload
+
+
+def _approval_claim():
+    return _signed_claim({
+        "claim_type": "orca_rsi_task_approval", "schema_version": 1,
+        "key_id": "approval-key-v1", "repository": "nonkun12/line-bot",
+        "task_id": "task-1", "task_digest": "f" * 64,
+        "cycle_id": CYCLE_ID, "commit_sha": COMMIT,
+        "approver_id": "trusted-approver", "verdict": "APPROVED",
+        "nonce": "d" * 32, "issued_at": "2026-11-16T11:59:00Z",
+        "expires_at": "2026-11-16T12:05:00Z",
+    })
+
+
+def _budget_claim(evidence):
+    ref = "collector://bundle/42"
+    bundle = (len(ref.encode()).to_bytes(4, "big") + ref.encode()
+              + len(evidence).to_bytes(8, "big") + evidence)
+    return _signed_claim({
+        "claim_type": "orca_rsi_budget_authorization", "schema_version": 1,
+        "key_id": "budget-key-v1", "repository": "nonkun12/line-bot",
+        "task_id": "task-1", "task_digest": "f" * 64,
+        "cycle_id": CYCLE_ID, "commit_sha": COMMIT,
+        "issuer_id": "trusted-budget", "budget_unit": "github_actions_minutes",
+        "authorized_limit_units": 100, "observed_spend_units": 20,
+        "remaining_units": 80, "evidence_refs": [ref],
+        "evidence_sha256": hashlib.sha256(bundle).hexdigest(),
+        "nonce": "e" * 32, "issued_at": "2026-11-16T11:59:00Z",
+        "expires_at": "2026-11-16T12:04:00Z",
+    })
+
+
 def _gates(store=None, **overrides):
     store = store or FakeCASStore()
+    budget_evidence = b"trusted collector evidence v1"
     values = {
-        "budget_verified": True, "approval_verified": True,
+        "approval_claim": _approval_claim(),
+        "approval_keyring": {"approval-key-v1": PUBLIC_PEM},
+        "approval_key_signer_map": {"approval-key-v1": "trusted-approver"},
+        "allowed_approvers": ["trusted-approver"],
+        "budget_claim": _budget_claim(budget_evidence),
+        "budget_keyring": {"budget-key-v1": PUBLIC_PEM},
+        "budget_key_signer_map": {"budget-key-v1": "trusted-budget"},
+        "allowed_budget_issuers": ["trusted-budget"],
+        "expected_budget_unit": "github_actions_minutes",
+        "resolved_budget_evidence": {"collector://bundle/42": budget_evidence},
+        "task_id": "task-1", "task_digest": "f" * 64,
         "independent_review_attestation": _signed_review(),
         "review_public_key_pem": PUBLIC_PEM, "review_nonce": NONCE,
         "replay_store": store, "replay_snapshot": store.snapshot,
@@ -145,12 +197,12 @@ def test_review_for_another_cycle_or_commit_is_rejected():
 
 
 def test_hold_or_missing_budget_blocks_without_consuming_review():
-    store, gates = _gates(budget_verified=False)
+    store, gates = _gates(budget_claim=None)
     store.snapshot.state["global_hold"] = True
     decision = continuation_decision(_complete_cycle(), **gates)
     assert decision["continue"] is False
     assert "global_hold_active" in decision["reasons"]
-    assert "budget_evidence_missing_or_invalid" in decision["reasons"]
+    assert any("budget_authorization_rejected" in reason for reason in decision["reasons"])
     assert store.writes == 0
 
 
@@ -175,9 +227,9 @@ def test_replayed_review_is_rejected_by_durable_gate():
 
 
 def test_truthy_strings_cannot_satisfy_safety_gates():
-    store, gates = _gates(budget_verified="true")
+    store, gates = _gates(kill_switch="false")
     decision = continuation_decision(_complete_cycle(), **gates)
-    assert "gate_input_not_boolean" in decision["reasons"]
+    assert "kill_switch_not_boolean" in decision["reasons"]
     assert store.writes == 0
 
 
