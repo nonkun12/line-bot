@@ -386,3 +386,41 @@ def test_missing_review_replay_ledger_fails_closed_without_initializing_it():
     assert any("review_replay_ledger_missing" in reason for reason in decision["reasons"])
     assert store.writes == 0
     assert "rsi_review_replay" not in store.snapshot.state
+
+
+def test_malformed_persisted_queue_entry_blocks_before_any_replay_write():
+    store, gates = _gates()
+    store.snapshot.state["tasks"].append(None)
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert "persisted_queue_entry_invalid" in decision["reasons"]
+    assert store.writes == 0
+
+
+def test_duplicate_persisted_task_id_blocks_before_any_replay_write():
+    store, gates = _gates()
+    store.snapshot.state["tasks"].append(dict(store.snapshot.state["tasks"][0]))
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert "persisted_queue_duplicate_task_id" in decision["reasons"]
+    assert store.writes == 0
+
+
+def test_invalid_persisted_state_schema_and_revision_block_before_replay_write():
+    store, gates = _gates()
+    store.snapshot.state["schema_version"] = True
+    store.snapshot.state["revision"] = True
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert "persisted_state_schema_invalid" in decision["reasons"]
+    assert "persisted_state_revision_invalid" in decision["reasons"]
+    assert store.writes == 0
+
+
+def test_queued_task_without_valid_digest_blocks_before_replay_write():
+    store, gates = _gates()
+    store.snapshot.state["tasks"][0]["task_digest"] = "not-a-digest"
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert "persisted_queued_task_digest_invalid" in decision["reasons"]
+    assert store.writes == 0
