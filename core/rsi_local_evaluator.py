@@ -98,6 +98,14 @@ class LocalRSIIndependentEvaluator:
             "case_count": float(len(observations)),
         }:
             raise RSIError("reported metrics differ from independently recomputed evidence")
+        expected_result_digest = canonical_digest({
+            "experiment_id": result.experiment_id,
+            "executor_id": result.executor_id,
+            "evidence_digest": result.evidence_digest,
+            "metrics": metrics,
+        })
+        if result.result_digest != expected_result_digest:
+            raise RSIError("result digest does not bind to the reported metrics and evidence")
         if recomputed_quality > self._baseline_quality:
             decision = "IMPROVED"
         elif recomputed_quality < self._baseline_quality:
