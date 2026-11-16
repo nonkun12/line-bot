@@ -108,6 +108,22 @@ def test_stage177_requires_distinct_signed_reruns_and_identical_result_digest():
     assert not divergent.reproducible
 
 
+def test_stage177_rejects_tampered_manifest_contents():
+    m = manifest()
+    tampered = replace(m, candidate_artifact_digest=digest("tampered"))
+    run = ReproducibilityRun(
+        tampered.manifest_digest, tampered.candidate_artifact_digest,
+        tampered.evaluation_suite_digest, "runner-a", "evaluator-a",
+        "run-a", digest("result"), True, "signature",
+    )
+    with pytest.raises(EvolutionaryReadinessError, match="manifest content digest"):
+        Stage177ReproducibilityVerifier().build(
+            tampered, (run, replace(run, run_id="run-b", runner_id="runner-b",
+                                    evaluator_id="evaluator-b")),
+            verify_signature=lambda _: True,
+        )
+
+
 def test_stage177_rejects_replay_lineage_and_bad_signature():
     m = manifest()
     run = ReproducibilityRun(
@@ -171,6 +187,22 @@ def test_stage179_requires_independent_holdout_and_detects_failures():
     assert "holdout safety failure" in failed.reasons
     assert "holdout contamination check failed" in failed.reasons
     assert "holdout robustness below threshold" in failed.reasons
+
+
+def test_stage179_rejects_holdout_suite_drift():
+    m = manifest()
+    evidence = tuple(
+        HoldoutEvidence(
+            m.manifest_digest, m.candidate_artifact_digest, digest(f"suite-{i}"),
+            f"holdout-{i}", f"evaluator-{i}", True, .99, True,
+            f"sig-{i}", digest(f"evidence-{i}"),
+        )
+        for i in range(2)
+    )
+    with pytest.raises(EvolutionaryReadinessError, match="suite drift"):
+        Stage179HoldoutRobustnessGate().build(
+            m, evidence, verify_signature=lambda _: True
+        )
 
 
 def test_stage179_rejects_replay_and_signature_failure():
