@@ -5,9 +5,9 @@ from copy import deepcopy
 from datetime import datetime
 from typing import Any, Iterable
 
-from scripts.orca_rsi_review_attestation import (
-    ReviewAttestationRejected,
-    verify_independent_review,
+from scripts.orca_rsi_review_replay import (
+    ReviewReplayStateRejected,
+    verify_and_consume_review_once,
 )
 
 RSI_STAGES = ("evaluate", "diagnose", "hypothesize", "experiment", "select_evolve")
@@ -75,17 +75,20 @@ def continuation_decision(
     independent_review_attestation: Any,
     review_public_key_pem: str | bytes,
     review_nonce: str,
-    used_attestation_hashes: Iterable[str],
+    replay_store: Any,
+    replay_snapshot: Any,
     repository: str,
     allowed_reviewers: Iterable[str],
     now: datetime,
     expected_commit_sha: str,
     kill_switch: bool,
 ) -> dict[str, Any]:
-    """Continue once only after this gate cryptographically verifies the review.
+    """Continue once only after signature verification AND durable CAS consumption.
 
-    The caller must atomically reserve the one-time nonce and persist the
-    returned attestation hash in durable state before triggering any work.
+    The review nonce and fingerprint are committed before this gate can return
+    continue=True. A missing state store, malformed ledger, or CAS conflict
+    fails closed. A successful consumption may burn the review if a later
+    worker step fails; this is intentional and safer than permitting replay.
     """
     reasons: list[str] = []
     valid_cycle = (isinstance(cycle, dict)
@@ -131,31 +134,36 @@ def continuation_decision(
     if not isinstance(expected_commit_sha, str) or len(expected_commit_sha) != 40:
         reasons.append("expected_commit_sha_invalid")
 
-    verified_review_hash = None
-    if valid_cycle and isinstance(expected_commit_sha, str) and len(expected_commit_sha) == 40:
+    consumed = None
+    if not reasons:
         try:
-            verified_review = verify_independent_review(
-                independent_review_attestation,
-                review_public_key_pem,
+            consumed = verify_and_consume_review_once(
+                store=replay_store,
+                snapshot=replay_snapshot,
+                attestation=independent_review_attestation,
+                public_key_pem=review_public_key_pem,
                 repository=repository,
                 cycle_id=cycle["cycle_id"],
                 commit_sha=expected_commit_sha,
                 expected_nonce=review_nonce,
-                used_attestation_hashes=used_attestation_hashes,
-                now=now,
                 allowed_reviewers=allowed_reviewers,
+                now=now,
             )
-            verified_review_hash = verified_review.attestation_hash
-        except ReviewAttestationRejected as exc:
+        except ReviewReplayStateRejected as exc:
             reasons.append(f"independent_review_rejected:{exc}")
-    else:
-        reasons.append("independent_review_context_missing")
+        except Exception as exc:
+            # State-store conflicts and unavailable persistence are terminal
+            # for this attempt. Never retry using a fresh snapshot here.
+            reasons.append(f"review_replay_persistence_failed:{type(exc).__name__}")
 
     return {
         "status": "PASS" if not reasons else "BLOCKED",
         "continue": not reasons,
         "next_cycle_limit": 1 if not reasons else 0,
-        "verified_review_attestation_hash": verified_review_hash,
-        "verified_review_nonce": review_nonce if verified_review_hash else None,
+        "review_replay_status": consumed.get("status") if consumed else None,
+        "review_attestation_hash": consumed.get("attestation_hash") if consumed else None,
+        "review_nonce": consumed.get("nonce") if consumed else None,
+        "review_replay_snapshot": consumed.get("snapshot") if consumed else None,
+        "execution_started": False,
         "reasons": reasons,
     }
