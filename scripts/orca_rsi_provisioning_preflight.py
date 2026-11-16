@@ -150,9 +150,22 @@ def run_preflight(env: Mapping[str, str] | None = None, state_store: Any = None)
             raise ValueError("orca_state_document_invalid")
         if type(state.get("revision")) is not int or state["revision"] < 0:
             raise ValueError("orca_state_revision_invalid")
+        if state.get("global_hold") is not False:
+            raise ValueError("global_hold_active")
+        if state.get("emergency_stop") is not False:
+            raise ValueError("emergency_stop_active")
+        tasks = state.get("tasks")
+        if not isinstance(tasks, list):
+            raise ValueError("persisted_queue_invalid")
+        queued = [task for task in tasks
+                  if isinstance(task, dict) and task.get("status") == "queued"]
+        if len(queued) != 1:
+            raise ValueError("queued_task_count_not_exactly_one")
+        if state.get("active_lease") is not None:
+            raise ValueError("worker_lease_already_active")
         for ledger_key in _LEDGER_KEYS:
             _validate_ledger(state, ledger_key)
-        checks.append("preprovisioned_state_and_three_replay_ledgers_readable")
+        checks.append("preprovisioned_state_hold_queue_lease_and_three_replay_ledgers_valid")
     except Exception as exc:
         # Do not expose environment values, tokens, key material, or API responses.
         reason = str(exc).split(":", 1)[0].strip()
