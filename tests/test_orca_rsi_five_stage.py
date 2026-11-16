@@ -94,3 +94,22 @@ def test_independent_review_and_approval_are_required():
     assert decision["continue"] is False
     assert "task_approval_missing_or_invalid" in decision["reasons"]
     assert "independent_review_not_pass" in decision["reasons"]
+
+
+def test_truthy_strings_cannot_satisfy_safety_gates():
+    decision = continuation_decision(
+        _complete_cycle(),
+        **_all_gates(global_hold="false", budget_verified="true"),
+    )
+    assert decision["continue"] is False
+    assert "gate_input_not_boolean" in decision["reasons"]
+    assert "global_hold_active" in decision["reasons"]
+    assert "budget_evidence_missing_or_invalid" in decision["reasons"]
+
+
+def test_unexpected_extra_evidence_is_rejected():
+    cycle = _complete_cycle()
+    cycle["evidence"]["unrecognized"] = "not part of the five-stage cycle"
+    decision = continuation_decision(cycle, **_all_gates())
+    assert decision["continue"] is False
+    assert "rsi_evidence_incomplete" in decision["reasons"]
