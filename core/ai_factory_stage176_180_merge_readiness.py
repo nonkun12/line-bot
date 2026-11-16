@@ -260,6 +260,7 @@ class HoldoutRobustnessReport:
     adversarial_suite_digest: str
     passed: bool
     digest: str
+    signature: str = ""
     proposal_only: bool = True
 
 class Stage179HoldoutRobustnessGate:
