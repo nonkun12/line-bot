@@ -550,6 +550,9 @@ def test_implementer_applies_deterministic_task_plan_without_llm_repair(monkeypa
     target.write_text(real_file.read_text(encoding="utf-8"), encoding="utf-8")
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
+    # This unit test explicitly exercises the authorized patch path; production
+    # remains fail-closed unless its protected control plane enables patching.
+    monkeypatch.setenv("AUTO_APPLY_PATCH", "true")
 
     state = runtime.DevelopmentState(
         client=object(),
