@@ -6,7 +6,7 @@ from core.rsi_executor import EvidenceLedger, RSIError, canonical_digest
 
 def make_snapshot(now, **overrides):
     data = {
-        "global_hold": False,
+        "global_hold": True,
         "execution_enabled": False,
         "free_only": True,
         "budget_known": True,
@@ -33,7 +33,7 @@ def test_verified_control_provider_accepts_signed_fresh_free_snapshot(tmp_path):
         clock=lambda: now,
     )
     control = provider()
-    assert control.global_hold is False
+    assert control.global_hold is True
     assert control.free_only is True
     assert control.budget_known is True
     assert control.budget_remaining_units == 5
@@ -88,14 +88,14 @@ def test_provider_fails_closed_on_unknown_budget_and_replayed_nonce(tmp_path):
 def test_control_generation_is_monotonic_across_provider_restart(tmp_path):
     now = 2000
     ledger = EvidenceLedger(tmp_path / "generation.sqlite")
-    first = make_snapshot(now, generation=10, nonce="gen-10")
+    first = make_snapshot(now, generation=1, nonce="gen-1")
     provider = VerifiedRSIControlProvider(
         lambda: first, verify_signature=lambda d, s: s == "sig:" + d,
         ledger=ledger, clock=lambda: now,
     )
     provider()
 
-    rollback = make_snapshot(now + 1, generation=9, nonce="gen-9")
+    rollback = make_snapshot(now + 1, generation=0, nonce="gen-0")
     restarted = VerifiedRSIControlProvider(
         lambda: rollback, verify_signature=lambda d, s: s == "sig:" + d,
         ledger=EvidenceLedger(tmp_path / "generation.sqlite"), clock=lambda: now + 1,
@@ -103,7 +103,7 @@ def test_control_generation_is_monotonic_across_provider_restart(tmp_path):
     with pytest.raises(RSIError, match="generation rollback"):
         restarted()
 
-    next_snapshot = make_snapshot(now + 2, generation=11, nonce="gen-11")
+    next_snapshot = make_snapshot(now + 2, generation=2, nonce="gen-2")
     next_provider = VerifiedRSIControlProvider(
         lambda: next_snapshot, verify_signature=lambda d, s: s == "sig:" + d,
         ledger=EvidenceLedger(tmp_path / "generation.sqlite"), clock=lambda: now + 2,
@@ -187,12 +187,12 @@ def test_hold_release_requires_separate_signed_control_approval(tmp_path):
 def test_same_generation_with_altered_snapshot_is_rejected(tmp_path):
     now = 6000
     ledger = EvidenceLedger(tmp_path / "same-generation.sqlite")
-    first = make_snapshot(now, generation=7, nonce="same-7")
+    first = make_snapshot(now, generation=1, nonce="same-1")
     VerifiedRSIControlProvider(
         lambda: first, verify_signature=lambda d, s: s == "sig:" + d,
         ledger=ledger, clock=lambda: now,
     )()
-    altered = make_snapshot(now + 1, generation=7, nonce="same-7-alt", budget_remaining_units=1)
+    altered = make_snapshot(now + 1, generation=1, nonce="same-1-alt", budget_remaining_units=1)
     with pytest.raises(RSIError, match="generation rollback"):
         VerifiedRSIControlProvider(
             lambda: altered, verify_signature=lambda d, s: s == "sig:" + d,
@@ -220,14 +220,14 @@ def test_concurrent_control_providers_cannot_accept_two_same_generation_values(t
     now = 8000
     path = tmp_path / "concurrent.sqlite"
     ledger = EvidenceLedger(path)
-    initial = make_snapshot(now, generation=10, nonce="concurrent-10")
+    initial = make_snapshot(now, generation=1, nonce="concurrent-1")
     VerifiedRSIControlProvider(
         lambda: initial, verify_signature=lambda d, s: s == "sig:" + d,
         ledger=ledger, clock=lambda: now,
     )()
     snapshots = [
-        make_snapshot(now + 1, generation=11, nonce="concurrent-11-a", budget_remaining_units=4),
-        make_snapshot(now + 1, generation=11, nonce="concurrent-11-b", budget_remaining_units=3),
+        make_snapshot(now + 1, generation=2, nonce="concurrent-2-a", budget_remaining_units=4),
+        make_snapshot(now + 1, generation=2, nonce="concurrent-2-b", budget_remaining_units=3),
     ]
     barrier = threading.Barrier(2)
     outcomes = []
