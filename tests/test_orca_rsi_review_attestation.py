@@ -40,13 +40,14 @@ def _attestation(**overrides):
 
 
 def _verify(attestation=None, **kwargs):
-    return verify_independent_review(
-        attestation or _attestation(), PUBLIC_PEM,
-        repository="nonkun12/line-bot", cycle_id="a" * 64,
-        commit_sha="b" * 40, expected_nonce=NONCE,
-        used_attestation_hashes=[], now=NOW,
-        allowed_reviewers=["trusted-reviewer"], **kwargs,
-    )
+    options = {
+        "repository": "nonkun12/line-bot", "cycle_id": "a" * 64,
+        "commit_sha": "b" * 40, "expected_nonce": NONCE,
+        "used_attestation_hashes": [], "now": NOW,
+        "allowed_reviewers": ["trusted-reviewer"],
+    }
+    options.update(kwargs)
+    return verify_independent_review(attestation or _attestation(), PUBLIC_PEM, **options)
 
 
 def test_verifies_ed25519_signed_fresh_review_without_private_key():
@@ -102,9 +103,14 @@ def test_rejects_boolean_schema_version():
 
 
 def test_rejects_wrong_key_type():
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    wrong_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    wrong_pem = wrong_key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+    )
     with pytest.raises(ReviewAttestationRejected, match="review_public_key_wrong_type"):
         verify_independent_review(
-            _attestation(), "not-an-ed25519-key", repository="nonkun12/line-bot",
+            _attestation(), wrong_pem, repository="nonkun12/line-bot",
             cycle_id="a" * 64, commit_sha="b" * 40, expected_nonce=NONCE,
             used_attestation_hashes=[], now=NOW,
             allowed_reviewers=["trusted-reviewer"],
