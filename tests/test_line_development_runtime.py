@@ -553,6 +553,7 @@ def test_implementer_applies_deterministic_task_plan_without_llm_repair(monkeypa
     # This unit test explicitly exercises the authorized patch path; production
     # remains fail-closed unless its protected control plane enables patching.
     monkeypatch.setenv("AUTO_APPLY_PATCH", "true")
+    monkeypatch.setattr(runtime.worker, "_rea_write_gate_passes", lambda: True)
 
     state = runtime.DevelopmentState(
         client=object(),
