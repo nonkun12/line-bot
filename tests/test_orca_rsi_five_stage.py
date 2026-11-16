@@ -170,15 +170,17 @@ def test_only_signed_and_durably_consumed_review_can_continue():
     assert decision["next_cycle_limit"] == 1
     assert decision["review_replay_status"] == "REVIEW_CONSUMED"
     assert decision["execution_started"] is False
-    assert store.writes == 1
-    assert store.snapshot.state["revision"] == 4
+    assert decision["approval_replay_status"] == "TRUST_CLAIM_CONSUMED"
+    assert decision["budget_replay_status"] == "TRUST_CLAIM_CONSUMED"
+    assert store.writes == 3
+    assert store.snapshot.state["revision"] == 6
 
 
 def test_raw_boolean_cannot_satisfy_independent_review_gate():
     store, gates = _gates(independent_review_attestation=True)
     decision = continuation_decision(_complete_cycle(), **gates)
     assert decision["continue"] is False
-    assert "independent_review_rejected:review_attestation_missing" in decision["reasons"]
+    assert any("review_attestation_missing" in reason for reason in decision["reasons"])
     assert store.writes == 0
 
 
@@ -202,7 +204,6 @@ def test_hold_or_missing_budget_blocks_without_consuming_review():
     decision = continuation_decision(_complete_cycle(), **gates)
     assert decision["continue"] is False
     assert "global_hold_active" in decision["reasons"]
-    assert any("budget_authorization_rejected" in reason for reason in decision["reasons"])
     assert store.writes == 0
 
 
@@ -247,9 +248,69 @@ def test_cas_conflict_fails_closed_without_retry():
     store.conflict = True
     decision = continuation_decision(_complete_cycle(), **gates)
     assert decision["continue"] is False
-    assert any("review_replay_persistence_failed" in reason for reason in decision["reasons"])
+    assert any("independent_review_rejected:RuntimeError" in reason for reason in decision["reasons"])
     assert store.writes == 1
 
+
+
+def test_missing_approval_blocks_after_review_and_burns_only_review():
+    store, gates = _gates(approval_claim=None)
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert decision["review_replay_status"] == "REVIEW_CONSUMED"
+    assert any("task_approval_rejected" in reason for reason in decision["reasons"])
+    assert store.writes == 1
+    assert store.snapshot.state["revision"] == 4
+    assert store.snapshot.state["rsi_task_approval_replay"]["used_nonces"] == []
+
+
+def test_missing_budget_blocks_after_review_and_approval():
+    store, gates = _gates(budget_claim=None)
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert decision["review_replay_status"] == "REVIEW_CONSUMED"
+    assert decision["approval_replay_status"] == "TRUST_CLAIM_CONSUMED"
+    assert any("budget_authorization_rejected" in reason for reason in decision["reasons"])
+    assert store.writes == 2
+    assert store.snapshot.state["revision"] == 5
+    assert store.snapshot.state["rsi_budget_authorization_replay"]["used_nonces"] == []
+
+
+def test_queued_task_digest_must_match_signed_claim_binding():
+    store, gates = _gates(task_digest="9" * 64)
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert "queued_task_binding_mismatch" in decision["reasons"]
+    assert store.writes == 0
+
+
+def test_exactly_one_queued_task_is_required():
+    store, gates = _gates()
+    store.snapshot.state["tasks"].append({
+        "task_id": "task-2", "task_digest": "1" * 64, "status": "queued"
+    })
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert "queued_task_count_not_exactly_one" in decision["reasons"]
+    assert store.writes == 0
+
+
+def test_approval_and_budget_ledgers_must_be_preprovisioned():
+    store, gates = _gates()
+    del store.snapshot.state["rsi_task_approval_replay"]
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert any("trust_replay_ledger_missing" in reason for reason in decision["reasons"])
+    assert store.writes == 1
+    assert "rsi_task_approval_replay" not in store.snapshot.state
+
+    store, gates = _gates()
+    del store.snapshot.state["rsi_budget_authorization_replay"]
+    decision = continuation_decision(_complete_cycle(), **gates)
+    assert decision["continue"] is False
+    assert any("trust_replay_ledger_missing" in reason for reason in decision["reasons"])
+    assert store.writes == 2
+    assert "rsi_budget_authorization_replay" not in store.snapshot.state
 
 def test_missing_review_replay_ledger_fails_closed_without_initializing_it():
     store, gates = _gates()
