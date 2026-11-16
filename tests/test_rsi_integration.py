@@ -67,6 +67,7 @@ def build_pipeline(tmp_path, *, execution_enabled):
         verify_approval=lambda approval: (
             approval.signature == "approval:" + approval.experiment_digest + ":" + approval.nonce
         ),
+        verify_evidence_signature=verify_digest,
         verify_evaluation=lambda evaluation: verify_digest(
             canonical_digest({
                 "experiment_id": evaluation.experiment_id,
@@ -89,6 +90,7 @@ def test_integrated_propose_approve_run_and_independent_evaluate(tmp_path):
         Observation("int-obs-1", "a" * 64, "model", "FAIL", "quality fell", 1),
         Observation("int-obs-2", "b" * 64, "model", "REGRESSED", "quality repeated", 2),
     )
+    observations = seed_observations(ledger, observations)
     diagnoses = executor.observe(observations)
     hypotheses = executor.hypothesize(diagnoses)
     candidate_digest = "c" * 64
@@ -143,6 +145,7 @@ def test_execution_disabled_blocks_before_runner_invocation(tmp_path):
         Observation("off-obs-1", "a" * 64, "model", "FAIL", "quality fell", 1),
         Observation("off-obs-2", "b" * 64, "model", "REGRESSED", "quality repeated", 2),
     )
+    observations = seed_observations(executor.ledger, observations)
     hypotheses = executor.hypothesize(executor.observe(observations))
     candidate = "c" * 64
     protocol = benchmark_protocol_digest()
@@ -161,3 +164,22 @@ def test_execution_disabled_blocks_before_runner_invocation(tmp_path):
     with pytest.raises(RSIError, match="execution is disabled"):
         executor.execute_approved(plan, approval, runner)
     assert client.calls == []
+
+
+
+def seed_observations(ledger, observations):
+    from dataclasses import replace
+    seeded = []
+    for item in observations:
+        event_id = "source-evidence:" + item.observation_id
+        digest = ledger.append_observation_evidence(
+            event_id, observation=item,
+            experiment_id="source-" + item.observation_id,
+            candidate_digest="c" * 64,
+            protocol_digest="d" * 64,
+            result_digest="e" * 64,
+            producer_id="test-producer",
+            sign_digest=lambda value: "sig:" + value,
+        )
+        seeded.append(replace(item, evidence_digest=digest, evidence_event_id=event_id))
+    return tuple(seeded)
