@@ -71,6 +71,9 @@ class FakeCASStore:
         self.snapshot = Snapshot("c" * 40, {
             "schema_version": 1, "revision": 3, "global_hold": True,
             "emergency_stop": False, "tasks": [], "active_lease": None,
+            "rsi_review_replay": {"used_nonces": [], "used_attestation_hashes": []},
+            "rsi_task_approval_replay": {"used_nonces": [], "used_attestation_hashes": []},
+            "rsi_budget_authorization_replay": {"used_nonces": [], "used_attestation_hashes": []},
         })
         self.writes = 0
         self.conflict = False
@@ -123,7 +126,9 @@ def test_task_approval_consumed_once_before_execution():
 def test_budget_authorization_has_separate_replay_ledger():
     store = FakeCASStore()
     approval = _consume_approval(store)
-    assert "rsi_budget_authorization_replay" not in store.snapshot.state
+    assert store.snapshot.state["rsi_budget_authorization_replay"] == {
+        "used_nonces": [], "used_attestation_hashes": []
+    }
     result = _consume_budget(store)
     assert result["execution_started"] is False
     assert "rsi_task_approval_replay" in store.snapshot.state
@@ -186,3 +191,12 @@ def test_budget_cas_conflict_is_not_retried():
     with pytest.raises(RuntimeError, match="github_ref_fast_forward_conflict"):
         _consume_budget(store)
     assert store.writes == 1
+
+
+def test_missing_replay_ledger_fails_closed_without_initializing_it():
+    store = FakeCASStore()
+    del store.snapshot.state["rsi_task_approval_replay"]
+    with pytest.raises(TrustClaimReplayRejected, match="trust_replay_ledger_missing"):
+        _consume_approval(store)
+    assert store.writes == 0
+    assert "rsi_task_approval_replay" not in store.snapshot.state
