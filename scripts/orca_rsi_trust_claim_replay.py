@@ -92,13 +92,15 @@ def _consume_once(*, store: Any, snapshot: Any,
 
 def verify_and_consume_task_approval_once(
     *, store: Any, snapshot: Any, claim: Any,
-    keyring: Mapping[str, str | bytes], allowed_approvers: Any,
+    keyring: Mapping[str, str | bytes], key_signer_map: Mapping[str, str],
+    allowed_approvers: Any,
     repository: str, task_id: str, task_digest: str, cycle_id: str,
     commit_sha: str, now: datetime, implementer_id: str,
 ) -> dict[str, Any]:
     """Verify an approval and persist its one-time nonce/hash using CAS."""
     verified = verify_task_approval(
-        claim, keyring=keyring, allowed_approvers=allowed_approvers,
+        claim, keyring=keyring, key_signer_map=key_signer_map,
+        allowed_approvers=allowed_approvers,
         repository=repository, task_id=task_id, task_digest=task_digest,
         cycle_id=cycle_id, commit_sha=commit_sha, now=now,
         implementer_id=implementer_id,
@@ -108,14 +110,16 @@ def verify_and_consume_task_approval_once(
 
 def verify_and_consume_budget_authorization_once(
     *, store: Any, snapshot: Any, claim: Any,
-    keyring: Mapping[str, str | bytes], allowed_issuers: Any,
+    keyring: Mapping[str, str | bytes], key_signer_map: Mapping[str, str],
+    allowed_issuers: Any,
     repository: str, task_id: str, task_digest: str, cycle_id: str,
     commit_sha: str, now: datetime, expected_budget_unit: str,
     resolved_evidence: Mapping[str, bytes] | None,
 ) -> dict[str, Any]:
     """Verify budget evidence and persist its one-time nonce/hash using CAS."""
     verified = verify_budget_authorization(
-        claim, keyring=keyring, allowed_issuers=allowed_issuers,
+        claim, keyring=keyring, key_signer_map=key_signer_map,
+        allowed_issuers=allowed_issuers,
         repository=repository, task_id=task_id, task_digest=task_digest,
         cycle_id=cycle_id, commit_sha=commit_sha, now=now,
         expected_budget_unit=expected_budget_unit,
