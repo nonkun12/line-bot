@@ -54,7 +54,7 @@ def test_runner_rejects_unbound_candidate_or_protocol(tmp_path):
     cases = (BenchmarkCase("one", "say token A", "TOKEN-A"),)
     runner = LocalRSIExperimentRunner(
         FakeLocalClient(["TOKEN-A"]), executor_id="local-runner",
-        candidate_digest=candidate, ledger=EvidenceLedger(tmp_path / "runner2.sqlite"), cases=cases,
+        candidate_digest=candidate, model_id="fixture-model", ledger=EvidenceLedger(tmp_path / "runner2.sqlite"), cases=cases,
     )
     with pytest.raises(RSIError, match="candidate digest"):
         runner(plan("c" * 64, runner.protocol_digest, cost=1))
@@ -67,14 +67,14 @@ def test_runner_rejects_unbounded_or_wrong_capability_plan(tmp_path):
     cases = (BenchmarkCase("one", "say token A", "TOKEN-A"),)
     runner = LocalRSIExperimentRunner(
         FakeLocalClient(["TOKEN-A"]), executor_id="local-runner",
-        candidate_digest=candidate, ledger=EvidenceLedger(tmp_path / "runner3.sqlite"), cases=cases,
+        candidate_digest=candidate, model_id="fixture-model", ledger=EvidenceLedger(tmp_path / "runner3.sqlite"), cases=cases,
     )
     with pytest.raises(RSIError, match="only supports model"):
         runner(plan(candidate, runner.protocol_digest, cost=1, capability="evaluator"))
     with pytest.raises(ValueError, match="1..4"):
         LocalRSIExperimentRunner(
             FakeLocalClient([]), executor_id="local-runner",
-            candidate_digest=candidate, ledger=EvidenceLedger(tmp_path / "runner4.sqlite"), cases=tuple(
+            candidate_digest=candidate, model_id="fixture-model", ledger=EvidenceLedger(tmp_path / "runner4.sqlite"), cases=tuple(
                 BenchmarkCase(str(i), "prompt", "expected") for i in range(5)
             ),
         )
