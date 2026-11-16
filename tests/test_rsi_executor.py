@@ -170,3 +170,24 @@ def test_planning_rejects_experiment_cost_above_known_free_budget(tmp_path):
             protocol_digest="e" * 64,
             expected_cost_units=2,
         )
+
+
+def test_control_rejects_boolean_budget_and_non_boolean_flags(tmp_path):
+    ledger = EvidenceLedger(tmp_path / "invalid-control.sqlite")
+    invalid_states = (
+        RSIControl(False, False, True, True, True, False),
+        RSIControl(0, False, True, True, 5, False),
+    )
+    for invalid in invalid_states:
+        executor = RSIExecutor(
+            ledger,
+            control_provider=lambda invalid=invalid: invalid,
+            verify_approval=lambda _: False,
+            verify_evaluation=lambda _: False,
+            executor_id="rsi-planner",
+        )
+        with pytest.raises(RSIError, match="invalid"):
+            executor.observe((
+                Observation("invalid-control-" + str(invalid_states.index(invalid)),
+                            H, "model", "PASS", "baseline", 1),
+            ))
