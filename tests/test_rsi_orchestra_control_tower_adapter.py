@@ -1,5 +1,5 @@
 from core.creator_critic import CriticEvaluation, ImprovementCandidate
-from core.rsi_executor import EvidenceLedger
+from core.rsi_executor import EvidenceLedger, canonical_digest
 from core.rsi_orchestra import REAHandoff, REAReview, OrchestraRSIBatch
 from core.rsi_supervisor import RSISupervisorBatch
 from scripts.rsi_orchestra_control_tower_adapter import coordinate_rsi_orchestra_batch
@@ -9,19 +9,26 @@ HEAD = "a" * 40
 
 
 def make_batch(ledger, *, status="PASS", event_id="orchestra-rea:test-event"):
+    candidate = ImprovementCandidate(
+        candidate_id="creator-1",
+        objective="objective",
+        proposal="proposal",
+    )
+    candidate_digest = canonical_digest({
+        "candidate_id": candidate.candidate_id,
+        "objective": candidate.objective,
+        "proposal": candidate.proposal,
+        "constraints": list(candidate.constraints),
+        "evidence": dict(candidate.evidence),
+    })
     handoff = REAHandoff(
         task_id="rsi:experiment-1",
         repository=REPO,
         head_sha=HEAD,
         experiment_id="experiment-1",
         plan_digest="b" * 64,
-        candidate_digest="c" * 64,
+        candidate_digest=candidate_digest,
         evidence_digest="d" * 64,
-    )
-    candidate = ImprovementCandidate(
-        candidate_id="creator-1",
-        objective="objective",
-        proposal="proposal",
     )
     evaluation = CriticEvaluation(
         candidate_id="creator-1",
@@ -46,7 +53,7 @@ def make_batch(ledger, *, status="PASS", event_id="orchestra-rea:test-event"):
         "candidate_id": candidate.candidate_id,
         "critic_decision": evaluation.passed,
         "critic_score": evaluation.score,
-        "critic_feedback_digest": "e" * 64,
+        "critic_feedback_digest": canonical_digest(evaluation.feedback),
         "execution_authorized": False,
         "patch_authorized": False,
         "merge_deploy_authorized": False,
