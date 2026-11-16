@@ -53,6 +53,7 @@ from agents.github.intents import is_github_intent
 from mcp_client import (
     call_mcp_tool as _call_mcp_tool_impl,
     parse_mcp_json_list as _parse_mcp_json_list_impl,
+    diagnose_mcp_connection,
 )
 from ai_client import (
     generate_chat_completion,
@@ -351,6 +352,27 @@ def _core_dynamic_enabled():
 def _handle_ai_gateway_request(ai_request):
     message = str(ai_request.message)
     user_id = str(ai_request.user_id)
+
+    # Explicit, read-only MCP diagnostics are restricted to configured operators.
+    if message.strip() == "MCP診断":
+        allowed_ids = {
+            item.strip()
+            for item in os.environ.get("DEV_ALLOWED_USER_IDS", "").split(",")
+            if item.strip()
+        }
+        if not allowed_ids or user_id not in allowed_ids:
+            return "MCP診断は許可された管理者アカウントからのみ実行できます。"
+        report = diagnose_mcp_connection()
+        return (
+            "MCP接続診断（読み取り専用）\n"
+            f"HTTP health: {report['health']}\n"
+            f"Database ready: {report['ready']}\n"
+            f"MCP認証: {report['mcp_auth']}\n"
+            f"tools/list: {report['tools_list']}\n"
+            f"ツール数: {report['tool_count']}\n"
+            f"所要時間: {report['elapsed_ms']} ms\n"
+            f"総合判定: {report['status']}"
+        )
 
     # Report deployment configuration deterministically; never ask the chat model
     # to guess whether GitHub integration is enabled, and never dispatch Actions here.
