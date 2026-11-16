@@ -91,7 +91,8 @@ def test_orchestra_binds_rea_review_to_exact_head_plan_candidate_and_evidence(tm
             and binding["head_sha"] == HEAD
             and binding["plan_digest"] == seen["plan"].plan_digest
             and binding["experiment_id"] == seen["plan"].experiment_id
-            and binding["candidate_digest"]
+            and isinstance(binding["candidate_digest"], str)
+            and len(binding["candidate_digest"]) == 64
         )
 
     result = run_orchestra_rsi_batch(
