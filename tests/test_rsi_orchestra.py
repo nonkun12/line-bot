@@ -13,7 +13,7 @@ HEAD = "a" * 40
 def make_executor(tmp_path):
     return RSIExecutor(
         EvidenceLedger(tmp_path / "orchestra.sqlite"),
-        control_provider=lambda: RSIControl(True, False, True, True, 10, False),
+        control_provider=lambda: RSIControl(False, False, True, True, 10, False),
         verify_approval=lambda _: False,
         verify_evaluation=lambda _: False,
         verify_evidence_signature=lambda producer_id, digest, signature:
