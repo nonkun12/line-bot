@@ -1,0 +1,149 @@
+import hashlib
+import hmac
+import json
+
+import pytest
+
+from core.rsi_control import SignedRSIControlSnapshot, VerifiedRSIControlProvider
+from core.rsi_executor import (
+    EvidenceLedger, HumanApproval, Observation, RSIControl, RSIError, RSIExecutor,
+    canonical_digest,
+)
+from core.rsi_local_evaluator import LocalRSIIndependentEvaluator
+from core.rsi_local_runner import LocalRSIExperimentRunner, benchmark_protocol_digest
+
+
+SECRET = b"test-only-rsi-signing-key"
+
+
+def sign_digest(digest):
+    return hmac.new(SECRET, digest.encode(), hashlib.sha256).hexdigest()
+
+
+def verify_digest(digest, signature):
+    return hmac.compare_digest(sign_digest(digest), signature)
+
+
+def control_snapshot(now, *, execution_enabled, nonce):
+    payload = {
+        "global_hold": False,
+        "execution_enabled": execution_enabled,
+        "free_only": True,
+        "budget_known": True,
+        "budget_remaining_units": 4,
+        "paid_fallback_enabled": False,
+        "issued_at": now,
+        "expires_at": now + 60,
+        "nonce": nonce,
+    }
+    digest = canonical_digest(payload)
+    return SignedRSIControlSnapshot(**payload, signature=sign_digest(digest))
+
+
+class FakeLocalClient:
+    def __init__(self, outputs):
+        self.outputs = list(outputs)
+        self.calls = []
+
+    def chat(self, *, system, prompt):
+        self.calls.append((system, prompt))
+        return self.outputs.pop(0)
+
+
+def build_pipeline(tmp_path, *, execution_enabled):
+    now = 10_000
+    ledger = EvidenceLedger(tmp_path / "integrated.sqlite")
+    snapshot = control_snapshot(now, execution_enabled=execution_enabled, nonce="snapshot-1")
+    control = VerifiedRSIControlProvider(
+        lambda: snapshot, verify_signature=verify_digest,
+        ledger=ledger, clock=lambda: now,
+    )
+    executor = RSIExecutor(
+        ledger, control_provider=control,
+        verify_approval=lambda approval: (
+            approval.signature == "approval:" + approval.experiment_digest + ":" + approval.nonce
+        ),
+        verify_evaluation=lambda evaluation: verify_digest(
+            canonical_digest({
+                "experiment_id": evaluation.experiment_id,
+                "result_digest": evaluation.result_digest,
+                "evaluator_id": evaluation.evaluator_id,
+                "decision": evaluation.decision,
+                "rationale": evaluation.rationale,
+                "evidence_digest": evaluation.evidence_digest,
+            }),
+            evaluation.signature,
+        ),
+        executor_id="rsi-executor",
+    )
+    return executor, ledger
+
+
+def test_integrated_propose_approve_run_and_independent_evaluate(tmp_path):
+    executor, ledger = build_pipeline(tmp_path, execution_enabled=True)
+    observations = (
+        Observation("int-obs-1", "a" * 64, "model", "FAIL", "quality fell", 1),
+        Observation("int-obs-2", "b" * 64, "model", "REGRESSED", "quality repeated", 2),
+    )
+    diagnoses = executor.observe(observations)
+    hypotheses = executor.hypothesize(diagnoses)
+    candidate_digest = "c" * 64
+    protocol_digest = benchmark_protocol_digest()
+    plans = executor.plan(
+        hypotheses, baseline_digest="d" * 64,
+        candidate_digest=candidate_digest, protocol_digest=protocol_digest,
+        expected_cost_units=3,
+    )
+    plan = executor.select_next(plans)
+
+    runner_client = FakeLocalClient(["RSI-READY", "SAFE-BOUNDARY", "EVIDENCE-LOCKED"])
+    runner = LocalRSIExperimentRunner(
+        runner_client, executor_id="rsi-executor", candidate_digest=candidate_digest,
+    )
+    approval = HumanApproval(
+        "human-reviewer", plan.plan_digest, "once-1",
+        "approval:" + plan.plan_digest + ":once-1",
+    )
+    result = executor.execute_approved(plan, approval, runner)
+
+    evaluator_client = FakeLocalClient([json.dumps({
+        "decision": "IMPROVED", "rationale": "All fixed benchmark checks passed."
+    })])
+    evaluator = LocalRSIIndependentEvaluator(
+        evaluator_client, evaluator_id="independent-evaluator",
+        sign_digest=sign_digest,
+    )
+    evaluation = evaluator.evaluate(plan, result)
+    executor.evaluate(result, evaluation)
+
+    assert result.metrics["quality"] == 1.0
+    assert evaluation.evaluator_id != result.executor_id
+    assert ledger.verify()
+    assert len(runner_client.calls) == 3
+    assert len(evaluator_client.calls) == 1
+
+
+def test_execution_disabled_blocks_before_runner_invocation(tmp_path):
+    executor, _ = build_pipeline(tmp_path, execution_enabled=False)
+    observations = (
+        Observation("off-obs-1", "a" * 64, "model", "FAIL", "quality fell", 1),
+        Observation("off-obs-2", "b" * 64, "model", "REGRESSED", "quality repeated", 2),
+    )
+    hypotheses = executor.hypothesize(executor.observe(observations))
+    candidate = "c" * 64
+    protocol = benchmark_protocol_digest()
+    plan = executor.select_next(executor.plan(
+        hypotheses, baseline_digest="d" * 64, candidate_digest=candidate,
+        protocol_digest=protocol, expected_cost_units=3,
+    ))
+    client = FakeLocalClient(["should-not-run"])
+    runner = LocalRSIExperimentRunner(
+        client, executor_id="rsi-executor", candidate_digest=candidate,
+    )
+    approval = HumanApproval(
+        "human-reviewer", plan.plan_digest, "once-2",
+        "approval:" + plan.plan_digest + ":once-2",
+    )
+    with pytest.raises(RSIError, match="execution is disabled"):
+        executor.execute_approved(plan, approval, runner)
+    assert client.calls == []
