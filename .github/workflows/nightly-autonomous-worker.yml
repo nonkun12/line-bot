@@ -77,6 +77,7 @@ jobs:
 
       - name: Run common guarded distributed development runtime
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           DEV_INSTRUCTION: ${{ env.DEV_INSTRUCTION }}
           DEV_USER_ID: autonomous
