@@ -30,8 +30,9 @@ class Snapshot:
 class FakeCASStore:
     def __init__(self):
         self.snapshot = Snapshot("c" * 40, {
-            "schema_version": 1, "revision": 3, "global_hold": True,
-            "emergency_stop": False, "tasks": [], "active_lease": None,
+            "schema_version": 1, "revision": 3, "global_hold": False,
+            "emergency_stop": False, "tasks": [{"task_id": "task-1", "status": "queued"}],
+            "active_lease": None,
             "consumed_approval_ids": [],
         })
         self.writes = 0
@@ -72,7 +73,6 @@ def _signed_review(**overrides):
 def _gates(store=None, **overrides):
     store = store or FakeCASStore()
     values = {
-        "queue_has_pending": True, "global_hold": False, "emergency_stop": False,
         "budget_verified": True, "approval_verified": True,
         "independent_review_attestation": _signed_review(),
         "review_public_key_pem": PUBLIC_PEM, "review_nonce": NONCE,
@@ -144,7 +144,8 @@ def test_review_for_another_cycle_or_commit_is_rejected():
 
 
 def test_hold_or_missing_budget_blocks_without_consuming_review():
-    store, gates = _gates(global_hold=True, budget_verified=False)
+    store, gates = _gates(budget_verified=False)
+    store.snapshot.state["global_hold"] = True
     decision = continuation_decision(_complete_cycle(), **gates)
     assert decision["continue"] is False
     assert "global_hold_active" in decision["reasons"]
@@ -173,7 +174,7 @@ def test_replayed_review_is_rejected_by_durable_gate():
 
 
 def test_truthy_strings_cannot_satisfy_safety_gates():
-    store, gates = _gates(global_hold="false", budget_verified="true")
+    store, gates = _gates(budget_verified="true")
     decision = continuation_decision(_complete_cycle(), **gates)
     assert "gate_input_not_boolean" in decision["reasons"]
     assert store.writes == 0
