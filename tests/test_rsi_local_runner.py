@@ -3,6 +3,7 @@ import pytest
 from core.rsi_executor import EvidenceLedger, ExperimentPlan, RSIError, canonical_digest
 from core.rsi_local_runner import (
     BenchmarkCase, LocalRSIExperimentRunner, benchmark_protocol_digest,
+    build_loopback_rsi_runner,
 )
 
 
@@ -78,3 +79,17 @@ def test_runner_rejects_unbounded_or_wrong_capability_plan(tmp_path):
                 BenchmarkCase(str(i), "prompt", "expected") for i in range(5)
             ),
         )
+
+
+def test_loopback_runner_factory_pins_local_endpoint_and_disables_thinking(tmp_path):
+    runner = build_loopback_rsi_runner(
+        model="lfm3:1.7b-qad-q4_0",
+        executor_id="local-runner",
+        candidate_digest="e" * 64,
+        ledger=EvidenceLedger(tmp_path / "factory.sqlite"),
+    )
+    assert runner.is_local is True
+    assert runner.paid_fallback_enabled is False
+    assert runner._client.config.base_url == "http://127.0.0.1:11434"
+    assert runner._client.config.think is False
+    assert runner._client.config.max_output_tokens == 128
