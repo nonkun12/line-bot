@@ -58,6 +58,7 @@ def verify_and_consume_review_once(
     commit_sha: str,
     expected_nonce: str,
     allowed_reviewers: Iterable[str],
+    public_key_reviewer_id: str,
     implementer_id: str,
     now: datetime,
 ) -> dict[str, Any]:
