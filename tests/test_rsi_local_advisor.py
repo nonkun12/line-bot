@@ -23,12 +23,14 @@ def make_cycle(tmp_path):
         control_provider=lambda: RSIControl(False, False, True, True, 5, False),
         verify_approval=lambda _: False,
         verify_evaluation=lambda _: False,
+        verify_evidence_signature=lambda digest, signature: signature == "sig:" + digest,
         executor_id="rsi-planner",
     )
     observations = (
         Observation("advisor-obs-1", "a" * 64, "model", "FAIL", "quality regressed", 1),
         Observation("advisor-obs-2", "b" * 64, "model", "REGRESSED", "repeat regression", 2),
     )
+    observations = seed_observations(ledger, observations)
     diagnosis = executor.observe(observations)[0]
     hypothesis = executor.hypothesize((diagnosis,))[0]
     return ledger, diagnosis, hypothesis
@@ -79,3 +81,25 @@ def test_loopback_builder_pins_local_endpoint_and_small_output():
     advisor = build_loopback_rsi_advisor(model="lfm3:1.7b-qad-q4_0", ledger=DummyLedger())
     assert advisor._client.config.base_url == "http://127.0.0.1:11434"
     assert advisor._client.config.max_output_tokens == 512
+
+
+def seed_observations(ledger, observations):
+    from dataclasses import replace
+    seeded = []
+    for item in observations:
+        event_id = "source-evidence:" + item.observation_id
+        digest = ledger.append_observation_evidence(
+            event_id, observation=item,
+            experiment_id="source-" + item.observation_id,
+            candidate_digest="c" * 64,
+            protocol_digest="d" * 64,
+            result_digest="e" * 64,
+            producer_id="test-producer",
+            sign_digest=lambda value: "sig:" + value,
+        )
+        seeded.append(replace(
+            item, evidence_digest=digest, evidence_event_id=event_id,
+            experiment_id="source-" + item.observation_id,
+            candidate_digest="c" * 64, protocol_digest="d" * 64, result_digest="e" * 64,
+        ))
+    return tuple(seeded)
