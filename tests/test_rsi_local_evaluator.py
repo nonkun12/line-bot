@@ -10,6 +10,8 @@ from core.rsi_local_runner import BenchmarkCase, LocalRSIExperimentRunner, bench
 
 
 class FakeClient:
+    config = type("Config", (), {"model": "fixture-model"})()
+
     def __init__(self, content):
         self.content = content
         self.calls = []
@@ -41,7 +43,7 @@ def make_result(tmp_path, output="TOKEN"):
     ledger = EvidenceLedger(tmp_path / "evaluator.sqlite")
     runner = LocalRSIExperimentRunner(
         FakeClient([output]), executor_id="local-runner",
-        candidate_digest=plan.candidate_digest, ledger=ledger, cases=cases,
+        candidate_digest=plan.candidate_digest, model_id="fixture-model", ledger=ledger, cases=cases,
     )
     result = runner(plan)
     return plan, result, ledger
