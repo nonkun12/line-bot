@@ -191,6 +191,7 @@ class VerifiedRSIControlProvider:
         verify_signature: Callable[[str, str], bool],
         ledger: EvidenceLedger,
         verify_control_release: Callable[[str, str], bool] | None = None,
+        release_approval_source: Callable[[], HumanControlReleaseApproval] | None = None,
         max_age_seconds: int = 120,
         clock: Callable[[], float] = time.time,
     ) -> None:
@@ -198,11 +199,14 @@ class VerifiedRSIControlProvider:
             raise TypeError("trusted snapshot source and signature verifier are required")
         if verify_control_release is not None and not callable(verify_control_release):
             raise TypeError("control release signature verifier must be callable")
+        if release_approval_source is not None and not callable(release_approval_source):
+            raise TypeError("control release approval source must be callable")
         if type(max_age_seconds) is not int or not 10 <= max_age_seconds <= 300:
             raise ValueError("control snapshot age must be 10..300 seconds")
         self._source = snapshot_source
         self._verify = verify_signature
         self._verify_release = verify_control_release
+        self._release_source = release_approval_source
         self._ledger = ledger
         self._max_age = max_age_seconds
         self._clock = clock
@@ -251,14 +255,28 @@ class VerifiedRSIControlProvider:
             raise RSIError("control snapshot signature verification failed")
 
         release = None
-        if snapshot.global_hold is False:
-            # Detect a HOLD transition from persisted history; release is not inferred
-            # from execution_enabled and is never authorized by experiment approval.
-            with closing(self._ledger._connect()) as db:
-                rows = _verify_ledger_rows(db)
-            history = [json.loads(row["payload"]) for row in rows if row["event_type"] == "verified_control_snapshot"]
-            if history and history[-1].get("global_hold") is True:
+        with closing(self._ledger._connect()) as db:
+            rows = _verify_ledger_rows(db)
+        history = [json.loads(row["payload"]) for row in rows if row["event_type"] == "verified_control_snapshot"]
+        if history and history[-1].get("global_hold") is True and snapshot.global_hold is False:
+            if self._release_source is None or self._verify_release is None:
                 raise RSIError("HOLD release requires separate human control approval")
+            release = self._release_source()
+            if not isinstance(release, HumanControlReleaseApproval):
+                raise RSIError("typed human control release approval is required")
+            release_payload = {
+                "previous_hold_generation": release.previous_hold_generation,
+                "release_generation": release.release_generation,
+                "snapshot_digest": release.snapshot_digest,
+                "snapshot_nonce": release.snapshot_nonce,
+                "approver_id": release.approver_id,
+                "nonce": release.nonce,
+                "issued_at": release.issued_at,
+                "expires_at": release.expires_at,
+            }
+            release_digest = canonical_digest(release_payload)
+            if not isinstance(release.signature, str) or not release.signature.strip() or not self._verify_release(release_digest, release.signature):
+                raise RSIError("HOLD release approval signature verification failed")
         _persist_control_snapshot(self._ledger, snapshot, digest, release, now, self._max_age)
 
         return RSIControl(
