@@ -152,6 +152,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
     repo_name = str(repository.get("full_name", ""))
     if (
         actor != "nonkun12"
+        or os.environ.get("GITHUB_REF", "") != "refs/heads/main"
         or os.environ.get("GITHUB_ACTOR", "") != actor
         or repo_name != "nonkun12/line-bot"
         or os.environ.get("GITHUB_REPOSITORY", "") != repo_name
