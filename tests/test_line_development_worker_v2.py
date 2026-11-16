@@ -10,6 +10,7 @@ def _allow_patch_application_for_unit_tests(monkeypatch):
     # Existing apply_plan contract tests exercise the authorized write path.
     # Dedicated fail-closed tests explicitly remove/disable this setting.
     monkeypatch.setenv("AUTO_APPLY_PATCH", "true")
+    monkeypatch.setattr(worker, "_rea_write_gate_passes", lambda: True)
 
 import scripts.line_development_worker_v2 as worker
 
@@ -593,6 +594,30 @@ def test_apply_plan_requires_exact_true_patch_authorization(tmp_path, monkeypatc
     assert detail == "patch_application_disabled"
     assert touched == []
     assert "TARGET" in target.read_text(encoding="utf-8")
+
+
+def test_apply_plan_blocks_write_when_rea_gate_is_blocked(tmp_path, monkeypatch):
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    target = tmp_path / "app.py"
+    original = "before\\nTARGET\\nafter\\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setenv("AUTO_APPLY_PATCH", "true")
+    monkeypatch.setattr(worker, "_rea_write_gate_passes", lambda: False)
+
+    def forbidden_write(*args, **kwargs):
+        raise AssertionError("write_text must not be called when REA is blocked")
+
+    monkeypatch.setattr(type(target), "write_text", forbidden_write)
+    plan = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "TARGET", "new": "REPLACED"}],
+    }
+
+    ok, detail, touched = worker.apply_plan(plan)
+
+    assert ok is False
+    assert detail == "rea_gate_blocked"
+    assert touched == []
 
 
 def test_apply_plan_changes_one_exact_anchor(tmp_path, monkeypatch):
