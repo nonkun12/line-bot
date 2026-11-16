@@ -91,3 +91,12 @@ not claimed to be a trusted live account-wide quota measurement.
 ## Deployment prerequisites still not met
 
 These adapters are testable contracts, not a live deployment. The trusted control snapshot issuer, evaluator-held signing key/public-key verifier, local Ollama process, immutable candidate artifact registry, and runtime operator/scheduler are not wired into production. The current local benchmark tests prompt-following on an existing local model; it does not mutate or merge weights and does not establish evolutionary model-merging capability. No scheduler is enabled. Global HOLD and execution OFF remain the required default until those external trust roots are provisioned and reviewed.
+
+
+## Bounded proposal supervisor
+
+`core/rsi_supervisor.py` adds an explicitly invoked synchronous batch/tick
+interface with a hard 1..4 cycle limit. Each cycle re-enters the executor's
+control gate. It stops when no improvement target exists and never invokes a
+runner, timer, daemon, or scheduler. This prepares a bounded control surface
+for later scheduling review without starting continuous execution.
