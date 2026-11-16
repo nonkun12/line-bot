@@ -24,6 +24,7 @@ STREAMS = {
     "side_media_ai": ("映像・音楽AI", "side"),
     "side_self_improvement": ("自己改善AI", "side"),
     "side_line_full_control": ("LINE全指示化", "side"),
+    "side_core_vocabulary": ("英単語コア語彙", "side"),
 }
 
 class CollectionError(RuntimeError):
