@@ -150,7 +150,7 @@ def test_planning_rejects_experiment_cost_above_known_free_budget(tmp_path):
     ledger = EvidenceLedger(tmp_path / "budget.sqlite")
     executor = RSIExecutor(
         ledger,
-        control_provider=lambda: __import__("core.rsi_executor", fromlist=["RSIControl"]).RSIControl(
+        control_provider=lambda: RSIControl(
             False, False, True, True, 1, False
         ),
         verify_approval=lambda _: False,
