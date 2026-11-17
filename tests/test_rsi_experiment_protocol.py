@@ -125,3 +125,12 @@ def test_evidence_digest_is_stable_for_same_record():
     second = evaluate_comparison(record)
 
     assert first["evidence_sha256"] == second["evidence_sha256"]
+
+
+def test_unrecognized_direction_type_is_blocked():
+    record = _record()
+    record["evaluator"]["direction"] = {"higher": True}
+
+    result = evaluate_comparison(record)
+    assert result["status"] == "BLOCKED"
+    assert result["reason"] == "evaluator_configuration_invalid"
