@@ -143,3 +143,8 @@ def test_pytest_xfail_and_xpass_are_not_counted_as_passes():
 
 def test_pytest_summary_parser_ignores_non_summary_text():
     assert parse_counts("tests printed 99 passed but pytest emitted no summary") == (0, 0, 0, 0)
+
+
+
+def test_pytest_failure_first_summary_is_counted_as_failure():
+    assert parse_counts("2 failed, 3 passed, 1 skipped in 0.42s") == (6, 3, 2, 1)
