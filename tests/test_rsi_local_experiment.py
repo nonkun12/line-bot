@@ -6,6 +6,7 @@ import json
 
 from core.local_model_client import LocalModelClient
 from core.rsi_local_experiment import run_local_prompt_comparison
+from scripts.rsi_experiment_ledger import verify_ledger
 
 
 class FakeClient(LocalModelClient):
@@ -24,7 +25,7 @@ class FakeClient(LocalModelClient):
         )()
 
 
-def _args(client=None):
+def _args(client=None, ledger_path=None):
     dataset = [
         {"sample_id": "a", "input": "first", "expected": "one"},
         {"sample_id": "b", "input": "second", "expected": "two"},
@@ -53,12 +54,13 @@ def _args(client=None):
         "minimum_delta": 0.5,
         "safety_snapshot": safety_snapshot,
         "execution_approved": True,
+        "ledger_path": ledger_path,
     }
 
 
-def test_runner_generates_both_candidates_locally_and_evaluates_outputs():
+def test_runner_generates_both_candidates_locally_and_evaluates_outputs(tmp_path):
     client = FakeClient(["one", "wrong", "one", "two"])
-    args = _args(client)
+    args = _args(client, tmp_path / "rsi-ledger.jsonl")
 
     result = run_local_prompt_comparison(**args)
 
@@ -69,9 +71,12 @@ def test_runner_generates_both_candidates_locally_and_evaluates_outputs():
     assert all(call["temperature"] == 0.0 for call in client.calls)
     assert all(call["max_completion_tokens"] == 256 for call in client.calls)
     assert result["result"]["execution_authorized"] is False
+    entries = verify_ledger(tmp_path / "rsi-ledger.jsonl")
+    assert len(entries) == 1
+    assert result["ledger_entry_sha256"] == entries[0]["entry_sha256"]
 
 
-def test_runner_blocks_without_explicit_approval_before_model_call():
+def test_runner_blocks_without_explicit_approval_before_model_call(tmp_path):
     client = FakeClient([])
     args = _args(client)
     args["execution_approved"] = False
@@ -83,7 +88,7 @@ def test_runner_blocks_without_explicit_approval_before_model_call():
     assert client.calls == []
 
 
-def test_runner_blocks_when_stop_is_active_before_model_call():
+def test_runner_blocks_when_stop_is_active_before_model_call(tmp_path):
     client = FakeClient([])
     args = _args(client)
     args["safety_snapshot"]["stop_state"] = "ACTIVE"
@@ -95,7 +100,7 @@ def test_runner_blocks_when_stop_is_active_before_model_call():
     assert client.calls == []
 
 
-def test_runner_blocks_when_hold_is_not_clear_before_model_call():
+def test_runner_blocks_when_hold_is_not_clear_before_model_call(tmp_path):
     client = FakeClient([])
     args = _args(client)
     args["safety_snapshot"]["global_hold_state"] = "UNKNOWN"
@@ -107,8 +112,8 @@ def test_runner_blocks_when_hold_is_not_clear_before_model_call():
     assert client.calls == []
 
 
-def test_runner_blocks_when_held_out_manifest_digest_mismatches():
-    args = _args()
+def test_runner_blocks_when_held_out_manifest_digest_mismatches(tmp_path):
+    args = _args(ledger_path=tmp_path / "rsi-ledger.jsonl")
     args["held_out_expected_sha256"] = "f" * 64
 
     result = run_local_prompt_comparison(**args)
@@ -118,7 +123,7 @@ def test_runner_blocks_when_held_out_manifest_digest_mismatches():
     assert args["client"].calls == []
 
 
-def test_runner_blocks_invalid_client_without_execution():
+def test_runner_blocks_invalid_client_without_execution(tmp_path):
     args = _args()
     args["client"] = object()
 
@@ -129,7 +134,7 @@ def test_runner_blocks_invalid_client_without_execution():
 
 
 
-def test_runner_binds_full_input_manifest_digest_into_evidence():
+def test_runner_binds_full_input_manifest_digest_into_evidence(tmp_path):
     args = _args()
     expected_digest = args["held_out_expected_sha256"]
 
@@ -139,7 +144,7 @@ def test_runner_binds_full_input_manifest_digest_into_evidence():
     assert result["record"]["safety"]["snapshot_sha256"] == args["safety_snapshot"]["snapshot_sha256"]
 
 
-def test_runner_blocks_without_safety_snapshot_digest_before_model_call():
+def test_runner_blocks_without_safety_snapshot_digest_before_model_call(tmp_path):
     client = FakeClient([])
     args = _args(client)
     args["safety_snapshot"].pop("snapshot_sha256")
@@ -150,7 +155,7 @@ def test_runner_blocks_without_safety_snapshot_digest_before_model_call():
     assert result["result"]["reason"] == "safety_snapshot_digest_missing_or_invalid"
     assert client.calls == []
 
-def test_runner_blocks_when_safety_snapshot_digest_is_tampered():
+def test_runner_blocks_when_safety_snapshot_digest_is_tampered(tmp_path):
     args = _args()
     args["safety_snapshot"]["snapshot_sha256"] = "f" * 64
 
