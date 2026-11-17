@@ -235,6 +235,10 @@ def scan_commit_diff(
             raise ScanBlocked("commit_sha_invalid")
         _git(root, "cat-file", "-e", f"{value}^{{commit}}")
 
+    # Evidence must describe a forward change from the approved base. Reject
+    # unrelated histories and reversed ranges before computing any diff.
+    _git(root, "merge-base", "--is-ancestor", base_sha, target_sha)
+
     patch = subprocess.run(
         ["git", "diff", "--binary", base_sha, target_sha, "--"],
         cwd=str(root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
