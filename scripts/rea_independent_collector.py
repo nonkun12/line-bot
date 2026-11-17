@@ -105,8 +105,8 @@ def prepare_trusted_harness(harness: Path) -> None:
     test_args = ", ".join(f'"/harness/tests/{Path(name).name}"' for name in REA_TESTS)
     runner = (
         "import sys\n"
-        "sys.path.insert(0, '/workspace')\n"
         "import pytest\n"
+        "sys.path.insert(0, '/workspace')\n"
         "raise SystemExit(pytest.main(['-q', '-p', 'no:cacheprovider', "
         "'--noconftest', '--junitxml=/evidence/junit.xml', "
         + test_args + "]))\n"
