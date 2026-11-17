@@ -46,18 +46,19 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def parse_counts(path: Path) -> tuple[int, int, int, int]:
-    if not path.is_file():
+def parse_counts(output: str) -> tuple[int, int, int, int]:
+    """Parse pytest's terminal summary captured outside the sandbox."""
+    matches = re.findall(
+        r"=\\s*(?:(\\d+)\\s+passed)?(?:,\\s*)?(?:(\\d+)\\s+failed)?"
+        r"(?:,\\s*)?(?:(\\d+)\\s+error(?:s)?)?(?:,\\s*)?"
+        r"(?:(\\d+)\\s+skipped)?\\s+in\\s+[0-9.]+s\\s*=",
+        output,
+    )
+    if not matches:
         return 0, 0, 0, 0
-    root = ET.parse(path).getroot()
-    suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
-    collected = sum(int(node.attrib.get("tests", "0")) for node in suites)
-    failures = sum(int(node.attrib.get("failures", "0")) for node in suites)
-    errors = sum(int(node.attrib.get("errors", "0")) for node in suites)
-    skipped = sum(int(node.attrib.get("skipped", "0")) for node in suites)
-    failed = failures + errors
-    passed = max(0, collected - failed - skipped)
-    return collected, passed, failed, skipped
+    passed, failed, errors, skipped = (int(value or 0) for value in matches[-1])
+    collected = passed + failed + errors + skipped
+    return collected, passed, failed + errors, skipped
 
 
 def validate_task_rows(rows: list[dict]) -> None:
@@ -313,25 +314,21 @@ def main() -> int:
             harness.mkdir()
             prepare_trusted_harness(harness)
 
-            evidence_dir = root / f"evidence-{index}"
-            evidence_dir.mkdir()
-            evidence_dir.chmod(0o777)
-            # The only writable mount is a result directory. No token, network,
-            # host socket, git metadata, or source write access enters the sandbox.
+            # No writable host mount is exposed to task code. The trusted host
+            # captures stdout/exit status and creates the evidence record itself.
             result = run([
                 "docker", "run", "--rm", "--network", "none", "--read-only",
                 "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m,uid=65532,gid=65532",
                 "--mount", f"type=bind,src={source},dst=/workspace,readonly",
                 "--mount", f"type=bind,src={harness},dst=/harness,readonly",
-                "--mount", f"type=bind,src={evidence_dir},dst=/evidence",
                 "--workdir", "/tmp", "--cap-drop", "ALL",
                 "--security-opt", "no-new-privileges:true", "--pids-limit", "128",
                 "--memory", "2g", "--cpus", "2", "--user", "65532:65532",
                 "--env", "PYTHONDONTWRITEBYTECODE=1",
                 "--env", "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1", image, *command,
-            ], check=False)
-            junit = evidence_dir / "junit.xml"
-            counts = parse_counts(junit) if junit.exists() else (0, 0, 0, 0)
+            ], check=False, capture_output=True)
+            output = (result.stdout or b"").decode("utf-8", errors="replace")
+            counts = parse_counts(output)
             outcome = "success" if result.returncode == 0 else "failure"
             output_rows.append(evidence_row(
                 run_id=args.run_id, attempt=args.run_attempt, task_id=task_id,
