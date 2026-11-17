@@ -442,6 +442,7 @@ def test_execution_approval_consumption_blocks_duplicate_ref(monkeypatch):
         "actor": "nonkun12",
         "task_id": "task-1",
         "instruction_sha256": "a" * 64,
+        "allowed_paths_sha256": "c" * 64,
     }
     result = guarded_runtime._consume_execution_approval(evidence, "b" * 40)
     assert result["gate"] == "BLOCKED"
