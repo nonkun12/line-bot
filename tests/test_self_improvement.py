@@ -67,3 +67,21 @@ def test_signal_and_proposal_contracts_are_bounded_and_snapshot_signals() -> Non
             "x" * 201,
             "reason",
         )
+
+## Backlog coverage tests
+def test_clear_removes_all_in_memory_improvement_signals():
+    from core.self_improvement import ImprovementSignal, SelfImprovementEngine
+
+    engine = SelfImprovementEngine()
+    engine._signals.extend(
+        [
+            ImprovementSignal("failure", "task-1", "test failure"),
+            ImprovementSignal("repair", "task-1", "one repair"),
+        ]
+    )
+    assert len(engine.signals) == 2
+
+    engine.clear()
+
+    assert engine.signals == ()
+    assert engine.propose() is None
