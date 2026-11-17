@@ -1,4 +1,4 @@
-from scripts.rea_independent_collector import is_candidate_task_row, validate_task_rows, parse_counts, captured_output_text
+from scripts.rea_independent_collector import is_candidate_task_row, validate_task_rows, parse_counts, captured_output_text, no_candidate_reason
 
 
 BASE = "1" * 40
@@ -115,3 +115,16 @@ def test_subprocess_output_normalizes_text_and_bytes():
     assert captured_output_text("38 passed in 0.24s") == "38 passed in 0.24s"
     assert captured_output_text(b"38 passed in 0.24s") == "38 passed in 0.24s"
     assert captured_output_text(None) == ""
+
+
+
+def test_no_task_and_no_change_runs_are_not_applicable():
+    assert no_candidate_reason([{"status": "NOT_RUN", "task_id": ""}]) == "no_changed_task_commits"
+    assert no_candidate_reason([task(status="NO_CHANGE", produced_sha=BASE)]) == "no_changed_task_commits"
+
+
+def test_blocked_or_stopped_rows_remain_blocked_without_commit_identity():
+    for status in ("FAIL", "HOLD", "BLOCKED", "STOPPED"):
+        assert no_candidate_reason([{"status": status, "task_id": ""}]) == (
+            "source_non_success_task_without_verifiable_commit_identity"
+        )
