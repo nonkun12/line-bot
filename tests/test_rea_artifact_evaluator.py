@@ -92,7 +92,7 @@ def test_runtime_summary_adapter_requires_explicit_independent_evidence():
         "post_generation_rea": {"status": "PASS"},
     }
     result = evaluate_runtime_summary(summary, {"changed_files": ["tests/test_example.py"]})
-    assert result["status"] == "HOLD"
+    assert result["status"] == "BLOCKED"
     assert result["reason_code"] == "stop_active_or_unverified"
     assert result["execution_authorized"] is False
 
