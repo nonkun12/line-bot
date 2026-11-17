@@ -63,7 +63,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rea-independent-evidence-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          name: rea-independent-evidence-${{ github.run_id }}
           path: independent-evidence/
+            !independent-evidence/tmp/
           if-no-files-found: error
           retention-days: 14
