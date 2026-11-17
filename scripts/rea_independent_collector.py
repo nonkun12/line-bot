@@ -37,6 +37,31 @@ def run_bytes(command: list[str]) -> bytes:
     return subprocess.run(command, check=True, capture_output=True).stdout
 
 
+def run_test_container(command: list[str], container_name: str,
+                       timeout_seconds: int = 420) -> subprocess.CompletedProcess:
+    """Run one sandbox and forcibly remove its daemon-side container on timeout."""
+    try:
+        return subprocess.run(
+            command, check=False, capture_output=True, text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        subprocess.run(
+            ["docker", "kill", container_name],
+            check=False, capture_output=True, text=True,
+        )
+        return subprocess.CompletedProcess(
+            command, 124,
+            stdout=captured_output_text(exc.stdout),
+            stderr=captured_output_text(exc.stderr) + "\nindependent test container timed out",
+        )
+    finally:
+        subprocess.run(
+            ["docker", "rm", "--force", container_name],
+            check=False, capture_output=True, text=True,
+        )
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -380,9 +405,10 @@ def main() -> int:
             # The same immutable trusted harness is reused for each task.
             # No writable host mount is exposed to task code. The trusted host
             # captures stdout/exit status and creates the evidence record itself.
-            result = run([
-                "timeout", "--signal=TERM", "--kill-after=10s", "7m",
-                "docker", "run", "--rm", "--network", "none", "--read-only",
+            container_name = f"rea-task-{args.run_id}-{index}"
+            sandbox_command = [
+                "docker", "run", "--name", container_name, "--stop-timeout", "5",
+                "--network", "none", "--read-only",
                 "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m,uid=65532,gid=65532",
                 "--mount", f"type=bind,src={source},dst=/workspace,readonly",
                 "--mount", f"type=bind,src={harness},dst=/harness,readonly",
@@ -391,10 +417,14 @@ def main() -> int:
                 "--memory", "2g", "--cpus", "2", "--user", "65532:65532",
                 "--env", "PYTHONDONTWRITEBYTECODE=1",
                 "--env", "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1", image, *command,
-            ], check=False, capture_output=True)
+            ]
+            result = run_test_container(sandbox_command, container_name)
             output = captured_output_text(result.stdout)
             counts = parse_counts(output)
-            outcome = "success" if result.returncode == 0 else "failure"
+            outcome = (
+                "timeout" if result.returncode == 124
+                else ("success" if result.returncode == 0 else "failure")
+            )
             output_rows.append(evidence_row(
                 run_id=args.run_id, attempt=args.run_attempt, task_id=task_id,
                 base=base, head=head, diff_hash=diff_hash, outcome=outcome,
