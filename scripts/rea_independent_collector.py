@@ -46,6 +46,15 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def captured_output_text(output: object) -> str:
+    """Normalize subprocess output from text=True and byte-oriented callers."""
+    if isinstance(output, str):
+        return output
+    if isinstance(output, bytes):
+        return output.decode("utf-8", errors="replace")
+    return ""
+
+
 def parse_counts(output: str) -> tuple[int, int, int, int]:
     """Parse pytest's terminal summary captured outside the sandbox."""
     matches = re.findall(
@@ -350,8 +359,7 @@ def main() -> int:
                 "--env", "PYTHONDONTWRITEBYTECODE=1",
                 "--env", "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1", image, *command,
             ], check=False, capture_output=True)
-            raw_output = result.stdout or ""
-            output = (raw_output if isinstance(raw_output, str) else raw_output.decode("utf-8", errors="replace"))
+            output = captured_output_text(result.stdout)
             counts = parse_counts(output)
             outcome = "success" if result.returncode == 0 else "failure"
             output_rows.append(evidence_row(
