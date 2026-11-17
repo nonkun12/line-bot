@@ -1649,3 +1649,24 @@ def test_apply_plan_blocks_without_explicit_patch_gate(tmp_path, monkeypatch):
     })
     assert (ok, detail, touched) == (False, "patch_application_disabled", [])
     assert target.read_text(encoding="utf-8") == original
+
+
+def test_worker_subprocess_does_not_inherit_write_or_provider_credentials(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setenv("GITHUB_TOKEN", "write-token-must-not-leak")
+    monkeypatch.setenv("GH_TOKEN", "gh-token-must-not-leak")
+    monkeypatch.setenv("ACTIONS_RUNTIME_TOKEN", "runtime-token-must-not-leak")
+    monkeypatch.setenv("GROQ_API_KEY", "provider-key-must-not-leak")
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    worker.run(["python", "-m", "pytest"], timeout=10)
+    child_env = captured["env"]
+    for name in ("GITHUB_TOKEN", "GH_TOKEN", "ACTIONS_RUNTIME_TOKEN", "GROQ_API_KEY"):
+        assert name not in child_env
+    assert "PATH" in child_env
