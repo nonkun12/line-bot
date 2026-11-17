@@ -169,6 +169,13 @@ def _is_provider_free_autonomous_task(task_id: str) -> bool:
     )
 
 
+def _provider_block_reason(task_id: str) -> str | None:
+    """Reject metered/external model use until a verified local adapter exists."""
+    if _is_provider_free_autonomous_task(task_id):
+        return None
+    return "external_model_provider_disabled_local_adapter_unavailable"
+
+
 def _self_improvement_history_path() -> Path:
     raw = os.environ.get(
         "SELF_IMPROVEMENT_HISTORY_PATH",
@@ -2697,6 +2704,14 @@ def execute(instruction: str) -> int:
         _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=None, branch=None, exit_detail=str(exc), base_sha=None, produced_sha=None)
         return 1
     autonomous_task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    provider_block_reason = _provider_block_reason(autonomous_task_id)
+    if provider_block_reason is not None:
+        print("MODEL_PROVIDER=BLOCKED reason=local_adapter_unavailable; external or metered APIs are disabled", flush=True)
+        _write_development_audit_to_google_sheets(
+            instruction=instruction, status="BLOCKED", target_path=None, branch=None,
+            exit_detail=provider_block_reason, base_sha=None, produced_sha=None,
+        )
+        return 1
     deterministic_task = autonomous_task_id in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
     review_coverage_gap_task = _is_review_coverage_gap_task_id(autonomous_task_id)
     if deterministic_task or review_coverage_gap_task:
