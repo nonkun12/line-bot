@@ -127,7 +127,7 @@ def main() -> int:
             "reason_code": "no_changed_task_commits",
         }
         (args.output / "rea-independent-test-evidence.jsonl").write_text(
-            json.dumps(marker, sort_keys=True) + "\\n", encoding="utf-8"
+            json.dumps(marker, sort_keys=True) + "\n", encoding="utf-8"
         )
         context = {
             "schema_version": 1,
@@ -139,7 +139,7 @@ def main() -> int:
             "expected_tasks": [],
         }
         (args.output / "collector-context.json").write_text(
-            json.dumps(context, sort_keys=True) + "\\n", encoding="utf-8"
+            json.dumps(context, sort_keys=True) + "\n", encoding="utf-8"
         )
         return 0
 
@@ -284,7 +284,7 @@ def main() -> int:
         ],
     }
     (args.output / "collector-context.json").write_text(
-        json.dumps(context, sort_keys=True) + "\\n", encoding="utf-8"
+        json.dumps(context, sort_keys=True) + "\n", encoding="utf-8"
     )
     return 0
 
