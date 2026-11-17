@@ -28,7 +28,9 @@ def record_rea_evaluation(
     changed_file_count: int,
 ) -> dict[str, Any]:
     """Persist a sanitized REA result; never store prompts, diffs, paths, or source."""
-    if status not in _STATUSES:
+    if not isinstance(namespace, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", namespace):
+        raise ValueError("invalid RAG namespace")
+    if not isinstance(status, str) or status not in _STATUSES:
         raise ValueError("invalid REA status")
     if not isinstance(task_id, str) or not _TASK.fullmatch(task_id):
         raise ValueError("invalid task_id")
@@ -71,7 +73,9 @@ def build_rea_context(
 ) -> str:
     """Return bounded metadata-only prior REA outcomes relevant to a new task."""
     path = Path(db_path)
-    if not path.is_file() or not isinstance(instruction, str):
+    if (not path.is_file() or not isinstance(instruction, str)
+            or len(instruction) > 20000 or not isinstance(namespace, str)
+            or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", namespace)):
         return ""
     if not isinstance(task_id, str) or not _TASK.fullmatch(task_id):
         return ""
