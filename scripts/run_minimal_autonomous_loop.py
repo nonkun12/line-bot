@@ -39,7 +39,7 @@ TRANSIENT_RETRY_DELAYS_SECONDS = (2, 5)
 
 def run_lfm3_shadow_advisory(env: dict[str, str], audit_dir: Path) -> dict[str, object] | None:
     """Optionally run local LFM3 as non-authoritative advice; never gates task execution."""
-    if env.get("RSI_LFM3_SHADOW_ENABLED") != "1":
+    if env.get("RSI_LFM3_SHADOW_ENABLED") != "1" or env.get("GITHUB_ACTIONS", "").casefold() == "true":
         return None
     child_env = env.copy()
     audit_path = Path(child_env.get(
