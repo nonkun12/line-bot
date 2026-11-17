@@ -71,11 +71,15 @@ def run_local_prompt_comparison(
     def check_live_safety() -> dict[str, Any]:
         # Revalidate approval and STOP/HOLD immediately before every inference.
         try:
-            if approval_verifier(experiment_id) is not True:
-                raise ValueError("experiment_approval_missing_or_revoked")
+            approved = approval_verifier(experiment_id)
+        except Exception as exc:
+            raise ValueError(f"approval_verifier_unavailable:{type(exc).__name__}") from None
+        if approved is not True:
+            raise ValueError("experiment_approval_missing_or_revoked")
+        try:
             snapshot = safety_provider()
         except Exception as exc:
-            raise ValueError(f"trusted_safety_check_failed:{type(exc).__name__}") from None
+            raise ValueError(f"safety_provider_unavailable:{type(exc).__name__}") from None
         if not isinstance(snapshot, Mapping):
             raise ValueError("trusted_safety_snapshot_missing")
         if snapshot.get("stop_state") != "INACTIVE":
