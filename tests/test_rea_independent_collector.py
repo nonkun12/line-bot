@@ -1,4 +1,4 @@
-from scripts.rea_independent_collector import is_candidate_task_row, validate_task_rows, parse_counts
+from scripts.rea_independent_collector import is_candidate_task_row, validate_task_rows, parse_counts, captured_output_text
 
 
 BASE = "1" * 40
@@ -106,3 +106,10 @@ def test_successful_task_without_commit_identity_is_rejected():
         assert "invalid base SHA" in str(exc)
     else:
         raise AssertionError("successful task without SHA identity must be rejected")
+
+
+
+def test_subprocess_output_normalizes_text_and_bytes():
+    assert captured_output_text("38 passed in 0.24s") == "38 passed in 0.24s"
+    assert captured_output_text(b"38 passed in 0.24s") == "38 passed in 0.24s"
+    assert captured_output_text(None) == ""
