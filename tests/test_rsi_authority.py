@@ -93,6 +93,7 @@ def test_safety_provider_blocks_if_any_recovery_task_is_held(tmp_path, monkeypat
     store = RecoveryStore(tmp_path / "recovery-ai-state.json")
     store.record_failure("held-task", "test_regression", ["test.one"])
     store.record_failure("held-task", "test_regression", ["test.two"])
+    store.record_failure("held-task", "test_regression", ["test.three"])
 
     _approval, safety = _build(tmp_path, monkeypatch)
     with pytest.raises(RuntimeError, match="recovery_global_hold_active"):
