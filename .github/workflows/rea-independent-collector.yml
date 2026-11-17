@@ -16,7 +16,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       # This workflow_run workflow executes only its default-branch definition.
       # Never checkout or execute the source workflow's branch scripts.
@@ -109,7 +109,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rea-independent-evidence-${{ github.run_id }}
+          name: rea-independent-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}
           path: independent-evidence/
           if-no-files-found: error
           retention-days: 14
