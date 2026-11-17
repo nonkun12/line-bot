@@ -34,6 +34,7 @@ def _kwargs():
         "evaluator_version": "1",
         "minimum_delta": 0.2,
         "safety": {"stop_state": "INACTIVE", "global_hold_state": "CLEAR"},
+        "held_out_locked": True,
     }
 
 
@@ -110,3 +111,22 @@ def test_non_string_candidate_output_is_blocked():
 
     assert result["result"]["status"] == "BLOCKED"
     assert result["result"]["reason"] == "prediction_output_must_be_string"
+
+def test_unattested_held_out_fixture_is_blocked():
+    args = _kwargs()
+    args["held_out_locked"] = False
+
+    result = evaluate_exact_match(**args)
+
+    assert result["result"]["status"] == "BLOCKED"
+    assert result["result"]["reason"] == "held_out_fixture_lock_not_attested"
+
+
+def test_candidate_prediction_outputs_are_hash_bound():
+    result = evaluate_exact_match(**_kwargs())
+
+    baseline = result["record"]["baseline"]["predictions_sha256"]
+    challenger = result["record"]["challenger"]["predictions_sha256"]
+    assert len(baseline) == 64
+    assert len(challenger) == 64
+    assert baseline != challenger
