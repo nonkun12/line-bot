@@ -256,6 +256,28 @@ def main() -> int:
     out = args.output / "rea-independent-test-evidence.jsonl"
     out.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in output_rows),
                    encoding="utf-8")
+    context = {
+        "schema_version": 1,
+        "collector_run_id": os.environ.get("GITHUB_RUN_ID", ""),
+        "source_run_id": str(args.run_id),
+        "source_run_attempt": args.run_attempt,
+        "source_head_sha": args.source_head_sha,
+        "source_head_branch": args.source_head_branch,
+        "expected_tasks": [
+            {
+                key: row[key]
+                for key in (
+                    "run_id", "run_attempt", "task_id", "base_sha",
+                    "head_sha", "diff_sha256", "test_command_sha256",
+                )
+                if key in row
+            }
+            for row in output_rows if "task_id" in row
+        ],
+    }
+    (args.output / "collector-context.json").write_text(
+        json.dumps(context, sort_keys=True) + "\\n", encoding="utf-8"
+    )
     return 0
 
 
