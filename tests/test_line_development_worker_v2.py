@@ -1566,7 +1566,7 @@ def test_append_only_generation_failure_includes_safe_api_error_detail(monkeypat
     assert plan is None
     assert error.startswith(
         "append_only_test_generation_failed:BadRequestError:"
-        "model=unknown:local_protocol=unknown"
+        "model=test-local:local_protocol=unknown"
     )
     assert "status=400:code=invalid_request:param=max_tokens:" in error
     assert "message=Requested token budget exceeds limit" in error
