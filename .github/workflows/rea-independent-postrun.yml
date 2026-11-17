@@ -1,0 +1,149 @@
+name: REA Independent Evidence Post-Run
+
+on:
+  workflow_run:
+    workflows: ["REA Independent Test Collector"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: rea-independent-postrun-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Download collector evidence artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          COLLECTOR_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p collector-evidence
+          gh run download "$COLLECTOR_RUN_ID" --repo "$GH_REPOSITORY" \
+            --name "rea-independent-evidence-$COLLECTOR_RUN_ID" \
+            --dir collector-evidence
+          test -s collector-evidence/collector-context.json
+          test -s collector-evidence/rea-independent-test-evidence.jsonl
+
+      - name: Validate trusted provenance and evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          COLLECTOR_RUN_ID: ${{ github.event.workflow_run.id }}
+          COLLECTOR_RUN_NAME: ${{ github.event.workflow_run.name }}
+          COLLECTOR_RUN_PATH: ${{ github.event.workflow_run.path }}
+          COLLECTOR_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, re, subprocess
+          from pathlib import Path
+          from core.rea_independent_test_evidence import validate_independent_test_evidence
+
+          repo = os.environ["GH_REPOSITORY"]
+          collector_id = os.environ["COLLECTOR_RUN_ID"]
+          if (os.environ["COLLECTOR_RUN_NAME"] != "REA Independent Test Collector"
+                  or os.environ["COLLECTOR_RUN_PATH"] != ".github/workflows/rea-independent-collector.yml"
+                  or os.environ["COLLECTOR_RUN_CONCLUSION"] != "success"):
+              raise SystemExit("collector workflow provenance is not trusted")
+
+          context = json.loads(Path("collector-evidence/collector-context.json").read_text())
+          if (context.get("schema_version") != 1
+                  or str(context.get("collector_run_id")) != collector_id
+                  or not str(context.get("source_run_id", "")).isdigit()
+                  or type(context.get("source_run_attempt")) is not int
+                  or context["source_run_attempt"] < 1
+                  or not re.fullmatch(r"[0-9a-f]{40}", str(context.get("source_head_sha", "")))
+                  or not isinstance(context.get("expected_tasks"), list)):
+              raise SystemExit("trusted collector context is malformed")
+
+          source_id = str(context["source_run_id"])
+          source = json.loads(subprocess.run(
+              ["gh", "api", f"repos/{repo}/actions/runs/{source_id}"],
+              check=True, capture_output=True, text=True,
+          ).stdout)
+          if (source.get("name") != "Distributed Autonomous Development Loop"
+                  or source.get("run_attempt") != context["source_run_attempt"]
+                  or source.get("head_sha") != context["source_head_sha"]
+                  or source.get("conclusion") != "success"):
+              raise SystemExit("source workflow run identity does not match collector context")
+
+          expected = {
+              item.get("task_id"): item
+              for item in context["expected_tasks"]
+              if isinstance(item, dict) and isinstance(item.get("task_id"), str)
+          }
+          rows = []
+          for line in Path("collector-evidence/rea-independent-test-evidence.jsonl").read_text().splitlines():
+              if line.strip():
+                  row = json.loads(line)
+                  if not isinstance(row, dict):
+                      raise SystemExit("evidence row is not an object")
+                  rows.append(row)
+
+          results = []
+          seen = set()
+          for row in rows:
+              task_id = row.get("task_id")
+              identity = expected.get(task_id)
+              if identity is None:
+                  # Explicit no-task/skipped markers cannot establish PASS.
+                  results.append({"status": "BLOCKED", "reason_code": row.get("reason_code", "evidence_identity_missing")})
+                  continue
+              seen.add(task_id)
+              verdict = validate_independent_test_evidence(
+                  row, expected=identity, trusted_collector=True
+              )
+              results.append({"task_id": task_id, **verdict})
+
+          if seen != set(expected):
+              results.append({"status": "HOLD", "reason_code": "collector_expected_task_set_mismatch"})
+          if not results:
+              results.append({"status": "BLOCKED", "reason_code": "no_independent_evidence_rows"})
+          report = {
+              "schema_version": 1,
+              "collector_run_id": collector_id,
+              "source_run_id": source_id,
+              "source_run_attempt": context["source_run_attempt"],
+              "results": results,
+              "overall": "PASS" if results and all(x.get("status") == "PASS" for x in results) else "HOLD",
+          }
+          Path("rea-independent-postrun.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\\n"
+          )
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(
+              "# REA Independent Evidence Verification\\n\\n"
+              + f"- Source run: {source_id}\\n"
+              + f"- Collector run: {collector_id}\\n"
+              + f"- Overall: {report['overall']}\\n"
+              + "\\n".join(
+                  f"- {item.get('task_id', 'run')}: {item['status']} ({item['reason_code']})"
+                  for item in results
+              ) + "\\n"
+          )
+          if report["overall"] != "PASS":
+              raise SystemExit("independent REA evidence is not PASS; fail closed")
+          PY
+
+      - name: Upload verified REA evidence decision
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-independent-postrun-${{ github.event.workflow_run.id }}
+          path: rea-independent-postrun.json
+          if-no-files-found: ignore
+          retention-days: 14
