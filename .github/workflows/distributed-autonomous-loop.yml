@@ -16,6 +16,10 @@ on:
         description: 'Exact task ID from the selected queue item'
         required: false
         type: string
+      approval_allowed_paths_sha256:
+        description: 'SHA-256 of the canonical sorted allowed_paths list'
+        required: false
+        type: string
       approval_instruction_sha256:
         description: 'SHA-256 of the exact selected task instruction'
         required: false
