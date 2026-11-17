@@ -106,9 +106,13 @@ def local_stop_active(root=None) -> bool:
     candidates.extend((root_path / ".autonomous-loop.stop", Path("/tmp/line-bot-autonomous-loop.stop")))
     for candidate in candidates:
         try:
-            if candidate.exists():
-                return True
+            # lstat treats even a dangling symlink as an active STOP marker.
+            candidate.lstat()
+            return True
+        except FileNotFoundError:
+            continue
         except OSError:
+            # Permission, I/O, and path-resolution failures are unverified STOP.
             return True
     return False
 
