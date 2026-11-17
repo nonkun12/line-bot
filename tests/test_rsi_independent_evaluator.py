@@ -1,6 +1,9 @@
 """Tests for the independent deterministic RSI evaluator."""
 from __future__ import annotations
 
+import hashlib
+import json
+
 from core.rsi_independent_evaluator import evaluate_exact_match
 
 
@@ -35,6 +38,9 @@ def _kwargs():
         "minimum_delta": 0.2,
         "safety": {"stop_state": "INACTIVE", "global_hold_state": "CLEAR"},
         "held_out_locked": True,
+        "held_out_expected_sha256": hashlib.sha256(
+            json.dumps(dataset, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        ).hexdigest(),
     }
 
 
@@ -65,6 +71,11 @@ def test_duplicate_held_out_sample_id_is_blocked():
     args = _kwargs()
     args["dataset"].append({"sample_id": "s1", "expected": "alpha"})
 
+    import hashlib
+    import json
+    args["held_out_expected_sha256"] = hashlib.sha256(
+        json.dumps(args["dataset"], ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
     result = evaluate_exact_match(**args)
 
     assert result["result"]["status"] == "BLOCKED"
@@ -130,3 +141,12 @@ def test_candidate_prediction_outputs_are_hash_bound():
     assert len(baseline) == 64
     assert len(challenger) == 64
     assert baseline != challenger
+
+def test_held_out_manifest_digest_mismatch_is_blocked():
+    args = _kwargs()
+    args["held_out_expected_sha256"] = "f" * 64
+
+    result = evaluate_exact_match(**args)
+
+    assert result["result"]["status"] == "BLOCKED"
+    assert result["result"]["reason"] == "held_out_manifest_digest_mismatch"
