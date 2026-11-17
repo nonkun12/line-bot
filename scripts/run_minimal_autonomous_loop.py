@@ -693,7 +693,12 @@ def run_task(
     # attestation from the guarded runtime. Without it, the loop cannot prove
     # that the immutable base..produced commit was scanned before publication.
     post_generation_rea = payload.get("post_generation_rea")
-    if exit_code == 0 and produced_sha != base_sha:
+    if (
+        exit_code == 0
+        and payload.get("status") == "PASS"
+        and payload.get("produced_sha") == produced_sha
+        and produced_sha != base_sha
+    ):
         valid_postgen = (
             isinstance(post_generation_rea, dict)
             and post_generation_rea.get("status") == "PASS"
