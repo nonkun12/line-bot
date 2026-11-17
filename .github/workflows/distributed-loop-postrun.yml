@@ -124,15 +124,10 @@ jobs:
                       )
                       rea_states.append("INVALID")
                   else:
-                      # The current source artifact is produced by the task workflow
-                      # itself; it is not proof of an independently executed test job.
-                      # Until a separately trusted, secret-free test collector is wired,
-                      # changed PASS results remain unverified and fail closed.
-                      issues.append(
-                          f"Task {index} has a structurally valid post-generation REA attestation, "
-                          "but independent test evidence from a trusted isolated collector is not connected."
-                      )
-                      rea_states.append("INDEPENDENT_TEST_EVIDENCE_MISSING")
+                      # This workflow checks source-run attestations only. The separate
+                      # REA Independent Test Collector + Post-Run chain performs the
+                      # trusted isolated test verification for this exact run attempt.
+                      rea_states.append("DEFERRED_TO_TRUSTED_INDEPENDENT_COLLECTOR")
               elif task_status == "PASS":
                   # Legacy/malformed PASS rows without immutable SHA identity
                   # cannot establish whether post-generation scanning was needed.
