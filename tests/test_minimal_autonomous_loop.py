@@ -1078,7 +1078,9 @@ def test_rea_adapter_exception_blocks_minimal_loop_task_execution(monkeypatch, t
     assert rows[0]["rea"]["execution_authorized"] is False
     # A preflight block is not counted as a task failure, but Control Tower
     # must still persist the BLOCKED observation for auditability.
-    assert not (tmp_path / "recovery-ai-state.json").exists()
+    recovery_state = json.loads((tmp_path / "recovery-ai-state.json").read_text(encoding="utf-8"))
+    assert recovery_state["tasks"] == {}
+    assert recovery_state["state_updated_at"]
     assert (tmp_path / "control-tower-observations.jsonl").exists()
 
 
