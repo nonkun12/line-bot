@@ -102,3 +102,13 @@ def test_invalid_hashes_and_counts_hold():
 
 def test_expected_identity_is_mandatory():
     assert validate(identity={})["status"] == "HOLD"
+
+
+
+def test_malformed_outcome_and_boolean_schema_hold():
+    assert validate(evidence(outcome={}))["status"] == "HOLD"
+    assert validate(evidence(schema_version=True))["status"] == "HOLD"
+
+
+def test_test_counts_must_account_for_every_collected_test():
+    assert validate(evidence(tests_collected=12, tests_passed=11))["status"] == "HOLD"
