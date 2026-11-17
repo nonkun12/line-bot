@@ -941,6 +941,11 @@ def main() -> int:
     # never clears or overrides Recovery AI state.
     from scripts.recovery_ai import RecoveryStore
     recovery_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
+    try:
+        recovery_store.ensure_initialized()
+    except Exception as exc:
+        print(f"MINIMAL_LOOP=HALT reason=recovery_state_initialization_failed:{type(exc).__name__}", flush=True)
+        return 80
     pending_tasks = list(tasks)
     try:
         held_task_ids = set()
