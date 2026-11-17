@@ -91,7 +91,11 @@ def _test_process_env() -> dict[str, str]:
     clean = os.environ.copy()
     for name in tuple(clean):
         upper = name.upper()
-        if upper in blocked_exact or upper.endswith(blocked_suffixes):
+        sensitive_marker = any(
+            marker in upper
+            for marker in ("TOKEN", "API_KEY", "SECRET", "PASSWORD", "CREDENTIAL", "ACCESS_KEY", "PRIVATE_KEY", "WEBHOOK")
+        )
+        if upper in blocked_exact or upper.endswith(blocked_suffixes) or sensitive_marker:
             clean.pop(name, None)
     return clean
 
@@ -1033,7 +1037,11 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
     for path in touched or []:
         if not path.endswith(".py"):
             continue
-        compile_result = run([sys.executable, "-m", "py_compile", path], timeout=120)
+        compile_result = run(
+            [sys.executable, "-m", "py_compile", path],
+            timeout=120,
+            env=_test_process_env(),
+        )
         outputs.append(f"py_compile {path}: returncode={compile_result.returncode}")
         if compile_result.stdout:
             outputs.append(compile_result.stdout)
