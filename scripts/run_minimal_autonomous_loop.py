@@ -545,6 +545,7 @@ def run_task(
     summary_dir: Path = Path("/tmp"),
     *,
     expected_base_sha: str | None = None,
+    recovery_state_path: Path | None = None,
 ) -> dict[str, object]:
     summary = summary_dir / f"minimal-autonomous-{task['id']}.json"
     run_nonce = uuid.uuid4().hex
@@ -610,7 +611,7 @@ def run_task(
     env["AUTONOMOUS_TASK_ID"] = task["id"]
     env["AUTONOMOUS_RUN_NONCE"] = run_nonce
     env["AUTONOMOUS_ALLOWED_PATHS"] = json.dumps(task["allowed_paths"], ensure_ascii=False)
-    env["AUTONOMOUS_RECOVERY_STATE_PATH"] = str(args.state.parent / "recovery-ai-state.json")
+    env["AUTONOMOUS_RECOVERY_STATE_PATH"] = str(recovery_state_path or (summary_dir / "recovery-ai-state.json"))
     # Remove any prior summary so a failed/stalled runtime can never inherit an old PASS.
     try:
         summary.unlink()
@@ -1307,7 +1308,9 @@ def main() -> int:
             else:
                 print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
                 result = run_task(
-                    task, index, args.stop_file, expected_base_sha=control_tower_head
+                    task, index, args.stop_file,
+                    expected_base_sha=control_tower_head,
+                    recovery_state_path=args.state.parent / "recovery-ai-state.json",
                 )
                 # Retry only explicit transient provider failures. Never retry
                 # invalid requests, authorization/security failures, test failures,
