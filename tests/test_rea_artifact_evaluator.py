@@ -76,3 +76,7 @@ def test_no_change_is_distinct():
 def test_changed_files_without_new_commit_holds():
     result = evaluate_artifact_evidence(evidence(base_sha=BASE, head_sha=BASE))
     assert result["status"] == "HOLD"
+
+def test_malformed_value_types_hold_without_crashing():
+    assert evaluate_artifact_evidence(evidence(tests=[]))["status"] == "HOLD"
+    assert evaluate_artifact_evidence(evidence(risk={}))["status"] == "HOLD"
