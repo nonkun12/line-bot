@@ -128,3 +128,50 @@ def test_ipv6_loopback_is_allowed_without_hostname_resolution():
     client = LocalModelClient("http://[::1]:11434", "model-a", "ollama")
 
     assert client.base_url == "http://[::1]:11434"
+
+
+def test_ollama_json_schema_response_format_is_passed_as_format(monkeypatch):
+    client = LocalModelClient("http://127.0.0.1:11434", "lfm3:local", "ollama")
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+        def read(self, _limit):
+            return json.dumps({"message": {"content": '{"ok":true}'}}).encode()
+
+    class Opener:
+        def open(self, req, timeout):
+            captured["payload"] = json.loads(req.data)
+            return Response()
+
+    client.opener = Opener()
+    schema = {
+        "type": "object",
+        "properties": {"ok": {"type": "boolean"}},
+        "required": ["ok"],
+        "additionalProperties": False,
+    }
+    response = client.chat.completions.create(
+        model="lfm3:local",
+        messages=[{"role": "user", "content": "json"}],
+        response_format={
+            "type": "json_schema",
+            "json_schema": {"name": "smoke", "strict": True, "schema": schema},
+        },
+    )
+
+    assert captured["payload"]["format"] == schema
+    assert response.choices[0].message.content == '{"ok":true}'
+
+
+def test_ollama_rejects_unrecognized_structured_response_format():
+    client = LocalModelClient("http://127.0.0.1:11434", "lfm3:local", "ollama")
+    with pytest.raises(LocalModelError, match="response_format_unsupported"):
+        client.chat.completions.create(
+            model="lfm3:local",
+            messages=[{"role": "user", "content": "json"}],
+            response_format={"type": "json_object"},
+        )
