@@ -117,3 +117,18 @@ def test_local_stop_treats_unreadable_path_as_active(tmp_path: Path, monkeypatch
 
     monkeypatch.setattr(Path, "lstat", denied)
     assert local_stop_active(tmp_path) is True
+
+
+
+def test_unreadable_immediate_stop_path_fails_closed(tmp_path: Path, monkeypatch):
+    path = tmp_path / "stop.json"
+    path.write_text('{"stopped": false}', encoding="utf-8")
+    controller = ImmediateStopController(path)
+
+    def denied(_self):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "lstat", denied)
+    assert controller.is_stopped()
+    with pytest.raises(ImmediateStop):
+        controller.assert_can_execute()
