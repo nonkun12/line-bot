@@ -49,7 +49,7 @@ def test_runtime_artifact_defaults_missing_tests_and_risk_to_hold(tmp_path, monk
     assert records[0]["evidence_sha256"] == result["evidence_sha256"]
 
 
-def test_runtime_artifact_pass_requires_explicit_test_and_risk_evidence(tmp_path, monkeypatch):
+def test_runtime_artifact_ignores_self_reported_test_and_risk_evidence(tmp_path, monkeypatch):
     monkeypatch.setattr(
         rea_artifact_runtime,
         "scan_commit_diff",
@@ -59,6 +59,8 @@ def test_runtime_artifact_pass_requires_explicit_test_and_risk_evidence(tmp_path
             "diff_sha256": "c" * 64,
         },
     )
+    # Even forged-looking PASS/LOW fields in the child-written summary are not
+    # accepted as independent verification evidence.
     summary = {**_summary(), "tests": "PASS", "risk": "LOW"}
     result = rea_artifact_runtime.evaluate_and_record_runtime_artifact(
         summary,
@@ -68,7 +70,8 @@ def test_runtime_artifact_pass_requires_explicit_test_and_risk_evidence(tmp_path
         hold_state="CLEAR",
     )
 
-    assert result["status"] == "PASS"
+    assert result["status"] == "HOLD"
+    assert result["reason_code"] == "risk_unknown"
     assert result["merge_deploy_authorized"] is False
 
 
