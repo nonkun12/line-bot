@@ -394,6 +394,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m scripts.recovery_rag_state --mode import --state /tmp/autonomous-loop-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
+          python -m scripts.recovery_rag_state --mode import --kind rea --state /tmp/autonomous-loop-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
 
       - name: Restore sanitized self-improvement history
         if: success()
@@ -668,6 +669,7 @@ jobs:
             exit 1
           fi
           python -m scripts.recovery_rag_state --mode export --state /tmp/recovery-rag-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
+          python -m scripts.recovery_rag_state --mode export --kind rea --state /tmp/rea-rag-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
 
       - name: Publish verified development branch
         id: publish
@@ -973,6 +975,12 @@ jobs:
                   or len(rag_payload['records']) > 200):
               raise SystemExit('Recovery RAG export is invalid; durable update blocked')
           data['recovery_rag'] = rag_payload['records']
+          rea_rag_payload = json.loads(Path('/tmp/rea-rag-state.json').read_text(encoding='utf-8'))
+          if (not isinstance(rea_rag_payload, dict) or rea_rag_payload.get('schema_version') != 1
+                  or not isinstance(rea_rag_payload.get('records'), list)
+                  or len(rea_rag_payload['records']) > 200):
+              raise SystemExit('REA RAG export is invalid; durable update blocked')
+          data['rea_rag'] = rea_rag_payload['records']
           local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
           from scripts.self_improvement_state import validate_durable_history
           try:
@@ -1006,6 +1014,9 @@ jobs:
           rag_payload = json.loads(Path('/tmp/recovery-rag-state.json').read_text(encoding='utf-8'))
           if durable.get('recovery_rag') != rag_payload.get('records'):
               raise SystemExit('Recovery RAG durable read-back mismatch')
+          rea_rag_payload = json.loads(Path('/tmp/rea-rag-state.json').read_text(encoding='utf-8'))
+          if durable.get('rea_rag') != rea_rag_payload.get('records'):
+              raise SystemExit('REA RAG durable read-back mismatch')
           local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
           if durable.get('self_improvement_history') != local_state.get('self_improvement_history'):
               raise SystemExit('self-improvement durable read-back mismatch')
