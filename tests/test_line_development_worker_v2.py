@@ -810,9 +810,8 @@ def test_queue_progress_not_run_task_uses_deterministic_target():
 
 
 
-def test_default_completion_budget_preserves_groq_free_tpm_headroom():
-    # The Groq free/on-demand TPM ceiling includes both prompt and completion.
-    # Keep enough headroom that a ~4.8k-token prompt is not rejected at 8k TPM.
+def test_default_local_completion_budget_is_bounded():
+    # Bound local inference output to avoid unbounded generation.
     assert worker.MAX_RESPONSE_TOKENS == 2500
 
 
