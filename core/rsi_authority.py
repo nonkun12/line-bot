@@ -120,10 +120,13 @@ def build_rsi_authority(
 
     def safety_provider() -> dict[str, str]:
         from core.emergency_stop import get_status, local_stop_active
+        from core.immediate_stop import ImmediateStopController
         from scripts.recovery_ai import RecoveryStore
 
         if local_stop_active(ROOT):
             raise RuntimeError("local_emergency_stop_active")
+        if ImmediateStopController().is_stopped():
+            raise RuntimeError("immediate_stop_latch_active_or_unreadable")
         repository = (os.environ.get("GITHUB_REPOSITORY") or "").strip()
         token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
         if repository != "nonkun12/line-bot" or not token:
