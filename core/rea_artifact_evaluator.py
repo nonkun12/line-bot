@@ -67,7 +67,11 @@ def evaluate_artifact_evidence(evidence: object) -> dict[str, Any]:
         return _result("HOLD", "commit_identity_invalid", evidence_hash)
     if not isinstance(changed_files, list) or any(not isinstance(x, str) or not x.strip() for x in changed_files):
         return _result("HOLD", "changed_files_evidence_invalid", evidence_hash)
-    if tests not in _ALLOWED_TEST or diff_scan not in _ALLOWED_SCAN or risk not in _ALLOWED_RISK:
+    if (
+        not isinstance(tests, str) or tests not in _ALLOWED_TEST
+        or not isinstance(diff_scan, str) or diff_scan not in _ALLOWED_SCAN
+        or not isinstance(risk, str) or risk not in _ALLOWED_RISK
+    ):
         return _result("HOLD", "evidence_value_invalid", evidence_hash)
 
     if risk in {"HIGH", "UNKNOWN"}:
