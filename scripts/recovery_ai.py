@@ -295,6 +295,31 @@ class RecoveryStore:
         record["resume_reviewed_at"] = utc_now()
         self._write(data)
 
+    def aggregate_hold_status(self) -> dict:
+        """Return the aggregate durable HOLD state across all Recovery AI tasks.
+
+        Any held task or task awaiting post-resume review blocks autonomous work.
+        Malformed records are errors so callers can fail closed.
+        """
+        data = self._read()
+        blocked_task_ids = []
+        for task_id, record in data["tasks"].items():
+            if not isinstance(task_id, str) or not task_id.strip() or not isinstance(record, dict):
+                raise RecoveryStateError("recovery task state invalid")
+            if "held" not in record or not isinstance(record.get("held"), bool):
+                raise RecoveryStateError("recovery hold state ambiguous")
+            review = record.get("resume_requires_review", False)
+            if not isinstance(review, bool):
+                raise RecoveryStateError("recovery resume-review state ambiguous")
+            if record["held"] or review:
+                blocked_task_ids.append(task_id)
+        blocked_task_ids.sort()
+        return {
+            "state": "ACTIVE" if blocked_task_ids else "CLEAR",
+            "blocked_task_ids": blocked_task_ids,
+            "state_updated_at": data.get("state_updated_at"),
+        }
+
     def task_status(self, task_id: str) -> dict:
         task_id = _safe_id(task_id)
         record = self._read()["tasks"].get(task_id, {})
