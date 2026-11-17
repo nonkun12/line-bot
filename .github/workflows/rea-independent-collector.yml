@@ -48,6 +48,7 @@ jobs:
           SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           SOURCE_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           SOURCE_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         shell: bash
         run: |
           set -euo pipefail
@@ -57,7 +58,8 @@ jobs:
             --run-id "$SOURCE_RUN_ID" \
             --run-attempt "$SOURCE_RUN_ATTEMPT" \
             --source-head-sha "$SOURCE_HEAD_SHA" \
-            --source-head-branch "$SOURCE_HEAD_BRANCH"
+            --source-head-branch "$SOURCE_HEAD_BRANCH" \\
+            --default-branch "$DEFAULT_BRANCH"
 
       - name: Upload trusted independent evidence
         if: always()
