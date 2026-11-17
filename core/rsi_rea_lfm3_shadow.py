@@ -148,6 +148,7 @@ def assess_rsi_request(
             ],
             temperature=0,
             max_completion_tokens=256,
+            include_reasoning=False,
             response_format=_RESPONSE_FORMAT,
         )
         raw = response.choices[0].message.content
