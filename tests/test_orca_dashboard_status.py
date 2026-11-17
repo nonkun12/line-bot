@@ -122,3 +122,37 @@ def test_orca_dashboard_rejects_rsi_review_authority_escalation(orca_client):
         "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False,
         "scheduler_started": False, "model_activated": False}
     assert post_snapshot(orca_client, snapshot(rsi_review=review)).status_code == 400
+
+def test_orca_dashboard_exposes_sanitized_rea_artifact_status(orca_client):
+    task = {
+        "task_id": "task-rea",
+        "status": "BLOCKED",
+        "rea_artifact_status": "HOLD",
+        "rea_artifact_reason_code": "risk_unknown",
+        "rea_artifact_evidence_sha256": "d" * 64,
+        "rea_artifact_execution_authorized": False,
+        "rea_artifact_patch_authorized": False,
+        "rea_artifact_hold_clear_authorized": False,
+        "rea_artifact_merge_deploy_authorized": False,
+        "raw_diff": "must not leak",
+    }
+    assert post_snapshot(orca_client, snapshot(tasks=[task])).status_code == 200
+    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJk"})
+    body = read.get_json()
+    assert body["tasks"][0]["rea_artifact_status"] == "HOLD"
+    assert body["tasks"][0]["rea_artifact_reason_code"] == "risk_unknown"
+    assert body["tasks"][0]["rea_artifact_evidence_sha256"] == "d" * 64
+    assert body["tasks"][0]["rea_artifact_execution_authorized"] is False
+    assert "raw_diff" not in body["tasks"][0]
+
+
+def test_orca_dashboard_rejects_rea_artifact_authority_escalation(orca_client):
+    task = {
+        "task_id": "task-rea", "rea_artifact_status": "PASS",
+        "rea_artifact_evidence_sha256": "e" * 64,
+        "rea_artifact_execution_authorized": True,
+        "rea_artifact_patch_authorized": False,
+        "rea_artifact_hold_clear_authorized": False,
+        "rea_artifact_merge_deploy_authorized": False,
+    }
+    assert post_snapshot(orca_client, snapshot(tasks=[task])).status_code == 400
