@@ -189,7 +189,7 @@ def ask(client: LocalModelClient, system: str, user: str, max_tokens: int = MAX_
 def ask_text(client: LocalModelClient, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
     """Request bounded plain text without enabling the provider's JSON mode."""
     response = client.chat.completions.create(
-        model=MODEL,
+        model=getattr(client, "model", MODEL) or "unknown",
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.0,
         max_completion_tokens=max_tokens,
