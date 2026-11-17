@@ -75,6 +75,19 @@ def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> su
     )
 
 
+def _shared_stop_active() -> bool:
+    """Fail closed if the shared remote STOP is active or cannot be verified."""
+    try:
+        from core.emergency_stop import get_status
+        token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
+        return get_status(
+            os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"),
+            token,
+        )
+    except Exception:
+        return True
+
+
 def is_protected(path: str) -> bool:
     return path in PROTECTED_PATHS or any(path.startswith(prefix) for prefix in PROTECTED_PREFIXES)
 
@@ -960,8 +973,8 @@ def _rea_write_gate_passes() -> bool:
 def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
     """Preflight every bounded change before writing any file."""
     from core.emergency_stop import local_stop_active
-    if local_stop_active(ROOT):
-        return False, "emergency_stop_active", []
+    if local_stop_active(ROOT) or _shared_stop_active():
+        return False, "emergency_stop_active_or_unverified", []
     if not isinstance(plan, dict):
         return False, "invalid_plan", []
     if plan.get("no_change") is True:
@@ -1001,16 +1014,16 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
         prepared.append((path, target, original, old, new))
 
     # Recheck STOP and REA after all preflight reads, immediately before writing.
-    if local_stop_active(ROOT):
-        return False, "emergency_stop_active", []
+    if local_stop_active(ROOT) or _shared_stop_active():
+        return False, "emergency_stop_active_or_unverified", []
     if not _rea_write_gate_passes():
         return False, "rea_gate_blocked", []
     touched: list[str] = []
     current_index = -1
     try:
         for current_index, (path, target, original, old, new) in enumerate(prepared):
-            if current_index == 0 and local_stop_active(ROOT):
-                return False, "emergency_stop_active", []
+            if current_index == 0 and (local_stop_active(ROOT) or _shared_stop_active()):
+                return False, "emergency_stop_active_or_unverified", []
             target.write_text(original.replace(old, new, 1), encoding="utf-8")
             touched.append(path)
     except OSError as exc:
@@ -1318,6 +1331,13 @@ def main() -> int:
             restore(touched)
             print("Guarded tests failed after repair attempts.", flush=True)
             return 1
+
+        # Re-check the shared STOP after tests and immediately before committing.
+        from core.emergency_stop import local_stop_active
+        if local_stop_active(ROOT) or _shared_stop_active():
+            restore(touched)
+            print("EMERGENCY_STOP=ACTIVE_OR_UNVERIFIABLE; refusing to commit", flush=True)
+            return 82
 
         branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
         run(["git", "config", "user.name", "github-actions[bot]"])
