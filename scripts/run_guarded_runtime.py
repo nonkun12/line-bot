@@ -124,8 +124,8 @@ def _shared_stop_active() -> bool:
     """Read the authoritative shared STOP marker; missing credentials fail closed."""
     from core.emergency_stop import get_status
 
-    repository = os.environ.get("AI_REPORT_GITHUB_REPO", os.environ.get("GITHUB_REPOSITORY", "nonkun12/line-bot")).strip()
-    token = os.environ.get("GITHUB_TOKEN", os.environ.get("GH_TOKEN", "")).strip()
+    repository = (os.environ.get("AI_REPORT_GITHUB_REPO") or os.environ.get("GITHUB_REPOSITORY") or "nonkun12/line-bot").strip()
+    token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
     if not repository or not token:
         raise RuntimeError("shared_stop_credentials_missing")
     return get_status(repository, token)
