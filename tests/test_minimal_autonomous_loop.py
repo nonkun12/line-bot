@@ -1333,6 +1333,12 @@ def test_postrun_verifier_distinguishes_catalog_block_from_invalid_evidence():
     assert '"catalog_exhausted_mixed:"' in workflow
     assert 'CATALOG_BLOCKED: ${{ steps.verify.outputs.catalog_blocked }}' in workflow
     assert 'BLOCKED（保留・レビュー待ち。人の確認が必要）' in workflow
+    assert 'post_generation_rea' in workflow
+    assert 'attestation.get("target_sha") == produced_sha' in workflow
+    assert 're.fullmatch(r"[0-9a-f]{64}", attestation["diff_sha256"])' in workflow
+    assert 'attestation.get("gate_stage") == "pre_publish"' in workflow
+    assert 'attestation.get("publish_gate_passed") is True' in workflow
+    assert 'sha_identity_valid' in workflow
 
 
 @pytest.mark.parametrize(
