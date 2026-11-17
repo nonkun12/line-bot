@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "description": "Small deterministic retrieval-quality corpus. Includes exact-term and paraphrase queries; benchmark only, never runtime authority.",
+  "documents": [
+    {
+      "id": "rea_test_failure",
+      "title": "REA test regression",
+      "content": "pytest test regression failed; inspect current test evidence and rerun the focused test suite."
+    },
+    {
+      "id": "rea_timeout",
+      "title": "REA timeout",
+      "content": "Worker timeout occurred; stop the task and preserve HOLD until current runtime evidence is available."
+    },
+    {
+      "id": "rea_security",
+      "title": "REA security gate",
+      "content": "Security violation: credential access and permission changes are blocked; require human approval."
+    },
+    {
+      "id": "rea_stop",
+      "title": "緊急停止",
+      "content": "緊急停止 STOP が有効な場合は処理を停止し、HOLD を維持する。"
+    },
+    {
+      "id": "rea_diff",
+      "title": "差分評価",
+      "content": "変更ファイルの差分を確認し、証拠とリスクを独立して評価する。"
+    },
+    {
+      "id": "rea_queue",
+      "title": "Distributed Loop queue",
+      "content": "When the task queue is empty, discover bounded review-only work without resuming held tasks."
+    },
+    {
+      "id": "unrelated_weather",
+      "title": "Weather forecast",
+      "content": "Today's weather forecast includes rain and moderate wind."
+    },
+    {
+      "id": "unrelated_music",
+      "title": "Music generation",
+      "content": "Compose a short melody with a piano and a soft drum pattern."
+    }
+  ],
+  "queries": [
+    {
+      "id": "en_exact_test",
+      "query": "pytest test regression",
+      "relevant": [
+        "rea_test_failure"
+      ],
+      "kind": "exact"
+    },
+    {
+      "id": "en_synonym_timeout",
+      "query": "worker deadline exceeded",
+      "relevant": [
+        "rea_timeout"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "en_exact_security",
+      "query": "security credential permission",
+      "relevant": [
+        "rea_security"
+      ],
+      "kind": "exact"
+    },
+    {
+      "id": "ja_exact_stop",
+      "query": "緊急停止 STOP",
+      "relevant": [
+        "rea_stop"
+      ],
+      "kind": "exact"
+    },
+    {
+      "id": "ja_synonym_stop",
+      "query": "非常停止して処理を止める",
+      "relevant": [
+        "rea_stop"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "ja_exact_diff",
+      "query": "変更ファイル 差分 証拠",
+      "relevant": [
+        "rea_diff"
+      ],
+      "kind": "exact"
+    },
+    {
+      "id": "en_queue",
+      "query": "task queue empty held tasks",
+      "relevant": [
+        "rea_queue"
+      ],
+      "kind": "exact"
+    }
+  ]
+}
