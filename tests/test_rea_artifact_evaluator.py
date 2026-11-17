@@ -108,12 +108,86 @@ def test_runtime_summary_adapter_passes_only_with_all_explicit_evidence():
     }
     verification = {
         "changed_files": ["tests/test_example.py"],
+        # A self-reported PASS is intentionally ignored.
         "tests": "PASS",
         "risk": "LOW",
         "stop_state": "INACTIVE",
         "hold_state": "CLEAR",
+        "diff_scan": "PASS",
+    }
+    result = evaluate_runtime_summary(summary, verification)
+    assert result["status"] == "HOLD"
+    assert result["reason_code"] == "verification_incomplete"
+    assert result["merge_deploy_authorized"] is False
+
+
+def test_runtime_summary_requires_trusted_independent_test_evidence():
+    from core.rea_artifact_evaluator import evaluate_runtime_summary
+
+    summary = {
+        "task_id": "task-001",
+        "base_sha": BASE,
+        "produced_sha": HEAD,
+        "post_generation_rea": {"status": "PASS"},
+    }
+    independent = {
+        "schema_version": 1,
+        "run_id": "12345",
+        "run_attempt": 2,
+        "task_id": "task-001",
+        "base_sha": BASE,
+        "head_sha": HEAD,
+        "diff_sha256": "a" * 64,
+        "outcome": "success",
+        "exit_code": 0,
+        "tests_collected": 2,
+        "tests_passed": 2,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "test_command_sha256": "b" * 64,
+    }
+    verification = {
+        "changed_files": ["tests/test_example.py"],
+        "risk": "LOW",
+        "stop_state": "INACTIVE",
+        "hold_state": "CLEAR",
+        "diff_scan": "PASS",
+        "independent_test_evidence": independent,
+        "independent_test_expected": {
+            "run_id": "12345",
+            "run_attempt": 2,
+            "task_id": "task-001",
+            "base_sha": BASE,
+            "head_sha": HEAD,
+            "diff_sha256": "a" * 64,
+        },
+        "trusted_test_collector": True,
     }
     result = evaluate_runtime_summary(summary, verification)
     assert result["status"] == "PASS"
     assert result["reason_code"] == "artifact_evidence_verified"
     assert result["merge_deploy_authorized"] is False
+
+
+def test_untrusted_independent_test_collector_cannot_pass_runtime_rea():
+    from core.rea_artifact_evaluator import evaluate_runtime_summary
+
+    summary = {
+        "task_id": "task-001",
+        "base_sha": BASE,
+        "produced_sha": HEAD,
+        "post_generation_rea": {"status": "PASS"},
+    }
+    verification = {
+        "changed_files": ["tests/test_example.py"],
+        "risk": "LOW",
+        "stop_state": "INACTIVE",
+        "hold_state": "CLEAR",
+        "diff_scan": "PASS",
+        "independent_test_evidence": {"schema_version": 1},
+        "independent_test_expected": {},
+        "trusted_test_collector": False,
+    }
+    result = evaluate_runtime_summary(summary, verification)
+    assert result["status"] == "HOLD"
+    assert result["reason_code"] == "trusted_collector_not_established"
