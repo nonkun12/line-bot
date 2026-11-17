@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from rag_store import RagStore
 from scripts.rea_rag import build_rea_context, record_rea_evaluation
 
 
@@ -81,3 +82,28 @@ def test_retrieves_rea_history_for_japanese_task_instruction(tmp_path):
     assert "Historical REA outcomes" in context
     assert "status=HOLD" in context
     assert "risk_unknown" in context
+
+
+
+def test_retrieval_skips_malformed_persisted_metadata(tmp_path):
+    db = tmp_path / "rag.sqlite3"
+    RagStore(db).add_document(
+        namespace="distributed-loop",
+        source="rea_evaluation",
+        source_id="malformed-record",
+        title="REA HOLD: risk_unknown",
+        content="risk_unknown",
+        metadata={
+            "task_id": "rea-task-18",
+            "status": "HOLD",
+            "reason_code": "risk_unknown",
+            "evidence_sha256": "c" * 64,
+            "changed_file_count": "untrusted text",
+        },
+    )
+    assert build_rea_context(
+        db,
+        namespace="distributed-loop",
+        task_id="next-task",
+        instruction="risk リスクを確認",
+    ) == ""
