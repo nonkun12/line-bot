@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: rea-independent-postrun-${{ github.event.workflow_run.id }}
+  group: rea-independent-postrun-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
   cancel-in-progress: false
 
 jobs:
@@ -29,6 +29,7 @@ jobs:
         if: github.event.workflow_run.conclusion != 'success'
         env:
           COLLECTOR_RUN_ID: ${{ github.event.workflow_run.id }}
+          COLLECTOR_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -59,6 +60,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
           COLLECTOR_RUN_ID: ${{ github.event.workflow_run.id }}
+          COLLECTOR_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
           set -euo pipefail
           mkdir -p collector-evidence
@@ -73,6 +75,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
           COLLECTOR_RUN_ID: ${{ github.event.workflow_run.id }}
+          COLLECTOR_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           COLLECTOR_RUN_NAME: ${{ github.event.workflow_run.name }}
           COLLECTOR_RUN_PATH: ${{ github.event.workflow_run.path }}
           COLLECTOR_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
@@ -96,6 +99,8 @@ jobs:
           context = json.loads(Path("collector-evidence/collector-context.json").read_text())
           if (type(context.get("schema_version")) is not int or context.get("schema_version") != 1
                   or str(context.get("collector_run_id")) != collector_id
+                  or type(context.get("collector_run_attempt")) is not int
+                  or context.get("collector_run_attempt") != int(os.environ["COLLECTOR_RUN_ATTEMPT"])
                   or not str(context.get("source_run_id", "")).isdigit()
                   or type(context.get("source_run_attempt")) is not int
                   or context["source_run_attempt"] < 1
@@ -234,7 +239,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rea-independent-postrun-${{ github.event.workflow_run.id }}
+          name: rea-independent-postrun-${{ github.event.workflow_run.id }}-attempt-${{ github.event.workflow_run.run_attempt }}
           path: rea-independent-postrun.json
           if-no-files-found: ignore
           retention-days: 14
