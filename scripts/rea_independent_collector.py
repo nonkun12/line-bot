@@ -76,16 +76,28 @@ def is_candidate_task_row(row: object) -> bool:
     return base != head or row.get("status") not in {"PASS", "NO_CHANGE"}
 
 
-def install_trusted_tests(source: Path) -> None:
-    """Replace task-supplied tests with the collector's trusted default-branch tests."""
+def prepare_trusted_harness(harness: Path) -> None:
+    """Stage default-branch tests and a runner outside the untrusted source tree."""
     trusted_root = Path(__file__).resolve().parents[1]
+    tests_root = harness / "tests"
+    tests_root.mkdir(parents=True, exist_ok=True)
     for relative in REA_TESTS:
         trusted_test = trusted_root / relative
         if not trusted_test.is_file() or trusted_test.is_symlink():
             raise SystemExit(f"trusted regression test is unavailable: {relative}")
-        destination = source / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(trusted_test, destination)
+        shutil.copyfile(trusted_test, tests_root / Path(relative).name)
+    test_args = " ".join(f'"/harness/tests/{Path(name).name}"' for name in REA_TESTS)
+    runner = (
+        "import sys\\n"
+        "sys.path.insert(0, '/workspace')\\n"
+        "import pytest\\n"
+        "raise SystemExit(pytest.main(['-q', '-p', 'no:cacheprovider', "
+        "'--noconftest', '--junitxml=/evidence/junit.xml', "
+        + test_args + "]))\\n"
+    )
+    (harness / "runner.py").write_text(runner, encoding="utf-8")
+
+
 
 
 def evidence_row(*, run_id: str, attempt: int, task_id: str, base: str,
@@ -176,10 +188,7 @@ def main() -> int:
     branch_tip = ref_data.get("object", {}).get("sha", "")
     if not SHA40.fullmatch(branch_tip):
         raise SystemExit("run-scoped development branch ref is invalid")
-    command = [
-        "python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "--noconftest",
-        "--junitxml=/evidence/junit.xml", *REA_TESTS,
-    ]
+    command = ["python", "/harness/runner.py"]
     command_hash = hashlib.sha256("\0".join(command).encode()).hexdigest()
     output_rows = []
     previous = args.source_head_sha
@@ -259,10 +268,10 @@ def main() -> int:
             archive_path.write_bytes(archive)
             with tarfile.open(archive_path, "r:") as tar:
                 tar.extractall(source, filter="data")
-            # Never treat tests supplied by the task commit as independent
-            # evidence. Overlay only the fixed regression tests from this
-            # workflow's trusted default-branch checkout.
-            install_trusted_tests(source)
+            # Keep trusted tests and their runner outside the task source tree.
+            harness = root / f"harness-{index}"
+            harness.mkdir()
+            prepare_trusted_harness(harness)
 
             evidence_dir = root / f"evidence-{index}"
             evidence_dir.mkdir()
@@ -273,8 +282,9 @@ def main() -> int:
                 "docker", "run", "--rm", "--network", "none", "--read-only",
                 "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m,uid=65532,gid=65532",
                 "--mount", f"type=bind,src={source},dst=/workspace,readonly",
+                "--mount", f"type=bind,src={harness},dst=/harness,readonly",
                 "--mount", f"type=bind,src={evidence_dir},dst=/evidence",
-                "--workdir", "/workspace", "--cap-drop", "ALL",
+                "--workdir", "/tmp", "--cap-drop", "ALL",
                 "--security-opt", "no-new-privileges:true", "--pids-limit", "128",
                 "--memory", "2g", "--cpus", "2", "--user", "65532:65532",
                 "--env", "PYTHONDONTWRITEBYTECODE=1",
