@@ -119,8 +119,9 @@ def test_environment_proxy_is_disabled_for_local_model_requests(monkeypatch):
         handler for handler in client.opener.handlers
         if handler.__class__.__name__ == "ProxyHandler"
     ]
-    assert len(proxy_handlers) == 1
-    assert proxy_handlers[0].proxies == {}
+    # urllib omits the empty ProxyHandler entirely, so environment proxy
+    # variables cannot be consulted by this opener.
+    assert proxy_handlers == []
 
 
 def test_ipv6_loopback_is_allowed_without_hostname_resolution():
