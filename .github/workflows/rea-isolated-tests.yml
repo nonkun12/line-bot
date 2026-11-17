@@ -5,8 +5,10 @@ on:
     paths:
       - "core/rea_artifact_evaluator.py"
       - "core/rea_independent_test_evidence.py"
+      - "scripts/rea_independent_collector.py"
       - "tests/test_rea_artifact_evaluator.py"
       - "tests/test_rea_independent_test_evidence.py"
+      - "tests/test_rea_independent_collector.py"
       - ".github/workflows/rea-isolated-tests.yml"
   workflow_dispatch:
 
@@ -65,4 +67,5 @@ jobs:
             rea-isolated-tests:local \
             python -m pytest -q -p no:cacheprovider \
               tests/test_rea_artifact_evaluator.py \
-              tests/test_rea_independent_test_evidence.py
+              tests/test_rea_independent_test_evidence.py \
+              tests/test_rea_independent_collector.py
