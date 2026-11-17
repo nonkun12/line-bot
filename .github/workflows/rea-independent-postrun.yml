@@ -126,17 +126,17 @@ jobs:
               "overall": ("PASS" if results and all(x.get("status") == "PASS" for x in results) else ("NOT_APPLICABLE" if results and all(x.get("status") == "NOT_APPLICABLE" for x in results) else "HOLD")),
           }
           Path("rea-independent-postrun.json").write_text(
-              json.dumps(report, indent=2, sort_keys=True) + "\\n"
+              json.dumps(report, indent=2, sort_keys=True) + "\n"
           )
           Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(
-              "# REA Independent Evidence Verification\\n\\n"
-              + f"- Source run: {source_id}\\n"
-              + f"- Collector run: {collector_id}\\n"
-              + f"- Overall: {report['overall']}\\n"
-              + "\\n".join(
+              "# REA Independent Evidence Verification\n\n"
+              + f"- Source run: {source_id}\n"
+              + f"- Collector run: {collector_id}\n"
+              + f"- Overall: {report['overall']}\n"
+              + "\n".join(
                   f"- {item.get('task_id', 'run')}: {item['status']} ({item['reason_code']})"
                   for item in results
-              ) + "\\n"
+              ) + "\n"
           )
           if report["overall"] not in {"PASS", "NOT_APPLICABLE"}:
               raise SystemExit("independent REA evidence is not PASS; fail closed")
