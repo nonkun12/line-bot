@@ -243,3 +243,40 @@ def test_invalid_existing_recovery_document_timestamp_fails_closed(tmp_path):
     }), encoding="utf-8")
     with pytest.raises(RecoveryStateError, match="timestamp invalid"):
         RecoveryStore(path).record_failure("task-invalid-time", "timeout")
+
+
+def test_aggregate_hold_status_reports_clear_then_active(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    assert store.aggregate_hold_status()["state"] == "CLEAR"
+
+    store.record_failure("task-a", "test_regression", ["test.one"])
+    store.record_failure("task-a", "test_regression", ["test.two"])
+    store.record_failure("task-a", "test_regression", ["test.three"])
+
+    status = store.aggregate_hold_status()
+    assert status["state"] == "ACTIVE"
+    assert status["blocked_task_ids"] == ["task-a"]
+
+
+def test_aggregate_hold_status_blocks_resume_pending_review(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    store.record_failure("task-a", "test_regression", ["test.one"])
+    store.record_failure("task-a", "test_regression", ["test.two"])
+    store.record_failure("task-a", "test_regression", ["test.three"])
+    store.resume_held_task("task-a", cause_fixed=True)
+
+    status = store.aggregate_hold_status()
+    assert status["state"] == "ACTIVE"
+    assert status["blocked_task_ids"] == ["task-a"]
+
+
+def test_aggregate_hold_status_rejects_ambiguous_task_record(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    store._write({
+        "schema_version": 1,
+        "tasks": {"task-a": {"consecutive_failures": 1}},
+        "checkpoint": None,
+    })
+
+    with pytest.raises(RecoveryStateError, match="hold state ambiguous"):
+        store.aggregate_hold_status()
