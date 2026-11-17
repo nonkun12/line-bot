@@ -565,6 +565,8 @@ def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
 
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     monkeypatch.setattr(worker, "run", fake_run)
+    monkeypatch.setenv("GITHUB_TOKEN", "must-not-reach-test-process")
+    monkeypatch.setenv("GROQ_API_KEY", "must-not-reach-test-process")
 
     passed, output = worker.run_tests([])
 
