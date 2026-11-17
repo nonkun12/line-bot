@@ -2,7 +2,7 @@
 
 This runner performs bounded model inference only. It never executes candidate
 code, writes files, publishes changes, or clears STOP/HOLD. Callers must supply
-a verified safety snapshot and explicit per-experiment approval.
+a safety snapshot produced by the trusted controller and explicit per-experiment approval. The snapshot digest binds its contents; it does not authenticate its source.
 """
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def run_local_prompt_comparison(
         return {"record": None, "result": _blocked(experiment_id, "held_out_fixture_lock_not_attested")}
     if not isinstance(held_out_expected_sha256, str) or len(held_out_expected_sha256) != 64:
         return {"record": None, "result": _blocked(experiment_id, "held_out_manifest_digest_invalid")}
-    if not isinstance(dataset, Sequence) or isinstance(dataset, (str, bytes)) or not 1 <= len(dataset) <= 32:
+    if not isinstance(dataset, Sequence) or isinstance(dataset, (str, bytes)) or not 1 <= len(dataset) <= 8:
         return {"record": None, "result": _blocked(experiment_id, "held_out_dataset_size_invalid")}
     if not isinstance(baseline_system_prompt, str) or not baseline_system_prompt.strip() or len(baseline_system_prompt) > 8000:
         return {"record": None, "result": _blocked(experiment_id, "baseline_prompt_invalid")}
@@ -120,7 +120,7 @@ def run_local_prompt_comparison(
                         {"role": "user", "content": row["input"]},
                     ],
                     temperature=0.0,
-                    max_completion_tokens=512,
+                    max_completion_tokens=256,
                 )
                 content = response.choices[0].message.content
                 if not isinstance(content, str) or not content.strip():
