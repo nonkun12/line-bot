@@ -55,3 +55,18 @@ def test_test_only_worker_path_does_not_require_model_credentials(monkeypatch, c
     output = capsys.readouterr().out
     assert "no model provider required" in output
     assert "pytest PASS" in output
+
+
+
+def test_normal_worker_blocks_when_local_model_configuration_is_missing(monkeypatch, capsys):
+    monkeypatch.setenv("DEV_INSTRUCTION", "通常の開発タスク")
+    monkeypatch.delenv("RSI_LOCAL_MODEL_BASE_URL", raising=False)
+    monkeypatch.delenv("RSI_LOCAL_MODEL_NAME", raising=False)
+    monkeypatch.delenv("RSI_LOCAL_MODEL_PROTOCOL", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+    assert worker.main() == 1
+    output = capsys.readouterr().out
+    assert "MODEL_PROVIDER=BLOCKED" in output
+    assert "local_model_configuration_missing" in output
+    assert "GROQ_API_KEY" not in output
