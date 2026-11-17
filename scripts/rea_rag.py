@@ -108,6 +108,7 @@ def build_rea_context(
             meta = item.get("metadata", {})
             changed_count = meta.get("changed_file_count") if isinstance(meta, dict) else None
             if (item.get("source") != "rea_evaluation" or not isinstance(meta, dict)
+                    or not isinstance(meta.get("status"), str)
                     or meta.get("status") not in _STATUSES
                     or not isinstance(meta.get("task_id"), str)
                     or not _TASK.fullmatch(meta["task_id"])
