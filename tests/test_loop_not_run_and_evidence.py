@@ -371,6 +371,21 @@ def test_control_tower_reselects_second_task_against_new_head(monkeypatch, tmp_p
         lambda _path, result, **_kwargs: {"recorded": True, "task_id": result["task_id"]},
     )
     monkeypatch.setattr(
+        "scripts.recovery_ai.RecoveryStore.aggregate_hold_status",
+        lambda _self: {"state": "CLEAR"},
+    )
+    monkeypatch.setattr(
+        "scripts.rea_artifact_runtime.evaluate_and_record_runtime_artifact",
+        lambda summary, **_kwargs: {
+            "status": "NO_CHANGE" if summary["base_sha"] == summary["produced_sha"] else "PASS",
+            "evidence_sha256": "d" * 64,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
         "scripts.control_tower_loop_observer.record_loop_observation",
         lambda _path, result, **_kwargs: {"recorded": True, "task_id": result["task_id"], "proposal_executable": False},
     )
