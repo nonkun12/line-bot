@@ -938,6 +938,21 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
         "scripts.rea_artifact_runtime.evaluate_and_record_runtime_artifact",
         lambda summary, **_kwargs: {
             "status": "NO_CHANGE",
+            "reason_code": "no_artifact_change",
+            "evidence_sha256": "d" * 64,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
+        RecoveryStore, "aggregate_hold_status", lambda self: {"state": "CLEAR"}
+    )
+    monkeypatch.setattr(
+        "scripts.rea_artifact_runtime.evaluate_and_record_runtime_artifact",
+        lambda summary, **_kwargs: {
+            "status": "NO_CHANGE",
             "evidence_sha256": "d" * 64,
             "execution_authorized": False,
             "patch_authorized": False,
