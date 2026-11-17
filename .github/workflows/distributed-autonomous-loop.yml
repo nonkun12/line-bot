@@ -395,22 +395,53 @@ jobs:
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
 
       - name: Load all existing issues for candidate deduplication
+        id: load_issues
         if: success() && env.TRIGGER_MODE == 'normal'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Candidate discovery is advisory. A transient GitHub API failure must
+          # not suppress an already-approved task from the bounded runtime queue.
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "$tmp_dir"' EXIT
+
+          fetch_pages() {
+            local endpoint="$1"
+            local output="$2"
+            local raw="$tmp_dir/response.jsonl"
+            local merged="$tmp_dir/merged.json"
+            local error_file="$tmp_dir/gh-api.stderr"
+            local attempt
+            for attempt in 1 2 3; do
+              if gh api --paginate "$endpoint" > "$raw" 2> "$error_file" \
+                && jq -s 'add' "$raw" > "$merged"; then
+                mv "$merged" "$output"
+                return 0
+              fi
+              echo "::warning::GitHub inventory fetch/parse failed (attempt ${attempt}/3); retrying."
+              sleep "$((attempt * 2))"
+            done
+            return 1
+          }
+
           # Include closed issues too: candidate IDs are immutable and must not be re-issued.
-          gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" \
-            | jq -s 'add | map(select(has("pull_request") | not) | {number,title,body,state,labels})' > /tmp/autonomous-loop-all-issues.json
+          if ! fetch_pages "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" "$tmp_dir/issues.json"; then
+            echo "::warning::Issue inventory unavailable; skipping review-only discovery while preserving the bounded task queue."
+            exit 1
+          fi
+          jq 'map(select(has("pull_request") | not) | {number,title,body,state,labels})' \
+            "$tmp_dir/issues.json" > /tmp/autonomous-loop-all-issues.json
           jq '[.[] | select(.state == "open")]' /tmp/autonomous-loop-all-issues.json > /tmp/autonomous-loop-open-issues.json
-          gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
-            | jq -s 'add | map({number,state,body,merged_at})' > /tmp/autonomous-loop-open-pulls.json
+          if ! fetch_pages "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" "$tmp_dir/pulls.json"; then
+            echo "::warning::Open pull-request inventory unavailable; skipping review-only discovery while preserving the bounded task queue."
+            exit 1
+          fi
+          jq 'map({number,state,body,merged_at})' "$tmp_dir/pulls.json" > /tmp/autonomous-loop-open-pulls.json
 
       - name: Publish read-only task review backlog digest
-        if: success() && env.TRIGGER_MODE == 'normal'
+        if: success() && env.TRIGGER_MODE == 'normal' && steps.load_issues.outcome == 'success'
         run: |
           set -euo pipefail
           python -m scripts.autonomous_task_review_digest \
@@ -419,7 +450,7 @@ jobs:
           cat /tmp/autonomous-task-review-backlog.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Generate review-only task proposals when catalog is exhausted
-        if: success() && env.TRIGGER_MODE == 'normal'
+        if: success() && env.TRIGGER_MODE == 'normal' && steps.load_issues.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -435,7 +466,7 @@ jobs:
           echo "TASK_PROPOSALS_PATH=/tmp/autonomous-loop-task-proposals.json" >> "$GITHUB_ENV"
 
       - name: Analyze catalog exhaustion without changing execution state (Work Finder AI)
-        if: success() && env.TRIGGER_MODE == 'normal'
+        if: success() && env.TRIGGER_MODE == 'normal' && steps.load_issues.outcome == 'success'
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -457,7 +488,7 @@ jobs:
           fi
 
       - name: Create bounded review-only task issues from analyzer findings
-        if: success() && env.TRIGGER_MODE == 'normal'
+        if: success() && env.TRIGGER_MODE == 'normal' && steps.load_issues.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
