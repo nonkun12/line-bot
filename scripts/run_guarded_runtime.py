@@ -311,6 +311,17 @@ def _write_summary(
         payload["rea"] = rea_evidence
     if approval_evidence is not None:
         payload["execution_approval"] = approval_evidence
+    postgen_status = os.environ.get("AUTONOMOUS_POSTGEN_REA_STATUS", "")
+    if postgen_status:
+        payload["post_generation_rea"] = {
+            "status": postgen_status,
+            "base_sha": os.environ.get("AUTONOMOUS_POSTGEN_REA_BASE_SHA", ""),
+            "target_sha": os.environ.get("AUTONOMOUS_POSTGEN_REA_TARGET_SHA", ""),
+            "diff_sha256": os.environ.get("AUTONOMOUS_POSTGEN_REA_DIFF_SHA256", ""),
+            "diagnostic_only": False,
+            "gate_stage": "pre_publish",
+            "publish_gate_passed": postgen_status == "PASS" and exit_code == 0,
+        }
     failure_code = extract_safe_failure_code(os.environ.get("AUTONOMOUS_FAILURE_CODE", ""))
     if failure_code is not None:
         payload["failure_code"] = failure_code
@@ -436,6 +447,7 @@ def main() -> int:
         _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "emergency_stop_active", "execution_authorized": False})
         print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
         return 82
+
     try:
         shared_stop_active = _shared_stop_active()
     except Exception:
