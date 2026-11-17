@@ -179,3 +179,61 @@ def test_retrieval_skips_non_string_persisted_status_without_crashing(tmp_path):
         db, namespace="distributed-loop", task_id="new-task",
         instruction="Review risk evidence",
     ) == ""
+
+
+
+def test_builds_regression_proposals_from_fail_and_hold_history(tmp_path):
+    db = tmp_path / "rag.sqlite3"
+    record_rea_evaluation(
+        db, namespace="distributed-loop", task_id="old-fail",
+        status="FAIL", reason_code="verification_failed",
+        evidence_sha256="f" * 64, changed_file_count=1,
+    )
+    record_rea_evaluation(
+        db, namespace="distributed-loop", task_id="old-hold",
+        status="HOLD", reason_code="risk_unknown",
+        evidence_sha256="1" * 64, changed_file_count=0,
+    )
+    proposals = build_rea_regression_test_proposals(
+        db, namespace="distributed-loop", task_id="new-task",
+        instruction="Please review tests, evidence and risk",
+    )
+    assert "proposal only; not executed" in proposals
+    assert "verification_failed" in proposals
+    assert "risk_unknown" in proposals
+    assert "execution authority" in proposals
+
+
+def test_regression_proposals_exclude_current_task_and_pass_history(tmp_path):
+    db = tmp_path / "rag.sqlite3"
+    record_rea_evaluation(
+        db, namespace="distributed-loop", task_id="same-task",
+        status="HOLD", reason_code="risk_unknown",
+        evidence_sha256="2" * 64, changed_file_count=0,
+    )
+    record_rea_evaluation(
+        db, namespace="distributed-loop", task_id="passed-task",
+        status="PASS", reason_code="artifact_evidence_verified",
+        evidence_sha256="3" * 64, changed_file_count=1,
+    )
+    proposals = build_rea_regression_test_proposals(
+        db, namespace="distributed-loop", task_id="same-task",
+        instruction="Review risk and test evidence",
+    )
+    assert proposals == ""
+
+
+def test_regression_proposals_ignore_unknown_reason_codes_and_bad_inputs(tmp_path):
+    db = tmp_path / "rag.sqlite3"
+    record_rea_evaluation(
+        db, namespace="distributed-loop", task_id="old-task",
+        status="HOLD", reason_code="risk_unknown",
+        evidence_sha256="4" * 64, changed_file_count=0,
+    )
+    assert build_rea_regression_test_proposals(
+        db, namespace="distributed-loop", task_id="new-task",
+        instruction="unrelated summary",
+    ) == ""
+    assert build_rea_regression_test_proposals(
+        db, namespace=[], task_id="new-task", instruction="risk test",
+    ) == ""
