@@ -2872,8 +2872,13 @@ def execute(instruction: str) -> int:
         if produced.returncode != 0 or not produced.stdout.strip():
             raise RuntimeError("produced_commit_sha_unavailable")
         produced_sha = produced.stdout.strip()
+        raw_allowed_paths = os.environ.get("AUTONOMOUS_ALLOWED_PATHS", "")
+        allowed_paths = json.loads(raw_allowed_paths)
         postgen_report = verify_generated_commit(
-            worker.ROOT, base_sha=baseline_sha, target_sha=produced_sha
+            worker.ROOT,
+            base_sha=baseline_sha,
+            target_sha=produced_sha,
+            allowed_paths=allowed_paths,
         )
     except Exception as exc:
         os.environ["AUTONOMOUS_POSTGEN_REA_STATUS"] = "BLOCKED"
