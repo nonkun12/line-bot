@@ -688,6 +688,25 @@ def run_task(
     if payload:
         status = str(payload.get("status", "FAIL"))
 
+    # A changed successful task must carry the exact post-generation REA
+    # attestation from the guarded runtime. Without it, the loop cannot prove
+    # that the immutable base..produced commit was scanned before publication.
+    post_generation_rea = payload.get("post_generation_rea")
+    if exit_code == 0 and produced_sha != base_sha:
+        valid_postgen = (
+            isinstance(post_generation_rea, dict)
+            and post_generation_rea.get("status") == "PASS"
+            and post_generation_rea.get("base_sha") == base_sha
+            and post_generation_rea.get("target_sha") == produced_sha
+            and isinstance(post_generation_rea.get("diff_sha256"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", post_generation_rea["diff_sha256"]) is not None
+            and post_generation_rea.get("diagnostic_only") is False
+            and post_generation_rea.get("gate_stage") == "pre_publish"
+            and post_generation_rea.get("publish_gate_passed") is True
+        )
+        if not valid_postgen:
+            failure_reason = failure_reason or "post_generation_rea_missing_or_invalid"
+
     # A successful exit code is not sufficient evidence: status and produced SHA
     # must agree with the observed repository state.
     if payload and exit_code == 0 and not failure_reason:
@@ -772,6 +791,7 @@ def run_task(
         "failure_reason": (str(payload.get("failure_reason", "")) if status == "BLOCKED" else failure_reason),
         **({"failure_code": safe_failure_code} if safe_failure_code is not None else {}),
         **({"rea": payload["rea"]} if status == "BLOCKED" and isinstance(payload.get("rea"), dict) else {}),
+        **({"post_generation_rea": post_generation_rea} if isinstance(post_generation_rea, dict) else {}),
     }
 
 
