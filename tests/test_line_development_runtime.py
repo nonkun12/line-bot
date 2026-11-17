@@ -1476,6 +1476,7 @@ def test_provider_block_reason_rejects_external_model_for_manual_rsi(monkeypatch
 
 
 def test_provider_block_reason_allows_only_declared_provider_free_task(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
     task_id = "uhip-confidence-out-of-range-rejection"
     assert runtime._provider_block_reason(task_id) is None
     assert runtime._provider_block_reason("review-coverage-gap-703fa3c06b") == "external_model_provider_disabled_local_adapter_unavailable"
