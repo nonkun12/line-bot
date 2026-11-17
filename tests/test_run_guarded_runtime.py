@@ -447,3 +447,37 @@ def test_execution_approval_consumption_blocks_duplicate_ref(monkeypatch):
     result = guarded_runtime._consume_execution_approval(evidence, "b" * 40)
     assert result["gate"] == "BLOCKED"
     assert result["reason_code"] == "approval_already_consumed"
+
+
+def test_write_summary_marks_post_generation_rea_as_pre_publish_gate(tmp_path, monkeypatch):
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: "b" * 40 if args == ("rev-parse", "HEAD") else "line-dev/test")
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_STATUS", "PASS")
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_BASE_SHA", "a" * 40)
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_TARGET_SHA", "b" * 40)
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_DIFF_SHA256", "c" * 64)
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+    path = tmp_path / "summary.json"
+
+    guarded_runtime._write_summary("PASS", 0, "a" * 40, path)
+
+    postgen = json.loads(path.read_text(encoding="utf-8"))["post_generation_rea"]
+    assert postgen["diagnostic_only"] is False
+    assert postgen["gate_stage"] == "pre_publish"
+    assert postgen["publish_gate_passed"] is True
+
+
+def test_write_summary_never_reports_publish_gate_pass_after_runtime_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: "b" * 40 if args == ("rev-parse", "HEAD") else "line-dev/test")
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_STATUS", "PASS")
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_BASE_SHA", "a" * 40)
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_TARGET_SHA", "b" * 40)
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_DIFF_SHA256", "c" * 64)
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+    path = tmp_path / "summary.json"
+
+    guarded_runtime._write_summary("FAIL", 1, "a" * 40, path)
+
+    postgen = json.loads(path.read_text(encoding="utf-8"))["post_generation_rea"]
+    assert postgen["diagnostic_only"] is False
+    assert postgen["gate_stage"] == "pre_publish"
+    assert postgen["publish_gate_passed"] is False
