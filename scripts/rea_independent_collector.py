@@ -59,12 +59,17 @@ def parse_counts(output: str) -> tuple[int, int, int, int]:
     matches = re.findall(
         r"(?:(\d+)\s+passed)?(?:,\s*)?(?:(\d+)\s+failed)?"
         r"(?:,\s*)?(?:(\d+)\s+errors?)?(?:,\s*)?"
-        r"(?:(\d+)\s+skipped)?\s+in\s+[0-9.]+s",
+        r"(?:(\d+)\s+skipped)?(?:,\s*)?(?:(\d+)\s+xfailed)?"
+        r"(?:,\s*)?(?:(\d+)\s+xpassed)?(?:,\s*\d+\s+warnings?)?"
+        r"\s+in\s+[0-9.]+s",
         output,
     )
     if not matches:
         return 0, 0, 0, 0
-    passed, failed, errors, skipped = (int(value or 0) for value in matches[-1])
+    passed, failed, errors, skipped, xfailed, xpassed = (
+        int(value or 0) for value in matches[-1]
+    )
+    skipped += xfailed + xpassed
     collected = passed + failed + errors + skipped
     return collected, passed, failed + errors, skipped
 
