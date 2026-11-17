@@ -420,6 +420,70 @@ def test_blocked_summary_failure_reason_must_match_rea_evidence(monkeypatch, tmp
     assert result["failure_reason"] == "blocked_summary_failure_reason_invalid"
 
 
+def _write_changed_pass_summary(env, summary: Path, *, base_sha: str, target_sha: str, postgen=None) -> None:
+    payload = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": "PASS",
+        "exit_code": 0,
+        "base_sha": base_sha,
+        "produced_sha": target_sha,
+        "task_id": env["AUTONOMOUS_TASK_ID"],
+        "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+    }
+    if postgen is not None:
+        payload["post_generation_rea"] = postgen
+    summary.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_changed_pass_requires_exact_post_generation_rea_evidence(monkeypatch, tmp_path: Path):
+    task = {"id": "changed-pass-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    base_sha, target_sha = "a" * 40, "b" * 40
+    shas = iter([base_sha, target_sha])
+    monkeypatch.setattr(loop, "_git_head", lambda: next(shas))
+    monkeypatch.setattr(loop, "_verify_produced_head", lambda *_args: (True, ""))
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        _write_changed_pass_summary(env, summary, base_sha=base_sha, target_sha=target_sha)
+        return _FakeProcess(env, lambda _: None)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "post_generation_rea_missing_or_invalid"
+
+
+def test_changed_pass_preserves_hash_bound_post_generation_rea(monkeypatch, tmp_path: Path):
+    task = {"id": "changed-pass-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    base_sha, target_sha = "a" * 40, "b" * 40
+    shas = iter([base_sha, target_sha])
+    monkeypatch.setattr(loop, "_git_head", lambda: next(shas))
+    monkeypatch.setattr(loop, "_verify_produced_head", lambda *_args: (True, ""))
+    postgen = {
+        "status": "PASS",
+        "base_sha": base_sha,
+        "target_sha": target_sha,
+        "diff_sha256": "c" * 64,
+        "diagnostic_only": False,
+        "gate_stage": "pre_publish",
+        "publish_gate_passed": True,
+    }
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        _write_changed_pass_summary(
+            env, summary, base_sha=base_sha, target_sha=target_sha, postgen=postgen
+        )
+        return _FakeProcess(env, lambda _: None)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+
+    assert result["status"] == "PASS"
+    assert result["post_generation_rea"] == postgen
+
+
 def test_no_change_is_not_pass(monkeypatch, tmp_path: Path):
     task = {"id": "no-change-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
     sha = "b" * 40
