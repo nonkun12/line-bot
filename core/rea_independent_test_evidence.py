@@ -50,7 +50,7 @@ def validate_independent_test_evidence(
         return _result("HOLD", "evidence_or_expected_identity_invalid")
     if not _REQUIRED.issubset(evidence):
         return _result("HOLD", "independent_test_evidence_missing_fields")
-    if isinstance(evidence.get("schema_version"), bool) or evidence.get("schema_version") != 1:
+    if type(evidence.get("schema_version")) is not int or evidence.get("schema_version") != 1:
         return _result("HOLD", "independent_test_schema_unsupported")
 
     identity_fields = ("run_id", "run_attempt", "task_id", "base_sha", "head_sha", "diff_sha256")
