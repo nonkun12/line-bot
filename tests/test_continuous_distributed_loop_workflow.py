@@ -162,13 +162,13 @@ def test_continuation_stops_when_another_loop_is_queued_or_running(tmp_path):
     assert "next_depth=" not in output
 
 
-def test_distributed_loop_is_manual_dispatch_only_and_stays_bounded():
+def test_distributed_loop_has_bounded_manual_and_scheduled_triggers():
     path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
     source = path.read_text(encoding="utf-8")
     assert "workflow_dispatch:" in source
-    assert "schedule:" not in source
+    assert "schedule:" in source
+    assert 'cron: "0,30 * * * *"' in source
     assert "timezone: 'Asia/Tokyo'" not in source
-    assert "cron:" not in source
     assert "default: '1'" in source
     assert "          - '4'" in source
 
