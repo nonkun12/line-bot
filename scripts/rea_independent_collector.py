@@ -59,6 +59,22 @@ def parse_counts(path: Path) -> tuple[int, int, int, int]:
     return collected, passed, failed, skipped
 
 
+def is_candidate_task_row(row: object) -> bool:
+    """Keep changed tasks and every non-success task for downstream verification."""
+    if not isinstance(row, dict):
+        return False
+    task_id = row.get("task_id")
+    base = row.get("base_sha")
+    head = row.get("produced_sha")
+    if not isinstance(task_id, str) or not task_id.strip():
+        return False
+    if not isinstance(base, str) or SHA40.fullmatch(base) is None:
+        return False
+    if not isinstance(head, str) or SHA40.fullmatch(head) is None:
+        return False
+    return base != head or row.get("status") not in {"PASS", "NO_CHANGE"}
+
+
 def evidence_row(*, run_id: str, attempt: int, task_id: str, base: str,
                  head: str, diff_hash: str, outcome: str, exit_code: int,
                  counts: tuple[int, int, int, int], command_hash: str) -> dict:
@@ -113,19 +129,7 @@ def main() -> int:
         raise SystemExit("task evidence is empty")
 
     args.output.mkdir(parents=True, exist_ok=True)
-    candidate_rows = [
-        row for row in rows
-        if isinstance(row.get("task_id"), str)
-        and row.get("task_id", "").strip()
-        and isinstance(row.get("base_sha"), str)
-        and SHA40.fullmatch(row.get("base_sha", "")) is not None
-        and isinstance(row.get("produced_sha"), str)
-        and SHA40.fullmatch(row.get("produced_sha", "")) is not None
-        and (
-            row.get("base_sha") != row.get("produced_sha")
-            or row.get("status") not in {"PASS", "NO_CHANGE"}
-        )
-    ]
+    candidate_rows = [row for row in rows if is_candidate_task_row(row)]
     if not candidate_rows:
         marker = {
             "schema_version": 1, "run_id": str(args.run_id),
