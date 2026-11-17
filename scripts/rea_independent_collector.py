@@ -136,7 +136,7 @@ def prepare_trusted_harness(harness: Path) -> None:
         "scripts_package = types.ModuleType('scripts')\n"
         "scripts_package.__path__ = ['/workspace/scripts']\n"
         "sys.modules['scripts'] = scripts_package\n"
-        "sys.path.insert(0, '/workspace')\n"
+        "sys.path.append('/workspace')\n"
         "raise SystemExit(pytest.main(['-q', '-p', 'no:cacheprovider', "
         "'--noconftest', "
         + test_args + "]))\n"
@@ -272,7 +272,7 @@ def main() -> int:
         image_dir.mkdir()
         (image_dir / "Dockerfile").write_text(
             "FROM python:3.12-slim\n"
-            "RUN python -m pip install --no-cache-dir pytest==8.3.5\n"
+            "RUN python -m pip install --no-cache-dir pytest==8.3.5 pluggy==1.7.0 packaging==26.3 iniconfig==2.3.1\n"
             "WORKDIR /workspace\nUSER 65532:65532\n",
             encoding="utf-8",
         )
