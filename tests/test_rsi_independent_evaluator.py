@@ -97,6 +97,9 @@ def test_unicode_nfc_equivalent_outputs_match():
     args["dataset"] = [{"sample_id": "s1", "expected": "café"}]
     args["baseline_predictions"] = [{"sample_id": "s1", "output": "cafe\u0301"}]
     args["challenger_predictions"] = [{"sample_id": "s1", "output": "café"}]
+    args["held_out_expected_sha256"] = hashlib.sha256(
+        json.dumps(args["dataset"], ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
 
     result = evaluate_exact_match(**args)
 
