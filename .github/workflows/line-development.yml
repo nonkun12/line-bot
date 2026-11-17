@@ -41,6 +41,24 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: Fail closed on shared emergency STOP
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AI_REPORT_GITHUB_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from core.emergency_stop import get_status
+
+          repository = os.environ["AI_REPORT_GITHUB_REPO"]
+          token = os.environ["GH_TOKEN"]
+          if get_status(repository, token):
+              print("EMERGENCY_STOP=ACTIVE; refusing LINE workflow execution")
+              raise SystemExit(1)
+          print("EMERGENCY_STOP=INACTIVE; LINE workflow may continue")
+          PY
+
       - name: Run bounded multi-agent LINE development runtime
         id: development
         env:
