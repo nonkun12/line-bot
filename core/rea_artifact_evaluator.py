@@ -90,4 +90,32 @@ def evaluate_artifact_evidence(evidence: object) -> dict[str, Any]:
     return _result("PASS", "artifact_evidence_verified", evidence_hash)
 
 
-__all__ = ["evaluate_artifact_evidence"]
+def evaluate_runtime_summary(summary: object, verification: object) -> dict[str, Any]:
+    """Adapt a guarded-runtime summary plus independently collected verification.
+
+    The adapter intentionally does not infer test success, risk, STOP, or HOLD.
+    Callers must supply those values in verification; absent evidence remains HOLD.
+    """
+    if not isinstance(summary, dict) or not isinstance(verification, dict):
+        return _result("HOLD", "runtime_evidence_not_object")
+
+    postgen = summary.get("post_generation_rea")
+    if not isinstance(postgen, dict):
+        return _result("HOLD", "post_generation_rea_missing")
+
+    changed_files = verification.get("changed_files")
+    evidence = {
+        "task_id": summary.get("task_id"),
+        "base_sha": summary.get("base_sha"),
+        "head_sha": summary.get("produced_sha"),
+        "changed_files": changed_files,
+        "tests": verification.get("tests", "NOT_RUN"),
+        "diff_scan": postgen.get("status", "UNKNOWN"),
+        "risk": verification.get("risk", "UNKNOWN"),
+        "stop_state": verification.get("stop_state", "UNKNOWN"),
+        "hold_state": verification.get("hold_state", "UNKNOWN"),
+    }
+    return evaluate_artifact_evidence(evidence)
+
+
+__all__ = ["evaluate_artifact_evidence", "evaluate_runtime_summary"]
