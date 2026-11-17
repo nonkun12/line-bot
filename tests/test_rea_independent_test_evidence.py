@@ -124,3 +124,10 @@ def test_runner_failure_without_any_collected_tests_is_hold_not_fail():
     result = validate(evidence(outcome="failure", exit_code=5, tests_collected=0, tests_passed=0))
     assert result["status"] == "HOLD"
     assert result["reason_code"] == "independent_tests_zero_executed"
+
+
+
+def test_nonzero_runner_exit_without_test_failure_evidence_holds():
+    result = validate(evidence(outcome="failure", exit_code=1))
+    assert result["status"] == "HOLD"
+    assert result["reason_code"] == "independent_test_runner_failed_without_test_failure_evidence"
