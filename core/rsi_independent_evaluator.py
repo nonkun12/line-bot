@@ -1,6 +1,6 @@
 """Independent deterministic evaluator for locked RSI held-out fixtures.
 
-The evaluator scores candidate outputs against immutable expected outputs.
+The evaluator scores candidate outputs against caller-attested locked expected outputs.
 It does not invoke a model, execute candidate code, access the network, or
 change repository files. It supports exact-match fixtures only; subjective
 quality metrics require a separately reviewed evaluator implementation.
@@ -75,6 +75,7 @@ def evaluate_exact_match(
     minimum_delta: float,
     safety: Mapping[str, Any],
     held_out_locked: bool,
+    held_out_expected_sha256: str,
 ) -> dict[str, Any]:
     """Build and evaluate an exact-match comparison from actual held-out rows."""
     try:
@@ -99,6 +100,10 @@ def evaluate_exact_match(
 
         dataset_rows = [dict(row) for row in dataset]
         dataset_sha256 = hashlib.sha256(_canonical(dataset_rows)).hexdigest()
+        if not isinstance(held_out_expected_sha256, str) or not _SHA256.fullmatch(held_out_expected_sha256):
+            raise ValueError("held_out_manifest_digest_invalid")
+        if dataset_sha256 != held_out_expected_sha256:
+            raise ValueError("held_out_manifest_digest_mismatch")
         baseline_predictions_sha256 = hashlib.sha256(_canonical(list(baseline_predictions))).hexdigest()
         challenger_predictions_sha256 = hashlib.sha256(_canonical(list(challenger_predictions))).hexdigest()
         baseline_score, baseline_correct = _score(dataset_rows, baseline_predictions)
