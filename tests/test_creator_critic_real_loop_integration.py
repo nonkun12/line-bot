@@ -209,7 +209,9 @@ class CreatorCriticRealLoopIntegrationTests(unittest.TestCase):
             self.assertIn("status=FAIL", objective)
             self.assertIn("<untrusted_loop_observation>", objective)
             self.assertEqual(json.loads(output.read_text(encoding="utf-8")), transcript)
-            self.assertFalse((root / "recovery-ai-state.json").exists())
+            recovery_state = json.loads((root / "recovery-ai-state.json").read_text(encoding="utf-8"))
+            self.assertEqual(recovery_state["tasks"], {})
+            self.assertTrue(recovery_state["state_updated_at"])
             self.assertFalse((root / "control-tower-observations.jsonl").exists())
 
 

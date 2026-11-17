@@ -50,12 +50,22 @@ _DANGEROUS_PATTERNS: tuple[tuple[StopReason, re.Pattern[str]], ...] = (
 class ImmediateStopController:
     """Persistent stop latch. Missing/unreadable state is treated as stopped."""
 
-    def __init__(self, path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        path: str | Path | None = None,
+        *,
+        shared_status_checker=None,
+    ) -> None:
         self.path = Path(path or os.environ.get("IMMEDIATE_STOP_PATH", "/tmp/line-bot-immediate-stop.json"))
+        self.shared_status_checker = shared_status_checker
 
     def _read(self) -> dict | None:
-        if not self.path.exists():
+        try:
+            self.path.lstat()
+        except FileNotFoundError:
             return {}
+        except OSError:
+            return None
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError, TypeError):
@@ -69,11 +79,18 @@ class ImmediateStopController:
         fails closed and therefore blocks autonomous execution.
         """
         state = self._read()
-        return state is None or bool(state)
+        if state is None or bool(state):
+            return True
+        if self.shared_status_checker is None:
+            return False
+        try:
+            return bool(self.shared_status_checker())
+        except Exception:
+            return True
 
     def assert_can_execute(self) -> None:
         if self.is_stopped():
-            raise ImmediateStop(f"autonomous execution stopped: {self.path}")
+            raise ImmediateStop(f"autonomous execution stopped or shared STOP unconfirmed: {self.path}")
 
     def request_stop(self, reason: StopReason, evidence: str) -> StopSignal:
         payload = {

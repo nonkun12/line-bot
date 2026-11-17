@@ -5,19 +5,33 @@ import pytest
 from core import emergency_stop
 
 
-def test_get_status_uses_shared_ref(monkeypatch):
+def test_get_status_confirms_repository_before_checking_shared_ref(monkeypatch):
     calls = []
     def fake_request(method, repository, token, path, payload=None):
         calls.append((method, repository, path))
+        if path == "":
+            return 200, {"full_name": "nonkun12/line-bot"}
         return 200, {"ref": emergency_stop.STOP_REF}
     monkeypatch.setattr(emergency_stop, "_request", fake_request)
     assert emergency_stop.get_status("nonkun12/line-bot", "token") is True
-    assert calls == [("GET", "nonkun12/line-bot", "/git/ref/heads/control-tower-emergency-stop")]
+    assert calls == [
+        ("GET", "nonkun12/line-bot", ""),
+        ("GET", "nonkun12/line-bot", "/git/ref/heads/control-tower-emergency-stop"),
+    ]
 
 
-def test_get_status_false_only_for_confirmed_404(monkeypatch):
-    monkeypatch.setattr(emergency_stop, "_request", lambda *a, **k: (404, {}))
+def test_get_status_false_only_after_repository_is_confirmed(monkeypatch):
+    def fake_request(method, repository, token, path, payload=None):
+        if path == "":
+            return 200, {"full_name": "nonkun12/line-bot"}
+        return 404, {}
+    monkeypatch.setattr(emergency_stop, "_request", fake_request)
     assert emergency_stop.get_status("nonkun12/line-bot", "token") is False
+
+    monkeypatch.setattr(emergency_stop, "_request", lambda *a, **k: (404, {}))
+    with pytest.raises(RuntimeError, match="repository_access_unconfirmed"):
+        emergency_stop.get_status("nonkun12/line-bot", "token")
+
     monkeypatch.setattr(emergency_stop, "_request", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("network")))
     with pytest.raises(RuntimeError):
         emergency_stop.get_status("nonkun12/line-bot", "token")
@@ -59,7 +73,11 @@ def test_local_stop_file_blocks(monkeypatch, tmp_path):
     stop_file = tmp_path / ".autonomous-loop.stop"
     monkeypatch.delenv("CONTROL_TOWER_KILL_SWITCH", raising=False)
     monkeypatch.delenv("AUTONOMOUS_STOP_FILE", raising=False)
-    monkeypatch.setattr(pathlib.Path, "exists", lambda self: self == stop_file)
+    def fake_lstat(self):
+        if self == stop_file:
+            return None
+        raise FileNotFoundError(str(self))
+    monkeypatch.setattr(pathlib.Path, "lstat", fake_lstat)
     assert emergency_stop.local_stop_active(tmp_path) is True
 
 

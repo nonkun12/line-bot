@@ -50,10 +50,20 @@ def _request(method: str, repository: str, token: str, path: str, payload: dict 
 
 
 def get_status(repository: str, token: str) -> bool:
-    status, _ = _request("GET", repository, token, "/git/ref/heads/control-tower-emergency-stop")
+    # GitHub may return 404 for a missing repository or an inaccessible private
+    # repository as well as for a missing ref. Confirm repository visibility
+    # first; only a 404 from the ref endpoint after that confirmation means
+    # the STOP marker is absent. Any ambiguity blocks execution.
+    repository_status, repository_data = _request("GET", repository, token, "")
+    if repository_status != 200 or not isinstance(repository_data, dict):
+        raise RuntimeError("repository_access_unconfirmed")
+    if repository_data.get("full_name", "").casefold() != repository.casefold():
+        raise RuntimeError("repository_identity_mismatch")
+
+    status, payload = _request("GET", repository, token, "/git/ref/heads/control-tower-emergency-stop")
     if status == 404:
         return False
-    if status == 200:
+    if status == 200 and payload.get("ref") == STOP_REF:
         return True
     raise RuntimeError("stop_status_unconfirmed")
 
@@ -96,9 +106,13 @@ def local_stop_active(root=None) -> bool:
     candidates.extend((root_path / ".autonomous-loop.stop", Path("/tmp/line-bot-autonomous-loop.stop")))
     for candidate in candidates:
         try:
-            if candidate.exists():
-                return True
+            # lstat treats even a dangling symlink as an active STOP marker.
+            candidate.lstat()
+            return True
+        except FileNotFoundError:
+            continue
         except OSError:
+            # Permission, I/O, and path-resolution failures are unverified STOP.
             return True
     return False
 
