@@ -214,12 +214,8 @@ def main() -> int:
             # This collector is intentionally scoped to REA regression changes.
             # Non-REA task changes cannot be certified by this focused suite.
             if not any(path.startswith(REA_PATH_PREFIXES) for path in changed):
-                counts = (0, 0, 0, 0)
-                output_rows.append(evidence_row(
-                    run_id=args.run_id, attempt=args.run_attempt, task_id=task_id,
-                    base=base, head=head, diff_hash=diff_hash, outcome="skipped",
-                    exit_code=0, counts=counts, command_hash=command_hash,
-                ))
+                # This collector certifies only REA-focused regression tests.
+                # Unrelated tasks are intentionally outside its evidence scope.
                 continue
 
             source = root / f"source-{index}"
