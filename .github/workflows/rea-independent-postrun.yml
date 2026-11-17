@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   verify:
-    if: github.event.workflow_run.conclusion != 'skipped'
+    # Even a skipped collector must produce a fail-closed BLOCKED report.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -40,6 +40,7 @@ jobs:
           report = {
               "schema_version": 1,
               "collector_run_id": os.environ["COLLECTOR_RUN_ID"],
+              "collector_run_attempt": int(os.environ["COLLECTOR_RUN_ATTEMPT"]),
               "overall": "BLOCKED",
               "results": [{
                   "status": "BLOCKED",
@@ -279,7 +280,7 @@ jobs:
           set -euo pipefail
           title="REA independent evidence follow-up: collector $COLLECTOR_RUN_ID attempt $COLLECTOR_RUN_ATTEMPT"
           if gh issue list --repo "$REPOSITORY" --state open --search "$title in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then
-            echo "An open follow-up issue already exists for this collector run."
+            echo "An open follow-up issue already exists for this collector run attempt."
             exit 0
           fi
           body="$(python - <<'PY'
