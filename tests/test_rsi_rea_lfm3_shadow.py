@@ -4,6 +4,7 @@ from core.rsi_rea_lfm3_shadow import (
     assess_rsi_request,
     rea_shadow_gate,
     _strict_json_object,
+    safety_state_allows_inference,
 )
 
 
@@ -106,3 +107,12 @@ def test_model_transport_failure_is_blocked():
     )
     assert result["gate"] == "BLOCKED"
     assert result["execution_authorized"] is False
+
+
+
+def test_unknown_or_active_safety_state_prevents_model_inference():
+    assert safety_state_allows_inference("INACTIVE", "CLEAR") is True
+    assert safety_state_allows_inference("ACTIVE", "CLEAR") is False
+    assert safety_state_allows_inference("UNKNOWN", "CLEAR") is False
+    assert safety_state_allows_inference("INACTIVE", "ACTIVE") is False
+    assert safety_state_allows_inference("INACTIVE", "UNKNOWN") is False
