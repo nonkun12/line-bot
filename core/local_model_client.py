@@ -47,6 +47,7 @@ class _Completions:
         max_tokens: int | None = None,
         reasoning_effort: str | None = None,
         include_reasoning: bool | None = None,
+        response_format: dict | None = None,
         **_ignored,
     ):
         if model != self._client.model:
@@ -59,6 +60,8 @@ class _Completions:
         if not isinstance(temperature, (int, float)) or isinstance(temperature, bool) or not 0 <= temperature <= 2:
             raise LocalModelError("local_model_temperature_invalid")
 
+        if response_format is not None and not isinstance(response_format, dict):
+            raise LocalModelError("local_model_response_format_invalid")
         if self._client.protocol == "ollama":
             url = self._client.base_url + "/api/chat"
             payload = {
@@ -67,6 +70,14 @@ class _Completions:
                 "stream": False,
                 "options": {"temperature": float(temperature), "num_predict": token_limit},
             }
+            if response_format is not None:
+                if response_format.get("type") != "json_schema":
+                    raise LocalModelError("local_model_response_format_unsupported")
+                schema_wrapper = response_format.get("json_schema")
+                schema = schema_wrapper.get("schema") if isinstance(schema_wrapper, dict) else None
+                if not isinstance(schema, dict):
+                    raise LocalModelError("local_model_response_schema_invalid")
+                payload["format"] = schema
         else:
             url = self._client.base_url + "/chat/completions"
             payload = {
@@ -76,6 +87,8 @@ class _Completions:
                 "max_tokens": token_limit,
                 "stream": False,
             }
+            if response_format is not None:
+                payload["response_format"] = response_format
 
         body = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
         req = request.Request(
