@@ -58,7 +58,7 @@ jobs:
             --run-id "$SOURCE_RUN_ID" \
             --run-attempt "$SOURCE_RUN_ATTEMPT" \
             --source-head-sha "$SOURCE_HEAD_SHA" \
-            --source-head-branch "$SOURCE_HEAD_BRANCH" \\
+            --source-head-branch "$SOURCE_HEAD_BRANCH" \
             --default-branch "$DEFAULT_BRANCH"
 
       - name: Upload trusted independent evidence
