@@ -33,6 +33,10 @@ def run(command: list[str], *, check: bool = True, **kwargs):
     return subprocess.run(command, check=check, text=True, **kwargs)
 
 
+def run_bytes(command: list[str]) -> bytes:
+    return subprocess.run(command, check=True, capture_output=True).stdout
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -94,17 +98,6 @@ def main() -> int:
     if not SHA40.fullmatch(args.source_head_sha):
         raise SystemExit("source workflow head SHA is invalid")
 
-    # The source workflow publishes only to this run-scoped branch. Require its
-    # tip to match the final task SHA; never trust an artifact's branch claim.
-    branch = f"line-dev/{args.run_id}"
-    encoded_branch = quote(branch, safe="")
-    ref = run(["gh", "api", f"repos/{repo}/git/ref/heads/{encoded_branch}"],
-              capture_output=True).stdout
-    ref_data = json.loads(ref)
-    branch_tip = ref_data.get("object", {}).get("sha", "")
-    if not SHA40.fullmatch(branch_tip):
-        raise SystemExit("run-scoped development branch ref is invalid")
-
     rows = []
     for number, line in enumerate(args.input.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
@@ -120,6 +113,34 @@ def main() -> int:
         raise SystemExit("task evidence is empty")
 
     args.output.mkdir(parents=True, exist_ok=True)
+    candidate_rows = [
+        row for row in rows
+        if row.get("status") in {"PASS", "NO_CHANGE"}
+        and isinstance(row.get("base_sha"), str)
+        and isinstance(row.get("produced_sha"), str)
+        and row.get("base_sha") != row.get("produced_sha")
+    ]
+    if not candidate_rows:
+        marker = {
+            "schema_version": 1, "run_id": str(args.run_id),
+            "run_attempt": args.run_attempt, "outcome": "skipped",
+            "reason_code": "no_changed_task_commits",
+        }
+        (args.output / "rea-independent-test-evidence.jsonl").write_text(
+            json.dumps(marker, sort_keys=True) + "\\n", encoding="utf-8"
+        )
+        return 0
+
+    # The source workflow publishes only to this run-scoped branch. Require its
+    # tip to match the final task SHA; never trust an artifact's branch claim.
+    branch = f"line-dev/{args.run_id}"
+    encoded_branch = quote(branch, safe="")
+    ref = run(["gh", "api", f"repos/{repo}/git/ref/heads/{encoded_branch}"],
+              capture_output=True).stdout
+    ref_data = json.loads(ref)
+    branch_tip = ref_data.get("object", {}).get("sha", "")
+    if not SHA40.fullmatch(branch_tip):
+        raise SystemExit("run-scoped development branch ref is invalid")
     command = [
         "python", "-m", "pytest", "-q", "-p", "no:cacheprovider",
         "--junitxml=/evidence/junit.xml", *REA_TESTS,
@@ -169,8 +190,8 @@ def main() -> int:
             ancestor = run(git + ["merge-base", "--is-ancestor", base, head], check=False)
             if ancestor.returncode != 0:
                 raise SystemExit(f"task {task_id} head is not based on its declared base")
-            diff = run(git + ["diff", "--binary", base, head], capture_output=True).stdout
-            diff_hash = hashlib.sha256(diff.encode()).hexdigest()
+            diff = run_bytes(git + ["diff", "--binary", base, head])
+            diff_hash = hashlib.sha256(diff).hexdigest()
             changed = run(git + ["diff", "--name-only", base, head],
                           capture_output=True).stdout.splitlines()
             if not changed:
@@ -191,15 +212,15 @@ def main() -> int:
 
             source = root / f"source-{index}"
             source.mkdir()
-            archive = run(git + ["archive", "--format=tar", head],
-                          capture_output=True).stdout
+            archive = run_bytes(git + ["archive", "--format=tar", head])
             archive_path = root / f"source-{index}.tar"
-            archive_path.write_bytes(archive.encode("latin1"))
+            archive_path.write_bytes(archive)
             with tarfile.open(archive_path, "r:") as tar:
                 tar.extractall(source, filter="data")
 
             evidence_dir = root / f"evidence-{index}"
             evidence_dir.mkdir()
+            evidence_dir.chmod(0o777)
             # The only writable mount is a result directory. No token, network,
             # host socket, git metadata, or source write access enters the sandbox.
             result = run([
