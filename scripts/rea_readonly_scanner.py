@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 ALLOWED_ROOTS = (".github/workflows/", "core/", "scripts/", "tests/", "docs/rea/")
-ALLOWED_SUFFIXES = frozenset({".py", ".json", ".yml", ".yaml", ".md"})
+ALLOWED_SUFFIXES = frozenset({".py", ".json", ".yml", ".yaml", ".md", ".txt"})
 MAX_FILE_BYTES = 512 * 1024
 MAX_FILES = 5000
 DANGEROUS_FLAG_RE = re.compile(
@@ -363,6 +363,7 @@ def scan_commit_diff(
         "target_sha": target_sha,
         "diff_sha256": diff_sha256,
         "files_changed": len(changed),
+        "changed_paths": sorted(changed),
         "files_scanned": scanned,
         "files_deleted": len(deleted),
         "findings_count": len(findings),
