@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
-from groq import Groq
+from core.local_model_client import LocalModelError, create_local_model_client_from_env
 
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
@@ -27,7 +27,7 @@ if str(_ROOT) not in sys.path:
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
 
 ROOT = _ROOT
-MODEL = os.environ.get("DEV_AI_MODEL", "openai/gpt-oss-20b")
+MODEL = os.environ.get("RSI_LOCAL_MODEL_NAME", "")
 MAX_FILES = 1
 MAX_FILE_CHARS = 12000
 # Groq's 8,000 TPM limit counts prompt plus requested completion tokens.
@@ -1204,13 +1204,16 @@ def main() -> int:
         print(output, flush=True)
         return 0 if passed else 1
 
-    # Resolve a model client only after deterministic/test-only paths have exited.
-    # This prevents read-only tests from requiring a provider credential.
-    api_key = os.environ.get("GROQ_API_KEY", "").strip()
-    if not api_key:
-        print("MODEL_PROVIDER=BLOCKED reason=local_model_adapter_unavailable", flush=True)
+    # Only an explicitly configured loopback model is accepted. No API key,
+    # remote provider, retry, or cloud fallback is available on this path.
+    try:
+        client = create_local_model_client_from_env()
+    except LocalModelError as exc:
+        print(f"MODEL_PROVIDER=BLOCKED reason={exc}", flush=True)
         return 1
-    client = Groq(api_key=api_key)
+    global MODEL
+    MODEL = client.model
+    print(f"MODEL_PROVIDER=LOCAL protocol={client.protocol} model={MODEL}", flush=True)
 
     files = repo_files()
     chosen = choose_file(client, instruction, files)
