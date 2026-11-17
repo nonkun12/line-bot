@@ -215,6 +215,7 @@ def main() -> int:
             raise SystemExit(f"trusted regression test is unavailable: {relative}")
         harness_digest.update(relative.encode("utf-8") + b"\0")
         harness_digest.update(trusted_test.read_bytes())
+    harness_digest.update(Path(__file__).read_bytes())
     command_hash = hashlib.sha256(
         "\0".join(command).encode() + b"\0" + harness_digest.digest()
     ).hexdigest()
