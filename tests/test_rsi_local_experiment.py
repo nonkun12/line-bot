@@ -52,8 +52,8 @@ def _args(client=None, ledger_path=None):
         "evaluator_id": "rsi.exact_match.v1",
         "evaluator_version": "1",
         "minimum_delta": 0.5,
-        "safety_snapshot": safety_snapshot,
-        "execution_approved": True,
+        "safety_provider": lambda: safety_snapshot,
+        "approval_verifier": lambda _experiment_id: True,
         "ledger_path": ledger_path,
     }
 
@@ -79,7 +79,7 @@ def test_runner_generates_both_candidates_locally_and_evaluates_outputs(tmp_path
 def test_runner_blocks_without_explicit_approval_before_model_call(tmp_path):
     client = FakeClient([])
     args = _args(client, tmp_path / "rsi-ledger.jsonl")
-    args["execution_approved"] = False
+    args["approval_verifier"] = lambda _experiment_id: False
 
     result = run_local_prompt_comparison(**args)
 
@@ -91,7 +91,7 @@ def test_runner_blocks_without_explicit_approval_before_model_call(tmp_path):
 def test_runner_blocks_when_stop_is_active_before_model_call(tmp_path):
     client = FakeClient([])
     args = _args(client, tmp_path / "rsi-ledger.jsonl")
-    args["safety_snapshot"]["stop_state"] = "ACTIVE"
+    args["safety_provider"]().__setitem__("stop_state", "ACTIVE")
 
     result = run_local_prompt_comparison(**args)
 
@@ -103,7 +103,7 @@ def test_runner_blocks_when_stop_is_active_before_model_call(tmp_path):
 def test_runner_blocks_when_hold_is_not_clear_before_model_call(tmp_path):
     client = FakeClient([])
     args = _args(client, tmp_path / "rsi-ledger.jsonl")
-    args["safety_snapshot"]["global_hold_state"] = "UNKNOWN"
+    args["safety_provider"]().__setitem__("global_hold_state", "UNKNOWN")
 
     result = run_local_prompt_comparison(**args)
 
@@ -141,13 +141,13 @@ def test_runner_binds_full_input_manifest_digest_into_evidence(tmp_path):
     result = run_local_prompt_comparison(**args)
 
     assert result["record"]["held_out"]["dataset_sha256"] == expected_digest
-    assert result["record"]["safety"]["snapshot_sha256"] == args["safety_snapshot"]["snapshot_sha256"]
+    assert result["record"]["safety"]["snapshot_sha256"] == args["safety_provider"]()["snapshot_sha256"]
 
 
 def test_runner_blocks_without_safety_snapshot_digest_before_model_call(tmp_path):
     client = FakeClient([])
     args = _args(client, tmp_path / "rsi-ledger.jsonl")
-    args["safety_snapshot"].pop("snapshot_sha256")
+    args["safety_provider"]().pop("snapshot_sha256")
 
     result = run_local_prompt_comparison(**args)
 
@@ -157,10 +157,36 @@ def test_runner_blocks_without_safety_snapshot_digest_before_model_call(tmp_path
 
 def test_runner_blocks_when_safety_snapshot_digest_is_tampered(tmp_path):
     args = _args(ledger_path=tmp_path / "rsi-ledger.jsonl")
-    args["safety_snapshot"]["snapshot_sha256"] = "f" * 64
+    args["safety_provider"]()["snapshot_sha256"] = "f" * 64
 
     result = run_local_prompt_comparison(**args)
 
     assert result["result"]["status"] == "BLOCKED"
     assert result["result"]["reason"] == "safety_snapshot_digest_mismatch"
     assert args["client"].calls == []
+
+
+def test_runner_rechecks_stop_before_each_inference_and_aborts_mid_run(tmp_path):
+    client = FakeClient(["one", "wrong", "unused"])
+    args = _args(client, tmp_path / "rsi-ledger.jsonl")
+    snapshot = args["safety_provider"]()
+    calls = {"count": 0}
+
+    def live_safety():
+        calls["count"] += 1
+        current = dict(snapshot)
+        if calls["count"] >= 4:
+            current["stop_state"] = "ACTIVE"
+        current.pop("snapshot_sha256", None)
+        current["snapshot_sha256"] = hashlib.sha256(
+            json.dumps(current, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        ).hexdigest()
+        return current
+
+    args["safety_provider"] = live_safety
+    result = run_local_prompt_comparison(**args)
+
+    assert result["result"]["status"] == "BLOCKED"
+    assert result["result"]["reason"] == "stop_active_or_unverified"
+    assert len(client.calls) == 2
+    assert not (tmp_path / "rsi-ledger.jsonl").exists()
