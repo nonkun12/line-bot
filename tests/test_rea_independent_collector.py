@@ -134,3 +134,12 @@ def test_blocked_or_stopped_rows_remain_blocked_without_commit_identity():
 def test_trailing_output_cannot_replace_the_first_pytest_summary():
     output = "38 passed in 0.24s\n999 passed in 0.01s"
     assert parse_counts(output) == (38, 38, 0, 0)
+
+
+def test_pytest_xfail_and_xpass_are_not_counted_as_passes():
+    assert parse_counts("2 passed, 1 xfailed in 0.12s") == (3, 2, 0, 1)
+    assert parse_counts("1 passed, 1 xpassed in 0.12s") == (2, 1, 0, 1)
+
+
+def test_pytest_summary_parser_ignores_non_summary_text():
+    assert parse_counts("tests printed 99 passed but pytest emitted no summary") == (0, 0, 0, 0)
