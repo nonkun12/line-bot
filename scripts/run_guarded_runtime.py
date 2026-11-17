@@ -121,12 +121,25 @@ def _git(*args: str) -> str:
 
 
 def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, object]:
-    """Verify a task-bound approval from an authenticated GitHub workflow_dispatch event.
-
-    Repository variables, catalog flags, and ordinary environment variables are
-    deliberately not accepted as proof of human approval.
-    """
+    """Verify approval against the exact task, instruction, base, and path scope."""
     instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
+    raw_allowed_paths = os.environ.get("AUTONOMOUS_ALLOWED_PATHS", "")
+    try:
+        allowed_paths = json.loads(raw_allowed_paths)
+    except (TypeError, ValueError):
+        allowed_paths = None
+    if (
+        not isinstance(allowed_paths, list)
+        or not allowed_paths
+        or not all(isinstance(path, str) and path and path == path.strip() for path in allowed_paths)
+        or len(set(allowed_paths)) != len(allowed_paths)
+    ):
+        allowed_paths_digest = ""
+    else:
+        canonical_paths = sorted(allowed_paths)
+        allowed_paths_digest = hashlib.sha256(
+            json.dumps(canonical_paths, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
     task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
     blocked = {
         "gate": "BLOCKED",
@@ -134,6 +147,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "execution_authorized": False,
         "expected_task_id": task_id,
         "expected_instruction_sha256": instruction_digest,
+        "expected_allowed_paths_sha256": allowed_paths_digest,
         "expected_base_sha": start_sha,
     }
     if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
@@ -162,6 +176,8 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         or str(inputs.get("execution_approval", "")) != "APPROVE_EXECUTION"
         or str(inputs.get("approval_task_id", "")) != task_id
         or str(inputs.get("approval_instruction_sha256", "")).lower() != instruction_digest
+        or not allowed_paths_digest
+        or str(inputs.get("approval_allowed_paths_sha256", "")).lower() != allowed_paths_digest
         or str(inputs.get("approval_base_sha", "")) != start_sha
     ):
         return blocked
@@ -173,6 +189,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "actor": actor,
         "task_id": task_id,
         "instruction_sha256": instruction_digest,
+        "allowed_paths_sha256": allowed_paths_digest,
         "base_sha": start_sha,
     }
 
@@ -314,6 +331,7 @@ def _consume_execution_approval(approval_evidence: dict[str, object], start_sha:
         "actor": approval_evidence.get("actor", ""),
         "task_id": approval_evidence.get("task_id", ""),
         "instruction_sha256": approval_evidence.get("instruction_sha256", ""),
+        "allowed_paths_sha256": approval_evidence.get("allowed_paths_sha256", ""),
         "base_sha": start_sha,
     }
     if not all(isinstance(value, str) and value for value in identity.values()):
