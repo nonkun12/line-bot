@@ -6,6 +6,8 @@ import json
 import pytest
 
 from core.rsi_authority import build_rsi_authority
+from core.local_model_client import LocalModelClient
+from core.rsi_local_experiment import rsi_experiment_config_sha256
 from scripts.recovery_ai import RecoveryStore
 
 
@@ -209,3 +211,29 @@ def test_safety_provider_blocks_immediate_stop_latch(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="immediate_stop_latch_active"):
         safety()
+
+
+
+def test_approved_config_digest_binds_local_model_endpoint():
+    common = {
+        "experiment_id": "rsi-exp-01",
+        "held_out_expected_sha256": "a" * 64,
+        "held_out_locked": True,
+        "baseline_candidate_id": "baseline",
+        "baseline_system_prompt": "baseline prompt",
+        "challenger_candidate_id": "challenger",
+        "challenger_system_prompt": "challenger prompt",
+        "evaluator_id": "exact-match",
+        "evaluator_version": "1",
+        "minimum_delta": 0.05,
+    }
+    first = rsi_experiment_config_sha256(
+        client=LocalModelClient("http://127.0.0.1:11434", "qwen3.5:9b", "ollama"),
+        **common,
+    )
+    second = rsi_experiment_config_sha256(
+        client=LocalModelClient("http://127.0.0.1:11435", "qwen3.5:9b", "ollama"),
+        **common,
+    )
+
+    assert first != second
