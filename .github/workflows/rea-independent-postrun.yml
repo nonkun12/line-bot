@@ -273,10 +273,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           COLLECTOR_RUN_ID: ${{ github.event.workflow_run.id }}
+          COLLECTOR_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           COLLECTOR_RUN_URL: ${{ github.event.workflow_run.html_url }}
         run: |
           set -euo pipefail
-          title="REA independent evidence follow-up: collector $COLLECTOR_RUN_ID"
+          title="REA independent evidence follow-up: collector $COLLECTOR_RUN_ID attempt $COLLECTOR_RUN_ATTEMPT"
           if gh issue list --repo "$REPOSITORY" --state open --search "$title in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then
             echo "An open follow-up issue already exists for this collector run."
             exit 0
