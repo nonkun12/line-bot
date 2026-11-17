@@ -70,6 +70,10 @@ class _Completions:
                 "stream": False,
                 "options": {"temperature": float(temperature), "num_predict": token_limit},
             }
+            # Ollama's think flag is model-specific; disable reasoning only when
+            # the caller explicitly requests a final-answer-only response.
+            if include_reasoning is False:
+                payload["think"] = False
             if response_format is not None:
                 if response_format.get("type") != "json_schema":
                     raise LocalModelError("local_model_response_format_unsupported")
