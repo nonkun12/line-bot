@@ -120,13 +120,37 @@ def _git(*args: str) -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
-def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, object]:
-    """Verify a task-bound approval from an authenticated GitHub workflow_dispatch event.
+def _shared_stop_active() -> bool:
+    """Read the authoritative shared STOP marker; missing credentials fail closed."""
+    from core.emergency_stop import get_status
 
-    Repository variables, catalog flags, and ordinary environment variables are
-    deliberately not accepted as proof of human approval.
-    """
+    repository = (os.environ.get("AI_REPORT_GITHUB_REPO") or os.environ.get("GITHUB_REPOSITORY") or "nonkun12/line-bot").strip()
+    token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
+    if not repository or not token:
+        raise RuntimeError("shared_stop_credentials_missing")
+    return get_status(repository, token)
+
+
+def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, object]:
+    """Verify approval against the exact task, instruction, base, and path scope."""
     instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
+    raw_allowed_paths = os.environ.get("AUTONOMOUS_ALLOWED_PATHS", "")
+    try:
+        allowed_paths = json.loads(raw_allowed_paths)
+    except (TypeError, ValueError):
+        allowed_paths = None
+    if (
+        not isinstance(allowed_paths, list)
+        or not allowed_paths
+        or not all(isinstance(path, str) and path and path == path.strip() for path in allowed_paths)
+        or len(set(allowed_paths)) != len(allowed_paths)
+    ):
+        allowed_paths_digest = ""
+    else:
+        canonical_paths = sorted(allowed_paths)
+        allowed_paths_digest = hashlib.sha256(
+            json.dumps(canonical_paths, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
     task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
     blocked = {
         "gate": "BLOCKED",
@@ -134,6 +158,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "execution_authorized": False,
         "expected_task_id": task_id,
         "expected_instruction_sha256": instruction_digest,
+        "expected_allowed_paths_sha256": allowed_paths_digest,
         "expected_base_sha": start_sha,
     }
     if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
@@ -162,6 +187,8 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         or str(inputs.get("execution_approval", "")) != "APPROVE_EXECUTION"
         or str(inputs.get("approval_task_id", "")) != task_id
         or str(inputs.get("approval_instruction_sha256", "")).lower() != instruction_digest
+        or not allowed_paths_digest
+        or str(inputs.get("approval_allowed_paths_sha256", "")).lower() != allowed_paths_digest
         or str(inputs.get("approval_base_sha", "")) != start_sha
     ):
         return blocked
@@ -173,6 +200,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "actor": actor,
         "task_id": task_id,
         "instruction_sha256": instruction_digest,
+        "allowed_paths_sha256": allowed_paths_digest,
         "base_sha": start_sha,
     }
 
@@ -283,6 +311,17 @@ def _write_summary(
         payload["rea"] = rea_evidence
     if approval_evidence is not None:
         payload["execution_approval"] = approval_evidence
+    postgen_status = os.environ.get("AUTONOMOUS_POSTGEN_REA_STATUS", "")
+    if postgen_status:
+        payload["post_generation_rea"] = {
+            "status": postgen_status,
+            "base_sha": os.environ.get("AUTONOMOUS_POSTGEN_REA_BASE_SHA", ""),
+            "target_sha": os.environ.get("AUTONOMOUS_POSTGEN_REA_TARGET_SHA", ""),
+            "diff_sha256": os.environ.get("AUTONOMOUS_POSTGEN_REA_DIFF_SHA256", ""),
+            "diagnostic_only": False,
+            "gate_stage": "pre_publish",
+            "publish_gate_passed": postgen_status == "PASS" and exit_code == 0,
+        }
     failure_code = extract_safe_failure_code(os.environ.get("AUTONOMOUS_FAILURE_CODE", ""))
     if failure_code is not None:
         payload["failure_code"] = failure_code
@@ -314,6 +353,7 @@ def _consume_execution_approval(approval_evidence: dict[str, object], start_sha:
         "actor": approval_evidence.get("actor", ""),
         "task_id": approval_evidence.get("task_id", ""),
         "instruction_sha256": approval_evidence.get("instruction_sha256", ""),
+        "allowed_paths_sha256": approval_evidence.get("allowed_paths_sha256", ""),
         "base_sha": start_sha,
     }
     if not all(isinstance(value, str) and value for value in identity.values()):
@@ -404,6 +444,17 @@ def main() -> int:
 
     from core.emergency_stop import local_stop_active
     if local_stop_active(ROOT):
+        _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "emergency_stop_active", "execution_authorized": False})
+        print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
+        return 82
+
+    try:
+        shared_stop_active = _shared_stop_active()
+    except Exception:
+        _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "shared_stop_status_unconfirmed", "execution_authorized": False})
+        print("EMERGENCY_STOP=UNVERIFIABLE; runtime not started", flush=True)
+        return 82
+    if shared_stop_active:
         _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "emergency_stop_active", "execution_authorized": False})
         print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
         return 82

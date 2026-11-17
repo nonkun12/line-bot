@@ -420,6 +420,70 @@ def test_blocked_summary_failure_reason_must_match_rea_evidence(monkeypatch, tmp
     assert result["failure_reason"] == "blocked_summary_failure_reason_invalid"
 
 
+def _write_changed_pass_summary(env, summary: Path, *, base_sha: str, target_sha: str, postgen=None) -> None:
+    payload = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": "PASS",
+        "exit_code": 0,
+        "base_sha": base_sha,
+        "produced_sha": target_sha,
+        "task_id": env["AUTONOMOUS_TASK_ID"],
+        "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+    }
+    if postgen is not None:
+        payload["post_generation_rea"] = postgen
+    summary.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_changed_pass_requires_exact_post_generation_rea_evidence(monkeypatch, tmp_path: Path):
+    task = {"id": "changed-pass-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    base_sha, target_sha = "a" * 40, "b" * 40
+    shas = iter([base_sha, target_sha])
+    monkeypatch.setattr(loop, "_git_head", lambda: next(shas))
+    monkeypatch.setattr(loop, "_verify_produced_head", lambda *_args: (True, ""))
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        _write_changed_pass_summary(env, summary, base_sha=base_sha, target_sha=target_sha)
+        return _FakeProcess(env, lambda _: None)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+
+    assert result["status"] == "FAIL"
+    assert result["failure_reason"] == "post_generation_rea_missing_or_invalid"
+
+
+def test_changed_pass_preserves_hash_bound_post_generation_rea(monkeypatch, tmp_path: Path):
+    task = {"id": "changed-pass-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    base_sha, target_sha = "a" * 40, "b" * 40
+    shas = iter([base_sha, target_sha])
+    monkeypatch.setattr(loop, "_git_head", lambda: next(shas))
+    monkeypatch.setattr(loop, "_verify_produced_head", lambda *_args: (True, ""))
+    postgen = {
+        "status": "PASS",
+        "base_sha": base_sha,
+        "target_sha": target_sha,
+        "diff_sha256": "c" * 64,
+        "diagnostic_only": False,
+        "gate_stage": "pre_publish",
+        "publish_gate_passed": True,
+    }
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        _write_changed_pass_summary(
+            env, summary, base_sha=base_sha, target_sha=target_sha, postgen=postgen
+        )
+        return _FakeProcess(env, lambda _: None)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+
+    assert result["status"] == "PASS"
+    assert result["post_generation_rea"] == postgen
+
+
 def test_no_change_is_not_pass(monkeypatch, tmp_path: Path):
     task = {"id": "no-change-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
     sha = "b" * 40
@@ -868,6 +932,35 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
 
     monkeypatch.setattr(RecoveryStore, "task_status", lambda self, _task_id: {})
     monkeypatch.setattr(
+        RecoveryStore, "aggregate_hold_status", lambda self: {"state": "CLEAR"}
+    )
+    monkeypatch.setattr(
+        "scripts.rea_artifact_runtime.evaluate_and_record_runtime_artifact",
+        lambda summary, **_kwargs: {
+            "status": "NO_CHANGE",
+            "reason_code": "no_artifact_change",
+            "evidence_sha256": "d" * 64,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
+        RecoveryStore, "aggregate_hold_status", lambda self: {"state": "CLEAR"}
+    )
+    monkeypatch.setattr(
+        "scripts.rea_artifact_runtime.evaluate_and_record_runtime_artifact",
+        lambda summary, **_kwargs: {
+            "status": "NO_CHANGE",
+            "evidence_sha256": "d" * 64,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
         "core.control_tower_selector.select_next_task",
         lambda *args, **kwargs: SimpleNamespace(
             next_action="SELECT_REGISTERED_TASK",
@@ -1014,7 +1107,9 @@ def test_rea_adapter_exception_blocks_minimal_loop_task_execution(monkeypatch, t
     assert rows[0]["rea"]["execution_authorized"] is False
     # A preflight block is not counted as a task failure, but Control Tower
     # must still persist the BLOCKED observation for auditability.
-    assert not (tmp_path / "recovery-ai-state.json").exists()
+    recovery_state = json.loads((tmp_path / "recovery-ai-state.json").read_text(encoding="utf-8"))
+    assert recovery_state["tasks"] == {}
+    assert recovery_state["state_updated_at"]
     assert (tmp_path / "control-tower-observations.jsonl").exists()
 
 
@@ -1137,6 +1232,22 @@ def test_orchestrator_gates_successful_loop_on_exact_evidence(monkeypatch, tmp_p
         ],
     )
     monkeypatch.setattr(RecoveryStore, "task_status", lambda self, _task_id: {})
+    monkeypatch.setattr(
+        RecoveryStore, "aggregate_hold_status", lambda self: {"state": "CLEAR"}
+    )
+    monkeypatch.setattr(loop, "artifact_stop_state", lambda _stop_file: "INACTIVE")
+    monkeypatch.setattr(
+        "scripts.rea_artifact_runtime.evaluate_and_record_runtime_artifact",
+        lambda summary, **_kwargs: {
+            "status": "NO_CHANGE",
+            "reason_code": "no_artifact_change",
+            "evidence_sha256": "d" * 64,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
     monkeypatch.setattr(
         "core.control_tower_selector.select_next_task",
         lambda *args, **kwargs: SimpleNamespace(
@@ -1269,6 +1380,12 @@ def test_postrun_verifier_distinguishes_catalog_block_from_invalid_evidence():
     assert '"catalog_exhausted_mixed:"' in workflow
     assert 'CATALOG_BLOCKED: ${{ steps.verify.outputs.catalog_blocked }}' in workflow
     assert 'BLOCKED（保留・レビュー待ち。人の確認が必要）' in workflow
+    assert 'post_generation_rea' in workflow
+    assert 'attestation.get("target_sha") == produced_sha' in workflow
+    assert 're.fullmatch(r"[0-9a-f]{64}", attestation["diff_sha256"])' in workflow
+    assert 'attestation.get("gate_stage") == "pre_publish"' in workflow
+    assert 'attestation.get("publish_gate_passed") is True' in workflow
+    assert 'sha_identity_valid' in workflow
 
 
 @pytest.mark.parametrize(
@@ -1303,3 +1420,105 @@ def test_transient_retry_requires_unchanged_head_and_clean_worktree():
     assert not retry_is_safe(result, current_head="a" * 40, working_tree_clean=False)
     result["failure_reason"] = "HTTP status=400"
     assert not retry_is_safe(result, current_head="a" * 40, working_tree_clean=True)
+
+
+def test_distributed_loop_does_not_inject_metered_model_credentials():
+    workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert "GROQ_API_KEY" not in workflow
+    assert "OPENAI_API_KEY" not in workflow
+    assert "ANTHROPIC_API_KEY" not in workflow
+
+
+def test_lfm3_shadow_advisory_is_disabled_by_default(monkeypatch, tmp_path):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("LFM3 must not run unless explicitly enabled")
+
+    monkeypatch.setattr(loop.subprocess, "run", unexpected)
+    assert loop.run_lfm3_shadow_advisory(
+        {"AUTONOMOUS_RECOVERY_STATE_PATH": str(tmp_path / "recovery.json")},
+        tmp_path,
+    ) is None
+    assert not (tmp_path / "lfm3-rea-shadow.jsonl").exists()
+
+
+def test_lfm3_shadow_advisory_reuses_recovery_path_and_writes_non_authoritative_audit(monkeypatch, tmp_path):
+    import json
+    from types import SimpleNamespace
+
+    recovery_path = tmp_path / "actual-recovery.json"
+    audit_path = tmp_path / "audit" / "lfm3.jsonl"
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        seen["env"] = kwargs["env"]
+        return SimpleNamespace(
+            stdout=json.dumps({
+                "gate": "REVIEW_ONLY",
+                "reason_code": "structured_classification_received",
+                "execution_authorized": False,
+            }),
+            returncode=0,
+        )
+
+    monkeypatch.setattr(loop.subprocess, "run", fake_run)
+    record = loop.run_lfm3_shadow_advisory(
+        {
+            "RSI_LFM3_SHADOW_ENABLED": "1",
+            "RSI_LFM3_SHADOW_AUDIT_PATH": str(audit_path),
+            "AUTONOMOUS_RECOVERY_STATE_PATH": str(recovery_path),
+        },
+        tmp_path,
+    )
+
+    assert seen["env"]["AUTONOMOUS_RECOVERY_STATE_PATH"] == str(recovery_path)
+    assert seen["command"][-1].endswith("scripts/run_lfm3_rea_shadow.py")
+    assert record["gate"] == "REVIEW_ONLY"
+    assert record["mode"] == "SHADOW_ONLY"
+    assert record["execution_authorized"] is False
+    assert record["patch_authorized"] is False
+    row = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[0])
+    assert row["gate"] == "REVIEW_ONLY"
+    assert "classification" not in row
+    assert "reason" not in row
+
+
+def test_lfm3_shadow_advisory_never_runs_in_github_actions(monkeypatch, tmp_path):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("local LFM3 must not run in GitHub Actions")
+
+    monkeypatch.setattr(loop.subprocess, "run", unexpected)
+    assert loop.run_lfm3_shadow_advisory(
+        {"RSI_LFM3_SHADOW_ENABLED": "1", "GITHUB_ACTIONS": "true"},
+        tmp_path,
+    ) is None
+    assert not (tmp_path / "lfm3-rea-shadow.jsonl").exists()
+
+
+def test_artifact_stop_state_includes_shared_emergency_stop(monkeypatch, tmp_path):
+    from core import emergency_stop, immediate_stop
+
+    monkeypatch.delenv("AUTONOMOUS_LOOP_STOP", raising=False)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr(emergency_stop, "local_stop_active", lambda _root: False)
+    monkeypatch.setattr(immediate_stop.ImmediateStopController, "is_stopped", lambda self: False)
+    monkeypatch.setattr(emergency_stop, "get_status", lambda _repo, _token: True)
+
+    assert loop.artifact_stop_state(tmp_path / "missing-stop-file") == "ACTIVE"
+
+
+def test_artifact_stop_state_unknown_when_shared_status_cannot_be_verified(monkeypatch, tmp_path):
+    from core import emergency_stop, immediate_stop
+
+    monkeypatch.delenv("AUTONOMOUS_LOOP_STOP", raising=False)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr(emergency_stop, "local_stop_active", lambda _root: False)
+    monkeypatch.setattr(immediate_stop.ImmediateStopController, "is_stopped", lambda self: False)
+
+    def unavailable(_repo, _token):
+        raise RuntimeError("network unavailable")
+
+    monkeypatch.setattr(emergency_stop, "get_status", unavailable)
+    assert loop.artifact_stop_state(tmp_path / "missing-stop-file") == "UNKNOWN"
