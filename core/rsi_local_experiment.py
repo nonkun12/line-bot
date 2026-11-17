@@ -28,6 +28,38 @@ def _canonical(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def rsi_experiment_config_sha256(
+    *,
+    client: Any,
+    experiment_id: str,
+    held_out_expected_sha256: str,
+    held_out_locked: bool,
+    baseline_candidate_id: str,
+    baseline_system_prompt: str,
+    challenger_candidate_id: str,
+    challenger_system_prompt: str,
+    evaluator_id: str,
+    evaluator_version: str,
+    minimum_delta: float,
+) -> str:
+    """Digest every inference/evaluation input that human approval must cover."""
+    config = {
+        "experiment_id": experiment_id,
+        "held_out_expected_sha256": held_out_expected_sha256,
+        "held_out_locked": held_out_locked,
+        "baseline_candidate_id": baseline_candidate_id,
+        "baseline_prompt_sha256": hashlib.sha256(baseline_system_prompt.encode("utf-8")).hexdigest(),
+        "challenger_candidate_id": challenger_candidate_id,
+        "challenger_prompt_sha256": hashlib.sha256(challenger_system_prompt.encode("utf-8")).hexdigest(),
+        "evaluator_id": evaluator_id,
+        "evaluator_version": evaluator_version,
+        "minimum_delta": minimum_delta,
+        "model_protocol": getattr(client, "protocol", ""),
+        "model_id": getattr(client, "model", ""),
+    }
+    return hashlib.sha256(_canonical(config)).hexdigest()
+
+
 def _blocked(experiment_id: str, reason: str) -> dict[str, Any]:
     return {
         "experiment_id": experiment_id if isinstance(experiment_id, str) else "",
@@ -234,8 +266,24 @@ def run_trusted_local_prompt_comparison(
     """
     from core.rsi_authority import build_rsi_authority
 
+    config_sha256 = rsi_experiment_config_sha256(
+        client=client,
+        experiment_id=experiment_id,
+        held_out_expected_sha256=held_out_expected_sha256,
+        held_out_locked=held_out_locked,
+        baseline_candidate_id=baseline_candidate_id,
+        baseline_system_prompt=baseline_system_prompt,
+        challenger_candidate_id=challenger_candidate_id,
+        challenger_system_prompt=challenger_system_prompt,
+        evaluator_id=evaluator_id,
+        evaluator_version=evaluator_version,
+        minimum_delta=minimum_delta,
+    )
+    if f"RSI_EXPERIMENT_CONFIG_SHA256={config_sha256}" not in instruction:
+        return {"record": None, "result": _blocked(experiment_id, "experiment_config_not_bound_to_approved_instruction")}
     approval_verifier, safety_provider = build_rsi_authority(
         experiment_id=experiment_id,
+        config_sha256=config_sha256,
         start_sha=start_sha,
         instruction=instruction,
         recovery_state_path=recovery_state_path,
