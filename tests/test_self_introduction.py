@@ -39,3 +39,10 @@ def test_introduction_uses_registry_agents(monkeypatch):
     assert "■ 登録済み専門AI" in text
     assert "test-specialist: テスト用専門AI [稼働]" in text
     assert "※専門AIの一覧・説明はAgent Registryから動的に取得します。" in text
+
+## Backlog coverage tests
+
+def test_handle_self_introduction_returns_none_for_unmatched_input_and_intro_for_match(monkeypatch):
+    monkeypatch.setattr(self_introduction, "build_self_introduction", lambda: "intro")
+    assert self_introduction.handle_self_introduction("自己紹介して") is None
+    assert self_introduction.handle_self_introduction("各AI、自己紹介して") == "intro"
