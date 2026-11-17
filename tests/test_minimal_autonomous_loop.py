@@ -1373,3 +1373,10 @@ def test_transient_retry_requires_unchanged_head_and_clean_worktree():
     assert not retry_is_safe(result, current_head="a" * 40, working_tree_clean=False)
     result["failure_reason"] = "HTTP status=400"
     assert not retry_is_safe(result, current_head="a" * 40, working_tree_clean=True)
+
+
+def test_distributed_loop_does_not_inject_metered_model_credentials():
+    workflow = Path(".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert "GROQ_API_KEY" not in workflow
+    assert "OPENAI_API_KEY" not in workflow
+    assert "ANTHROPIC_API_KEY" not in workflow
