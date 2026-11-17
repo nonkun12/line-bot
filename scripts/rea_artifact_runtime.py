@@ -1,7 +1,9 @@
 """Collect and persist fail-closed post-runtime REA evidence."""
 from __future__ import annotations
 
+import fcntl
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -79,7 +81,14 @@ def evaluate_and_record_runtime_artifact(
     }
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
     with destination.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
-        handle.flush()
+        # Serialize concurrent writers and force the evidence row to stable storage.
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            handle.write(line)
+            handle.flush()
+            os.fsync(handle.fileno())
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     return record
