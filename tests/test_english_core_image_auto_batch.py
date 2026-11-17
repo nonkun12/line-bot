@@ -172,3 +172,26 @@ def test_builder_rejects_batch_size_above_advertised_limit(monkeypatch):
         assert exc.code == 2
     else:
         raise AssertionError("batch sizes above 25 must be rejected")
+
+
+def test_load_existing_extracts_keys_and_end_line_for_both_assignment_forms():
+    builder = _load_builder()
+
+    annotated_source = (
+        "_ENTRIES: dict[str, object] = {\n"
+        '    "alpha": object(),\n'
+        '    "beta": object(),\n'
+        "}\n"
+    )
+    keys, end_line = builder.load_existing(annotated_source)
+    assert keys == {"alpha", "beta"}
+    assert end_line == 4
+
+    plain_source = (
+        "_ENTRIES = {\n"
+        '    "gamma": object(),\n'
+        "}\n"
+    )
+    plain_keys, plain_end_line = builder.load_existing(plain_source)
+    assert plain_keys == {"gamma"}
+    assert plain_end_line == 3
