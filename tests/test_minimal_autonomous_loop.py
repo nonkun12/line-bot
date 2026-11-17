@@ -1382,3 +1382,69 @@ def test_distributed_loop_does_not_inject_metered_model_credentials():
     assert "GROQ_API_KEY" not in workflow
     assert "OPENAI_API_KEY" not in workflow
     assert "ANTHROPIC_API_KEY" not in workflow
+
+
+def test_lfm3_shadow_advisory_is_disabled_by_default(monkeypatch, tmp_path):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("LFM3 must not run unless explicitly enabled")
+
+    monkeypatch.setattr(loop.subprocess, "run", unexpected)
+    assert loop.run_lfm3_shadow_advisory(
+        {"AUTONOMOUS_RECOVERY_STATE_PATH": str(tmp_path / "recovery.json")},
+        tmp_path,
+    ) is None
+    assert not (tmp_path / "lfm3-rea-shadow.jsonl").exists()
+
+
+def test_lfm3_shadow_advisory_reuses_recovery_path_and_writes_non_authoritative_audit(monkeypatch, tmp_path):
+    import json
+    from types import SimpleNamespace
+
+    recovery_path = tmp_path / "actual-recovery.json"
+    audit_path = tmp_path / "audit" / "lfm3.jsonl"
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        seen["env"] = kwargs["env"]
+        return SimpleNamespace(
+            stdout=json.dumps({
+                "gate": "REVIEW_ONLY",
+                "reason_code": "structured_classification_received",
+                "execution_authorized": False,
+            }),
+            returncode=0,
+        )
+
+    monkeypatch.setattr(loop.subprocess, "run", fake_run)
+    record = loop.run_lfm3_shadow_advisory(
+        {
+            "RSI_LFM3_SHADOW_ENABLED": "1",
+            "RSI_LFM3_SHADOW_AUDIT_PATH": str(audit_path),
+            "AUTONOMOUS_RECOVERY_STATE_PATH": str(recovery_path),
+        },
+        tmp_path,
+    )
+
+    assert seen["env"]["AUTONOMOUS_RECOVERY_STATE_PATH"] == str(recovery_path)
+    assert seen["command"][-1].endswith("scripts/run_lfm3_rea_shadow.py")
+    assert record["gate"] == "REVIEW_ONLY"
+    assert record["mode"] == "SHADOW_ONLY"
+    assert record["execution_authorized"] is False
+    assert record["patch_authorized"] is False
+    row = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[0])
+    assert row["gate"] == "REVIEW_ONLY"
+    assert "classification" not in row
+    assert "reason" not in row
+
+
+def test_lfm3_shadow_advisory_never_runs_in_github_actions(monkeypatch, tmp_path):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("local LFM3 must not run in GitHub Actions")
+
+    monkeypatch.setattr(loop.subprocess, "run", unexpected)
+    assert loop.run_lfm3_shadow_advisory(
+        {"RSI_LFM3_SHADOW_ENABLED": "1", "GITHUB_ACTIONS": "true"},
+        tmp_path,
+    ) is None
+    assert not (tmp_path / "lfm3-rea-shadow.jsonl").exists()

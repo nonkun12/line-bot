@@ -8,6 +8,7 @@ next task.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -34,6 +35,53 @@ ACTIVE_PROCESS: subprocess.Popen[str] | None = None
 
 MAX_TRANSIENT_TASK_RETRIES = 2
 TRANSIENT_RETRY_DELAYS_SECONDS = (2, 5)
+
+
+def run_lfm3_shadow_advisory(env: dict[str, str], audit_dir: Path) -> dict[str, object] | None:
+    """Optionally run local LFM3 as non-authoritative advice; never gates task execution."""
+    if env.get("RSI_LFM3_SHADOW_ENABLED") != "1" or env.get("GITHUB_ACTIONS", "").casefold() == "true":
+        return None
+    child_env = env.copy()
+    audit_path = Path(child_env.get(
+        "RSI_LFM3_SHADOW_AUDIT_PATH",
+        str(audit_dir / "lfm3-rea-shadow.jsonl"),
+    ))
+    record: dict[str, object] = {
+        "mode": "SHADOW_ONLY",
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "merge_deploy_authorized": False,
+        "hold_clear_authorized": False,
+    }
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "run_lfm3_rea_shadow.py")],
+            cwd=ROOT,
+            env=child_env,
+            text=True,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        raw = completed.stdout or ""
+        record["output_sha256"] = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        record["runner_exit_code"] = completed.returncode
+        try:
+            result = json.loads(raw)
+            if not isinstance(result, dict):
+                raise ValueError("result_not_object")
+            record["gate"] = result.get("gate", "BLOCKED")
+            record["reason_code"] = result.get("reason_code", "missing_reason_code")
+        except (ValueError, TypeError):
+            record["gate"] = "BLOCKED"
+            record["reason_code"] = "shadow_result_invalid"
+    except Exception as exc:
+        record["gate"] = "BLOCKED"
+        record["reason_code"] = "shadow_runner_" + type(exc).__name__
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    with audit_path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    return record
 
 
 def transient_retry_code(result: dict[str, object]) -> str | None:
@@ -612,6 +660,9 @@ def run_task(
     env["AUTONOMOUS_RUN_NONCE"] = run_nonce
     env["AUTONOMOUS_ALLOWED_PATHS"] = json.dumps(task["allowed_paths"], ensure_ascii=False)
     env["AUTONOMOUS_RECOVERY_STATE_PATH"] = str(recovery_state_path or (summary_dir / "recovery-ai-state.json"))
+    shadow_record = run_lfm3_shadow_advisory(env, summary_dir)
+    if shadow_record is not None:
+        print("RSI_LFM3_SHADOW gate=" + str(shadow_record.get("gate", "BLOCKED")) + " reason=" + str(shadow_record.get("reason_code", "unknown")), flush=True)
     # Remove any prior summary so a failed/stalled runtime can never inherit an old PASS.
     try:
         summary.unlink()
