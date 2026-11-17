@@ -350,7 +350,8 @@ def main() -> int:
                 "--env", "PYTHONDONTWRITEBYTECODE=1",
                 "--env", "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1", image, *command,
             ], check=False, capture_output=True)
-            output = (result.stdout or b"").decode("utf-8", errors="replace")
+            raw_output = result.stdout or ""
+            output = (raw_output if isinstance(raw_output, str) else raw_output.decode("utf-8", errors="replace"))
             counts = parse_counts(output)
             outcome = "success" if result.returncode == 0 else "failure"
             output_rows.append(evidence_row(
