@@ -60,6 +60,20 @@ def build_rsi_authority(
         raise ValueError("rsi_start_sha_invalid")
     if not isinstance(recovery_state_path, (str, Path)) or not str(recovery_state_path).strip():
         raise ValueError("recovery_state_path_missing")
+    configured_recovery_path = os.environ.get("AUTONOMOUS_RECOVERY_STATE_PATH", "").strip()
+    if not configured_recovery_path:
+        raise ValueError("authoritative_recovery_state_path_missing")
+    supplied_path = Path(recovery_state_path)
+    configured_path = Path(configured_recovery_path)
+    if supplied_path.is_symlink() or configured_path.is_symlink():
+        raise ValueError("recovery_state_path_symlink_blocked")
+    try:
+        if supplied_path.resolve(strict=True) != configured_path.resolve(strict=True):
+            raise ValueError("recovery_state_path_not_authoritative")
+    except OSError as exc:
+        raise ValueError("authoritative_recovery_state_unavailable") from exc
+    if not configured_path.is_file():
+        raise ValueError("authoritative_recovery_state_not_file")
 
     expected_task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
     if not expected_task_id:
@@ -110,18 +124,14 @@ def build_rsi_authority(
 
         if local_stop_active(ROOT):
             raise RuntimeError("local_emergency_stop_active")
-        repository = (
-            os.environ.get("AI_REPORT_GITHUB_REPO")
-            or os.environ.get("GITHUB_REPOSITORY")
-            or "nonkun12/line-bot"
-        ).strip()
+        repository = (os.environ.get("GITHUB_REPOSITORY") or "").strip()
         token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
-        if not repository or not token:
-            raise RuntimeError("shared_stop_credentials_missing")
+        if repository != "nonkun12/line-bot" or not token:
+            raise RuntimeError("shared_stop_identity_or_credentials_unconfirmed")
         if get_status(repository, token):
             raise RuntimeError("shared_emergency_stop_active")
 
-        recovery = RecoveryStore(recovery_state_path)
+        recovery = RecoveryStore(configured_recovery_path)
         hold = recovery.aggregate_hold_status()
         if not isinstance(hold, dict) or hold.get("state") not in {"CLEAR", "ACTIVE"}:
             raise RuntimeError("recovery_hold_state_unconfirmed")
