@@ -189,6 +189,8 @@ def build_rea_regression_test_proposals(
     ):
         if any(marker in lowered for marker in markers) and term not in terms:
             terms.append(term)
+    if any(term in {"test", "evidence", "diff"} for term in terms):
+        terms.append("verification")
     if not terms:
         return ""
 
