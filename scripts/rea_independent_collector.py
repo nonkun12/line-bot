@@ -247,18 +247,6 @@ def main() -> int:
     if not SHA40.fullmatch(branch_tip):
         raise SystemExit("run-scoped development branch ref is invalid")
     command = ["python", "/harness/runner.py"]
-    trusted_root = Path(__file__).resolve().parents[1]
-    harness_digest = hashlib.sha256()
-    for relative in REA_TESTS:
-        trusted_test = trusted_root / relative
-        if not trusted_test.is_file() or trusted_test.is_symlink():
-            raise SystemExit(f"trusted regression test is unavailable: {relative}")
-        harness_digest.update(relative.encode("utf-8") + b"\0")
-        harness_digest.update(trusted_test.read_bytes())
-    harness_digest.update(Path(__file__).read_bytes())
-    command_hash = hashlib.sha256(
-        "\0".join(command).encode() + b"\0" + harness_digest.digest()
-    ).hexdigest()
     output_rows = []
     previous = args.source_head_sha
 
@@ -276,14 +264,49 @@ def main() -> int:
             raise SystemExit("fetched run branch does not match the trusted API ref")
         image_dir = root / "image"
         image_dir.mkdir()
-        (image_dir / "Dockerfile").write_text(
-            "FROM python:3.12-slim\n"
+        run(["docker", "pull", "python:3.12-slim"])
+        base_image = run([
+            "docker", "image", "inspect", "python:3.12-slim",
+            "--format", "{{index .RepoDigests 0}}",
+        ], capture_output=True).stdout.strip()
+        if not re.fullmatch(r"(?:[^@\s]+/)?python@sha256:[0-9a-f]{64}", base_image):
+            raise SystemExit("could not resolve an immutable Python base-image digest")
+        dockerfile = (
+            f"FROM {base_image}\n"
             "RUN python -m pip install --no-cache-dir pytest==8.3.5 pluggy==1.7.0 packaging==26.3 iniconfig==2.3.1\n"
-            "WORKDIR /workspace\nUSER 65532:65532\n",
-            encoding="utf-8",
+            "WORKDIR /workspace\nUSER 65532:65532\n"
         )
+        dockerfile_path = image_dir / "Dockerfile"
+        dockerfile_path.write_text(dockerfile, encoding="utf-8")
         image = f"rea-collector:{args.run_id}"
-        run(["docker", "build", "--pull", "-t", image, str(image_dir)])
+        run(["docker", "build", "-t", image, str(image_dir)])
+        image_id = run([
+            "docker", "image", "inspect", image, "--format", "{{.Id}}",
+        ], capture_output=True).stdout.strip()
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+            raise SystemExit("collector test image identity is invalid")
+
+        harness = root / "trusted-harness"
+        harness.mkdir()
+        prepare_trusted_harness(harness)
+        harness_digest = hashlib.sha256()
+        trusted_root = Path(__file__).resolve().parents[1]
+        for relative in REA_TESTS:
+            trusted_test = trusted_root / relative
+            if not trusted_test.is_file() or trusted_test.is_symlink():
+                raise SystemExit(f"trusted regression test is unavailable: {relative}")
+            harness_digest.update(relative.encode("utf-8") + b"\0")
+            harness_digest.update(trusted_test.read_bytes())
+        harness_digest.update((harness / "runner.py").read_bytes())
+        harness_digest.update(Path(__file__).read_bytes())
+        command_material = (
+            "\0".join(command).encode("utf-8") + b"\0"
+            + base_image.encode("utf-8") + b"\0"
+            + image_id.encode("utf-8") + b"\0"
+            + dockerfile_path.read_bytes() + b"\0"
+            + harness_digest.digest()
+        )
+        command_hash = hashlib.sha256(command_material).hexdigest()
 
         for index, row in enumerate(rows, 1):
             task_id = row.get("task_id")
@@ -352,13 +375,11 @@ def main() -> int:
             with tarfile.open(archive_path, "r:") as tar:
                 tar.extractall(source, filter="data")
             # Keep trusted tests and their runner outside the task source tree.
-            harness = root / f"harness-{index}"
-            harness.mkdir()
-            prepare_trusted_harness(harness)
-
+            # The same immutable trusted harness is reused for each task.
             # No writable host mount is exposed to task code. The trusted host
             # captures stdout/exit status and creates the evidence record itself.
             result = run([
+                "timeout", "--signal=TERM", "--kill-after=10s", "7m",
                 "docker", "run", "--rm", "--network", "none", "--read-only",
                 "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m,uid=65532,gid=65532",
                 "--mount", f"type=bind,src={source},dst=/workspace,readonly",
