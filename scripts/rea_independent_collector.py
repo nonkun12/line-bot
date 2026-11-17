@@ -100,6 +100,14 @@ def validate_task_rows(rows: list[dict]) -> None:
                 raise SystemExit(f"successful task {task_id} has invalid produced SHA")
 
 
+def no_candidate_reason(rows: list[dict]) -> str:
+    """Distinguish expected no-work runs from non-success task outcomes."""
+    blocking = {"FAIL", "HOLD", "BLOCKED", "STOPPED"}
+    if any(row.get("status") in blocking for row in rows):
+        return "source_non_success_task_without_verifiable_commit_identity"
+    return "no_changed_task_commits"
+
+
 def is_candidate_task_row(row: object) -> bool:
     """Keep changed tasks and every non-success task for downstream verification."""
     if not isinstance(row, dict):
@@ -204,14 +212,10 @@ def main() -> int:
     args.output.mkdir(parents=True, exist_ok=True)
     candidate_rows = [row for row in rows if is_candidate_task_row(row)]
     if not candidate_rows:
-        has_non_success = any(row.get("status") not in {"PASS", "NO_CHANGE"} for row in rows)
         marker = {
             "schema_version": 1, "run_id": str(args.run_id),
             "run_attempt": args.run_attempt, "outcome": "skipped",
-            "reason_code": (
-                "source_non_success_task_without_verifiable_commit_identity"
-                if has_non_success else "no_changed_task_commits"
-            ),
+            "reason_code": no_candidate_reason(rows),
         }
         (args.output / "rea-independent-test-evidence.jsonl").write_text(
             json.dumps(marker, sort_keys=True) + "\n", encoding="utf-8"
