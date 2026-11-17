@@ -43,6 +43,6 @@ def test_project_and_knowledge_signals_are_classified_through_public_proposal_ap
     project = make_proposal("project.md", "プロジェクトの開発を進める")
     knowledge = make_proposal("reference.md", "仕様の参考資料")
     assert project.category is OrganizerCategory.PROJECT
-    assert project.destination_path == "04_Projects/project.md"
+    assert project.destination_path == "01_Projects/project.md"
     assert knowledge.category is OrganizerCategory.KNOWLEDGE
-    assert knowledge.destination_path == "01_Knowledge/reference.md"
+    assert knowledge.destination_path == "04_Knowledge/reference.md"
