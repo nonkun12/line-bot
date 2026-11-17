@@ -60,6 +60,22 @@ def parse_counts(path: Path) -> tuple[int, int, int, int]:
     return collected, passed, failed, skipped
 
 
+def validate_task_rows(rows: list[dict]) -> None:
+    """Validate source artifact task cardinality and identity before any fetch."""
+    if not rows or len(rows) > 4:
+        raise SystemExit("source task count is outside the allowed range")
+    seen: set[str] = set()
+    for index, row in enumerate(rows, 1):
+        task_id = row.get("task_id")
+        if not isinstance(task_id, str) or not task_id.strip():
+            raise SystemExit(f"task {index} has no valid task ID")
+        if task_id in seen:
+            raise SystemExit("source task IDs are not unique")
+        seen.add(task_id)
+        if row.get("status") not in {"PASS", "NO_CHANGE", "FAIL", "HOLD", "BLOCKED"}:
+            raise SystemExit(f"task {task_id} has an unsupported status")
+
+
 def is_candidate_task_row(row: object) -> bool:
     """Keep changed tasks and every non-success task for downstream verification."""
     if not isinstance(row, dict):
@@ -153,8 +169,7 @@ def main() -> int:
         if not isinstance(row, dict):
             raise SystemExit(f"task evidence line {number} is not an object")
         rows.append(row)
-    if not rows:
-        raise SystemExit("task evidence is empty")
+    validate_task_rows(rows)
 
     args.output.mkdir(parents=True, exist_ok=True)
     candidate_rows = [row for row in rows if is_candidate_task_row(row)]
