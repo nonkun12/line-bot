@@ -206,7 +206,10 @@ def build_rea_regression_test_proposals(
                     or not isinstance(meta.get("reason_code"), str)
                     or not _REASON.fullmatch(meta["reason_code"])
                     or not isinstance(meta.get("evidence_sha256"), str)
-                    or not re.fullmatch(r"[0-9a-f]{64}", meta["evidence_sha256"])):
+                    or not re.fullmatch(r"[0-9a-f]{64}", meta["evidence_sha256"])
+                    or not isinstance(meta.get("changed_file_count"), int)
+                    or isinstance(meta.get("changed_file_count"), bool)
+                    or not 0 <= meta["changed_file_count"] <= 10000):
                 continue
             if meta["task_id"] == task_id:
                 continue
@@ -214,6 +217,8 @@ def build_rea_regression_test_proposals(
             if reason not in _REGRESSION_CHECKS:
                 continue
             identity = item.get("source_id", meta["task_id"])
+            if not isinstance(identity, str):
+                continue
             if identity in seen:
                 continue
             seen.add(identity)
@@ -228,4 +233,4 @@ def build_rea_regression_test_proposals(
           for reason, count in ranked],
         "Validate each proposal against the current code and run fresh tests. Historical frequency is not proof, a test result, or authorization.",
     ]
-    return "\\n".join(lines)[:1800]
+    return "\n".join(lines)[:1800]
