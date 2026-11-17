@@ -100,6 +100,7 @@ def build_rea_context(
     for term in terms:
         for item in store.search(namespace=namespace, query=term, limit=limit):
             meta = item.get("metadata", {})
+            changed_count = meta.get("changed_file_count") if isinstance(meta, dict) else None
             if (item.get("source") != "rea_evaluation" or not isinstance(meta, dict)
                     or meta.get("status") not in _STATUSES
                     or not isinstance(meta.get("task_id"), str)
@@ -107,13 +108,16 @@ def build_rea_context(
                     or not isinstance(meta.get("reason_code"), str)
                     or not _REASON.fullmatch(meta["reason_code"])
                     or not isinstance(meta.get("evidence_sha256"), str)
-                    or not re.fullmatch(r"[0-9a-f]{64}", meta["evidence_sha256"])):
+                    or not re.fullmatch(r"[0-9a-f]{64}", meta["evidence_sha256"])
+                    or not isinstance(changed_count, int)
+                    or isinstance(changed_count, bool)
+                    or not 0 <= changed_count <= 10000):
                 continue
             found[item.get("source_id", meta["task_id"])] = {
                 "task_id": meta["task_id"],
                 "status": meta["status"],
                 "reason_code": meta["reason_code"],
-                "changed_file_count": meta.get("changed_file_count", 0),
+                "changed_file_count": changed_count,
             }
     rows = list(found.values())[:limit]
     if not rows:
