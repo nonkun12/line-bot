@@ -20,8 +20,6 @@ class LocalModelError(RuntimeError):
 def _is_loopback(hostname: str) -> bool:
     if not hostname:
         return False
-    if hostname.casefold() == "localhost":
-        return True
     try:
         return ip_address(hostname).is_loopback
     except ValueError:
@@ -124,6 +122,12 @@ class _Chat:
 class LocalModelClient:
     def __init__(self, base_url: str, model: str, protocol: str, timeout: float = 60.0):
         parsed = urlsplit(base_url)
+        try:
+            port = parsed.port
+        except ValueError:
+            raise LocalModelError("local_model_endpoint_port_invalid") from None
+        if port == 0:
+            raise LocalModelError("local_model_endpoint_port_invalid")
         if (
             parsed.scheme != "http"
             or not _is_loopback(parsed.hostname or "")
