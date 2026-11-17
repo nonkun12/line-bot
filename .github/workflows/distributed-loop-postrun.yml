@@ -83,6 +83,49 @@ jobs:
               except Exception:
                   sheets = {}
           statuses = [str(x.get("status", "UNKNOWN")) for x in tasks]
+          # Independently validate the per-task post-generation REA attestation.
+          # A changed PASS without exact SHA/diff-bound pre-publish evidence is
+          # not accepted as a successful distributed-loop result.
+          import re
+          rea_states = []
+          for index, item in enumerate(tasks, start=1):
+              task_status = str(item.get("status", "UNKNOWN"))
+              base_sha = str(item.get("base_sha", ""))
+              produced_sha = str(item.get("produced_sha", ""))
+              attestation = item.get("post_generation_rea")
+              if task_status == "NO_CHANGE":
+                  if base_sha and produced_sha and base_sha != produced_sha:
+                      issues.append(f"Task {index} reports NO_CHANGE with different base/produced SHAs.")
+                      rea_states.append("INVALID")
+                  else:
+                      rea_states.append("NO_CHANGE")
+                  continue
+              if task_status == "PASS" and base_sha and produced_sha and base_sha != produced_sha:
+                  valid = (
+                      isinstance(attestation, dict)
+                      and attestation.get("status") == "PASS"
+                      and attestation.get("base_sha") == base_sha
+                      and attestation.get("target_sha") == produced_sha
+                      and isinstance(attestation.get("diff_sha256"), str)
+                      and re.fullmatch(r"[0-9a-f]{64}", attestation["diff_sha256"]) is not None
+                      and attestation.get("diagnostic_only") is False
+                      and attestation.get("gate_stage") == "pre_publish"
+                      and attestation.get("publish_gate_passed") is True
+                  )
+                  if not valid:
+                      issues.append(
+                          f"Task {index} changed files but its post-generation REA attestation is missing or invalid."
+                      )
+                      rea_states.append("INVALID")
+                  else:
+                      rea_states.append("PASS")
+              elif task_status == "PASS":
+                  # Legacy/malformed PASS rows without immutable SHA identity
+                  # cannot establish whether post-generation scanning was needed.
+                  issues.append(f"Task {index} PASS is missing base/produced SHA identity.")
+                  rea_states.append("MISSING")
+              else:
+                  rea_states.append("NOT_PASS")
           sheets_result = str(sheets.get("result", "MISSING"))
           conclusion = os.environ.get("RUN_CONCLUSION", "unknown")
           original_report = (
@@ -145,6 +188,7 @@ jobs:
               f"- Head SHA: {os.environ.get('HEAD_SHA', '')}",
               f"- Task count in evidence: {len(tasks)}",
               f"- Task statuses: {', '.join(statuses) if statuses else 'NO EVIDENCE'}",
+              f"- Post-generation REA: {', '.join(rea_states) if rea_states else 'NO TASK REA EVIDENCE'}",
               f"- Queue state: {'CATALOG_BLOCKED (human review required; no task executed)' if catalog_blocked else ('QUEUE_EMPTY (no task executed)' if queue_empty else ('TASK_RESULTS_PRESENT' if tasks else 'UNKNOWN'))}",
               f"- Google Sheets artifact result: {sheets_result}",
               f"- Sheets artifact task ID: {sheets.get('task_id', 'unknown')}",
