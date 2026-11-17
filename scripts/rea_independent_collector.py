@@ -189,7 +189,17 @@ def main() -> int:
     if not SHA40.fullmatch(branch_tip):
         raise SystemExit("run-scoped development branch ref is invalid")
     command = ["python", "/harness/runner.py"]
-    command_hash = hashlib.sha256("\0".join(command).encode()).hexdigest()
+    trusted_root = Path(__file__).resolve().parents[1]
+    harness_digest = hashlib.sha256()
+    for relative in REA_TESTS:
+        trusted_test = trusted_root / relative
+        if not trusted_test.is_file() or trusted_test.is_symlink():
+            raise SystemExit(f"trusted regression test is unavailable: {relative}")
+        harness_digest.update(relative.encode("utf-8") + b"\0")
+        harness_digest.update(trusted_test.read_bytes())
+    command_hash = hashlib.sha256(
+        "\0".join(command).encode() + b"\0" + harness_digest.digest()
+    ).hexdigest()
     output_rows = []
     previous = args.source_head_sha
 
