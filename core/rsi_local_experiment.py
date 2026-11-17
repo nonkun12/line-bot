@@ -11,8 +11,8 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from core.rsi_independent_evaluator import evaluate_exact_match
-from core.local_model_client import LocalModelError
+from core.rsi_independent_evaluator import EVALUATOR_ID, EVALUATOR_VERSION, evaluate_exact_match
+from core.local_model_client import LocalModelClient, LocalModelError
 
 
 def _canonical(value: Any) -> bytes:
@@ -68,11 +68,16 @@ def run_local_prompt_comparison(
     snapshot_digest = safety_snapshot.get("snapshot_sha256")
     if not isinstance(snapshot_digest, str) or len(snapshot_digest) != 64 or any(ch not in "0123456789abcdef" for ch in snapshot_digest):
         return {"record": None, "result": _blocked(experiment_id, "safety_snapshot_digest_missing_or_invalid")}
+    snapshot_payload = {key: value for key, value in safety_snapshot.items() if key != "snapshot_sha256"}
+    if hashlib.sha256(_canonical(snapshot_payload)).hexdigest() != snapshot_digest:
+        return {"record": None, "result": _blocked(experiment_id, "safety_snapshot_digest_mismatch")}
+    if evaluator_id != EVALUATOR_ID or evaluator_version != EVALUATOR_VERSION:
+        return {"record": None, "result": _blocked(experiment_id, "evaluator_identity_mismatch")}
     if held_out_locked is not True:
         return {"record": None, "result": _blocked(experiment_id, "held_out_fixture_lock_not_attested")}
     if not isinstance(held_out_expected_sha256, str) or len(held_out_expected_sha256) != 64:
         return {"record": None, "result": _blocked(experiment_id, "held_out_manifest_digest_invalid")}
-    if not isinstance(dataset, Sequence) or isinstance(dataset, (str, bytes)) or not 1 <= len(dataset) <= 100:
+    if not isinstance(dataset, Sequence) or isinstance(dataset, (str, bytes)) or not 1 <= len(dataset) <= 32:
         return {"record": None, "result": _blocked(experiment_id, "held_out_dataset_size_invalid")}
     if not isinstance(baseline_system_prompt, str) or not baseline_system_prompt.strip() or len(baseline_system_prompt) > 8000:
         return {"record": None, "result": _blocked(experiment_id, "baseline_prompt_invalid")}
@@ -80,7 +85,11 @@ def run_local_prompt_comparison(
         return {"record": None, "result": _blocked(experiment_id, "challenger_prompt_invalid")}
     if baseline_system_prompt == challenger_system_prompt or baseline_candidate_id == challenger_candidate_id:
         return {"record": None, "result": _blocked(experiment_id, "candidate_identity_or_prompt_not_distinct")}
-    if not callable(getattr(getattr(getattr(client, "chat", None), "completions", None), "create", None)):
+    if (
+        not isinstance(client, LocalModelClient)
+        or client.protocol not in {"ollama", "openai-compatible"}
+        or not callable(getattr(getattr(getattr(client, "chat", None), "completions", None), "create", None))
+    ):
         return {"record": None, "result": _blocked(experiment_id, "local_model_client_invalid")}
 
     try:
@@ -89,7 +98,7 @@ def run_local_prompt_comparison(
             isinstance(row.get("sample_id"), str)
             and row["sample_id"]
             and isinstance(row.get("input"), str)
-            and len(row["input"]) <= 4000
+            and len(row["input"]) <= 2000
             and isinstance(row.get("expected"), str)
             for row in dataset_rows
         ):
