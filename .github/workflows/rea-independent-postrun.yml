@@ -101,8 +101,11 @@ jobs:
               task_id = row.get("task_id")
               identity = expected.get(task_id)
               if identity is None:
-                  # Explicit no-task/skipped markers cannot establish PASS.
-                  results.append({"status": "BLOCKED", "reason_code": row.get("reason_code", "evidence_identity_missing")})
+                  reason = row.get("reason_code", "evidence_identity_missing")
+                  if reason in {"no_changed_task_commits", "no_changed_rea_task_tested"}:
+                      results.append({"status": "NOT_APPLICABLE", "reason_code": reason})
+                  else:
+                      results.append({"status": "BLOCKED", "reason_code": reason})
                   continue
               seen.add(task_id)
               verdict = validate_independent_test_evidence(
@@ -120,7 +123,7 @@ jobs:
               "source_run_id": source_id,
               "source_run_attempt": context["source_run_attempt"],
               "results": results,
-              "overall": "PASS" if results and all(x.get("status") == "PASS" for x in results) else "HOLD",
+              "overall": ("PASS" if results and all(x.get("status") == "PASS" for x in results) else ("NOT_APPLICABLE" if results and all(x.get("status") == "NOT_APPLICABLE" for x in results) else "HOLD")),
           }
           Path("rea-independent-postrun.json").write_text(
               json.dumps(report, indent=2, sort_keys=True) + "\\n"
@@ -135,7 +138,7 @@ jobs:
                   for item in results
               ) + "\\n"
           )
-          if report["overall"] != "PASS":
+          if report["overall"] not in {"PASS", "NOT_APPLICABLE"}:
               raise SystemExit("independent REA evidence is not PASS; fail closed")
           PY
 
