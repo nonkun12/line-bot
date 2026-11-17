@@ -1026,8 +1026,16 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
         "AUTONOMOUS_RUN_SOURCE",
         "DEV_INSTRUCTION",
     )
+    # Generated code and repository tests are untrusted. Do not let their
+    # subprocesses inherit API keys, GitHub credentials, passwords, or tokens.
+    # Preserve the parent process values and restore them after verification.
+    secret_env_names = {
+        name for name in os.environ
+        if re.search(r"(?:TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|AUTH)", name, re.IGNORECASE)
+    }
+    isolated_env_names = set(task_scoped_names) | secret_env_names
     missing = object()
-    task_scope = {name: os.environ.pop(name, missing) for name in task_scoped_names}
+    task_scope = {name: os.environ.pop(name, missing) for name in isolated_env_names}
     try:
         if full_suite:
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native"]
