@@ -302,6 +302,9 @@ class RecoveryStore:
         Malformed records are errors so callers can fail closed.
         """
         data = self._read()
+        updated_at = data.get("state_updated_at")
+        if not isinstance(updated_at, str) or not updated_at.strip():
+            raise RecoveryStateError("recovery state freshness marker missing")
         blocked_task_ids = []
         for task_id, record in data["tasks"].items():
             if not isinstance(task_id, str) or not task_id.strip() or not isinstance(record, dict):
