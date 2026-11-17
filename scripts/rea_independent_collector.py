@@ -55,15 +55,15 @@ def captured_output_text(output: object) -> str:
 
 
 def parse_counts(output: str) -> tuple[int, int, int, int]:
-    """Parse pytest's final quiet-mode summary captured outside the sandbox."""
+    """Parse one unambiguous pytest summary; ambiguity fails closed."""
     summaries = [
         line.strip()
         for line in output.splitlines()
         if re.search(r"\bin\s+[0-9.]+s\s*$", line.strip())
     ]
-    if not summaries:
+    if len(summaries) != 1:
         return 0, 0, 0, 0
-    summary = summaries[-1]
+    summary = summaries[0]
 
     def count(label: str) -> int:
         match = re.search(rf"\b(\d+)\s+{label}\b", summary)
