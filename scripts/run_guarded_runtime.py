@@ -322,7 +322,7 @@ def _consume_execution_approval(approval_evidence: dict[str, object], start_sha:
     """
     if approval_evidence.get("execution_authorized") is not True:
         return {"gate": "BLOCKED", "reason_code": "approval_not_verified"}
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
     if not token:
         return {"gate": "BLOCKED", "reason_code": "approval_ledger_token_missing"}
 
@@ -420,8 +420,22 @@ def main() -> int:
         )
         return 80
 
-    from core.emergency_stop import local_stop_active
+    from core.emergency_stop import get_status, local_stop_active
     if local_stop_active(ROOT):
+        _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "emergency_stop_active", "execution_authorized": False})
+        print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
+        return 82
+    stop_token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
+    try:
+        remote_stop_active = get_status(
+            os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"),
+            stop_token,
+        )
+    except Exception:
+        _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "remote_stop_state_unconfirmed", "execution_authorized": False})
+        print("EMERGENCY_STOP=ACTIVE_OR_UNVERIFIABLE; runtime not started", flush=True)
+        return 82
+    if remote_stop_active:
         _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "emergency_stop_active", "execution_authorized": False})
         print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
         return 82

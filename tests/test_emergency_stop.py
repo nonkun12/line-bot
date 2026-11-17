@@ -15,12 +15,36 @@ def test_get_status_uses_shared_ref(monkeypatch):
     assert calls == [("GET", "nonkun12/line-bot", "/git/ref/heads/control-tower-emergency-stop")]
 
 
-def test_get_status_false_only_for_confirmed_404(monkeypatch):
-    monkeypatch.setattr(emergency_stop, "_request", lambda *a, **k: (404, {}))
+def test_get_status_false_only_for_confirmed_missing_ref(monkeypatch):
+    calls = []
+    def fake_request(method, repository, token, path, payload=None):
+        calls.append(path)
+        if path == "/git/ref/heads/control-tower-emergency-stop":
+            return 404, {}
+        return 200, {"full_name": "nonkun12/line-bot"}
+    monkeypatch.setattr(emergency_stop, "_request", fake_request)
     assert emergency_stop.get_status("nonkun12/line-bot", "token") is False
+    assert calls == ["/git/ref/heads/control-tower-emergency-stop", ""]
+
     monkeypatch.setattr(emergency_stop, "_request", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("network")))
     with pytest.raises(RuntimeError):
         emergency_stop.get_status("nonkun12/line-bot", "token")
+
+
+def test_get_status_blocks_when_repository_access_is_ambiguous(monkeypatch):
+    def fake_request(method, repository, token, path, payload=None):
+        return (404, {}) if path.endswith("control-tower-emergency-stop") else (404, {})
+    monkeypatch.setattr(emergency_stop, "_request", fake_request)
+    with pytest.raises(RuntimeError, match="repository_access_unconfirmed"):
+        emergency_stop.get_status("nonkun12/line-bot", "token")
+
+
+def test_clear_stop_does_not_treat_missing_repository_as_already_running(monkeypatch):
+    def fake_request(method, repository, token, path, payload=None):
+        return (404, {}) if method == "DELETE" else (404, {})
+    monkeypatch.setattr(emergency_stop, "_request", fake_request)
+    with pytest.raises(RuntimeError, match="repository_access_unconfirmed"):
+        emergency_stop.clear_stop("typo/repository", "token")
 
 
 def test_activate_stop_creates_dedicated_ref(monkeypatch):

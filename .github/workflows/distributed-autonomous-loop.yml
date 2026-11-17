@@ -775,6 +775,41 @@ jobs:
                       f"task changed paths outside its allowlist: {row['task_id']}: {unexpected}"
                   )
 
+              # Post-generation REA: inspect the exact immutable commit diff,
+              # not the pre-execution checkout. Any incomplete or unsafe scan
+              # blocks publication; REA grants no authorization by itself.
+              from scripts.rea_committed_diff_scanner import (
+                  DiffScanBlocked, scan_committed_diff,
+              )
+              try:
+                  post_generation_rea = scan_committed_diff(
+                      ".",
+                      base_sha=row["base_sha"],
+                      produced_sha=row["produced_sha"],
+                      allowed_paths=allowed,
+                  )
+              except DiffScanBlocked as exc:
+                  raise SystemExit(
+                      f"post-generation REA incomplete for {row['task_id']}: {exc}"
+                  ) from exc
+              if (
+                  post_generation_rea.get("status") != "PASS"
+                  or post_generation_rea.get("complete") is not True
+                  or post_generation_rea.get("base_sha") != row["base_sha"]
+                  or post_generation_rea.get("produced_sha") != row["produced_sha"]
+                  or post_generation_rea.get("publish_authorized") is not False
+              ):
+                  raise SystemExit(
+                      f"post-generation REA blocked task {row['task_id']}: "
+                      f"{post_generation_rea.get('findings')}"
+                  )
+              print(
+                  "POST_GENERATION_REA=PASS "
+                  f"task={row['task_id']} "
+                  f"base={row['base_sha']} produced={row['produced_sha']} "
+                  f"diff_sha256={post_generation_rea['diff_sha256']}"
+              )
+
           head_result = subprocess.run(
               ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
           )

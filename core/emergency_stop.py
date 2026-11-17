@@ -49,9 +49,24 @@ def _request(method: str, repository: str, token: str, path: str, payload: dict 
         raise RuntimeError(f"github_request_{type(exc).__name__}") from exc
 
 
+def _repository_access_confirmed(repository: str, token: str) -> bool:
+    """Distinguish an absent STOP ref from a missing/inaccessible repository."""
+    status, payload = _request("GET", repository, token, "")
+    if (
+        status != 200
+        or not isinstance(payload, dict)
+        or str(payload.get("full_name", "")).casefold() != repository.casefold()
+    ):
+        raise RuntimeError("repository_access_unconfirmed")
+    return True
+
+
 def get_status(repository: str, token: str) -> bool:
     status, _ = _request("GET", repository, token, "/git/ref/heads/control-tower-emergency-stop")
     if status == 404:
+        # A 404 alone is ambiguous: it can mean a missing ref OR a bad repository
+        # name/token scope. Only a confirmed repository response permits RUNNING.
+        _repository_access_confirmed(repository, token)
         return False
     if status == 200:
         return True
@@ -79,6 +94,7 @@ def activate_stop(repository: str, token: str) -> str:
 def clear_stop(repository: str, token: str) -> str:
     status, _ = _request("DELETE", repository, token, "/git/refs/heads/control-tower-emergency-stop")
     if status == 404:
+        _repository_access_confirmed(repository, token)
         return "ALREADY_RUNNING"
     if status != 204:
         raise RuntimeError("stop_clear_unconfirmed")

@@ -7,6 +7,11 @@ from scripts import run_guarded_runtime as guarded_runtime
 from scripts.run_guarded_runtime import guarded_ask
 
 
+@pytest.fixture(autouse=True)
+def _shared_remote_stop_defaults_to_confirmed_clear(monkeypatch):
+    monkeypatch.setattr("core.emergency_stop.get_status", lambda repository, token: False)
+
+
 class _Message:
     def __init__(self, content):
         self.content = content
@@ -447,3 +452,42 @@ def test_execution_approval_consumption_blocks_duplicate_ref(monkeypatch):
     result = guarded_runtime._consume_execution_approval(evidence, "b" * 40)
     assert result["gate"] == "BLOCKED"
     assert result["reason_code"] == "approval_already_consumed"
+
+
+def test_common_runtime_blocks_when_shared_remote_stop_is_active(monkeypatch, tmp_path):
+    sha = "d" * 40
+    rea = {"gate": "PASS", "target_sha": sha}
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: sha)
+    monkeypatch.setattr("scripts.rea_control_tower_adapter.prepare_rea_evidence", lambda root, expected_sha: rea)
+    monkeypatch.setattr("scripts.rea_control_tower_adapter.rea_evidence_is_valid_pass", lambda evidence, expected_sha: True)
+    monkeypatch.setattr("core.emergency_stop.local_stop_active", lambda root: False)
+    monkeypatch.setattr("core.emergency_stop.get_status", lambda repository, token: True)
+    monkeypatch.setenv("GITHUB_TOKEN", "read-write-token")
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
+    monkeypatch.setenv("DEV_INSTRUCTION", "must not execute")
+    monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: (_ for _ in ()).throw(AssertionError("runtime must not execute")))
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+
+    assert guarded_runtime.main() == 82
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert summary["status"] == "BLOCKED"
+    assert summary["execution_approval"]["reason_code"] == "emergency_stop_active"
+
+
+def test_common_runtime_blocks_when_shared_stop_state_is_unverifiable(monkeypatch, tmp_path):
+    sha = "e" * 40
+    rea = {"gate": "PASS", "target_sha": sha}
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: sha)
+    monkeypatch.setattr("scripts.rea_control_tower_adapter.prepare_rea_evidence", lambda root, expected_sha: rea)
+    monkeypatch.setattr("scripts.rea_control_tower_adapter.rea_evidence_is_valid_pass", lambda evidence, expected_sha: True)
+    monkeypatch.setattr("core.emergency_stop.local_stop_active", lambda root: False)
+    monkeypatch.setattr("core.emergency_stop.get_status", lambda repository, token: (_ for _ in ()).throw(RuntimeError("unavailable")))
+    monkeypatch.setenv("GITHUB_TOKEN", "token")
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
+    monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: (_ for _ in ()).throw(AssertionError("runtime must not execute")))
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+
+    assert guarded_runtime.main() == 82
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert summary["status"] == "BLOCKED"
+    assert summary["execution_approval"]["reason_code"] == "remote_stop_state_unconfirmed"
