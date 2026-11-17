@@ -65,6 +65,9 @@ def run_local_prompt_comparison(
         return {"record": None, "result": _blocked(experiment_id, "stop_active_or_unverified")}
     if safety_snapshot.get("global_hold_state") != "CLEAR":
         return {"record": None, "result": _blocked(experiment_id, "global_hold_active_or_unverified")}
+    snapshot_digest = safety_snapshot.get("snapshot_sha256")
+    if not isinstance(snapshot_digest, str) or len(snapshot_digest) != 64 or any(ch not in "0123456789abcdef" for ch in snapshot_digest):
+        return {"record": None, "result": _blocked(experiment_id, "safety_snapshot_digest_missing_or_invalid")}
     if held_out_locked is not True:
         return {"record": None, "result": _blocked(experiment_id, "held_out_fixture_lock_not_attested")}
     if not isinstance(held_out_expected_sha256, str) or len(held_out_expected_sha256) != 64:
@@ -121,10 +124,11 @@ def run_local_prompt_comparison(
         safety = {
             "stop_state": safety_snapshot["stop_state"],
             "global_hold_state": safety_snapshot["global_hold_state"],
+            "snapshot_sha256": snapshot_digest,
         }
         result = evaluate_exact_match(
             experiment_id=experiment_id,
-            dataset=[{"sample_id": row["sample_id"], "expected": row["expected"]} for row in dataset_rows],
+            dataset=dataset_rows,
             baseline_predictions=baseline_predictions,
             challenger_predictions=challenger_predictions,
             baseline_candidate_id=baseline_candidate_id,
@@ -136,9 +140,7 @@ def run_local_prompt_comparison(
             minimum_delta=minimum_delta,
             safety=safety,
             held_out_locked=held_out_locked,
-            held_out_expected_sha256=hashlib.sha256(
-                _canonical([{"sample_id": row["sample_id"], "expected": row["expected"]} for row in dataset_rows])
-            ).hexdigest(),
+            held_out_expected_sha256=dataset_digest,
         )
         return result
     except LocalModelError as exc:
