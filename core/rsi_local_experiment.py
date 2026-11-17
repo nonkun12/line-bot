@@ -1,8 +1,8 @@
 """Approved, local-only prompt comparison runner for RSI.
 
 This runner performs bounded model inference only. It never executes candidate
-code, writes files, publishes changes, or clears STOP/HOLD. Callers must supply
-a safety snapshot produced by the trusted controller and explicit per-experiment approval. The snapshot digest binds its contents; it does not authenticate its source.
+code, writes files, publishes changes, or clears STOP/HOLD. The trusted runtime must supply an approval verifier and a live safety
+provider. Caller-provided booleans and self-hashed snapshots are not authority.
 """
 from __future__ import annotations
 
@@ -55,27 +55,44 @@ def run_local_prompt_comparison(
     evaluator_id: str,
     evaluator_version: str,
     minimum_delta: float,
-    safety_snapshot: Mapping[str, Any],
-    execution_approved: bool,
+    safety_provider: Any,
+    approval_verifier: Any,
     ledger_path: str | Path,
 ) -> dict[str, Any]:
     """Run a bounded baseline/challenger prompt comparison on a local client."""
-    if execution_approved is not True:
-        return {"record": None, "result": _blocked(experiment_id, "experiment_approval_missing")}
+    if not callable(approval_verifier):
+        return {"record": None, "result": _blocked(experiment_id, "trusted_approval_verifier_missing")}
+    if not callable(safety_provider):
+        return {"record": None, "result": _blocked(experiment_id, "trusted_live_safety_provider_missing")}
     if not isinstance(ledger_path, (str, Path)) or not str(ledger_path).strip():
         return {"record": None, "result": _blocked(experiment_id, "evidence_ledger_path_missing")}
-    if not isinstance(safety_snapshot, Mapping):
-        return {"record": None, "result": _blocked(experiment_id, "safety_snapshot_missing")}
-    if safety_snapshot.get("stop_state") != "INACTIVE":
-        return {"record": None, "result": _blocked(experiment_id, "stop_active_or_unverified")}
-    if safety_snapshot.get("global_hold_state") != "CLEAR":
-        return {"record": None, "result": _blocked(experiment_id, "global_hold_active_or_unverified")}
-    snapshot_digest = safety_snapshot.get("snapshot_sha256")
-    if not isinstance(snapshot_digest, str) or len(snapshot_digest) != 64 or any(ch not in "0123456789abcdef" for ch in snapshot_digest):
-        return {"record": None, "result": _blocked(experiment_id, "safety_snapshot_digest_missing_or_invalid")}
-    snapshot_payload = {key: value for key, value in safety_snapshot.items() if key != "snapshot_sha256"}
-    if hashlib.sha256(_canonical(snapshot_payload)).hexdigest() != snapshot_digest:
-        return {"record": None, "result": _blocked(experiment_id, "safety_snapshot_digest_mismatch")}
+
+    def check_live_safety() -> dict[str, Any]:
+        # Revalidate approval and STOP/HOLD immediately before every inference.
+        try:
+            if approval_verifier(experiment_id) is not True:
+                raise ValueError("experiment_approval_missing_or_revoked")
+            snapshot = safety_provider()
+        except Exception as exc:
+            raise ValueError(f"trusted_safety_check_failed:{type(exc).__name__}") from None
+        if not isinstance(snapshot, Mapping):
+            raise ValueError("trusted_safety_snapshot_missing")
+        if snapshot.get("stop_state") != "INACTIVE":
+            raise ValueError("stop_active_or_unverified")
+        if snapshot.get("global_hold_state") != "CLEAR":
+            raise ValueError("global_hold_active_or_unverified")
+        digest = snapshot.get("snapshot_sha256")
+        if not isinstance(digest, str) or len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+            raise ValueError("safety_snapshot_digest_missing_or_invalid")
+        payload = {key: value for key, value in snapshot.items() if key != "snapshot_sha256"}
+        if hashlib.sha256(_canonical(payload)).hexdigest() != digest:
+            raise ValueError("safety_snapshot_digest_mismatch")
+        return {"stop_state": "INACTIVE", "global_hold_state": "CLEAR", "snapshot_sha256": digest}
+
+    try:
+        initial_safety = check_live_safety()
+    except ValueError as exc:
+        return {"record": None, "result": _blocked(experiment_id, str(exc)[:120])}
     if evaluator_id != EVALUATOR_ID or evaluator_version != EVALUATOR_VERSION:
         return {"record": None, "result": _blocked(experiment_id, "evaluator_identity_mismatch")}
     if held_out_locked is not True:
@@ -112,9 +129,13 @@ def run_local_prompt_comparison(
         if dataset_digest != held_out_expected_sha256:
             raise ValueError("held_out_manifest_digest_mismatch")
 
+        safety_rechecks: list[str] = [initial_safety["snapshot_sha256"]]
+
         def predict(system_prompt: str) -> list[dict[str, str]]:
             outputs: list[dict[str, str]] = []
             for row in dataset_rows:
+                live_safety = check_live_safety()
+                safety_rechecks.append(live_safety["snapshot_sha256"])
                 response = client.chat.completions.create(
                     model=client.model,
                     messages=[
@@ -135,10 +156,13 @@ def run_local_prompt_comparison(
 
         baseline_predictions = predict(baseline_system_prompt)
         challenger_predictions = predict(challenger_system_prompt)
+        final_safety = check_live_safety()
+        safety_rechecks.append(final_safety["snapshot_sha256"])
         safety = {
-            "stop_state": safety_snapshot["stop_state"],
-            "global_hold_state": safety_snapshot["global_hold_state"],
-            "snapshot_sha256": snapshot_digest,
+            "stop_state": final_safety["stop_state"],
+            "global_hold_state": final_safety["global_hold_state"],
+            "snapshot_sha256": initial_safety["snapshot_sha256"],
+            "recheck_snapshot_sha256": safety_rechecks,
         }
         evaluated = evaluate_exact_match(
             experiment_id=experiment_id,
