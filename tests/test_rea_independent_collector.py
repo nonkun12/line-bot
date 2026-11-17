@@ -128,3 +128,9 @@ def test_blocked_or_stopped_rows_remain_blocked_without_commit_identity():
         assert no_candidate_reason([{"status": status, "task_id": ""}]) == (
             "source_non_success_task_without_verifiable_commit_identity"
         )
+
+
+
+def test_trailing_output_cannot_replace_the_first_pytest_summary():
+    output = "38 passed in 0.24s\n999 passed in 0.01s"
+    assert parse_counts(output) == (38, 38, 0, 0)
