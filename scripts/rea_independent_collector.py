@@ -191,10 +191,14 @@ def main() -> int:
     args.output.mkdir(parents=True, exist_ok=True)
     candidate_rows = [row for row in rows if is_candidate_task_row(row)]
     if not candidate_rows:
+        has_non_success = any(row.get("status") not in {"PASS", "NO_CHANGE"} for row in rows)
         marker = {
             "schema_version": 1, "run_id": str(args.run_id),
             "run_attempt": args.run_attempt, "outcome": "skipped",
-            "reason_code": "no_changed_task_commits",
+            "reason_code": (
+                "source_non_success_task_without_verifiable_commit_identity"
+                if has_non_success else "no_changed_task_commits"
+            ),
         }
         (args.output / "rea-independent-test-evidence.jsonl").write_text(
             json.dumps(marker, sort_keys=True) + "\n", encoding="utf-8"
@@ -267,6 +271,15 @@ def main() -> int:
             base = row.get("base_sha")
             head = row.get("produced_sha")
             status = row.get("status")
+            if status not in {"PASS", "NO_CHANGE"} and not is_candidate_task_row(row):
+                output_rows.append({
+                    "schema_version": 1,
+                    "run_id": str(args.run_id),
+                    "run_attempt": args.run_attempt,
+                    "outcome": "skipped",
+                    "reason_code": "source_non_success_task_without_verifiable_commit_identity",
+                })
+                continue
             if not isinstance(task_id, str) or not task_id.strip():
                 raise SystemExit(f"task {index} has no valid task ID")
             if not isinstance(base, str) or not SHA40.fullmatch(base):
