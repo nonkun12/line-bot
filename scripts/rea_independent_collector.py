@@ -102,7 +102,7 @@ def prepare_trusted_harness(harness: Path) -> None:
         if not trusted_test.is_file() or trusted_test.is_symlink():
             raise SystemExit(f"trusted regression test is unavailable: {relative}")
         shutil.copyfile(trusted_test, tests_root / Path(relative).name)
-    test_args = " ".join(f'"/harness/tests/{Path(name).name}"' for name in REA_TESTS)
+    test_args = ", ".join(f'"/harness/tests/{Path(name).name}"' for name in REA_TESTS)
     runner = (
         "import sys\n"
         "sys.path.insert(0, '/workspace')\n"
