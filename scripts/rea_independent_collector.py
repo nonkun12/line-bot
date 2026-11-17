@@ -25,8 +25,9 @@ SHA64 = re.compile(r"[0-9a-f]{64}")
 REA_TESTS = (
     "tests/test_rea_artifact_evaluator.py",
     "tests/test_rea_independent_test_evidence.py",
+    "tests/test_rea_independent_collector.py",
 )
-REA_PATH_PREFIXES = ("core/rea_", "tests/test_rea_")
+REA_PATH_PREFIXES = ("core/rea_", "scripts/rea_", "tests/test_rea_")
 
 
 def run(command: list[str], *, check: bool = True, **kwargs):
