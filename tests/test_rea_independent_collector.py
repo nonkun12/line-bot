@@ -1,4 +1,4 @@
-from scripts.rea_independent_collector import is_candidate_task_row, validate_task_rows, parse_counts, captured_output_text, no_candidate_reason
+import subprocess\nfrom unittest.mock import patch\n\nfrom scripts.rea_independent_collector import is_candidate_task_row, validate_task_rows, parse_counts, captured_output_text, no_candidate_reason, run_test_container
 
 
 BASE = "1" * 40
@@ -148,3 +148,21 @@ def test_pytest_summary_parser_ignores_non_summary_text():
 
 def test_pytest_failure_first_summary_is_counted_as_failure():
     assert parse_counts("2 failed, 3 passed, 1 skipped in 0.42s") == (6, 3, 2, 1)
+
+
+
+def test_timed_out_sandbox_is_killed_and_removed():
+    command = ["docker", "run", "--name", "rea-task-test"]
+    with patch(
+        "scripts.rea_independent_collector.subprocess.run",
+        side_effect=[
+            subprocess.TimeoutExpired(command, 420, output=b"partial", stderr=b"timeout"),
+            subprocess.CompletedProcess(["docker", "kill", "rea-task-test"], 0),
+            subprocess.CompletedProcess(["docker", "rm", "--force", "rea-task-test"], 0),
+        ],
+    ) as mocked:
+        result = run_test_container(command, "rea-task-test")
+    assert result.returncode == 124
+    assert "timed out" in result.stderr
+    assert mocked.call_args_list[1].args[0] == ["docker", "kill", "rea-task-test"]
+    assert mocked.call_args_list[2].args[0] == ["docker", "rm", "--force", "rea-task-test"]
