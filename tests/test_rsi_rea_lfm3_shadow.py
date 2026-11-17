@@ -5,6 +5,7 @@ from core.rsi_rea_lfm3_shadow import (
     rea_shadow_gate,
     _strict_json_object,
     safety_state_allows_inference,
+    _SYSTEM,
 )
 
 
@@ -117,3 +118,39 @@ def test_unknown_or_active_safety_state_prevents_model_inference():
     assert safety_state_allows_inference("UNKNOWN", "CLEAR") is False
     assert safety_state_allows_inference("INACTIVE", "ACTIVE") is False
     assert safety_state_allows_inference("INACTIVE", "UNKNOWN") is False
+
+def test_risk_rubric_is_explicit_and_conservative():
+    for phrase in (
+        "LOW means read-only inspection",
+        "MEDIUM means a clearly isolated local or sandbox experiment",
+        "HIGH means any production or shared-system mutation",
+        "UNKNOWN means the scope",
+        "do not assume a sandbox",
+    ):
+        assert phrase in _SYSTEM
+
+
+def test_risk_levels_keep_deterministic_fail_closed_authority():
+    base = {
+        "intent": "rsi_self_improvement_experiment",
+        "requires_human_approval": True,
+        "reason": "test",
+    }
+    expected = {
+        "LOW": "REVIEW_ONLY",
+        "MEDIUM": "REVIEW_ONLY",
+        "HIGH": "BLOCKED",
+        "UNKNOWN": "HOLD",
+    }
+    for risk, gate in expected.items():
+        result = rea_shadow_gate(
+            {**base, "risk": risk},
+            stop_state="INACTIVE",
+            global_hold_state="CLEAR",
+        )
+        assert result["gate"] == gate
+        assert result["execution_authorized"] is False
+        assert result["patch_authorized"] is False
+        assert result["hold_clear_authorized"] is False
+        assert result["merge_deploy_authorized"] is False
+\n
