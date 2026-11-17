@@ -15,6 +15,7 @@ def test_issue_discovery_retries_and_validates_paginated_api_responses():
     assert "jq -es" in step
     assert 'sleep "$((attempt * 2))"' in step
     assert "task discovery is blocked" in step
+    assert r"\${" not in step
 
 
 def test_candidate_pool_distinguishes_skipped_task_from_missing_task_evidence():
