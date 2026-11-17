@@ -307,8 +307,9 @@ def _write_summary(
             "base_sha": os.environ.get("AUTONOMOUS_POSTGEN_REA_BASE_SHA", ""),
             "target_sha": os.environ.get("AUTONOMOUS_POSTGEN_REA_TARGET_SHA", ""),
             "diff_sha256": os.environ.get("AUTONOMOUS_POSTGEN_REA_DIFF_SHA256", ""),
-            "diagnostic_only": True,
-            "publish_gate_passed": postgen_status == "PASS",
+            "diagnostic_only": False,
+            "gate_stage": "pre_publish",
+            "publish_gate_passed": postgen_status == "PASS" and exit_code == 0,
         }
     failure_code = extract_safe_failure_code(os.environ.get("AUTONOMOUS_FAILURE_CODE", ""))
     if failure_code is not None:
