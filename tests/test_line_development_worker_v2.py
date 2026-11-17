@@ -575,6 +575,33 @@ def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     assert "full pytest:" in output
 
 
+def test_run_tests_removes_secret_environment_from_test_subprocess_and_restores_parent(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_run(cmd, timeout=900, input_text=None):
+        calls.append(cmd)
+        assert "GITHUB_TOKEN" not in os.environ
+        assert "GROQ_API_KEY" not in os.environ
+        assert "CUSTOM_PASSWORD" not in os.environ
+        assert "DEV_INSTRUCTION" not in os.environ
+        return subprocess.CompletedProcess(cmd, 0, stdout="1 passed", stderr="")
+
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker, "run", fake_run)
+    monkeypatch.setenv("GITHUB_TOKEN", "do-not-leak")
+    monkeypatch.setenv("GROQ_API_KEY", "do-not-leak")
+    monkeypatch.setenv("CUSTOM_PASSWORD", "do-not-leak")
+    monkeypatch.setenv("DEV_INSTRUCTION", "untrusted task text")
+
+    passed, _ = worker.run_tests([])
+
+    assert passed
+    assert os.environ["GITHUB_TOKEN"] == "do-not-leak"
+    assert os.environ["GROQ_API_KEY"] == "do-not-leak"
+    assert os.environ["CUSTOM_PASSWORD"] == "do-not-leak"
+    assert os.environ["DEV_INSTRUCTION"] == "untrusted task text"
+
+
 def test_run_tests_can_verify_only_allowlisted_target_for_no_change(monkeypatch, tmp_path):
     calls = []
 
