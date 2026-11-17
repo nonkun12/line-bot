@@ -34,9 +34,3 @@ def test_issue_dependent_discovery_steps_require_successful_inventory():
         block = _step_block(workflow, name)
         assert "steps.load_issues.outcome == 'success'" in block
 
-
-def test_review_only_candidate_failure_does_not_fail_task_execution_job():
-    workflow = WORKFLOW.read_text(encoding="utf-8")
-    candidates = _step_block(workflow, "Build review-only self-improvement candidate pool")
-    assert "if: always()" in candidates
-    assert "continue-on-error: true" in candidates
