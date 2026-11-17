@@ -13,6 +13,7 @@ import pytest
 def _authorize_existing_apply_plan_contract_tests(monkeypatch, request):
     # Unit tests may exercise the write path, but production remains fail-closed.
     monkeypatch.setenv("AUTO_APPLY_PATCH", "true")
+    monkeypatch.setattr("core.emergency_stop.get_status", lambda repository, token: False)
     if not request.node.name.startswith("test_rea_write_gate_"):
         monkeypatch.setattr(worker, "_rea_write_gate_passes", lambda: True)
 
@@ -1670,3 +1671,38 @@ def test_worker_subprocess_does_not_inherit_write_or_provider_credentials(monkey
     for name in ("GITHUB_TOKEN", "GH_TOKEN", "ACTIONS_RUNTIME_TOKEN", "GROQ_API_KEY"):
         assert name not in child_env
     assert "PATH" in child_env
+
+
+def test_shared_remote_stop_blocks_worker_patch_before_write(tmp_path, monkeypatch):
+    target = tmp_path / "app.py"
+    original = "before\\nTARGET\\nafter\\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTO_APPLY_PATCH", "true")
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr("core.emergency_stop.get_status", lambda repository, token: True)
+    ok, detail, touched = worker.apply_plan({
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "TARGET", "new": "REPLACED"}],
+    })
+    assert ok is False
+    assert detail == "emergency_stop_active_or_unverified"
+    assert touched == []
+    assert target.read_text(encoding="utf-8") == original
+
+
+def test_unknown_shared_remote_stop_state_blocks_worker_patch(tmp_path, monkeypatch):
+    target = tmp_path / "app.py"
+    original = "before\\nTARGET\\nafter\\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTO_APPLY_PATCH", "true")
+    monkeypatch.setattr("core.emergency_stop.get_status", lambda repository, token: (_ for _ in ()).throw(RuntimeError("unavailable")))
+    ok, detail, touched = worker.apply_plan({
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "TARGET", "new": "REPLACED"}],
+    })
+    assert ok is False
+    assert detail == "emergency_stop_active_or_unverified"
+    assert touched == []
+    assert target.read_text(encoding="utf-8") == original
