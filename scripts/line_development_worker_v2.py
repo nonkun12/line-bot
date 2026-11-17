@@ -64,8 +64,33 @@ _TEST_INSTRUCTION_PATTERN = re.compile(r"(?:workflow|connection)[\s_-]*test", re
 _TEST_INSTRUCTION_EXACT = {"開発接続テスト", "接続テスト", "動作確認", "疎通確認", "LINE自動開発テスト"}
 
 
-def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout)
+def run(
+    cmd: list[str], timeout: int = 900, input_text: str | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd, cwd=ROOT, text=True, input=input_text, capture_output=True,
+        timeout=timeout, env=env,
+    )
+
+
+def _untrusted_test_env() -> dict[str, str]:
+    """Remove credentials and task capabilities before running generated tests."""
+    sensitive_markers = (
+        "TOKEN", "SECRET", "API_KEY", "_KEY", "PASSWORD", "CREDENTIAL",
+        "PRIVATE_KEY", "WEBHOOK", "AUTHORIZATION",
+    )
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if not any(marker in key.upper() for marker in sensitive_markers)
+        and key not in {
+            "GITHUB_ENV", "GITHUB_OUTPUT", "GITHUB_EVENT_PATH",
+            "AUTONOMOUS_ALLOWED_PATHS", "AUTONOMOUS_TASK_ID",
+            "AUTONOMOUS_SUMMARY_PATH", "AUTONOMOUS_RUN_NONCE",
+            "AUTONOMOUS_RUN_SOURCE", "DEV_INSTRUCTION",
+        }
+    }
 
 
 def is_protected(path: str) -> bool:
@@ -1002,10 +1027,11 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
 
 def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> tuple[bool, str]:
     outputs: list[str] = []
+    test_env = _untrusted_test_env()
     for path in touched or []:
         if not path.endswith(".py"):
             continue
-        compile_result = run([sys.executable, "-m", "py_compile", path], timeout=120)
+        compile_result = run([sys.executable, "-m", "py_compile", path], timeout=120, env=test_env)
         outputs.append(f"py_compile {path}: returncode={compile_result.returncode}")
         if compile_result.stdout:
             outputs.append(compile_result.stdout)
@@ -1044,7 +1070,7 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 return False, "targeted pytest requires safe relative Python test paths"
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native", *paths]
             outputs.append("targeted pytest:")
-        tests = run(test_cmd, timeout=900)
+        tests = run(test_cmd, timeout=900, env=test_env)
     finally:
         for name, value in task_scope.items():
             if value is missing:
