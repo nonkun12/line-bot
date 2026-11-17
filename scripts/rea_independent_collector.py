@@ -16,7 +16,6 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import quote
 
