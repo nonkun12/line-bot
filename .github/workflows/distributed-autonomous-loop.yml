@@ -428,7 +428,7 @@ jobs:
           # Retry boundedly and validate every page before producing candidate inputs.
           fetch_paginated_json() {
             local endpoint="$1" output="$2" attempt=1
-            local raw="\${output}.raw" err="\${output}.err"
+            local raw="${output}.raw" err="${output}.err"
             while [ "$attempt" -le 3 ]; do
               if gh api --paginate "$endpoint" > "$raw" 2> "$err" \
                 && jq -es 'length > 0 and all(.[]; type == "array")' "$raw" >/dev/null 2>&1; then
@@ -436,7 +436,7 @@ jobs:
                 rm -f "$raw" "$err"
                 return 0
               fi
-              echo "::warning::GitHub API pagination failed or returned invalid JSON (attempt \${attempt}/3)."
+              echo "::warning::GitHub API pagination failed or returned invalid JSON (attempt ${attempt}/3)."
               if [ "$attempt" -lt 3 ]; then sleep "$((attempt * 2))"; fi
               attempt=$((attempt + 1))
             done
@@ -444,11 +444,11 @@ jobs:
             echo "::error::GitHub API pagination failed after 3 attempts; task discovery is blocked."
             return 1
           }
-          fetch_paginated_json "repos/\${GITHUB_REPOSITORY}/issues?state=all&per_page=100" /tmp/autonomous-loop-all-issues.json
+          fetch_paginated_json "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" /tmp/autonomous-loop-all-issues.json
           jq 'map(select(has("pull_request") | not) | {number,title,body,state,labels})' /tmp/autonomous-loop-all-issues.json > /tmp/autonomous-loop-all-issues-filtered.json
           mv /tmp/autonomous-loop-all-issues-filtered.json /tmp/autonomous-loop-all-issues.json
           jq '[.[] | select(.state == "open")]' /tmp/autonomous-loop-all-issues.json > /tmp/autonomous-loop-open-issues.json
-          fetch_paginated_json "repos/\${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" /tmp/autonomous-loop-open-pulls-raw.json
+          fetch_paginated_json "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" /tmp/autonomous-loop-open-pulls-raw.json
           jq 'map({number,state,body,merged_at})' /tmp/autonomous-loop-open-pulls-raw.json > /tmp/autonomous-loop-open-pulls.json
           rm -f /tmp/autonomous-loop-open-pulls-raw.json
 
