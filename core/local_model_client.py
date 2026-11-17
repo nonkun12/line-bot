@@ -147,7 +147,7 @@ class LocalModelClient:
         self.model = model
         self.protocol = protocol
         self.timeout = float(timeout)
-        self.opener = request.build_opener(_redirect_blocker())
+        self.opener = request.build_opener(request.ProxyHandler({}), _redirect_blocker())
         self.chat = _Chat(self)
 
 
