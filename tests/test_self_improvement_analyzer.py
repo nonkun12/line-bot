@@ -67,3 +67,16 @@ def test_analyzer_rejects_invalid_bounds():
         assert str(exc) == "max_patterns must be >= 1"
     else:
         raise AssertionError("expected ValueError")
+
+## Backlog coverage tests
+
+def test_has_recurring_pattern_reflects_presence_of_recurring_patterns():
+    empty = analyze_signals((ImprovementSignal("failure", "one", "unique failure"),))
+    recurring = analyze_signals(
+        (
+            ImprovementSignal("failure", "one", "HTTP 500 at commit abcdef1234567890"),
+            ImprovementSignal("repair", "two", "HTTP 500 at commit deadbeefcafebabe"),
+        )
+    )
+    assert empty.has_recurring_pattern is False
+    assert recurring.has_recurring_pattern is True
