@@ -610,6 +610,7 @@ def run_task(
     env["AUTONOMOUS_TASK_ID"] = task["id"]
     env["AUTONOMOUS_RUN_NONCE"] = run_nonce
     env["AUTONOMOUS_ALLOWED_PATHS"] = json.dumps(task["allowed_paths"], ensure_ascii=False)
+    env["AUTONOMOUS_RECOVERY_STATE_PATH"] = str(args.state.parent / "recovery-ai-state.json")
     # Remove any prior summary so a failed/stalled runtime can never inherit an old PASS.
     try:
         summary.unlink()
