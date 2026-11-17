@@ -30,6 +30,7 @@ def _canonical(value: Any) -> bytes:
 def build_rsi_authority(
     *,
     experiment_id: str,
+    config_sha256: str,
     start_sha: str,
     instruction: str,
     recovery_state_path: str | Path,
@@ -43,6 +44,10 @@ def build_rsi_authority(
     """
     if not isinstance(experiment_id, str) or not experiment_id.strip():
         raise ValueError("rsi_experiment_id_missing")
+    if not isinstance(config_sha256, str) or len(config_sha256) != 64 or any(char not in "0123456789abcdef" for char in config_sha256):
+        raise ValueError("rsi_experiment_config_digest_invalid")
+    if f"RSI_EXPERIMENT_CONFIG_SHA256={config_sha256}" not in instruction:
+        raise ValueError("rsi_experiment_config_not_bound_to_approved_instruction")
     if (
         not isinstance(start_sha, str)
         or len(start_sha) != 40
