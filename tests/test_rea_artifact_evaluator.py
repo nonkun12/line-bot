@@ -160,6 +160,7 @@ def test_runtime_summary_requires_trusted_independent_test_evidence():
             "base_sha": BASE,
             "head_sha": HEAD,
             "diff_sha256": "a" * 64,
+            "test_command_sha256": "b" * 64,
         },
         "trusted_test_collector": True,
     }
