@@ -19,13 +19,19 @@ from core.emergency_stop import get_status
 
 def _terminate_process_group(process: subprocess.Popen, stop_file: Path, grace_seconds: float) -> bool:
     """Return True only after the child process has actually exited."""
-    stop_file.touch(exist_ok=True)
+    try:
+        stop_file.touch(exist_ok=True)
+    except OSError:
+        pass
     try:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
         pass
     except OSError:
-        return False
+        try:
+            process.terminate()
+        except OSError:
+            return False
     try:
         process.wait(timeout=grace_seconds)
     except subprocess.TimeoutExpired:
