@@ -23,19 +23,15 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from core.local_model_client import LocalModelError, create_local_model_client_from_env
+from core.local_model_client import LocalModelClient, LocalModelError, create_local_model_client_from_env
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
 
 ROOT = _ROOT
 MODEL = os.environ.get("RSI_LOCAL_MODEL_NAME", "")
 MAX_FILES = 1
 MAX_FILE_CHARS = 12000
-# Groq's 8,000 TPM limit counts prompt plus requested completion tokens.
-# A 3,500-token completion plus the observed ~4,808-token prompt was rejected
-# at 8,308 TPM. Keep the default completion budget at 2,500 to leave headroom.
+# Bound local inference cost in time and output size.
 MAX_RESPONSE_TOKENS = 2500
-# Keep this endpoint within the observed Groq TPM budget: a 3,500-token
-# completion plus a ~4,808-token prompt was rejected. Bound both sides.
 MAX_APPEND_ONLY_RESPONSE_TOKENS = 2500
 MAX_APPEND_ONLY_CONTEXT_CHARS = 3000
 MAX_INSTRUCTION_LENGTH = 2000
@@ -179,7 +175,7 @@ def repo_files() -> list[str]:
     ]
 
 
-def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
+def ask(client: LocalModelClient, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
     response = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
