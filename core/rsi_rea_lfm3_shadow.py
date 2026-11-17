@@ -185,6 +185,36 @@ def assess_rsi_request(
         }
 
 
+
+
+def read_live_safety_state() -> tuple[str, str]:
+    """Read real local/shared STOP and Recovery HOLD sources; never trust env flags."""
+    try:
+        from core.emergency_stop import get_status, local_stop_active
+        from core.immediate_stop import ImmediateStopController
+        from scripts.recovery_ai import RecoveryStore
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if local_stop_active(root) or ImmediateStopController().is_stopped():
+            return "ACTIVE", "UNKNOWN"
+
+        repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
+        token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
+        if repository != "nonkun12/line-bot" or not token:
+            return "UNKNOWN", "UNKNOWN"
+        if get_status(repository, token):
+            return "ACTIVE", "UNKNOWN"
+
+        state_path = os.environ.get("AUTONOMOUS_RECOVERY_STATE_PATH", "").strip()
+        if not state_path:
+            return "INACTIVE", "UNKNOWN"
+        hold = RecoveryStore(state_path).aggregate_hold_status()
+        if not isinstance(hold, dict) or hold.get("state") not in {"CLEAR", "ACTIVE"}:
+            return "INACTIVE", "UNKNOWN"
+        return "INACTIVE", hold["state"]
+    except Exception:
+        return "UNKNOWN", "UNKNOWN"
+
 def main() -> int:
     model = os.environ.get("RSI_LOCAL_MODEL_NAME", "lfm3:1.7b-qad-q4_0").strip()
     base_url = os.environ.get("RSI_LOCAL_MODEL_BASE_URL", "http://127.0.0.1:11434").strip()
@@ -207,12 +237,13 @@ def main() -> int:
         }, ensure_ascii=False))
         return 2
 
+    stop_state, global_hold_state = read_live_safety_state()
     result = assess_rsi_request(
         client,
         model=model,
         request_text="RSIの自己改善実験を安全に開始するための要求を分類する",
-        stop_state=os.environ.get("RSI_STOP_STATE", "UNKNOWN"),
-        global_hold_state=os.environ.get("RSI_GLOBAL_HOLD_STATE", "UNKNOWN"),
+        stop_state=stop_state,
+        global_hold_state=global_hold_state,
     )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0 if result["gate"] in {"REVIEW_ONLY", "HOLD"} else 2
