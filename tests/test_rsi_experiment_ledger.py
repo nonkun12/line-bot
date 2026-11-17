@@ -61,3 +61,18 @@ def test_invalid_payload_does_not_create_or_mutate_ledger(tmp_path):
         append_ledger_entry(path, {"bad_number": float("nan")})
 
     assert not path.exists()
+
+
+
+@pytest.mark.parametrize("payload", [
+    {"api_key": "secret-value"},
+    {"nested": {"github_token": "secret-value"}},
+    {"items": [{"client_secret": "secret-value"}]},
+])
+def test_credential_fields_are_rejected_before_ledger_mutation(tmp_path, payload):
+    path = tmp_path / "ledger.jsonl"
+
+    with pytest.raises(ValueError, match="ledger_sensitive_field_rejected"):
+        append_ledger_entry(path, payload)
+
+    assert not path.exists()
