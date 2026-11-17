@@ -84,7 +84,7 @@ def test_runner_blocks_without_explicit_approval_before_model_call(tmp_path):
     result = run_local_prompt_comparison(**args)
 
     assert result["result"]["status"] == "BLOCKED"
-    assert result["result"]["reason"] == "experiment_approval_missing"
+    assert result["result"]["reason"] == "experiment_approval_missing_or_revoked"
     assert client.calls == []
 
 
