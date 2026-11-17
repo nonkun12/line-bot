@@ -45,11 +45,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source_dir="$RUNNER_TEMP/rea-source"
+          mkdir -p "$source_dir"
+          git archive --format=tar HEAD | tar -xf - -C "$source_dir"
           docker run --rm \
             --network none \
             --read-only \
-            --tmpfs /tmp:rw,noexec,nosuid,size=256m \
-            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspace,readonly" \
+            --tmpfs /tmp:rw,noexec,nosuid,size=256m,uid=65532,gid=65532 \
+            --mount "type=bind,src=$source_dir,dst=/workspace,readonly" \
             --workdir /workspace \
             --cap-drop ALL \
             --security-opt no-new-privileges:true \
@@ -60,6 +63,6 @@ jobs:
             --env PYTHONDONTWRITEBYTECODE=1 \
             --env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
             rea-isolated-tests:local \
-            python -m pytest -q \
+            python -m pytest -q -p no:cacheprovider \
               tests/test_rea_artifact_evaluator.py \
               tests/test_rea_independent_test_evidence.py
