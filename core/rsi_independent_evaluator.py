@@ -99,7 +99,7 @@ def evaluate_exact_match(
             raise ValueError("challenger_prediction_row_invalid")
         if not _SHA256.fullmatch(baseline_artifact_sha256) or not _SHA256.fullmatch(challenger_artifact_sha256):
             raise ValueError("candidate_artifact_digest_invalid")
-        if not math.isfinite(float(minimum_delta)) or minimum_delta < 0:
+        if isinstance(minimum_delta, bool) or not math.isfinite(float(minimum_delta)) or minimum_delta < 0:
             raise ValueError("minimum_delta_invalid")
 
         dataset_rows = [dict(row) for row in dataset]
