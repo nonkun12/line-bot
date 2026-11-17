@@ -57,3 +57,36 @@ def test_loader_rejects_non_object_jsonl(tmp_path):
     path.write_text(json.dumps(["bad"]) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="must be an object"):
         _load_rows(path)
+
+
+def test_main_writes_read_only_report_and_cli_summary(tmp_path, monkeypatch, capsys):
+    from scripts import distributed_loop_debug_agent as debug_agent
+
+    results_path = tmp_path / "results.jsonl"
+    output_path = tmp_path / "nested" / "report.json"
+    results_path.write_text(
+        json.dumps({
+            "task_id": "cli-timeout-check",
+            "status": "FAIL",
+            "failure_reason": "task_timeout",
+        }) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        ["debug-agent", "--results", str(results_path), "--output", str(output_path)],
+    )
+
+    assert debug_agent.main() == 0
+
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+    assert report["status"] == "REVIEW_REQUIRED"
+    assert len(report["diagnoses"]) == 1
+    diagnosis = report["diagnoses"][0]
+    assert diagnosis["failure_reason"] == "task_timeout"
+    assert diagnosis["permissions"]
+    assert all(value is False for value in diagnosis["permissions"].values())
+    assert capsys.readouterr().out.splitlines() == [
+        "DEBUG_AGENT_STATUS=REVIEW_REQUIRED",
+        "DEBUG_AGENT_DIAGNOSES=1",
+    ]
