@@ -123,6 +123,15 @@ def _summary(env, **overrides):
         "produced_sha": "c" * 40,
         "task_id": "evidence-task",
         "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+        "post_generation_rea": {
+            "status": "PASS",
+            "base_sha": "a" * 40,
+            "target_sha": "c" * 40,
+            "diff_sha256": "e" * 64,
+            "diagnostic_only": False,
+            "gate_stage": "pre_publish",
+            "publish_gate_passed": True,
+        },
     }
     payload.update(overrides)
     return json.dumps(payload)
