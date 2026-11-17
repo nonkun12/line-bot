@@ -35,6 +35,19 @@ def build_snapshot(results: list[dict], run_id: str, outcome: str, captured_at: 
         else:
             counts[stream_key] += 1
         item = {"task_id": task_id, "status": status, "stage": "completed" if status in {"PASS", "NO_CHANGE"} else "reported"}
+        artifact = row.get("rea_artifact")
+        if isinstance(artifact, dict):
+            artifact_status = artifact.get("status")
+            evidence_hash = artifact.get("evidence_sha256")
+            reason_code = artifact.get("reason_code")
+            if artifact_status in {"PASS", "FAIL", "NO_CHANGE", "BLOCKED", "HOLD"}:
+                item["rea_artifact_status"] = artifact_status
+            if isinstance(reason_code, str) and reason_code and len(reason_code) <= 100:
+                item["rea_artifact_reason_code"] = reason_code
+            if isinstance(evidence_hash, str) and len(evidence_hash) == 64 and all(ch in "0123456789abcdef" for ch in evidence_hash):
+                item["rea_artifact_evidence_sha256"] = evidence_hash
+            for flag in ("execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"):
+                item["rea_artifact_" + flag] = artifact.get(flag) is True
         if stream_key:
             item["stream_key"] = stream_key
         tasks.append(item)

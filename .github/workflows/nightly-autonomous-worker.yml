@@ -15,6 +15,10 @@ on:
         description: 'Exact task ID shown by the prior BLOCKED run'
         required: false
         type: string
+      approval_allowed_paths_sha256:
+        description: 'SHA-256 of the canonical sorted allowed_paths list'
+        required: false
+        type: string
       approval_instruction_sha256:
         description: 'SHA-256 of the exact development instruction'
         required: false
@@ -85,7 +89,46 @@ jobs:
           AUTONOMOUS_SUMMARY_PATH: ${{ runner.temp }}/autonomous_run_summary.json
           AUTONOMOUS_TASK_ID: scheduled-distributed-development
         run: |
-          python scripts/run_guarded_runtime.py
+          set -uo pipefail
+          STOP_FILE=/tmp/line-bot-autonomous-loop.stop
+          rm -f "$STOP_FILE"
+          # Check before launching any task; unknown remote state is a hard stop.
+          python -c 'from core.emergency_stop import get_status; import os; raise SystemExit(1 if get_status(os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"), os.environ["GITHUB_TOKEN"]) else 0)' || {
+            touch "$STOP_FILE"
+            echo "EMERGENCY_STOP=ACTIVE_OR_UNVERIFIABLE; refusing to start guarded runtime."
+            exit 1
+          }
+          (
+            while sleep 5; do
+              python -c 'from core.emergency_stop import get_status; import os; raise SystemExit(1 if get_status(os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"), os.environ["GITHUB_TOKEN"]) else 0)' || {
+                touch "$STOP_FILE"
+                echo "EMERGENCY_STOP=ACTIVE_OR_UNVERIFIABLE"
+                exit 0
+              }
+            done
+          ) &
+          POLLER_PID=$!
+          trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
+          python scripts/run_guarded_runtime.py &
+          RUNTIME_PID=$!
+          while kill -0 "$RUNTIME_PID" 2>/dev/null; do
+            if [ -f "$STOP_FILE" ]; then
+              echo "Emergency STOP detected; terminating guarded runtime."
+              kill -TERM "$RUNTIME_PID" 2>/dev/null || true
+              break
+            fi
+            sleep 1
+          done
+          set +e
+          wait "$RUNTIME_PID"
+          runtime_rc=$?
+          set -e
+          if [ -f "$STOP_FILE" ]; then
+            echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+            echo "Emergency STOP active; refusing to publish."
+            exit 1
+          fi
+          if [ "$runtime_rc" -ne 0 ]; then exit "$runtime_rc"; fi
           echo "AUTONOMOUS_SUMMARY_PATH=${RUNNER_TEMP}/autonomous_run_summary.json" >> "$GITHUB_ENV"
 
       - name: Validate autonomous result and Safety Gate
