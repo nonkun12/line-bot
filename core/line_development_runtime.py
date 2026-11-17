@@ -169,6 +169,13 @@ def _is_provider_free_autonomous_task(task_id: str) -> bool:
     )
 
 
+def _provider_block_reason(task_id: str) -> str | None:
+    """Reject metered/external model use until a verified local adapter exists."""
+    if _is_provider_free_autonomous_task(task_id):
+        return None
+    return "external_model_provider_disabled_local_adapter_unavailable"
+
+
 def _self_improvement_history_path() -> Path:
     raw = os.environ.get(
         "SELF_IMPROVEMENT_HISTORY_PATH",
@@ -2687,9 +2694,24 @@ def _prepare_idea_stage(instruction: str) -> tuple[str, str | None, str | None]:
     )
     return handoff.instruction, handoff.task_id, None
 
+def _shared_stop_is_active() -> bool:
+    """Poll the shared STOP ref at every runtime safety checkpoint."""
+    from core.emergency_stop import get_status
+
+    repository = (
+        os.environ.get("AI_REPORT_GITHUB_REPO")
+        or os.environ.get("GITHUB_REPOSITORY")
+        or "nonkun12/line-bot"
+    ).strip()
+    token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
+    if not repository or not token:
+        raise RuntimeError("shared_stop_credentials_missing")
+    return get_status(repository, token)
+
+
 def execute(instruction: str) -> int:
     """Run one real guarded development request through the quality pipeline."""
-    stop_controller = ImmediateStopController()
+    stop_controller = ImmediateStopController(shared_status_checker=_shared_stop_is_active)
     try:
         stop_controller.assert_can_execute()
     except ImmediateStop as exc:
@@ -2697,6 +2719,14 @@ def execute(instruction: str) -> int:
         _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=None, branch=None, exit_detail=str(exc), base_sha=None, produced_sha=None)
         return 1
     autonomous_task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    provider_block_reason = _provider_block_reason(autonomous_task_id)
+    if provider_block_reason is not None:
+        print("MODEL_PROVIDER=BLOCKED reason=local_adapter_unavailable; external or metered APIs are disabled", flush=True)
+        _write_development_audit_to_google_sheets(
+            instruction=instruction, status="BLOCKED", target_path=None, branch=None,
+            exit_detail=provider_block_reason, base_sha=None, produced_sha=None,
+        )
+        return 1
     deterministic_task = autonomous_task_id in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
     review_coverage_gap_task = _is_review_coverage_gap_task_id(autonomous_task_id)
     if deterministic_task or review_coverage_gap_task:
@@ -2864,6 +2894,42 @@ def execute(instruction: str) -> int:
     commit = worker.run(["git", *identity, "commit", "-m", "feat: LINE development request"])
     if commit.returncode != 0:
         worker.restore(touched); print(commit.stderr[-2000:], flush=True); return 1
+
+    # Post-generation REA must inspect the immutable commit before any push.
+    try:
+        from scripts.rea_post_generation_gate import verify_generated_commit
+        produced = worker.run(["git", "rev-parse", "HEAD"])
+        if produced.returncode != 0 or not produced.stdout.strip():
+            raise RuntimeError("produced_commit_sha_unavailable")
+        produced_sha = produced.stdout.strip()
+        raw_allowed_paths = os.environ.get("AUTONOMOUS_ALLOWED_PATHS", "")
+        allowed_paths = json.loads(raw_allowed_paths)
+        postgen_report = verify_generated_commit(
+            worker.ROOT,
+            base_sha=baseline_sha,
+            target_sha=produced_sha,
+            allowed_paths=allowed_paths,
+        )
+    except Exception as exc:
+        os.environ["AUTONOMOUS_POSTGEN_REA_STATUS"] = "BLOCKED"
+        rollback_ok = _rollback_to_clean_baseline(baseline_sha)
+        print(
+            f"POST_GENERATION_REA=BLOCKED reason={type(exc).__name__} "
+            f"rollback={'PASS' if rollback_ok else 'FAIL'}",
+            flush=True,
+        )
+        return 1
+
+    os.environ["AUTONOMOUS_POSTGEN_REA_STATUS"] = "PASS"
+    os.environ["AUTONOMOUS_POSTGEN_REA_BASE_SHA"] = baseline_sha
+    os.environ["AUTONOMOUS_POSTGEN_REA_TARGET_SHA"] = produced_sha
+    os.environ["AUTONOMOUS_POSTGEN_REA_DIFF_SHA256"] = postgen_report["diff_sha256"]
+    print(
+        f"POST_GENERATION_REA=PASS base={baseline_sha[:12]} "
+        f"target={produced_sha[:12]} diff_sha256={postgen_report['diff_sha256']}",
+        flush=True,
+    )
+
     checkout = worker.run(["git", "checkout", "-B", branch])
     if checkout.returncode != 0:
         print(checkout.stderr[-2000:], flush=True); return 1

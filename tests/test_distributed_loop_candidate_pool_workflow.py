@@ -164,6 +164,7 @@ def test_workflow_loads_durable_state_for_no_task_run_when_readback_is_missing(t
     env["PATH"] = str(mock_bin) + os.pathsep + env.get("PATH", "")
     env["GITHUB_REPOSITORY"] = "nonkun12/line-bot"
     env["GH_TOKEN"] = "test-token"
+    env["RUN_TASK_CONCLUSION"] = "skipped"
     env["MOCK_GH_LOG"] = str(gh_log)
     env["MOCK_GH_CONTENT"] = str(content_file)
     result = subprocess.run(
@@ -209,6 +210,7 @@ def test_workflow_does_not_silently_fallback_when_task_ran_but_readback_is_missi
     env["PATH"] = str(mock_bin) + os.pathsep + env.get("PATH", "")
     env["GITHUB_REPOSITORY"] = "nonkun12/line-bot"
     env["GH_TOKEN"] = "test-token"
+    env["RUN_TASK_CONCLUSION"] = "success"
     result = subprocess.run(
         ["bash", "-euo", "pipefail", "-c", script],
         cwd=ROOT,

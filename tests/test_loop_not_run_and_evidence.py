@@ -123,6 +123,15 @@ def _summary(env, **overrides):
         "produced_sha": "c" * 40,
         "task_id": "evidence-task",
         "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+        "post_generation_rea": {
+            "status": "PASS",
+            "base_sha": "a" * 40,
+            "target_sha": "c" * 40,
+            "diff_sha256": "e" * 64,
+            "diagnostic_only": False,
+            "gate_stage": "pre_publish",
+            "publish_gate_passed": True,
+        },
     }
     payload.update(overrides)
     return json.dumps(payload)
@@ -319,8 +328,14 @@ def _prepare_selector_main(monkeypatch, tmp_path, tasks, head_reader=None):
         def __init__(self, *_args, **_kwargs):
             pass
 
+        def ensure_initialized(self):
+            return None
+
         def task_status(self, _task_id):
             return {"held": False}
+
+        def aggregate_hold_status(self):
+            return {"state": "CLEAR"}
 
     monkeypatch.setattr("scripts.recovery_ai.RecoveryStore", _RecoveryStore)
     monkeypatch.setattr(
@@ -359,6 +374,21 @@ def test_control_tower_reselects_second_task_against_new_head(monkeypatch, tmp_p
         lambda _path, result, **_kwargs: {"recorded": True, "task_id": result["task_id"]},
     )
     monkeypatch.setattr(
+        "scripts.recovery_ai.RecoveryStore.aggregate_hold_status",
+        lambda _self: {"state": "CLEAR"},
+    )
+    monkeypatch.setattr(
+        "scripts.rea_artifact_runtime.evaluate_and_record_runtime_artifact",
+        lambda summary, **_kwargs: {
+            "status": "NO_CHANGE" if summary["base_sha"] == summary["produced_sha"] else "PASS",
+            "evidence_sha256": "d" * 64,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
         "scripts.control_tower_loop_observer.record_loop_observation",
         lambda _path, result, **_kwargs: {"recorded": True, "task_id": result["task_id"], "proposal_executable": False},
     )
@@ -367,7 +397,7 @@ def test_control_tower_reselects_second_task_against_new_head(monkeypatch, tmp_p
         lambda _result: {"phase": "CONTINUE", "next_action": "CONTINUE", "reason_code": "test_pass", "allow_continue": True, "repair_executed": False},
     )
 
-    def fake_run_task(task, index, _stop_file, *, expected_base_sha=None):
+    def fake_run_task(task, index, _stop_file, *, expected_base_sha=None, recovery_state_path=None):
         if index == 1:
             head["sha"] = "b" * 40
             return {
@@ -473,6 +503,9 @@ def test_recovery_ai_hold_appearing_before_launch_blocks(monkeypatch, tmp_path, 
         def __init__(self, *_args, **_kwargs):
             pass
 
+        def ensure_initialized(self):
+            return None
+
         def task_status(self, _task_id):
             type(self).calls += 1
             # Initial selection sees no hold; launch-time recheck sees HOLD.
@@ -496,6 +529,9 @@ def test_malformed_recovery_state_blocks_before_execution(monkeypatch, tmp_path,
         def __init__(self, *_args, **_kwargs):
             pass
 
+        def ensure_initialized(self):
+            return None
+
         def task_status(self, _task_id):
             return dict(recovery_record)
 
@@ -515,6 +551,9 @@ def test_recovery_state_error_records_blocked_evidence_before_execution(monkeypa
     class _BrokenRecoveryStore:
         def __init__(self, *_args, **_kwargs):
             pass
+
+        def ensure_initialized(self):
+            return None
 
         def task_status(self, _task_id):
             raise ValueError("malformed recovery state")
