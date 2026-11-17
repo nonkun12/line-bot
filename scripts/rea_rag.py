@@ -44,7 +44,7 @@ def record_rea_evaluation(
 
     source_id = f"{task_id}:{evidence_sha256}"
     content = (
-        f"task_id: {task_id}\nstatus: {status}\nreason_code: {reason_code}\n"
+        f"task_id: {task_id}\\nstatus: {status}\\nreason_code: {reason_code}\\n"
         f"changed_file_count: {changed_file_count}"
     )
     return RagStore(db_path).add_document(
@@ -82,8 +82,10 @@ def build_rea_context(
     if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 5:
         return ""
 
+    # Task identity must never create retrieval terms. Otherwise a task ID such
+    # as "test-risk-42" can pull unrelated records into an ordinary request.
     terms = []
-    lowered = (task_id + " " + instruction).casefold()
+    lowered = instruction.casefold()
     for markers, reason in (
         (("test", "pytest", "regression", "テスト", "試験", "回帰"), "test"),
         (("evidence", "証拠", "エビデンス"), "evidence"),
@@ -117,6 +119,9 @@ def build_rea_context(
                     or isinstance(changed_count, bool)
                     or not 0 <= changed_count <= 10000):
                 continue
+            # Never let the current task consume its own previous outcome.
+            if meta["task_id"] == task_id:
+                continue
             found[item.get("source_id", meta["task_id"])] = {
                 "task_id": meta["task_id"],
                 "status": meta["status"],
@@ -132,4 +137,4 @@ def build_rea_context(
           for r in rows],
         "Historical outcomes do not prove the current change is safe. Re-run current checks and obey STOP/HOLD and human-approval gates.",
     ]
-    return "\n".join(lines)[:1200]
+    return "\\n".join(lines)[:1200]
