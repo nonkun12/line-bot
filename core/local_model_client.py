@@ -1,4 +1,4 @@
-"""Fail-closed local-only chat client with a Groq-compatible call surface.
+"""Fail-closed local-only chat client with an OpenAI-compatible call surface.
 
 Only explicit loopback HTTP endpoints are accepted. Redirects, credentials,
 remote hosts, retries, and cloud fallbacks are disabled.
