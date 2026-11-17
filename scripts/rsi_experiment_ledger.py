@@ -8,11 +8,31 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 _ZERO_HASH = "0" * 64
+_SENSITIVE_KEY = re.compile(
+    r"(^|_)(api_key|access_token|refresh_token|github_token|"
+    r"line_channel_access_token|password|secret|authorization|cookie|"
+    r"webhook_url|private_key|client_secret|credential|credentials)($|_)",
+    re.IGNORECASE,
+)
+
+
+def _reject_secret_fields(value: Any, path: str = "payload") -> None:
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            if not isinstance(key, str):
+                raise ValueError("ledger_payload_key_must_be_string")
+            if _SENSITIVE_KEY.search(key):
+                raise ValueError(f"ledger_sensitive_field_rejected:{path}.{key}")
+            _reject_secret_fields(child, f"{path}.{key}")
+    elif isinstance(value, (list, tuple)):
+        for index, child in enumerate(value):
+            _reject_secret_fields(child, f"{path}[{index}]")
 
 
 def _canonical(value: Any) -> bytes:
@@ -86,6 +106,8 @@ def append_ledger_entry(path: str | Path, payload: Mapping[str, Any]) -> str:
     if not isinstance(payload, Mapping):
         raise TypeError("ledger_payload_must_be_object")
     safe_payload = dict(payload)
+    # Refuse obvious credential-bearing fields before opening or mutating.
+    _reject_secret_fields(safe_payload)
     # Validate serializability before opening or mutating the ledger.
     _canonical(safe_payload)
 
