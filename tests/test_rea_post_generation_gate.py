@@ -30,7 +30,8 @@ class PostGenerationREAGateTests(unittest.TestCase):
     def test_accepts_only_exact_complete_clean_report(self, scanner):
         scanner.return_value = self._pass_report()
         report = verify_generated_commit(
-            ".", base_sha="a" * 40, target_sha="b" * 40
+            ".", base_sha="a" * 40, target_sha="b" * 40,
+            allowed_paths=["scripts/generated.py"],
         )
         self.assertEqual(report["target_sha"], "b" * 40)
 
@@ -40,7 +41,10 @@ class PostGenerationREAGateTests(unittest.TestCase):
         report["findings"] = [{"severity": "HIGH"}]
         scanner.return_value = report
         with self.assertRaises(PostGenerationREABlocked):
-            verify_generated_commit(".", base_sha="a" * 40, target_sha="b" * 40)
+            verify_generated_commit(
+                ".", base_sha="a" * 40, target_sha="b" * 40,
+                allowed_paths=["scripts/generated.py"],
+            )
 
     @patch("scripts.rea_post_generation_gate.scan_commit_diff")
     def test_blocks_incomplete_or_wrong_sha_evidence(self, scanner):
