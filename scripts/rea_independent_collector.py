@@ -165,7 +165,7 @@ def main() -> int:
     if not SHA40.fullmatch(branch_tip):
         raise SystemExit("run-scoped development branch ref is invalid")
     command = [
-        "python", "-m", "pytest", "-q", "-p", "no:cacheprovider",
+        "python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "--noconftest",
         "--junitxml=/evidence/junit.xml", *REA_TESTS,
     ]
     command_hash = hashlib.sha256("\0".join(command).encode()).hexdigest()
