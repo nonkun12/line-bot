@@ -225,6 +225,7 @@ def main() -> int:
         context = {
             "schema_version": 1,
             "collector_run_id": os.environ.get("GITHUB_RUN_ID", ""),
+            "collector_run_attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT", "0")),
             "source_run_id": str(args.run_id),
             "source_run_attempt": args.run_attempt,
             "source_head_sha": args.source_head_sha,
@@ -415,6 +416,7 @@ def main() -> int:
     context = {
         "schema_version": 1,
         "collector_run_id": os.environ.get("GITHUB_RUN_ID", ""),
+        "collector_run_attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT", "0")),
         "source_run_id": str(args.run_id),
         "source_run_attempt": args.run_attempt,
         "source_head_sha": args.source_head_sha,
