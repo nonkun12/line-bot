@@ -230,6 +230,10 @@ def main() -> int:
         git = ["git", "-C", str(root / "repo")]
         run(git + ["remote", "add", "origin", f"https://github.com/{repo}.git"])
         run(["gh", "auth", "setup-git"])
+        run(git + ["fetch", "--no-tags", "origin", f"refs/heads/{branch}"])
+        fetched_tip = run(git + ["rev-parse", "FETCH_HEAD"], capture_output=True).stdout.strip()
+        if fetched_tip != branch_tip:
+            raise SystemExit("fetched run branch does not match the trusted API ref")
         image_dir = root / "image"
         image_dir.mkdir()
         (image_dir / "Dockerfile").write_text(
@@ -256,7 +260,8 @@ def main() -> int:
                 raise SystemExit(f"task {task_id} breaks the run's SHA chain")
             previous = head
 
-            run(git + ["fetch", "--no-tags", "origin", base, head])
+            run(git + ["cat-file", "-e", f"{base}^{{commit}}"])
+            run(git + ["cat-file", "-e", f"{head}^{{commit}}"])
             ancestor = run(git + ["merge-base", "--is-ancestor", base, head], check=False)
             if ancestor.returncode != 0:
                 raise SystemExit(f"task {task_id} head is not based on its declared base")
