@@ -85,3 +85,24 @@ def test_pytest_summary_counts_are_parsed_from_captured_output():
 
 def test_missing_pytest_summary_fails_closed_with_zero_counts():
     assert parse_counts("process exited without a pytest summary") == (0, 0, 0, 0)
+
+
+
+def test_run_level_not_run_and_blocked_rows_are_preserved():
+    validate_task_rows([{"status": "NOT_RUN", "task_id": "", "task_count": 0}])
+    validate_task_rows([{"status": "BLOCKED", "task_id": "", "task_count": 0}])
+
+
+def test_stopped_task_without_commit_identity_is_not_a_candidate():
+    stopped = {"status": "STOPPED", "task_id": "task-stop"}
+    validate_task_rows([stopped])
+    assert is_candidate_task_row(stopped) is False
+
+
+def test_successful_task_without_commit_identity_is_rejected():
+    try:
+        validate_task_rows([{"status": "PASS", "task_id": "task-pass"}])
+    except SystemExit as exc:
+        assert "invalid base SHA" in str(exc)
+    else:
+        raise AssertionError("successful task without SHA identity must be rejected")
