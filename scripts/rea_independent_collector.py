@@ -62,19 +62,29 @@ def parse_counts(output: str) -> tuple[int, int, int, int]:
 
 
 def validate_task_rows(rows: list[dict]) -> None:
-    """Validate source artifact task cardinality and identity before any fetch."""
+    """Validate task rows while preserving run-level non-success outcomes."""
     if not rows or len(rows) > 4:
         raise SystemExit("source task count is outside the allowed range")
     seen: set[str] = set()
     for index, row in enumerate(rows, 1):
+        status = row.get("status")
+        if status not in {"PASS", "NO_CHANGE", "FAIL", "HOLD", "BLOCKED", "STOPPED", "NOT_RUN"}:
+            raise SystemExit(f"task {index} has an unsupported status")
         task_id = row.get("task_id")
         if not isinstance(task_id, str) or not task_id.strip():
-            raise SystemExit(f"task {index} has no valid task ID")
+            if status not in {"NOT_RUN", "BLOCKED"}:
+                raise SystemExit(f"task {index} has no valid task ID")
+            continue
         if task_id in seen:
             raise SystemExit("source task IDs are not unique")
         seen.add(task_id)
-        if row.get("status") not in {"PASS", "NO_CHANGE", "FAIL", "HOLD", "BLOCKED"}:
-            raise SystemExit(f"task {task_id} has an unsupported status")
+        base = row.get("base_sha")
+        head = row.get("produced_sha")
+        if status in {"PASS", "NO_CHANGE"}:
+            if not isinstance(base, str) or SHA40.fullmatch(base) is None:
+                raise SystemExit(f"successful task {task_id} has invalid base SHA")
+            if not isinstance(head, str) or SHA40.fullmatch(head) is None:
+                raise SystemExit(f"successful task {task_id} has invalid produced SHA")
 
 
 def is_candidate_task_row(row: object) -> bool:
