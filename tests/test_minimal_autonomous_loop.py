@@ -1436,3 +1436,15 @@ def test_lfm3_shadow_advisory_reuses_recovery_path_and_writes_non_authoritative_
     assert row["gate"] == "REVIEW_ONLY"
     assert "classification" not in row
     assert "reason" not in row
+
+
+def test_lfm3_shadow_advisory_never_runs_in_github_actions(monkeypatch, tmp_path):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("local LFM3 must not run in GitHub Actions")
+
+    monkeypatch.setattr(loop.subprocess, "run", unexpected)
+    assert loop.run_lfm3_shadow_advisory(
+        {"RSI_LFM3_SHADOW_ENABLED": "1", "GITHUB_ACTIONS": "true"},
+        tmp_path,
+    ) is None
+    assert not (tmp_path / "lfm3-rea-shadow.jsonl").exists()
