@@ -15,6 +15,8 @@ from core.local_model_client import LocalModelClient, LocalModelError
     "http://127.0.0.1:11434?token=secret",
     "http://user:pass@127.0.0.1:11434",
     "http://127.0.0.1/../remote",
+    "http://localhost:11434",
+    "http://127.0.0.1:99999",
 ])
 def test_remote_or_ambiguous_endpoint_is_rejected(url):
     with pytest.raises(LocalModelError):
@@ -90,7 +92,7 @@ def test_openai_compatible_loopback_payload_is_adapted():
 
 
 def test_model_mismatch_is_rejected_before_request():
-    client = LocalModelClient("http://localhost:11434", "model-a", "ollama")
+    client = LocalModelClient("http://127.0.0.1:11434", "model-a", "ollama")
 
     with pytest.raises(LocalModelError, match="model_name_mismatch"):
         client.chat.completions.create(
