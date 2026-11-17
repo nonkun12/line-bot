@@ -74,14 +74,14 @@ def evaluate_artifact_evidence(evidence: object) -> dict[str, Any]:
     ):
         return _result("HOLD", "evidence_value_invalid", evidence_hash)
 
-    if risk in {"HIGH", "UNKNOWN"}:
-        return _result("BLOCKED" if risk == "HIGH" else "HOLD", "risk_" + risk.lower(), evidence_hash)
     if tests == "FAIL" or diff_scan == "FAIL":
         return _result("FAIL", "verification_failed", evidence_hash)
+    if base_sha == head_sha and not changed_files and diff_scan == "PASS":
+        return _result("NO_CHANGE", "no_artifact_change", evidence_hash)
+    if risk in {"HIGH", "UNKNOWN"}:
+        return _result("BLOCKED" if risk == "HIGH" else "HOLD", "risk_" + risk.lower(), evidence_hash)
     if tests != "PASS" or diff_scan != "PASS":
         return _result("HOLD", "verification_incomplete", evidence_hash)
-    if base_sha == head_sha and not changed_files:
-        return _result("NO_CHANGE", "no_artifact_change", evidence_hash)
     if base_sha == head_sha:
         return _result("HOLD", "changed_files_without_new_commit", evidence_hash)
     if not changed_files:
