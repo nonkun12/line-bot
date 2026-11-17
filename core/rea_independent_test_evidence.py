@@ -86,8 +86,10 @@ def validate_independent_test_evidence(
         return _result("HOLD", "independent_test_outcome_unknown")
     if evidence["tests_collected"] < 1:
         return _result("HOLD", "independent_tests_zero_executed")
-    if outcome == "failure" or evidence["exit_code"] != 0 or evidence["tests_failed"] > 0:
+    if evidence["tests_failed"] > 0:
         return _result("FAIL", "independent_tests_failed")
+    if outcome == "failure" or evidence["exit_code"] != 0:
+        return _result("HOLD", "independent_test_runner_failed_without_test_failure_evidence")
     if evidence["tests_passed"] < 1:
         return _result("HOLD", "independent_tests_zero_executed")
     if evidence["tests_passed"] + evidence["tests_failed"] + evidence["tests_skipped"] != evidence["tests_collected"]:
