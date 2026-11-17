@@ -215,7 +215,26 @@ def read_live_safety_state() -> tuple[str, str]:
     except Exception:
         return "UNKNOWN", "UNKNOWN"
 
+def safety_state_allows_inference(stop_state: str, global_hold_state: str) -> bool:
+    """Do not invoke a model unless every authoritative safety source is verified clear."""
+    return stop_state == "INACTIVE" and global_hold_state == "CLEAR"
+
+
 def main() -> int:
+    stop_state, global_hold_state = read_live_safety_state()
+    if not safety_state_allows_inference(stop_state, global_hold_state):
+        print(json.dumps({
+            "gate": "BLOCKED",
+            "reason_code": "stop_or_recovery_hold_active_or_unverified",
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+            "required_human_approval": True,
+            "mode": "SHADOW_ONLY",
+        }, ensure_ascii=False, sort_keys=True))
+        return 2
+
     model = os.environ.get("RSI_LOCAL_MODEL_NAME", "lfm3:1.7b-qad-q4_0").strip()
     base_url = os.environ.get("RSI_LOCAL_MODEL_BASE_URL", "http://127.0.0.1:11434").strip()
     protocol = os.environ.get("RSI_LOCAL_MODEL_PROTOCOL", "ollama").strip().lower()
@@ -237,7 +256,6 @@ def main() -> int:
         }, ensure_ascii=False))
         return 2
 
-    stop_state, global_hold_state = read_live_safety_state()
     result = assess_rsi_request(
         client,
         model=model,
