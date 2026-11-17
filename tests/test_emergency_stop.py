@@ -15,10 +15,37 @@ def test_get_status_uses_shared_ref(monkeypatch):
     assert calls == [("GET", "nonkun12/line-bot", "/git/ref/heads/control-tower-emergency-stop")]
 
 
-def test_get_status_false_only_for_confirmed_404(monkeypatch):
-    monkeypatch.setattr(emergency_stop, "_request", lambda *a, **k: (404, {}))
+def test_get_status_false_only_after_repository_is_confirmed(monkeypatch):
+    calls = []
+    def fake_request(method, repository, token, path, payload=None):
+        calls.append((method, repository, path))
+        if path == "/git/ref/heads/control-tower-emergency-stop":
+            return 404, {}
+        if path == "":
+            return 200, {"full_name": repository}
+        raise AssertionError(f"unexpected request path: {path}")
+    monkeypatch.setattr(emergency_stop, "_request", fake_request)
     assert emergency_stop.get_status("nonkun12/line-bot", "token") is False
-    monkeypatch.setattr(emergency_stop, "_request", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("network")))
+    assert calls == [
+        ("GET", "nonkun12/line-bot", "/git/ref/heads/control-tower-emergency-stop"),
+        ("GET", "nonkun12/line-bot", ""),
+    ]
+
+    # A 404 for the repository itself is ambiguous (missing/inaccessible repo),
+    # so it must never be interpreted as an inactive STOP ref.
+    monkeypatch.setattr(
+        emergency_stop,
+        "_request",
+        lambda method, repository, token, path, payload=None: (404, {}),
+    )
+    with pytest.raises(RuntimeError, match="stop_status_unconfirmed_repository"):
+        emergency_stop.get_status("nonkun12/line-bot", "token")
+
+    monkeypatch.setattr(
+        emergency_stop,
+        "_request",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("network")),
+    )
     with pytest.raises(RuntimeError):
         emergency_stop.get_status("nonkun12/line-bot", "token")
 
