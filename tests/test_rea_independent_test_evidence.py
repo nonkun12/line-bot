@@ -112,3 +112,7 @@ def test_malformed_outcome_and_boolean_schema_hold():
 
 def test_test_counts_must_account_for_every_collected_test():
     assert validate(evidence(tests_collected=12, tests_passed=11))["status"] == "HOLD"
+
+
+def test_schema_version_must_be_an_exact_integer():
+    assert validate(evidence(schema_version=1.0))["status"] == "HOLD"
