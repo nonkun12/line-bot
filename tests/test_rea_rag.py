@@ -107,3 +107,29 @@ def test_retrieval_skips_malformed_persisted_metadata(tmp_path):
         task_id="next-task",
         instruction="risk リスクを確認",
     ) == ""
+
+
+@pytest.mark.parametrize("override", [
+    {"status": []}, {"status": None}, {"namespace": []}, {"namespace": ""},
+])
+def test_rejects_non_string_status_and_invalid_namespace(tmp_path, override):
+    args = dict(
+        namespace="distributed-loop", task_id="rea-task-17", status="HOLD",
+        reason_code="risk_unknown", evidence_sha256="d" * 64,
+        changed_file_count=1,
+    )
+    args.update(override)
+    with pytest.raises(ValueError):
+        record_rea_evaluation(tmp_path / "rag.sqlite3", **args)
+
+
+def test_context_rejects_invalid_namespace_and_oversized_instruction(tmp_path):
+    db = tmp_path / "rag.sqlite3"
+    _record(db)
+    assert build_rea_context(
+        db, namespace=[], task_id="next-task", instruction="test risk"
+    ) == ""
+    assert build_rea_context(
+        db, namespace="distributed-loop", task_id="next-task",
+        instruction="x" * 20001,
+    ) == ""
