@@ -1492,6 +1492,7 @@ jobs:
             /tmp/autonomous-loop-state.json
             /tmp/recovery-ai-state.json
             /tmp/recovery-ai-state-readback.json
+            /tmp/rea-artifact-evaluations.jsonl
             /tmp/autonomous-*.json
             /tmp/distributed-sheets-log-result.json
             /tmp/distributed-final-report.txt
