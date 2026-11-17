@@ -60,8 +60,12 @@ class ImmediateStopController:
         self.shared_status_checker = shared_status_checker
 
     def _read(self) -> dict | None:
-        if not self.path.exists():
+        try:
+            self.path.lstat()
+        except FileNotFoundError:
             return {}
+        except OSError:
+            return None
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError, TypeError):
