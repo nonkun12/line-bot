@@ -33,7 +33,7 @@ def _kwargs():
         "baseline_artifact_sha256": "a" * 64,
         "challenger_candidate_id": "challenger-v1",
         "challenger_artifact_sha256": "b" * 64,
-        "evaluator_id": "independent-exact-match-v1",
+        "evaluator_id": "rsi.exact_match.v1",
         "evaluator_version": "1",
         "minimum_delta": 0.2,
         "safety": {"stop_state": "INACTIVE", "global_hold_state": "CLEAR"},
@@ -153,3 +153,13 @@ def test_held_out_manifest_digest_mismatch_is_blocked():
 
     assert result["result"]["status"] == "BLOCKED"
     assert result["result"]["reason"] == "held_out_manifest_digest_mismatch"
+
+
+def test_caller_cannot_impersonate_a_different_evaluator():
+    args = _kwargs()
+    args["evaluator_id"] = "candidate-controlled-evaluator"
+
+    result = evaluate_exact_match(**args)
+
+    assert result["result"]["status"] == "BLOCKED"
+    assert result["result"]["reason"] == "evaluator_identity_mismatch"
