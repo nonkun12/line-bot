@@ -932,6 +932,35 @@ def test_rea_block_prevents_minimal_loop_task_execution(monkeypatch, tmp_path: P
 
     monkeypatch.setattr(RecoveryStore, "task_status", lambda self, _task_id: {})
     monkeypatch.setattr(
+        RecoveryStore, "aggregate_hold_status", lambda self: {"state": "CLEAR"}
+    )
+    monkeypatch.setattr(
+        "scripts.rea_artifact_runtime.evaluate_and_record_runtime_artifact",
+        lambda summary, **_kwargs: {
+            "status": "NO_CHANGE",
+            "reason_code": "no_artifact_change",
+            "evidence_sha256": "d" * 64,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
+        RecoveryStore, "aggregate_hold_status", lambda self: {"state": "CLEAR"}
+    )
+    monkeypatch.setattr(
+        "scripts.rea_artifact_runtime.evaluate_and_record_runtime_artifact",
+        lambda summary, **_kwargs: {
+            "status": "NO_CHANGE",
+            "evidence_sha256": "d" * 64,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
         "core.control_tower_selector.select_next_task",
         lambda *args, **kwargs: SimpleNamespace(
             next_action="SELECT_REGISTERED_TASK",
@@ -1204,6 +1233,22 @@ def test_orchestrator_gates_successful_loop_on_exact_evidence(monkeypatch, tmp_p
     )
     monkeypatch.setattr(RecoveryStore, "task_status", lambda self, _task_id: {})
     monkeypatch.setattr(
+        RecoveryStore, "aggregate_hold_status", lambda self: {"state": "CLEAR"}
+    )
+    monkeypatch.setattr(loop, "artifact_stop_state", lambda _stop_file: "INACTIVE")
+    monkeypatch.setattr(
+        "scripts.rea_artifact_runtime.evaluate_and_record_runtime_artifact",
+        lambda summary, **_kwargs: {
+            "status": "NO_CHANGE",
+            "reason_code": "no_artifact_change",
+            "evidence_sha256": "d" * 64,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
         "core.control_tower_selector.select_next_task",
         lambda *args, **kwargs: SimpleNamespace(
             next_action="SELECT_REGISTERED_TASK",
@@ -1382,3 +1427,98 @@ def test_distributed_loop_does_not_inject_metered_model_credentials():
     assert "GROQ_API_KEY" not in workflow
     assert "OPENAI_API_KEY" not in workflow
     assert "ANTHROPIC_API_KEY" not in workflow
+
+
+def test_lfm3_shadow_advisory_is_disabled_by_default(monkeypatch, tmp_path):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("LFM3 must not run unless explicitly enabled")
+
+    monkeypatch.setattr(loop.subprocess, "run", unexpected)
+    assert loop.run_lfm3_shadow_advisory(
+        {"AUTONOMOUS_RECOVERY_STATE_PATH": str(tmp_path / "recovery.json")},
+        tmp_path,
+    ) is None
+    assert not (tmp_path / "lfm3-rea-shadow.jsonl").exists()
+
+
+def test_lfm3_shadow_advisory_reuses_recovery_path_and_writes_non_authoritative_audit(monkeypatch, tmp_path):
+    import json
+    from types import SimpleNamespace
+
+    recovery_path = tmp_path / "actual-recovery.json"
+    audit_path = tmp_path / "audit" / "lfm3.jsonl"
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        seen["env"] = kwargs["env"]
+        return SimpleNamespace(
+            stdout=json.dumps({
+                "gate": "REVIEW_ONLY",
+                "reason_code": "structured_classification_received",
+                "execution_authorized": False,
+            }),
+            returncode=0,
+        )
+
+    monkeypatch.setattr(loop.subprocess, "run", fake_run)
+    record = loop.run_lfm3_shadow_advisory(
+        {
+            "RSI_LFM3_SHADOW_ENABLED": "1",
+            "RSI_LFM3_SHADOW_AUDIT_PATH": str(audit_path),
+            "AUTONOMOUS_RECOVERY_STATE_PATH": str(recovery_path),
+        },
+        tmp_path,
+    )
+
+    assert seen["env"]["AUTONOMOUS_RECOVERY_STATE_PATH"] == str(recovery_path)
+    assert seen["command"][-1].endswith("scripts/run_lfm3_rea_shadow.py")
+    assert record["gate"] == "REVIEW_ONLY"
+    assert record["mode"] == "SHADOW_ONLY"
+    assert record["execution_authorized"] is False
+    assert record["patch_authorized"] is False
+    row = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[0])
+    assert row["gate"] == "REVIEW_ONLY"
+    assert "classification" not in row
+    assert "reason" not in row
+
+
+def test_lfm3_shadow_advisory_never_runs_in_github_actions(monkeypatch, tmp_path):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("local LFM3 must not run in GitHub Actions")
+
+    monkeypatch.setattr(loop.subprocess, "run", unexpected)
+    assert loop.run_lfm3_shadow_advisory(
+        {"RSI_LFM3_SHADOW_ENABLED": "1", "GITHUB_ACTIONS": "true"},
+        tmp_path,
+    ) is None
+    assert not (tmp_path / "lfm3-rea-shadow.jsonl").exists()
+
+
+def test_artifact_stop_state_includes_shared_emergency_stop(monkeypatch, tmp_path):
+    from core import emergency_stop, immediate_stop
+
+    monkeypatch.delenv("AUTONOMOUS_LOOP_STOP", raising=False)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr(emergency_stop, "local_stop_active", lambda _root: False)
+    monkeypatch.setattr(immediate_stop.ImmediateStopController, "is_stopped", lambda self: False)
+    monkeypatch.setattr(emergency_stop, "get_status", lambda _repo, _token: True)
+
+    assert loop.artifact_stop_state(tmp_path / "missing-stop-file") == "ACTIVE"
+
+
+def test_artifact_stop_state_unknown_when_shared_status_cannot_be_verified(monkeypatch, tmp_path):
+    from core import emergency_stop, immediate_stop
+
+    monkeypatch.delenv("AUTONOMOUS_LOOP_STOP", raising=False)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr(emergency_stop, "local_stop_active", lambda _root: False)
+    monkeypatch.setattr(immediate_stop.ImmediateStopController, "is_stopped", lambda self: False)
+
+    def unavailable(_repo, _token):
+        raise RuntimeError("network unavailable")
+
+    monkeypatch.setattr(emergency_stop, "get_status", unavailable)
+    assert loop.artifact_stop_state(tmp_path / "missing-stop-file") == "UNKNOWN"

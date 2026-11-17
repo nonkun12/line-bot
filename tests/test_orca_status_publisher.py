@@ -95,3 +95,40 @@ def test_validate_snapshot_rejects_rsi_authority_escalation(field):
         "scheduler_started": False, "model_activated": False}
     data["rsi_review"][field] = True
     with pytest.raises(ValueError): validate_snapshot(data)
+
+def test_validate_snapshot_accepts_safe_rea_artifact_fields():
+    data = payload()
+    data["tasks"] = [{
+        "task_id": "t-rea",
+        "rea_artifact_status": "HOLD",
+        "rea_artifact_reason_code": "risk_unknown",
+        "rea_artifact_evidence_sha256": "b" * 64,
+        "rea_artifact_execution_authorized": False,
+        "rea_artifact_patch_authorized": False,
+        "rea_artifact_hold_clear_authorized": False,
+        "rea_artifact_merge_deploy_authorized": False,
+        "raw_diff": "must not leak",
+    }]
+    clean = validate_snapshot(data)
+    task = clean["tasks"][0]
+    assert task["rea_artifact_status"] == "HOLD"
+    assert task["rea_artifact_evidence_sha256"] == "b" * 64
+    assert "raw_diff" not in task
+
+
+def test_validate_snapshot_rejects_rea_authority_escalation_and_bad_hash():
+    data = payload()
+    data["tasks"] = [{
+        "task_id": "t-rea", "rea_artifact_status": "PASS",
+        "rea_artifact_evidence_sha256": "c" * 64,
+        "rea_artifact_execution_authorized": True,
+        "rea_artifact_patch_authorized": False,
+        "rea_artifact_hold_clear_authorized": False,
+        "rea_artifact_merge_deploy_authorized": False,
+    }]
+    with pytest.raises(ValueError):
+        validate_snapshot(data)
+    data["tasks"][0]["rea_artifact_execution_authorized"] = False
+    data["tasks"][0]["rea_artifact_evidence_sha256"] = "bad"
+    with pytest.raises(ValueError):
+        validate_snapshot(data)

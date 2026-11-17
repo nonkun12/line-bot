@@ -334,6 +334,9 @@ def _prepare_selector_main(monkeypatch, tmp_path, tasks, head_reader=None):
         def task_status(self, _task_id):
             return {"held": False}
 
+        def aggregate_hold_status(self):
+            return {"state": "CLEAR"}
+
     monkeypatch.setattr("scripts.recovery_ai.RecoveryStore", _RecoveryStore)
     monkeypatch.setattr(
         loop.sys,
@@ -369,6 +372,21 @@ def test_control_tower_reselects_second_task_against_new_head(monkeypatch, tmp_p
     monkeypatch.setattr(
         "scripts.recovery_ai_loop_adapter.record_loop_outcome",
         lambda _path, result, **_kwargs: {"recorded": True, "task_id": result["task_id"]},
+    )
+    monkeypatch.setattr(
+        "scripts.recovery_ai.RecoveryStore.aggregate_hold_status",
+        lambda _self: {"state": "CLEAR"},
+    )
+    monkeypatch.setattr(
+        "scripts.rea_artifact_runtime.evaluate_and_record_runtime_artifact",
+        lambda summary, **_kwargs: {
+            "status": "NO_CHANGE" if summary["base_sha"] == summary["produced_sha"] else "PASS",
+            "evidence_sha256": "d" * 64,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
     )
     monkeypatch.setattr(
         "scripts.control_tower_loop_observer.record_loop_observation",

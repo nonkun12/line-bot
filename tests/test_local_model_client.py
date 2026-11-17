@@ -56,7 +56,67 @@ def test_ollama_payload_and_response_are_adapted(monkeypatch):
 
     assert captured["url"] == "http://127.0.0.1:11434/api/chat"
     assert captured["payload"]["options"]["num_predict"] == 123
+    assert "think" not in captured["payload"]
     assert response.choices[0].message.content == "local answer"
+
+
+def test_ollama_can_disable_thinking_for_final_answer_only(monkeypatch):
+    client = LocalModelClient("http://127.0.0.1:11434", "lfm3:local", "ollama")
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+        def read(self, _limit):
+            return json.dumps({
+                "message": {"role": "assistant", "content": '{"status":"ok"}', "thinking": ""},
+                "done": True,
+                "done_reason": "stop",
+            }).encode()
+
+    class Opener:
+        def open(self, req, timeout):
+            captured["payload"] = json.loads(req.data)
+            return Response()
+
+    client.opener = Opener()
+    response = client.chat.completions.create(
+        model="lfm3:local",
+        messages=[{"role": "user", "content": "json"}],
+        include_reasoning=False,
+    )
+
+    assert captured["payload"]["think"] is False
+    assert response.choices[0].message.content == '{"status":"ok"}'
+
+
+def test_ollama_thinking_only_response_is_rejected():
+    client = LocalModelClient("http://127.0.0.1:11434", "lfm3:local", "ollama")
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+        def read(self, _limit):
+            return json.dumps({
+                "message": {"role": "assistant", "content": "", "thinking": "internal reasoning"},
+                "done": True,
+                "done_reason": "length",
+            }).encode()
+
+    class Opener:
+        def open(self, req, timeout):
+            return Response()
+
+    client.opener = Opener()
+    with pytest.raises(LocalModelError, match="response_content_missing"):
+        client.chat.completions.create(
+            model="lfm3:local",
+            messages=[{"role": "user", "content": "json"}],
+        )
 
 
 def test_openai_compatible_loopback_payload_is_adapted():
@@ -128,3 +188,50 @@ def test_ipv6_loopback_is_allowed_without_hostname_resolution():
     client = LocalModelClient("http://[::1]:11434", "model-a", "ollama")
 
     assert client.base_url == "http://[::1]:11434"
+
+
+def test_ollama_json_schema_response_format_is_passed_as_format(monkeypatch):
+    client = LocalModelClient("http://127.0.0.1:11434", "lfm3:local", "ollama")
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+        def read(self, _limit):
+            return json.dumps({"message": {"content": '{"ok":true}'}}).encode()
+
+    class Opener:
+        def open(self, req, timeout):
+            captured["payload"] = json.loads(req.data)
+            return Response()
+
+    client.opener = Opener()
+    schema = {
+        "type": "object",
+        "properties": {"ok": {"type": "boolean"}},
+        "required": ["ok"],
+        "additionalProperties": False,
+    }
+    response = client.chat.completions.create(
+        model="lfm3:local",
+        messages=[{"role": "user", "content": "json"}],
+        response_format={
+            "type": "json_schema",
+            "json_schema": {"name": "smoke", "strict": True, "schema": schema},
+        },
+    )
+
+    assert captured["payload"]["format"] == schema
+    assert response.choices[0].message.content == '{"ok":true}'
+
+
+def test_ollama_rejects_unrecognized_structured_response_format():
+    client = LocalModelClient("http://127.0.0.1:11434", "lfm3:local", "ollama")
+    with pytest.raises(LocalModelError, match="response_format_unsupported"):
+        client.chat.completions.create(
+            model="lfm3:local",
+            messages=[{"role": "user", "content": "json"}],
+            response_format={"type": "json_object"},
+        )
