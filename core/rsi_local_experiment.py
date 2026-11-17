@@ -1,8 +1,9 @@
 """Approved, local-only prompt comparison runner for RSI.
 
-This runner performs bounded model inference only. It never executes candidate
-code, writes files, publishes changes, or clears STOP/HOLD. The trusted runtime must supply an approval verifier and a live safety
-provider. Caller-provided booleans and self-hashed snapshots are not authority.
+This runner performs bounded local model inference only. It never executes candidate
+code, modifies candidate/repository files, publishes changes, or clears STOP/HOLD.
+It appends comparison evidence to the local ledger. The trusted runtime must supply
+an approval verifier and live safety provider; caller booleans are not authority.
 """
 from __future__ import annotations
 
