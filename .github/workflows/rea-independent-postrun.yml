@@ -261,7 +261,7 @@ jobs:
                 }],
             }
             Path("rea-independent-postrun.json").write_text(
-                json.dumps(report, indent=2, sort_keys=True) + "\\n",
+                json.dumps(report, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
             PY
