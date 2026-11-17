@@ -65,6 +65,5 @@ jobs:
         with:
           name: rea-independent-evidence-${{ github.run_id }}
           path: independent-evidence/
-            !independent-evidence/tmp/
           if-no-files-found: error
           retention-days: 14
