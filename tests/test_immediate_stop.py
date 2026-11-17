@@ -66,3 +66,31 @@ def test_stop_state_is_read_once_per_check(tmp_path: Path):
     controller = _CountingController(tmp_path / "stop.json")
     assert not controller.is_stopped()
     assert controller.reads == 1
+
+
+def test_shared_stop_active_blocks_runtime_checkpoint(tmp_path: Path):
+    controller = ImmediateStopController(
+        tmp_path / "stop.json", shared_status_checker=lambda: True
+    )
+    with pytest.raises(ImmediateStop, match="shared STOP unconfirmed"):
+        controller.assert_can_execute()
+
+
+def test_shared_stop_unavailable_fails_closed(tmp_path: Path):
+    def unavailable():
+        raise RuntimeError("GitHub API unavailable")
+
+    controller = ImmediateStopController(
+        tmp_path / "stop.json", shared_status_checker=unavailable
+    )
+    assert controller.is_stopped()
+    with pytest.raises(ImmediateStop, match="shared STOP unconfirmed"):
+        controller.assert_can_execute()
+
+
+def test_shared_stop_inactive_allows_runtime_checkpoint(tmp_path: Path):
+    controller = ImmediateStopController(
+        tmp_path / "stop.json", shared_status_checker=lambda: False
+    )
+    assert not controller.is_stopped()
+    controller.assert_can_execute()
