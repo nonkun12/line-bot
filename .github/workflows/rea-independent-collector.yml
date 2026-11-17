@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p independent-evidence
-          printf '%s\\n' '{"schema_version":1,"outcome":"skipped","reason_code":"source_workflow_not_success"}' > independent-evidence/rea-independent-test-evidence.jsonl
+          printf '%s\n' '{"schema_version":1,"outcome":"skipped","reason_code":"source_workflow_not_success"}' > independent-evidence/rea-independent-test-evidence.jsonl
           exit 1
 
       - name: Download exact source-run task artifact
