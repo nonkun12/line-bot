@@ -80,12 +80,17 @@ def build_rea_context(
 
     terms = []
     lowered = (task_id + " " + instruction).casefold()
-    for marker, reason in (
-        ("test", "test"), ("pytest", "test"), ("evidence", "evidence"),
-        ("diff", "diff"), ("risk", "risk"), ("stop", "stop"),
-        ("hold", "hold"), ("timeout", "timeout"), ("security", "security"),
+    for markers, reason in (
+        (("test", "pytest", "regression", "テスト", "試験", "回帰"), "test"),
+        (("evidence", "証拠", "エビデンス"), "evidence"),
+        (("diff", "差分", "変更ファイル"), "diff"),
+        (("risk", "リスク", "危険度"), "risk"),
+        (("stop", "停止", "緊急停止"), "stop"),
+        (("hold", "保留", "ホールド"), "hold"),
+        (("timeout", "timed out", "タイムアウト"), "timeout"),
+        (("security", "セキュリティ", "安全性"), "security"),
     ):
-        if marker in lowered and reason not in terms:
+        if any(marker in lowered for marker in markers) and reason not in terms:
             terms.append(reason)
     if not terms:
         return ""
