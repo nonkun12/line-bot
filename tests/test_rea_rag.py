@@ -3,7 +3,11 @@ from __future__ import annotations
 import pytest
 
 from rag_store import RagStore
-from scripts.rea_rag import build_rea_context, record_rea_evaluation
+from scripts.rea_rag import (
+    build_rea_context,
+    build_rea_regression_test_proposals,
+    record_rea_evaluation,
+)
 
 
 def _record(db):
