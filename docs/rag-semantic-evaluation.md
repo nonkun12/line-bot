@@ -3,7 +3,8 @@
 ## Status
 
 - Current production retriever: dependency-free SQLite keyword search.
-- Current benchmark: offline-only, 8 documents and 7 queries; it is a smoke-test corpus, not a statistically representative quality claim.
+- Current offline benchmark: 10 documents and 60 labeled queries (30 exact, 20 paraphrase, 10 negative), English and Japanese.
+- The benchmark is synthetic and deterministic; it is not production telemetry or a statistically representative user-query sample.
 - Semantic retrieval: NOT implemented and NOT enabled in the Distributed Loop.
 - This document defines an evaluation gate only. It does not authorize runtime rollout.
 
@@ -27,22 +28,24 @@ This is a candidate only. Runtime compatibility, latency, memory use, and retrie
 
 ## Evaluation sequence
 
-1. Expand the offline corpus to at least 50 independently authored Japanese/English queries across exact terms, paraphrases, abbreviations, and negative/unrelated cases.
-2. Freeze document IDs, relevant-document labels, and benchmark version before comparing retrievers.
-3. Run the current SQLite keyword baseline and save metrics.
-4. Run the candidate embedder locally with network access disabled after model acquisition; cache embeddings locally and use cosine similarity.
-5. Compare keyword-only, vector-only, and hybrid retrieval using the same corpus and labels.
-6. Report Recall@5, MRR@5, Precision@5, paraphrase Recall@5, exact-match Recall@5, latency, peak memory, and model/cache footprint.
-7. Include negative queries and verify that irrelevant documents do not crowd out relevant results.
+1. Freeze document IDs, relevant-document labels, and benchmark version before comparing retrievers.
+2. Run the current SQLite keyword baseline and retain the complete per-query result.
+3. Run the candidate embedder locally with network access disabled after model acquisition; cache embeddings locally and use cosine similarity.
+4. Compare keyword-only, vector-only, and hybrid retrieval using the same corpus and labels.
+5. Report Recall@5, MRR@5, Precision@5, paraphrase Recall@5, exact-match Recall@5, negative false-positive rate, latency, peak memory, and model/cache footprint.
+6. Add independently authored real task queries only after privacy review and explicit sanitization; never copy prompts, source code, diffs, file paths, credentials, or private user data into the fixture.
+
+The current benchmark includes exact phrase and paraphrase coverage plus unrelated negative queries. Its scores are a baseline diagnostic, not a production quality claim. The keyword retriever's exact-match score is not assumed to be perfect; the test uses a regression floor.
 
 ## Adoption gate
 
 Do not enable semantic retrieval in the Distributed Loop unless all conditions are met:
 
 - At least 50 labeled queries, including at least 20 paraphrase/cross-language cases and 10 negative cases.
-- Hybrid Recall@5 improves by at least 10 percentage points overall and 20 percentage points on paraphrase cases over the keyword baseline.
+- Hybrid Recall@5 improves by at least 10 percentage points overall and 20 percentage points on paraphrase cases over the measured keyword baseline.
 - Exact-match Recall@5 does not regress.
 - Precision@5 does not regress by more than 2 percentage points.
+- Negative false-positive rate is measured and does not worsen versus the keyword baseline.
 - Local latency and peak memory are measured and fit the target Mac's available resources.
 - Model files and inference remain local; no hosted inference, telemetry, paid API, or automatic cloud fallback.
 - Retrieval errors fall back to existing keyword search only; they must never change STOP/HOLD/REA status or authorize actions.
