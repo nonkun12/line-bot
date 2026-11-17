@@ -1615,7 +1615,7 @@ def test_rea_write_gate_binds_evidence_to_current_head(monkeypatch):
     head = "a" * 40
     evidence = {"gate": "PASS", "target_sha": head}
     calls = []
-    monkeypatch.setattr(worker, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=head + "\\n"))
+    monkeypatch.setattr(worker, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=head))
     monkeypatch.setattr(adapter, "prepare_rea_evidence", lambda root, expected_sha: calls.append(("prepare", expected_sha)) or evidence)
     monkeypatch.setattr(adapter, "rea_evidence_is_valid_pass", lambda item, expected_sha: calls.append(("validate", expected_sha)) or item["target_sha"] == expected_sha)
     assert worker._rea_write_gate_passes() is True
