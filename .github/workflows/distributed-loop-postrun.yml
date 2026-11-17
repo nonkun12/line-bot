@@ -94,14 +94,18 @@ jobs:
               base_sha = str(item.get("base_sha", ""))
               produced_sha = str(item.get("produced_sha", ""))
               attestation = item.get("post_generation_rea")
+              sha_identity_valid = (
+                  re.fullmatch(r"[0-9a-f]{40}", base_sha) is not None
+                  and re.fullmatch(r"[0-9a-f]{40}", produced_sha) is not None
+              )
               if task_status == "NO_CHANGE":
-                  if not base_sha or not produced_sha or base_sha != produced_sha:
-                      issues.append(f"Task {index} NO_CHANGE is missing matching base/produced SHA identity.")
+                  if not sha_identity_valid or base_sha != produced_sha:
+                      issues.append(f"Task {index} NO_CHANGE is missing valid matching base/produced SHA identity.")
                       rea_states.append("INVALID")
                   else:
                       rea_states.append("NO_CHANGE")
                   continue
-              if task_status == "PASS" and base_sha and produced_sha and base_sha != produced_sha:
+              if task_status == "PASS" and sha_identity_valid and base_sha != produced_sha:
                   valid = (
                       isinstance(attestation, dict)
                       and attestation.get("status") == "PASS"
