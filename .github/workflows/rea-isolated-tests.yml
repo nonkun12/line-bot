@@ -48,7 +48,7 @@ jobs:
           source_dir="$RUNNER_TEMP/rea-source"
           mkdir -p "$source_dir"
           git archive --format=tar HEAD | tar -xf - -C "$source_dir"
-          docker run --rm \
+          timeout --signal=TERM --kill-after=10s 8m docker run --rm \
             --network none \
             --read-only \
             --tmpfs /tmp:rw,noexec,nosuid,size=256m,uid=65532,gid=65532 \
