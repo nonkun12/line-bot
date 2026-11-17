@@ -9,10 +9,12 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from core.rsi_independent_evaluator import EVALUATOR_ID, EVALUATOR_VERSION, evaluate_exact_match
 from core.local_model_client import LocalModelClient, LocalModelError
+from scripts.rsi_experiment_ledger import append_ledger_entry
 
 
 def _canonical(value: Any) -> bytes:
@@ -55,10 +57,13 @@ def run_local_prompt_comparison(
     minimum_delta: float,
     safety_snapshot: Mapping[str, Any],
     execution_approved: bool,
+    ledger_path: str | Path,
 ) -> dict[str, Any]:
     """Run a bounded baseline/challenger prompt comparison on a local client."""
     if execution_approved is not True:
         return {"record": None, "result": _blocked(experiment_id, "experiment_approval_missing")}
+    if not isinstance(ledger_path, (str, Path)) or not str(ledger_path).strip():
+        return {"record": None, "result": _blocked(experiment_id, "evidence_ledger_path_missing")}
     if not isinstance(safety_snapshot, Mapping):
         return {"record": None, "result": _blocked(experiment_id, "safety_snapshot_missing")}
     if safety_snapshot.get("stop_state") != "INACTIVE":
@@ -135,7 +140,7 @@ def run_local_prompt_comparison(
             "global_hold_state": safety_snapshot["global_hold_state"],
             "snapshot_sha256": snapshot_digest,
         }
-        result = evaluate_exact_match(
+        evaluated = evaluate_exact_match(
             experiment_id=experiment_id,
             dataset=dataset_rows,
             baseline_predictions=baseline_predictions,
@@ -151,7 +156,19 @@ def run_local_prompt_comparison(
             held_out_locked=held_out_locked,
             held_out_expected_sha256=dataset_digest,
         )
-        return result
+        if evaluated.get("record") is None:
+            return evaluated
+        ledger_payload = {
+            "kind": "rsi_local_prompt_comparison",
+            "record": evaluated["record"],
+            "result": evaluated["result"],
+        }
+        try:
+            ledger_sha256 = append_ledger_entry(ledger_path, ledger_payload)
+        except Exception as exc:
+            return {"record": None, "result": _blocked(experiment_id, f"evidence_ledger_write_failed:{type(exc).__name__}")}
+        evaluated["ledger_entry_sha256"] = ledger_sha256
+        return evaluated
     except LocalModelError as exc:
         return {"record": None, "result": _blocked(experiment_id, f"local_model_blocked:{exc}")}
     except (TypeError, ValueError, KeyError, AttributeError) as exc:
