@@ -113,7 +113,8 @@ jobs:
                   or source.get("run_attempt") != context["source_run_attempt"]
                   or source.get("head_sha") != context["source_head_sha"]
                   or source.get("head_branch") != context.get("source_head_branch")
-                  or source.get("head_branch") != os.environ["DEFAULT_BRANCH"]):
+                  or (source.get("conclusion") == "success"
+                      and source.get("head_branch") != os.environ["DEFAULT_BRANCH"])):
               raise SystemExit("source workflow run identity does not match collector context")
 
           if source.get("conclusion") != "success":
