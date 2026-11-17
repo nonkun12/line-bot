@@ -64,8 +64,36 @@ _TEST_INSTRUCTION_PATTERN = re.compile(r"(?:workflow|connection)[\s_-]*test", re
 _TEST_INSTRUCTION_EXACT = {"開発接続テスト", "接続テスト", "動作確認", "疎通確認", "LINE自動開発テスト"}
 
 
-def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout)
+def run(
+    cmd: list[str],
+    timeout: int = 900,
+    input_text: str | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd, cwd=ROOT, text=True, input=input_text, capture_output=True,
+        timeout=timeout, env=env,
+    )
+
+
+def _test_process_env() -> dict[str, str]:
+    """Keep credentials out of pytest and any code executed by the test suite."""
+    blocked_exact = {
+        "GH_TOKEN", "GITHUB_TOKEN", "GROQ_API_KEY", "HERMES_GROQ_API_KEY",
+        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "SLACK_WEBHOOK_URL",
+        "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_SHEETS_SPREADSHEET_ID", "LINE_CHANNEL_ACCESS_TOKEN",
+        "LINE_CHANNEL_SECRET",
+    }
+    blocked_suffixes = (
+        "_TOKEN", "_API_KEY", "_SECRET", "_PASSWORD", "_CREDENTIALS",
+    )
+    clean = os.environ.copy()
+    for name in tuple(clean):
+        upper = name.upper()
+        if upper in blocked_exact or upper.endswith(blocked_suffixes):
+            clean.pop(name, None)
+    return clean
 
 
 def is_protected(path: str) -> bool:
@@ -1044,7 +1072,7 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 return False, "targeted pytest requires safe relative Python test paths"
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native", *paths]
             outputs.append("targeted pytest:")
-        tests = run(test_cmd, timeout=900)
+        tests = run(test_cmd, timeout=900, env=_test_process_env())
     finally:
         for name, value in task_scope.items():
             if value is missing:
