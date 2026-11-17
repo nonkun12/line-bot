@@ -169,3 +169,4 @@ def test_timed_out_sandbox_is_killed_and_removed():
     assert "timed out" in result.stderr
     assert mocked.call_args_list[1].args[0] == ["docker", "kill", "rea-task-test"]
     assert mocked.call_args_list[2].args[0] == ["docker", "rm", "--force", "rea-task-test"]
+# Regression coverage for trusted collector timeout and summary ambiguity.
