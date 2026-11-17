@@ -58,6 +58,7 @@ jobs:
           context = {
               "schema_version": 1,
               "collector_run_id": os.environ["GITHUB_RUN_ID"],
+              "collector_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
               "source_run_id": os.environ["SOURCE_RUN_ID"],
               "source_run_attempt": int(os.environ["SOURCE_RUN_ATTEMPT"]),
               "source_head_sha": os.environ["SOURCE_HEAD_SHA"],
