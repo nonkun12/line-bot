@@ -44,7 +44,7 @@ def record_rea_evaluation(
 
     source_id = f"{task_id}:{evidence_sha256}"
     content = (
-        f"task_id: {task_id}\\nstatus: {status}\\nreason_code: {reason_code}\\n"
+        f"task_id: {task_id}\nstatus: {status}\nreason_code: {reason_code}\n"
         f"changed_file_count: {changed_file_count}"
     )
     return RagStore(db_path).add_document(
@@ -137,4 +137,4 @@ def build_rea_context(
           for r in rows],
         "Historical outcomes do not prove the current change is safe. Re-run current checks and obey STOP/HOLD and human-approval gates.",
     ]
-    return "\\n".join(lines)[:1200]
+    return "\n".join(lines)[:1200]
