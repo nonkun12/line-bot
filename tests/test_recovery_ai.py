@@ -247,6 +247,7 @@ def test_invalid_existing_recovery_document_timestamp_fails_closed(tmp_path):
 
 def test_aggregate_hold_status_reports_clear_then_active(tmp_path):
     store = RecoveryStore(tmp_path / "state.json")
+    store._write({"schema_version": 1, "tasks": {}, "checkpoint": None})
     assert store.aggregate_hold_status()["state"] == "CLEAR"
 
     store.record_failure("task-a", "test_regression", ["test.one"])
@@ -276,7 +277,20 @@ def test_aggregate_hold_status_rejects_ambiguous_task_record(tmp_path):
         "schema_version": 1,
         "tasks": {"task-a": {"consecutive_failures": 1}},
         "checkpoint": None,
+        "state_updated_at": "2026-11-17T00:00:00+00:00",
     })
 
     with pytest.raises(RecoveryStateError, match="hold state ambiguous"):
+        store.aggregate_hold_status()
+
+
+
+def test_aggregate_hold_status_rejects_missing_freshness_marker(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+    store._write({"schema_version": 1, "tasks": {}, "checkpoint": None})
+    data = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+    data.pop("state_updated_at")
+    (tmp_path / "state.json").write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(RecoveryStateError, match="freshness marker missing"):
         store.aggregate_hold_status()
