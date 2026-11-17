@@ -66,3 +66,69 @@ def test_stop_state_is_read_once_per_check(tmp_path: Path):
     controller = _CountingController(tmp_path / "stop.json")
     assert not controller.is_stopped()
     assert controller.reads == 1
+
+
+def test_shared_stop_active_blocks_runtime_checkpoint(tmp_path: Path):
+    controller = ImmediateStopController(
+        tmp_path / "stop.json", shared_status_checker=lambda: True
+    )
+    with pytest.raises(ImmediateStop, match="shared STOP unconfirmed"):
+        controller.assert_can_execute()
+
+
+def test_shared_stop_unavailable_fails_closed(tmp_path: Path):
+    def unavailable():
+        raise RuntimeError("GitHub API unavailable")
+
+    controller = ImmediateStopController(
+        tmp_path / "stop.json", shared_status_checker=unavailable
+    )
+    assert controller.is_stopped()
+    with pytest.raises(ImmediateStop, match="shared STOP unconfirmed"):
+        controller.assert_can_execute()
+
+
+def test_shared_stop_inactive_allows_runtime_checkpoint(tmp_path: Path):
+    controller = ImmediateStopController(
+        tmp_path / "stop.json", shared_status_checker=lambda: False
+    )
+    assert not controller.is_stopped()
+    controller.assert_can_execute()
+
+
+
+def test_local_stop_treats_dangling_symlink_as_active(tmp_path: Path, monkeypatch):
+    from core.emergency_stop import local_stop_active
+
+    marker = tmp_path / "configured-stop"
+    marker.symlink_to(tmp_path / "missing-target")
+    monkeypatch.setenv("AUTONOMOUS_STOP_FILE", str(marker))
+
+    assert local_stop_active(tmp_path) is True
+
+
+def test_local_stop_treats_unreadable_path_as_active(tmp_path: Path, monkeypatch):
+    from core.emergency_stop import local_stop_active
+
+    monkeypatch.setenv("AUTONOMOUS_STOP_FILE", str(tmp_path / "configured-stop"))
+
+    def denied(_self):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "lstat", denied)
+    assert local_stop_active(tmp_path) is True
+
+
+
+def test_unreadable_immediate_stop_path_fails_closed(tmp_path: Path, monkeypatch):
+    path = tmp_path / "stop.json"
+    path.write_text('{"stopped": false}', encoding="utf-8")
+    controller = ImmediateStopController(path)
+
+    def denied(_self):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "lstat", denied)
+    assert controller.is_stopped()
+    with pytest.raises(ImmediateStop):
+        controller.assert_can_execute()

@@ -1,10 +1,13 @@
 """Run the common bounded development runtime with a guarded JSON-only LLM adapter."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -117,6 +120,91 @@ def _git(*args: str) -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
+def _shared_stop_active() -> bool:
+    """Read the authoritative shared STOP marker; missing credentials fail closed."""
+    from core.emergency_stop import get_status
+
+    repository = (os.environ.get("AI_REPORT_GITHUB_REPO") or os.environ.get("GITHUB_REPOSITORY") or "nonkun12/line-bot").strip()
+    token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
+    if not repository or not token:
+        raise RuntimeError("shared_stop_credentials_missing")
+    return get_status(repository, token)
+
+
+def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, object]:
+    """Verify approval against the exact task, instruction, base, and path scope."""
+    instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
+    raw_allowed_paths = os.environ.get("AUTONOMOUS_ALLOWED_PATHS", "")
+    try:
+        allowed_paths = json.loads(raw_allowed_paths)
+    except (TypeError, ValueError):
+        allowed_paths = None
+    if (
+        not isinstance(allowed_paths, list)
+        or not allowed_paths
+        or not all(isinstance(path, str) and path and path == path.strip() for path in allowed_paths)
+        or len(set(allowed_paths)) != len(allowed_paths)
+    ):
+        allowed_paths_digest = ""
+    else:
+        canonical_paths = sorted(allowed_paths)
+        allowed_paths_digest = hashlib.sha256(
+            json.dumps(canonical_paths, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    blocked = {
+        "gate": "BLOCKED",
+        "reason_code": "independent_execution_approval_missing_or_invalid",
+        "execution_authorized": False,
+        "expected_task_id": task_id,
+        "expected_instruction_sha256": instruction_digest,
+        "expected_allowed_paths_sha256": allowed_paths_digest,
+        "expected_base_sha": start_sha,
+    }
+    if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+        return blocked
+    event_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
+    if not event_path:
+        return blocked
+    try:
+        event = json.loads(Path(event_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return blocked
+    sender = event.get("sender") if isinstance(event, dict) else None
+    repository = event.get("repository") if isinstance(event, dict) else None
+    inputs = event.get("inputs") if isinstance(event, dict) else None
+    if not isinstance(sender, dict) or not isinstance(repository, dict) or not isinstance(inputs, dict):
+        return blocked
+    actor = str(sender.get("login", ""))
+    repo_name = str(repository.get("full_name", ""))
+    if (
+        actor != "nonkun12"
+        or os.environ.get("GITHUB_REF", "") != "refs/heads/main"
+        or os.environ.get("GITHUB_ACTOR", "") != actor
+        or repo_name != "nonkun12/line-bot"
+        or os.environ.get("GITHUB_REPOSITORY", "") != repo_name
+        or not task_id
+        or str(inputs.get("execution_approval", "")) != "APPROVE_EXECUTION"
+        or str(inputs.get("approval_task_id", "")) != task_id
+        or str(inputs.get("approval_instruction_sha256", "")).lower() != instruction_digest
+        or not allowed_paths_digest
+        or str(inputs.get("approval_allowed_paths_sha256", "")).lower() != allowed_paths_digest
+        or str(inputs.get("approval_base_sha", "")) != start_sha
+    ):
+        return blocked
+    return {
+        "gate": "PASS",
+        "reason_code": "authenticated_workflow_dispatch_approval",
+        "execution_authorized": True,
+        "scope": "execution",
+        "actor": actor,
+        "task_id": task_id,
+        "instruction_sha256": instruction_digest,
+        "allowed_paths_sha256": allowed_paths_digest,
+        "base_sha": start_sha,
+    }
+
+
 def _augment_instruction_with_history(instruction: str, history_path: Path) -> str:
     """Append bounded, explicitly untrusted recurring-failure evidence to the next run."""
     try:
@@ -204,6 +292,7 @@ def _write_summary(
     start_sha: str,
     summary_path: Path,
     rea_evidence: dict[str, object] | None = None,
+    approval_evidence: dict[str, object] | None = None,
 ) -> None:
     produced_sha = _git("rev-parse", "HEAD")
     branch = _git("branch", "--show-current")
@@ -220,6 +309,19 @@ def _write_summary(
     }
     if rea_evidence is not None:
         payload["rea"] = rea_evidence
+    if approval_evidence is not None:
+        payload["execution_approval"] = approval_evidence
+    postgen_status = os.environ.get("AUTONOMOUS_POSTGEN_REA_STATUS", "")
+    if postgen_status:
+        payload["post_generation_rea"] = {
+            "status": postgen_status,
+            "base_sha": os.environ.get("AUTONOMOUS_POSTGEN_REA_BASE_SHA", ""),
+            "target_sha": os.environ.get("AUTONOMOUS_POSTGEN_REA_TARGET_SHA", ""),
+            "diff_sha256": os.environ.get("AUTONOMOUS_POSTGEN_REA_DIFF_SHA256", ""),
+            "diagnostic_only": False,
+            "gate_stage": "pre_publish",
+            "publish_gate_passed": postgen_status == "PASS" and exit_code == 0,
+        }
     failure_code = extract_safe_failure_code(os.environ.get("AUTONOMOUS_FAILURE_CODE", ""))
     if failure_code is not None:
         payload["failure_code"] = failure_code
@@ -231,6 +333,69 @@ def _write_summary(
         with open(github_env, "a", encoding="utf-8") as fh:
             fh.write(f"AUTONOMOUS_SAFETY_GATE_RESULT={gate_result}\n")
             fh.write(f"AUTONOMOUS_SUMMARY_PATH={summary_path}\n")
+
+
+
+def _consume_execution_approval(approval_evidence: dict[str, object], start_sha: str) -> dict[str, object]:
+    """Atomically consume a task-bound approval using a unique Git ref.
+
+    GitHub's create-ref endpoint rejects an existing ref, making the marker a
+    durable, repository-native single-use ledger without a database or new secret.
+    """
+    if approval_evidence.get("execution_authorized") is not True:
+        return {"gate": "BLOCKED", "reason_code": "approval_not_verified"}
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token:
+        return {"gate": "BLOCKED", "reason_code": "approval_ledger_token_missing"}
+
+    identity = {
+        "repository": "nonkun12/line-bot",
+        "actor": approval_evidence.get("actor", ""),
+        "task_id": approval_evidence.get("task_id", ""),
+        "instruction_sha256": approval_evidence.get("instruction_sha256", ""),
+        "allowed_paths_sha256": approval_evidence.get("allowed_paths_sha256", ""),
+        "base_sha": start_sha,
+    }
+    if not all(isinstance(value, str) and value for value in identity.values()):
+        return {"gate": "BLOCKED", "reason_code": "approval_ledger_identity_invalid"}
+    marker = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    ref = f"refs/heads/rsi-approval-consumed/{marker}"
+    request = urllib.request.Request(
+        "https://api.github.com/repos/nonkun12/line-bot/git/refs",
+        data=json.dumps({"ref": ref, "sha": start_sha}).encode("utf-8"),
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "line-bot-rsi-approval-gate",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            if (
+                response.status != 201
+                or payload.get("ref") != ref
+                or not isinstance(payload.get("object"), dict)
+                or payload["object"].get("sha") != start_sha
+            ):
+                return {"gate": "BLOCKED", "reason_code": "approval_ledger_response_invalid"}
+    except urllib.error.HTTPError as exc:
+        if exc.code == 422:
+            return {"gate": "BLOCKED", "reason_code": "approval_already_consumed"}
+        return {"gate": "BLOCKED", "reason_code": f"approval_ledger_http_{exc.code}"}
+    except Exception as exc:
+        return {"gate": "BLOCKED", "reason_code": f"approval_ledger_error:{type(exc).__name__}"}
+    return {
+        "gate": "PASS",
+        "reason_code": "approval_consumed_once",
+        "marker_ref": ref,
+        "marker_sha": start_sha,
+    }
 
 
 def main() -> int:
@@ -277,9 +442,39 @@ def main() -> int:
         )
         return 80
 
+    from core.emergency_stop import local_stop_active
+    if local_stop_active(ROOT):
+        _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "emergency_stop_active", "execution_authorized": False})
+        print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
+        return 82
+
+    try:
+        shared_stop_active = _shared_stop_active()
+    except Exception:
+        _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "shared_stop_status_unconfirmed", "execution_authorized": False})
+        print("EMERGENCY_STOP=UNVERIFIABLE; runtime not started", flush=True)
+        return 82
+    if shared_stop_active:
+        _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "emergency_stop_active", "execution_authorized": False})
+        print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
+        return 82
+
+    instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
+    approval_evidence = _verify_execution_approval(start_sha, instruction)
+    if approval_evidence.get("execution_authorized") is True:
+        consumption = _consume_execution_approval(approval_evidence, start_sha)
+        approval_evidence["consumption"] = consumption
+        if consumption.get("gate") != "PASS":
+            approval_evidence["execution_authorized"] = False
+            approval_evidence["gate"] = "BLOCKED"
+            approval_evidence["reason_code"] = str(consumption.get("reason_code", "approval_consumption_blocked"))
+    if approval_evidence.get("execution_authorized") is not True:
+        _write_summary("BLOCKED", 81, start_sha, summary_path, rea_evidence, approval_evidence)
+        print("EXECUTION_APPROVAL=BLOCKED reason=approval_missing_invalid_or_consumed", flush=True)
+        return 81
+
     worker.ask = guarded_ask
     worker.ask_text = guarded_ask_text
-    instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
     history_path = Path(os.environ.get("SELF_IMPROVEMENT_HISTORY_PATH", "/tmp/line-bot-self-improvement.jsonl"))
     instruction = _augment_instruction_with_history(instruction, history_path)
     instruction = _augment_with_hermes_advice(instruction, history_path)
@@ -291,7 +486,7 @@ def main() -> int:
         os.environ["AUTONOMOUS_RUNTIME_ERROR"] = f"{type(exc).__name__}: {exc}"
         raise
     finally:
-        _write_summary("PASS" if exit_code == 0 else "FAIL", exit_code, start_sha, summary_path, rea_evidence)
+        _write_summary("PASS" if exit_code == 0 else "FAIL", exit_code, start_sha, summary_path, rea_evidence, approval_evidence)
 
 
 if __name__ == "__main__":

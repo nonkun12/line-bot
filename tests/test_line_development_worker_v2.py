@@ -559,8 +559,8 @@ def test_apply_plan_changes_one_exact_anchor(tmp_path, monkeypatch):
 def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     calls = []
 
-    def fake_run(cmd, timeout=900, input_text=None):
-        calls.append(cmd)
+    def fake_run(cmd, timeout=900, input_text=None, env=None):
+        calls.append((cmd, env))
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr(worker, "ROOT", tmp_path)
@@ -569,17 +569,30 @@ def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     passed, output = worker.run_tests([])
 
     assert passed
-    assert any(cmd[:4] == [worker.sys.executable, "-m", "pytest", "-q"] for cmd in calls)
-    pytest_call = next(cmd for cmd in calls if cmd[2:] == ["pytest", "-q", "--tb=native"])
+    assert any(cmd[:4] == [worker.sys.executable, "-m", "pytest", "-q"] for cmd, _ in calls)
+    pytest_call, pytest_env = next((cmd, env) for cmd, env in calls if cmd[2:] == ["pytest", "-q", "--tb=native"])
     assert pytest_call == [worker.sys.executable, "-m", "pytest", "-q", "--tb=native"]
+    assert pytest_env is not None
+    assert not any(
+        key.upper() in {
+            "GH_TOKEN", "GITHUB_TOKEN", "GROQ_API_KEY", "HERMES_GROQ_API_KEY",
+            "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "SLACK_WEBHOOK_URL",
+            "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "GOOGLE_APPLICATION_CREDENTIALS",
+            "GOOGLE_SHEETS_SPREADSHEET_ID", "LINE_CHANNEL_ACCESS_TOKEN",
+            "LINE_CHANNEL_SECRET",
+        }
+        or key.upper().endswith(("_TOKEN", "_API_KEY", "_SECRET", "_PASSWORD", "_CREDENTIALS"))
+        or any(marker in key.upper() for marker in ("TOKEN", "API_KEY", "SECRET", "PASSWORD", "CREDENTIAL", "ACCESS_KEY", "PRIVATE_KEY", "WEBHOOK"))
+        for key in pytest_env
+    )
     assert "full pytest:" in output
 
 
 def test_run_tests_can_verify_only_allowlisted_target_for_no_change(monkeypatch, tmp_path):
     calls = []
 
-    def fake_run(cmd, timeout=900, input_text=None):
-        calls.append(cmd)
+    def fake_run(cmd, timeout=900, input_text=None, env=None):
+        calls.append((cmd, env))
         return subprocess.CompletedProcess(cmd, 0, stdout="1 passed", stderr="")
 
     monkeypatch.setattr(worker, "ROOT", tmp_path)
@@ -588,11 +601,12 @@ def test_run_tests_can_verify_only_allowlisted_target_for_no_change(monkeypatch,
     passed, output = worker.run_tests(["tests/test_ai_speaker.py"], full_suite=False)
 
     assert passed
-    pytest_call = next(cmd for cmd in calls if cmd[2:] and cmd[2] == "pytest")
+    pytest_call, pytest_env = next((cmd, env) for cmd, env in calls if cmd[2:] and cmd[2] == "pytest")
     assert pytest_call == [
         worker.sys.executable, "-m", "pytest", "-q", "--tb=native",
         "tests/test_ai_speaker.py",
     ]
+    assert pytest_env is not None
     assert "targeted pytest:" in output
 
 
@@ -796,9 +810,8 @@ def test_queue_progress_not_run_task_uses_deterministic_target():
 
 
 
-def test_default_completion_budget_preserves_groq_free_tpm_headroom():
-    # The Groq free/on-demand TPM ceiling includes both prompt and completion.
-    # Keep enough headroom that a ~4.8k-token prompt is not rejected at 8k TPM.
+def test_default_local_completion_budget_is_bounded():
+    # Bound local inference output to avoid unbounded generation.
     assert worker.MAX_RESPONSE_TOKENS == 2500
 
 
@@ -1553,7 +1566,7 @@ def test_append_only_generation_failure_includes_safe_api_error_detail(monkeypat
     assert plan is None
     assert error.startswith(
         "append_only_test_generation_failed:BadRequestError:"
-        "model=openai/gpt-oss-20b:groq_sdk="
+        "model=unknown:local_protocol=unknown"
     )
     assert "status=400:code=invalid_request:param=max_tokens:" in error
     assert "message=Requested token budget exceeds limit" in error

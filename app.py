@@ -78,6 +78,7 @@ from core.gateway import AIGateway
 from core.request_path import run_core_request, extract_core_reply
 from core.management_bridge import should_route_to_management_ai, run_management_request
 from core.line_runtime_audit import record_line_runtime
+from core.emergency_stop import handle_line_command
 from core.control_tower_status import (
     build_control_tower_status_reply,
     is_control_tower_status_command,
@@ -392,6 +393,15 @@ def _handle_ai_gateway_request(ai_request):
     review_handled, review_reply = request_recovery_resume_review(user_id, message)
     if review_handled:
         return review_reply
+
+    emergency_stop_reply = handle_line_command(
+        message,
+        user_id,
+        GITHUB_TOKEN,
+        AI_REPORT_GITHUB_REPO or "nonkun12/line-bot",
+    )
+    if emergency_stop_reply is not None:
+        return emergency_stop_reply
 
     # Explicit status commands must bypass the general chat model. Report only
     # read-only GitHub Actions evidence and fail closed when it is unavailable.

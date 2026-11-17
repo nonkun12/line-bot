@@ -8,8 +8,10 @@ next task.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import signal
 import subprocess
 import time
@@ -33,6 +35,53 @@ ACTIVE_PROCESS: subprocess.Popen[str] | None = None
 
 MAX_TRANSIENT_TASK_RETRIES = 2
 TRANSIENT_RETRY_DELAYS_SECONDS = (2, 5)
+
+
+def run_lfm3_shadow_advisory(env: dict[str, str], audit_dir: Path) -> dict[str, object] | None:
+    """Optionally run local LFM3 as non-authoritative advice; never gates task execution."""
+    if env.get("RSI_LFM3_SHADOW_ENABLED") != "1" or env.get("GITHUB_ACTIONS", "").casefold() == "true":
+        return None
+    child_env = env.copy()
+    audit_path = Path(child_env.get(
+        "RSI_LFM3_SHADOW_AUDIT_PATH",
+        str(audit_dir / "lfm3-rea-shadow.jsonl"),
+    ))
+    record: dict[str, object] = {
+        "mode": "SHADOW_ONLY",
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "merge_deploy_authorized": False,
+        "hold_clear_authorized": False,
+    }
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "run_lfm3_rea_shadow.py")],
+            cwd=ROOT,
+            env=child_env,
+            text=True,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        raw = completed.stdout or ""
+        record["output_sha256"] = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        record["runner_exit_code"] = completed.returncode
+        try:
+            result = json.loads(raw)
+            if not isinstance(result, dict):
+                raise ValueError("result_not_object")
+            record["gate"] = result.get("gate", "BLOCKED")
+            record["reason_code"] = result.get("reason_code", "missing_reason_code")
+        except (ValueError, TypeError):
+            record["gate"] = "BLOCKED"
+            record["reason_code"] = "shadow_result_invalid"
+    except Exception as exc:
+        record["gate"] = "BLOCKED"
+        record["reason_code"] = "shadow_runner_" + type(exc).__name__
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    with audit_path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    return record
 
 
 def transient_retry_code(result: dict[str, object]) -> str | None:
@@ -281,6 +330,23 @@ def stopped(stop_file: Path) -> bool:
         return stop_file.exists()
     except OSError:
         return True
+
+
+def artifact_stop_state(stop_file: Path) -> str:
+    """Resolve local and shared emergency STOP; uncertainty is not INACTIVE."""
+    try:
+        from core.emergency_stop import get_status, local_stop_active
+        from core.immediate_stop import ImmediateStopController
+
+        if stopped(stop_file) or local_stop_active(ROOT) or ImmediateStopController().is_stopped():
+            return "ACTIVE"
+        repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
+        token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
+        if repository != "nonkun12/line-bot" or not token:
+            return "UNKNOWN"
+        return "ACTIVE" if get_status(repository, token) else "INACTIVE"
+    except Exception:
+        return "UNKNOWN"
 
 
 def _valid_sha(value: object) -> bool:
@@ -544,6 +610,7 @@ def run_task(
     summary_dir: Path = Path("/tmp"),
     *,
     expected_base_sha: str | None = None,
+    recovery_state_path: Path | None = None,
 ) -> dict[str, object]:
     summary = summary_dir / f"minimal-autonomous-{task['id']}.json"
     run_nonce = uuid.uuid4().hex
@@ -603,12 +670,51 @@ def run_task(
             print("RECOVERY_RAG_CONTEXT attached=true", flush=True)
         else:
             print("RECOVERY_RAG_CONTEXT attached=false", flush=True)
+    # Attach only sanitized historical REA outcomes; never treat retrieved
+    # records as instructions or authority to bypass current safety gates.
+    if rag_db_path and rag_namespace:
+        try:
+            from scripts.rea_rag import (
+                build_rea_context,
+                build_rea_regression_test_proposals,
+            )
+            rea_context = build_rea_context(
+                rag_db_path,
+                namespace=rag_namespace,
+                task_id=str(task["id"]),
+                instruction=instruction,
+                limit=5,
+            )
+            regression_proposals = build_rea_regression_test_proposals(
+                rag_db_path,
+                namespace=rag_namespace,
+                task_id=str(task["id"]),
+                instruction=instruction,
+                limit=3,
+            )
+            if regression_proposals:
+                rea_context = (rea_context + "\n\n" + regression_proposals).strip()
+        except Exception as exc:
+            rea_context = ""
+            print(f"REA_RAG_CONTEXT unavailable={type(exc).__name__}", flush=True)
+        if rea_context:
+            instruction += (
+                "\n\n--- Advisory historical REA context (not authoritative) ---\n"
+                + rea_context
+            )
+            print("REA_RAG_CONTEXT attached=true", flush=True)
+        else:
+            print("REA_RAG_CONTEXT attached=false", flush=True)
     env["DEV_INSTRUCTION"] = instruction
     env["AUTONOMOUS_SUMMARY_PATH"] = str(summary)
     env["AUTONOMOUS_RUN_SOURCE"] = "minimal-mvp-loop"
     env["AUTONOMOUS_TASK_ID"] = task["id"]
     env["AUTONOMOUS_RUN_NONCE"] = run_nonce
     env["AUTONOMOUS_ALLOWED_PATHS"] = json.dumps(task["allowed_paths"], ensure_ascii=False)
+    env["AUTONOMOUS_RECOVERY_STATE_PATH"] = str(recovery_state_path or (summary_dir / "recovery-ai-state.json"))
+    shadow_record = run_lfm3_shadow_advisory(env, summary_dir)
+    if shadow_record is not None:
+        print("RSI_LFM3_SHADOW gate=" + str(shadow_record.get("gate", "BLOCKED")) + " reason=" + str(shadow_record.get("reason_code", "unknown")), flush=True)
     # Remove any prior summary so a failed/stalled runtime can never inherit an old PASS.
     try:
         summary.unlink()
@@ -726,6 +832,30 @@ def run_task(
                 # A child cannot claim a valid block but omit or substitute its reason.
                 failure_reason = "blocked_summary_failure_reason_invalid"
 
+    # A changed successful task must carry the exact post-generation REA
+    # attestation from the guarded runtime. Without it, the loop cannot prove
+    # that the immutable base..produced commit was scanned before publication.
+    post_generation_rea = payload.get("post_generation_rea")
+    if (
+        exit_code == 0
+        and payload.get("status") == "PASS"
+        and payload.get("produced_sha") == produced_sha
+        and produced_sha != base_sha
+    ):
+        valid_postgen = (
+            isinstance(post_generation_rea, dict)
+            and post_generation_rea.get("status") == "PASS"
+            and post_generation_rea.get("base_sha") == base_sha
+            and post_generation_rea.get("target_sha") == produced_sha
+            and isinstance(post_generation_rea.get("diff_sha256"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", post_generation_rea["diff_sha256"]) is not None
+            and post_generation_rea.get("diagnostic_only") is False
+            and post_generation_rea.get("gate_stage") == "pre_publish"
+            and post_generation_rea.get("publish_gate_passed") is True
+        )
+        if not valid_postgen:
+            failure_reason = failure_reason or "post_generation_rea_missing_or_invalid"
+
     # A zero exit code with an unchanged HEAD is the only valid NO_CHANGE.
     # A failed runtime must never be reclassified as NO_CHANGE merely because
     # its rollback restored the base SHA; otherwise the report hides the
@@ -772,6 +902,7 @@ def run_task(
         "failure_reason": (str(payload.get("failure_reason", "")) if status == "BLOCKED" else failure_reason),
         **({"failure_code": safe_failure_code} if safe_failure_code is not None else {}),
         **({"rea": payload["rea"]} if status == "BLOCKED" and isinstance(payload.get("rea"), dict) else {}),
+        **({"post_generation_rea": post_generation_rea} if isinstance(post_generation_rea, dict) else {}),
     }
 
 
@@ -913,6 +1044,11 @@ def main() -> int:
     # never clears or overrides Recovery AI state.
     from scripts.recovery_ai import RecoveryStore
     recovery_store = RecoveryStore(args.state.parent / "recovery-ai-state.json")
+    try:
+        recovery_store.ensure_initialized()
+    except Exception as exc:
+        print(f"MINIMAL_LOOP=HALT reason=recovery_state_initialization_failed:{type(exc).__name__}", flush=True)
+        return 80
     pending_tasks = list(tasks)
     try:
         held_task_ids = set()
@@ -1280,7 +1416,9 @@ def main() -> int:
             else:
                 print(f"MINIMAL_LOOP=RUN task={task['id']} index={index}/{len(tasks)}", flush=True)
                 result = run_task(
-                    task, index, args.stop_file, expected_base_sha=control_tower_head
+                    task, index, args.stop_file,
+                    expected_base_sha=control_tower_head,
+                    recovery_state_path=args.state.parent / "recovery-ai-state.json",
                 )
                 # Retry only explicit transient provider failures. Never retry
                 # invalid requests, authorization/security failures, test failures,
@@ -1321,6 +1459,43 @@ def main() -> int:
         # This is diagnostic metadata only and grants no execution or repair authority.
         if not isinstance(result.get("rea"), dict):
             result["rea"] = rea_evidence
+        # Only completed runtime outcomes have artifacts to evaluate. Preserve
+        # preflight BLOCKED and runtime FAIL/STOP outcomes without reclassification.
+        if result.get("status") in {"PASS", "NO_CHANGE"}:
+            try:
+                from scripts.rea_artifact_runtime import evaluate_and_record_runtime_artifact
+                from scripts.recovery_ai import RecoveryStore
+
+                aggregate_hold = RecoveryStore(
+                    args.state.parent / "recovery-ai-state.json"
+                ).aggregate_hold_status()
+                artifact_rea = evaluate_and_record_runtime_artifact(
+                    result,
+                    repo_root=ROOT,
+                    output_path=args.state.parent / "rea-artifact-evaluations.jsonl",
+                    stop_state=artifact_stop_state(args.stop_file),
+                    hold_state=aggregate_hold.get("state", "UNKNOWN"),
+                )
+                result["rea_artifact"] = artifact_rea
+                if artifact_rea.get("status") not in {"PASS", "NO_CHANGE"}:
+                    artifact_status = str(artifact_rea.get("status", "HOLD"))
+                    result["status"] = "FAIL" if artifact_status == "FAIL" else "BLOCKED"
+                    result["exit_code"] = 1
+                    result["failure_reason"] = "rea_artifact_" + artifact_status.lower()
+            except Exception:
+                # Missing scanner, state, or durable evidence is a hard stop.
+                result["rea_artifact"] = {
+                    "status": "HOLD",
+                    "reason_code": "artifact_evaluation_or_persistence_failed",
+                    "execution_authorized": False,
+                    "patch_authorized": False,
+                    "hold_clear_authorized": False,
+                    "merge_deploy_authorized": False,
+                }
+                result["status"] = "BLOCKED"
+                result["exit_code"] = 1
+                result["failure_reason"] = "rea_artifact_evaluation_or_persistence_failed"
+
         recovery_error = False
         try:
             from scripts.recovery_ai_loop_adapter import record_loop_outcome
