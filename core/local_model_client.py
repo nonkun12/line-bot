@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import os
-import socket
+from ipaddress import ip_address
 from types import SimpleNamespace
 from urllib import error, request
 from urllib.parse import urlsplit
@@ -33,9 +33,6 @@ def _redirect_blocker():
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             raise LocalModelError("local_model_redirect_blocked")
     return NoRedirect()
-
-
-from ipaddress import ip_address
 
 
 class _Completions:
