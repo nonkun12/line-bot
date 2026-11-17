@@ -15,7 +15,8 @@ def _build(tmp_path, monkeypatch):
     return build_rsi_authority(
         experiment_id="rsi-exp-01",
         start_sha="a" * 40,
-        instruction="Run bounded local RSI. RSI_EXPERIMENT_ID=rsi-exp-01",
+        instruction="Run bounded local RSI. RSI_EXPERIMENT_ID=rsi-exp-01 RSI_EXPERIMENT_CONFIG_SHA256=" + "d" * 64,
+        config_sha256="d" * 64,
         recovery_state_path=tmp_path / "recovery-ai-state.json",
     )
 
@@ -131,6 +132,7 @@ def test_builder_requires_experiment_id_in_human_approved_instruction(tmp_path, 
     with pytest.raises(ValueError, match="not_bound_to_approved_instruction"):
         build_rsi_authority(
             experiment_id="rsi-exp-01",
+            config_sha256="d" * 64,
             start_sha="a" * 40,
             instruction="Run RSI without binding its experiment identity.",
             recovery_state_path=tmp_path / "state.json",
