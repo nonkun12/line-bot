@@ -55,23 +55,24 @@ def captured_output_text(output: object) -> str:
 
 
 def parse_counts(output: str) -> tuple[int, int, int, int]:
-    """Parse pytest's terminal summary captured outside the sandbox."""
-    matches = re.findall(
-        r"(?:(\d+)\s+passed)?(?:,\s*)?(?:(\d+)\s+failed)?"
-        r"(?:,\s*)?(?:(\d+)\s+errors?)?(?:,\s*)?"
-        r"(?:(\d+)\s+skipped)?(?:,\s*)?(?:(\d+)\s+xfailed)?"
-        r"(?:,\s*)?(?:(\d+)\s+xpassed)?(?:,\s*\d+\s+warnings?)?"
-        r"\s+in\s+[0-9.]+s",
-        output,
-    )
-    if not matches:
+    """Parse pytest's final quiet-mode summary captured outside the sandbox."""
+    summaries = [
+        line.strip()
+        for line in output.splitlines()
+        if re.search(r"\bin\s+[0-9.]+s\s*$", line.strip())
+    ]
+    if not summaries:
         return 0, 0, 0, 0
-    # On successful pytest runs, test stdout is captured. Use the first terminal
-    # summary so late atexit output from candidate code cannot replace it.
-    passed, failed, errors, skipped, xfailed, xpassed = (
-        int(value or 0) for value in matches[0]
-    )
-    skipped += xfailed + xpassed
+    summary = summaries[-1]
+
+    def count(label: str) -> int:
+        match = re.search(rf"\b(\d+)\s+{label}\b", summary)
+        return int(match.group(1)) if match else 0
+
+    passed = count("passed")
+    failed = count("failed")
+    errors = count("errors?")
+    skipped = count("skipped") + count("xfailed") + count("xpassed")
     collected = passed + failed + errors + skipped
     return collected, passed, failed + errors, skipped
 
