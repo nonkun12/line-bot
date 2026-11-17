@@ -256,7 +256,7 @@ def _orca_snapshot_timestamp(value):
 
 
 _ORCA_ALLOWED_FIELDS = {
-    "tasks": {"id", "task_id", "status", "state", "stage", "created_at", "updated_at", "dispatch_id", "worker_id", "stream_key"},
+    "tasks": {"id", "task_id", "status", "state", "stage", "created_at", "updated_at", "dispatch_id", "worker_id", "stream_key", "rea_artifact_status", "rea_artifact_reason_code", "rea_artifact_evidence_sha256", "rea_artifact_execution_authorized", "rea_artifact_patch_authorized", "rea_artifact_hold_clear_authorized", "rea_artifact_merge_deploy_authorized"},
     "dispatches": {"id", "dispatch_id", "task_id", "status", "state", "stage", "created_at", "updated_at", "worker_id", "stream_key"},
     "workers": {"id", "worker_id", "dispatch_id", "task_id", "status", "state", "stage", "addressable", "exactWorker", "created_at", "updated_at", "stream_key"},
 }
@@ -274,6 +274,17 @@ def _sanitize_orca_payload(payload):
         clean[group] = [{k: v for k, v in item.items() if k in allowed
                          and isinstance(v, (str, int, float, bool)) and len(str(v)) <= 300}
                         for item in items]
+        if group == "tasks":
+            for source, target in zip(items, clean[group]):
+                if any(key in source for key in ("rea_artifact_status", "rea_artifact_reason_code", "rea_artifact_evidence_sha256")):
+                    if source.get("rea_artifact_status") not in {"PASS", "FAIL", "NO_CHANGE", "BLOCKED", "HOLD"}:
+                        raise ValueError("invalid REA artifact status")
+                    digest = source.get("rea_artifact_evidence_sha256")
+                    if not isinstance(digest, str) or len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+                        raise ValueError("invalid REA artifact evidence hash")
+                    flags = ("rea_artifact_execution_authorized", "rea_artifact_patch_authorized", "rea_artifact_hold_clear_authorized", "rea_artifact_merge_deploy_authorized")
+                    if any(source.get(flag) is not False for flag in flags):
+                        raise ValueError("REA artifact authority flags must remain false")
     streams = payload.get("streams", [])
     if not isinstance(streams, list) or len(streams) > 6:
         raise ValueError("invalid streams collection")

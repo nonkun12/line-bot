@@ -96,7 +96,11 @@ def test_general_protected_edit_never_calls_llm(monkeypatch):
     monkeypatch.setenv("DEV_INSTRUCTION", "line_development.py の処理を修正してください")
     monkeypatch.setenv("GROQ_API_KEY", "test-key")
     monkeypatch.delenv("ALLOW_SELF_TEST_COMMENT", raising=False)
-    monkeypatch.setattr(worker, "Groq", lambda api_key: object())
+    class FakeLocalClient:
+        model = "test-local"
+        protocol = "ollama"
+
+    monkeypatch.setattr(worker, "create_local_model_client_from_env", FakeLocalClient)
     monkeypatch.setattr(worker, "repo_files", lambda: ["tests/test_line_development.py"])
     monkeypatch.setattr(worker, "choose_file", lambda client, instruction, files: "line_development.py")
 

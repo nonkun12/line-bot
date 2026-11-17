@@ -28,10 +28,12 @@ def test_run_tests_hides_task_context_during_pytest_and_restores_parent(monkeypa
         monkeypatch.setenv(name, value)
 
     observed = []
+    monkeypatch.setenv("GITHUB_TOKEN", "test-github-token")
+    monkeypatch.setenv("GROQ_API_KEY", "test-provider-key")
 
-    def fake_run(command, timeout=900, input_text=None):
+    def fake_run(command, timeout=900, input_text=None, env=None):
         if command[1:4] == ["-m", "pytest", "-q"]:
-            observed.append({name: os.environ.get(name) for name in TASK_SCOPED_NAMES})
+            observed.append(env)
         return _Success()
 
     monkeypatch.setattr(worker, "run", fake_run)
@@ -39,7 +41,10 @@ def test_run_tests_hides_task_context_during_pytest_and_restores_parent(monkeypa
 
     assert success is True
     assert "1 passed" in output
-    assert observed == [{name: None for name in TASK_SCOPED_NAMES}]
+    assert len(observed) == 1 and observed[0] is not None
+    assert all(name not in observed[0] for name in TASK_SCOPED_NAMES)
+    assert "GITHUB_TOKEN" not in observed[0]
+    assert "GROQ_API_KEY" not in observed[0]
     assert {name: os.environ.get(name) for name in TASK_SCOPED_NAMES} == original
 
 
@@ -48,9 +53,10 @@ def test_run_tests_restores_task_context_when_pytest_runner_raises(monkeypatch):
     for name, value in original.items():
         monkeypatch.setenv(name, value)
 
-    def fail_run(command, timeout=900, input_text=None):
+    def fail_run(command, timeout=900, input_text=None, env=None):
         if command[1:4] == ["-m", "pytest", "-q"]:
             assert all(os.environ.get(name) is None for name in TASK_SCOPED_NAMES)
+            assert env is not None and all(name not in env for name in TASK_SCOPED_NAMES)
             raise RuntimeError("simulated pytest launcher failure")
         return _Success()
 

@@ -18,24 +18,20 @@ from pathlib import Path
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
-from groq import Groq
 
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from core.local_model_client import LocalModelClient, LocalModelError, create_local_model_client_from_env
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
 
 ROOT = _ROOT
-MODEL = os.environ.get("DEV_AI_MODEL", "openai/gpt-oss-20b")
+MODEL = os.environ.get("RSI_LOCAL_MODEL_NAME", "")
 MAX_FILES = 1
 MAX_FILE_CHARS = 12000
-# Groq's 8,000 TPM limit counts prompt plus requested completion tokens.
-# A 3,500-token completion plus the observed ~4,808-token prompt was rejected
-# at 8,308 TPM. Keep the default completion budget at 2,500 to leave headroom.
+# Bound local inference cost in time and output size.
 MAX_RESPONSE_TOKENS = 2500
-# Keep this endpoint within the observed Groq TPM budget: a 3,500-token
-# completion plus a ~4,808-token prompt was rejected. Bound both sides.
 MAX_APPEND_ONLY_RESPONSE_TOKENS = 2500
 MAX_APPEND_ONLY_CONTEXT_CHARS = 3000
 MAX_INSTRUCTION_LENGTH = 2000
@@ -64,8 +60,40 @@ _TEST_INSTRUCTION_PATTERN = re.compile(r"(?:workflow|connection)[\s_-]*test", re
 _TEST_INSTRUCTION_EXACT = {"開発接続テスト", "接続テスト", "動作確認", "疎通確認", "LINE自動開発テスト"}
 
 
-def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout)
+def run(
+    cmd: list[str],
+    timeout: int = 900,
+    input_text: str | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd, cwd=ROOT, text=True, input=input_text, capture_output=True,
+        timeout=timeout, env=env,
+    )
+
+
+def _test_process_env() -> dict[str, str]:
+    """Keep credentials out of pytest and any code executed by the test suite."""
+    blocked_exact = {
+        "GH_TOKEN", "GITHUB_TOKEN", "GROQ_API_KEY", "HERMES_GROQ_API_KEY",
+        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "SLACK_WEBHOOK_URL",
+        "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_SHEETS_SPREADSHEET_ID", "LINE_CHANNEL_ACCESS_TOKEN",
+        "LINE_CHANNEL_SECRET",
+    }
+    blocked_suffixes = (
+        "_TOKEN", "_API_KEY", "_SECRET", "_PASSWORD", "_CREDENTIALS",
+    )
+    clean = os.environ.copy()
+    for name in tuple(clean):
+        upper = name.upper()
+        sensitive_marker = any(
+            marker in upper
+            for marker in ("TOKEN", "API_KEY", "SECRET", "PASSWORD", "CREDENTIAL", "ACCESS_KEY", "PRIVATE_KEY", "WEBHOOK")
+        )
+        if upper in blocked_exact or upper.endswith(blocked_suffixes) or sensitive_marker:
+            clean.pop(name, None)
+    return clean
 
 
 def is_protected(path: str) -> bool:
@@ -147,9 +175,9 @@ def repo_files() -> list[str]:
     ]
 
 
-def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
+def ask(client: LocalModelClient, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
     response = client.chat.completions.create(
-        model=MODEL,
+        model=getattr(client, "model", MODEL) or "unknown",
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.0,
         max_completion_tokens=max_tokens,
@@ -158,10 +186,10 @@ def ask(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOK
     )
     return response.choices[0].message.content or ""
 
-def ask_text(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
+def ask_text(client: LocalModelClient, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
     """Request bounded plain text without enabling the provider's JSON mode."""
     response = client.chat.completions.create(
-        model=MODEL,
+        model=getattr(client, "model", MODEL) or "unknown",
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.0,
         max_completion_tokens=max_tokens,
@@ -213,7 +241,7 @@ _E2E_TEST_TARGETS = (
 )
 
 
-def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
+def choose_file(client: LocalModelClient, instruction: str, files: list[str]) -> str | None:
     explicit = _extract_explicit_path(instruction, files)
     if explicit:
         return explicit
@@ -284,7 +312,7 @@ def context_for(path: str) -> str:
 
 
 def repair_anchor_plan(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     context: str,
@@ -312,7 +340,7 @@ Do not broaden the requested change. If a unique safe anchor cannot be identifie
 
 
 def repair_size_plan(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     context: str,
@@ -338,7 +366,7 @@ If the requested change cannot be expressed as a small safe search/replace, retu
 
 
 def repair_existing_test_modified_plan(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     context: str,
@@ -551,7 +579,7 @@ def _safe_api_error_detail(exc: Exception) -> str:
 
 
 def build_append_only_test_plan(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     context: str,
@@ -584,17 +612,12 @@ The function name must start with test_. Keep the test focused and concise."""
         ).strip()
     except Exception as exc:
         detail = _safe_api_error_detail(exc)
-        try:
-            from importlib.metadata import version as package_version
-
-            sdk_version = package_version("groq")
-        except Exception:
-            sdk_version = "unknown"
-        model = re.sub(r"[^A-Za-z0-9_./-]", "", MODEL)[:100] or "unknown"
+        model = re.sub(r"[^A-Za-z0-9_./-]", "", getattr(client, "model", MODEL))[:100] or "unknown"
+        protocol = re.sub(r"[^A-Za-z0-9_.-]", "", getattr(client, "protocol", "unknown"))[:40] or "unknown"
         suffix = f":{detail}" if detail else ""
         return None, (
             f"append_only_test_generation_failed:{type(exc).__name__}:"
-            f"model={model}:groq_sdk={sdk_version}{suffix}"
+            f"model={model}:local_protocol={protocol}{suffix}"
         )
     if generated == "NO_CHANGE":
         return {"no_change": True, "source": "append_only_review_task"}, ""
@@ -694,7 +717,7 @@ The function name must start with test_. Keep the test focused and concise."""
 
 
 def validate_plan_with_bounded_repairs(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     plan: dict,
@@ -763,7 +786,7 @@ def validate_plan_with_bounded_repairs(
 
 
 def apply_plan_with_bounded_anchor_repair(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     plan: dict,
@@ -934,6 +957,9 @@ def validate_plan(plan: dict, chosen: str) -> tuple[bool, str]:
 
 def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
     """Preflight every bounded change before writing any file."""
+    from core.emergency_stop import local_stop_active
+    if local_stop_active(ROOT):
+        return False, "emergency_stop_active", []
     if not isinstance(plan, dict):
         return False, "invalid_plan", []
     if plan.get("no_change") is True:
@@ -969,10 +995,15 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
             return False, f"anchor_count_{path}:{count}", []
         prepared.append((path, target, original, old, new))
 
+    # Recheck after all preflight reads and immediately before the first write.
+    if local_stop_active(ROOT):
+        return False, "emergency_stop_active", []
     touched: list[str] = []
     current_index = -1
     try:
         for current_index, (path, target, original, old, new) in enumerate(prepared):
+            if current_index == 0 and local_stop_active(ROOT):
+                return False, "emergency_stop_active", []
             target.write_text(original.replace(old, new, 1), encoding="utf-8")
             touched.append(path)
     except OSError as exc:
@@ -997,7 +1028,11 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
     for path in touched or []:
         if not path.endswith(".py"):
             continue
-        compile_result = run([sys.executable, "-m", "py_compile", path], timeout=120)
+        compile_result = run(
+            [sys.executable, "-m", "py_compile", path],
+            timeout=120,
+            env=_test_process_env(),
+        )
         outputs.append(f"py_compile {path}: returncode={compile_result.returncode}")
         if compile_result.stdout:
             outputs.append(compile_result.stdout)
@@ -1036,7 +1071,7 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 return False, "targeted pytest requires safe relative Python test paths"
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native", *paths]
             outputs.append("targeted pytest:")
-        tests = run(test_cmd, timeout=900)
+        tests = run(test_cmd, timeout=900, env=_test_process_env())
     finally:
         for name, value in task_scope.items():
             if value is missing:
@@ -1061,7 +1096,7 @@ def restore(paths: list[str]) -> None:
         run(["git", "checkout", "--", *paths])
 
 
-def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_output: str | None = None) -> dict:
+def build_plan(client: LocalModelClient, instruction: str, chosen: str, context: str, test_output: str | None = None) -> dict:
     system = (
         "You edit EXACTLY ONE repository file. Return JSON only.\n\n"
         f"The ONLY editable file is: {chosen}\n\n"
@@ -1088,7 +1123,7 @@ def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_o
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
-def repair_invalid_old_new_plan(client: Groq, instruction: str, chosen: str, context: str, rejected_plan: dict, validation_error: str = "") -> dict:
+def repair_invalid_old_new_plan(client: LocalModelClient, instruction: str, chosen: str, context: str, rejected_plan: dict, validation_error: str = "") -> dict:
     """Perform one bounded repair when the model omitted or malformed old/new fields."""
     rejected = json.dumps(rejected_plan, ensure_ascii=False)
     system = '''Repair ONE rejected JSON search/replace plan. Return JSON only.
@@ -1109,7 +1144,7 @@ the requested change. If a safe exact replacement cannot be identified, return {
 
 
 def repair_invalid_change_count_plan(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     context: str,
@@ -1133,7 +1168,7 @@ If no safe single change can be produced, return {"no_change":true}.'''
 
 
 
-def repair_diff_marker_plan(client: Groq, instruction: str, chosen: str, context: str, rejected_plan: dict) -> dict:
+def repair_diff_marker_plan(client: LocalModelClient, instruction: str, chosen: str, context: str, rejected_plan: dict) -> dict:
     """Perform one bounded plan repair focused only on diff-marker contamination."""
     rejected = json.dumps(rejected_plan, ensure_ascii=False)
     system = '''Repair ONE rejected JSON search/replace plan. Return JSON only.
@@ -1154,12 +1189,20 @@ def main() -> int:
     if not instruction:
         print("No development instruction supplied.")
         return 2
-    client = Groq(api_key=os.environ["GROQ_API_KEY"])
     if is_test_instruction(instruction):
-        print("Test-only instruction detected; no file target required.", flush=True)
+        print("Test-only instruction detected; no model provider required.", flush=True)
         passed, output = run_tests()
         print(output, flush=True)
         return 0 if passed else 1
+
+    # Only an explicitly configured loopback model is accepted. No API key,
+    # remote provider, retry, or cloud fallback is available on this path.
+    try:
+        client = create_local_model_client_from_env()
+    except LocalModelError as exc:
+        print(f"MODEL_PROVIDER=BLOCKED reason={exc}", flush=True)
+        return 1
+    print(f"MODEL_PROVIDER=LOCAL protocol={client.protocol} model={client.model}", flush=True)
 
     files = repo_files()
     chosen = choose_file(client, instruction, files)
