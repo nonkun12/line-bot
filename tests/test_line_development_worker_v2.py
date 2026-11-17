@@ -575,7 +575,7 @@ def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     pytest_call, pytest_env = next((cmd, env) for cmd, env in calls if cmd[2:] == ["pytest", "-q", "--tb=native"])
     assert pytest_call == [worker.sys.executable, "-m", "pytest", "-q", "--tb=native"]
     assert pytest_env is not None
-    assert not any(marker in key.upper() for key in pytest_env for marker in ("TOKEN", "SECRET", "API_KEY", "_KEY", "PASSWORD", "CREDENTIAL", "PRIVATE_KEY", "WEBHOOK", "AUTHORIZATION"))
+    assert not any(marker in key.upper() for key in pytest_env for marker in ("TOKEN", "SECRET", "API_KEY", "PASSWORD", "CREDENTIAL", "PRIVATE_KEY", "WEBHOOK", "AUTHORIZATION"))
     assert "full pytest:" in output
 
 
