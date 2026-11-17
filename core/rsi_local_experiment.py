@@ -56,6 +56,8 @@ def rsi_experiment_config_sha256(
         "minimum_delta": minimum_delta,
         "model_protocol": getattr(client, "protocol", ""),
         "model_id": getattr(client, "model", ""),
+        "model_endpoint": getattr(client, "base_url", ""),
+        "model_timeout_seconds": getattr(client, "timeout", ""),
     }
     return hashlib.sha256(_canonical(config)).hexdigest()
 
