@@ -9,15 +9,24 @@ from core.rsi_authority import build_rsi_authority
 from scripts.recovery_ai import RecoveryStore
 
 
-def _build(tmp_path, monkeypatch):
+def _build(tmp_path, monkeypatch, recovery_path=None):
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-task-01")
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    state_path = recovery_path or (tmp_path / "recovery-ai-state.json")
+    if not state_path.exists():
+        RecoveryStore(state_path)._write({
+            "schema_version": 1,
+            "tasks": {},
+            "checkpoint": None,
+        })
+    monkeypatch.setenv("AUTONOMOUS_RECOVERY_STATE_PATH", str(state_path))
     return build_rsi_authority(
         experiment_id="rsi-exp-01",
         start_sha="a" * 40,
         instruction="Run bounded local RSI. RSI_EXPERIMENT_ID=rsi-exp-01 RSI_EXPERIMENT_CONFIG_SHA256=" + "d" * 64,
         config_sha256="d" * 64,
-        recovery_state_path=tmp_path / "recovery-ai-state.json",
+        recovery_state_path=state_path,
     )
 
 
@@ -96,7 +105,7 @@ def test_safety_provider_blocks_if_any_recovery_task_is_held(tmp_path, monkeypat
     store.record_failure("held-task", "test_regression", ["test.two"])
     store.record_failure("held-task", "test_regression", ["test.three"])
 
-    _approval, safety = _build(tmp_path, monkeypatch)
+    _approval, safety = _build(tmp_path, monkeypatch, tmp_path / "recovery-ai-state.json")
     with pytest.raises(RuntimeError, match="recovery_global_hold_active"):
         safety()
 
@@ -137,3 +146,48 @@ def test_builder_requires_experiment_id_in_human_approved_instruction(tmp_path, 
             instruction="Run RSI without binding its experiment identity.",
             recovery_state_path=tmp_path / "state.json",
         )
+
+
+
+def test_builder_rejects_caller_selected_recovery_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-task-01")
+    monkeypatch.setenv("AUTONOMOUS_RECOVERY_STATE_PATH", str(tmp_path / "trusted.json"))
+    trusted = tmp_path / "trusted.json"
+    RecoveryStore(trusted)._write({"schema_version": 1, "tasks": {}, "checkpoint": None})
+    untrusted = tmp_path / "attacker-selected.json"
+    RecoveryStore(untrusted)._write({"schema_version": 1, "tasks": {}, "checkpoint": None})
+
+    with pytest.raises(ValueError, match="not_authoritative"):
+        build_rsi_authority(
+            experiment_id="rsi-exp-01",
+            config_sha256="d" * 64,
+            start_sha="a" * 40,
+            instruction="RSI_EXPERIMENT_ID=rsi-exp-01 RSI_EXPERIMENT_CONFIG_SHA256=" + "d" * 64,
+            recovery_state_path=untrusted,
+        )
+
+
+def test_builder_blocks_missing_canonical_recovery_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-task-01")
+    monkeypatch.setenv("AUTONOMOUS_RECOVERY_STATE_PATH", str(tmp_path / "missing.json"))
+
+    with pytest.raises(ValueError, match="unavailable"):
+        build_rsi_authority(
+            experiment_id="rsi-exp-01",
+            config_sha256="d" * 64,
+            start_sha="a" * 40,
+            instruction="RSI_EXPERIMENT_ID=rsi-exp-01 RSI_EXPERIMENT_CONFIG_SHA256=" + "d" * 64,
+            recovery_state_path=tmp_path / "missing.json",
+        )
+
+
+def test_safety_provider_rejects_unexpected_repository_identity(tmp_path, monkeypatch):
+    import core.emergency_stop as emergency_stop
+
+    monkeypatch.setattr(emergency_stop, "local_stop_active", lambda _root: False)
+    monkeypatch.setattr(emergency_stop, "get_status", lambda *_args: pytest.fail("STOP query must not target an unexpected repository"))
+    _approval, safety = _build(tmp_path, monkeypatch)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "attacker/other-repo")
+
+    with pytest.raises(RuntimeError, match="identity_or_credentials"):
+        safety()
