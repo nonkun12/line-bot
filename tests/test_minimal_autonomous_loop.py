@@ -1233,6 +1233,22 @@ def test_orchestrator_gates_successful_loop_on_exact_evidence(monkeypatch, tmp_p
     )
     monkeypatch.setattr(RecoveryStore, "task_status", lambda self, _task_id: {})
     monkeypatch.setattr(
+        RecoveryStore, "aggregate_hold_status", lambda self: {"state": "CLEAR"}
+    )
+    monkeypatch.setattr(loop, "artifact_stop_state", lambda _stop_file: "INACTIVE")
+    monkeypatch.setattr(
+        "scripts.rea_artifact_runtime.evaluate_and_record_runtime_artifact",
+        lambda summary, **_kwargs: {
+            "status": "NO_CHANGE",
+            "reason_code": "no_artifact_change",
+            "evidence_sha256": "d" * 64,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
         "core.control_tower_selector.select_next_task",
         lambda *args, **kwargs: SimpleNamespace(
             next_action="SELECT_REGISTERED_TASK",
