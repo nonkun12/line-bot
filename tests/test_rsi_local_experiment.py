@@ -78,7 +78,7 @@ def test_runner_generates_both_candidates_locally_and_evaluates_outputs(tmp_path
 
 def test_runner_blocks_without_explicit_approval_before_model_call(tmp_path):
     client = FakeClient([])
-    args = _args(client)
+    args = _args(client, tmp_path / "rsi-ledger.jsonl")
     args["execution_approved"] = False
 
     result = run_local_prompt_comparison(**args)
@@ -90,7 +90,7 @@ def test_runner_blocks_without_explicit_approval_before_model_call(tmp_path):
 
 def test_runner_blocks_when_stop_is_active_before_model_call(tmp_path):
     client = FakeClient([])
-    args = _args(client)
+    args = _args(client, tmp_path / "rsi-ledger.jsonl")
     args["safety_snapshot"]["stop_state"] = "ACTIVE"
 
     result = run_local_prompt_comparison(**args)
@@ -102,7 +102,7 @@ def test_runner_blocks_when_stop_is_active_before_model_call(tmp_path):
 
 def test_runner_blocks_when_hold_is_not_clear_before_model_call(tmp_path):
     client = FakeClient([])
-    args = _args(client)
+    args = _args(client, tmp_path / "rsi-ledger.jsonl")
     args["safety_snapshot"]["global_hold_state"] = "UNKNOWN"
 
     result = run_local_prompt_comparison(**args)
@@ -124,7 +124,7 @@ def test_runner_blocks_when_held_out_manifest_digest_mismatches(tmp_path):
 
 
 def test_runner_blocks_invalid_client_without_execution(tmp_path):
-    args = _args()
+    args = _args(ledger_path=tmp_path / "rsi-ledger.jsonl")
     args["client"] = object()
 
     result = run_local_prompt_comparison(**args)
@@ -135,7 +135,7 @@ def test_runner_blocks_invalid_client_without_execution(tmp_path):
 
 
 def test_runner_binds_full_input_manifest_digest_into_evidence(tmp_path):
-    args = _args()
+    args = _args(ledger_path=tmp_path / "rsi-ledger.jsonl")
     expected_digest = args["held_out_expected_sha256"]
 
     result = run_local_prompt_comparison(**args)
@@ -146,7 +146,7 @@ def test_runner_binds_full_input_manifest_digest_into_evidence(tmp_path):
 
 def test_runner_blocks_without_safety_snapshot_digest_before_model_call(tmp_path):
     client = FakeClient([])
-    args = _args(client)
+    args = _args(client, tmp_path / "rsi-ledger.jsonl")
     args["safety_snapshot"].pop("snapshot_sha256")
 
     result = run_local_prompt_comparison(**args)
@@ -156,7 +156,7 @@ def test_runner_blocks_without_safety_snapshot_digest_before_model_call(tmp_path
     assert client.calls == []
 
 def test_runner_blocks_when_safety_snapshot_digest_is_tampered(tmp_path):
-    args = _args()
+    args = _args(ledger_path=tmp_path / "rsi-ledger.jsonl")
     args["safety_snapshot"]["snapshot_sha256"] = "f" * 64
 
     result = run_local_prompt_comparison(**args)
