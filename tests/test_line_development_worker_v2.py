@@ -559,8 +559,8 @@ def test_apply_plan_changes_one_exact_anchor(tmp_path, monkeypatch):
 def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     calls = []
 
-    def fake_run(cmd, timeout=900, input_text=None):
-        calls.append(cmd)
+    def fake_run(cmd, timeout=900, input_text=None, env=None):
+        calls.append((cmd, env))
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr(worker, "ROOT", tmp_path)
@@ -569,17 +569,19 @@ def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     passed, output = worker.run_tests([])
 
     assert passed
-    assert any(cmd[:4] == [worker.sys.executable, "-m", "pytest", "-q"] for cmd in calls)
-    pytest_call = next(cmd for cmd in calls if cmd[2:] == ["pytest", "-q", "--tb=native"])
+    assert any(cmd[:4] == [worker.sys.executable, "-m", "pytest", "-q"] for cmd, _ in calls)
+    pytest_call, pytest_env = next((cmd, env) for cmd, env in calls if cmd[2:] == ["pytest", "-q", "--tb=native"])
     assert pytest_call == [worker.sys.executable, "-m", "pytest", "-q", "--tb=native"]
+    assert pytest_env is not None
+    assert not any(marker in key.upper() for key in pytest_env for marker in ("TOKEN", "SECRET", "API_KEY", "_KEY", "PASSWORD", "CREDENTIAL", "PRIVATE_KEY", "WEBHOOK", "AUTHORIZATION"))
     assert "full pytest:" in output
 
 
 def test_run_tests_can_verify_only_allowlisted_target_for_no_change(monkeypatch, tmp_path):
     calls = []
 
-    def fake_run(cmd, timeout=900, input_text=None):
-        calls.append(cmd)
+    def fake_run(cmd, timeout=900, input_text=None, env=None):
+        calls.append((cmd, env))
         return subprocess.CompletedProcess(cmd, 0, stdout="1 passed", stderr="")
 
     monkeypatch.setattr(worker, "ROOT", tmp_path)
@@ -588,11 +590,12 @@ def test_run_tests_can_verify_only_allowlisted_target_for_no_change(monkeypatch,
     passed, output = worker.run_tests(["tests/test_ai_speaker.py"], full_suite=False)
 
     assert passed
-    pytest_call = next(cmd for cmd in calls if cmd[2:] and cmd[2] == "pytest")
+    pytest_call, pytest_env = next((cmd, env) for cmd, env in calls if cmd[2:] and cmd[2] == "pytest")
     assert pytest_call == [
         worker.sys.executable, "-m", "pytest", "-q", "--tb=native",
         "tests/test_ai_speaker.py",
     ]
+    assert pytest_env is not None
     assert "targeted pytest:" in output
 
 
