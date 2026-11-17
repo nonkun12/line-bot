@@ -177,7 +177,7 @@ def repo_files() -> list[str]:
 
 def ask(client: LocalModelClient, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
     response = client.chat.completions.create(
-        model=MODEL,
+        model=getattr(client, "model", MODEL) or "unknown",
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.0,
         max_completion_tokens=max_tokens,
@@ -1202,9 +1202,7 @@ def main() -> int:
     except LocalModelError as exc:
         print(f"MODEL_PROVIDER=BLOCKED reason={exc}", flush=True)
         return 1
-    global MODEL
-    MODEL = client.model
-    print(f"MODEL_PROVIDER=LOCAL protocol={client.protocol} model={MODEL}", flush=True)
+    print(f"MODEL_PROVIDER=LOCAL protocol={client.protocol} model={client.model}", flush=True)
 
     files = repo_files()
     chosen = choose_file(client, instruction, files)
