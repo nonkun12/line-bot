@@ -233,12 +233,13 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     instruction = "safe test instruction"
     monkeypatch.setenv("DEV_INSTRUCTION", instruction)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-test-task")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
     monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
     event_path = tmp_path / "event.json"
-    event_path.write_text(json.dumps({"sender": {"login": "nonkun12"}, "repository": {"full_name": "nonkun12/line-bot"}, "inputs": {"execution_approval": "APPROVE_EXECUTION", "approval_task_id": "rsi-test-task", "approval_instruction_sha256": hashlib.sha256(instruction.encode()).hexdigest(), "approval_base_sha": sha}}), encoding="utf-8")
+    event_path.write_text(json.dumps({"sender": {"login": "nonkun12"}, "repository": {"full_name": "nonkun12/line-bot"}, "inputs": {"execution_approval": "APPROVE_EXECUTION", "approval_task_id": "rsi-test-task", "approval_instruction_sha256": hashlib.sha256(instruction.encode()).hexdigest(), "approval_base_sha": sha, "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()}}), encoding="utf-8")
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
     monkeypatch.delenv("GITHUB_ENV", raising=False)
 
@@ -314,6 +315,7 @@ def test_common_runtime_blocks_without_independent_approval_even_if_env_claims_a
         ("approval_task_id", "different-task"),
         ("approval_instruction_sha256", "0" * 64),
         ("approval_base_sha", "d" * 40),
+        ("approval_allowed_paths_sha256", "0" * 64),
     ],
 )
 def test_execution_approval_rejects_mismatched_binding(tmp_path, monkeypatch, field, value):
@@ -327,6 +329,7 @@ def test_execution_approval_rejects_mismatched_binding(tmp_path, monkeypatch, fi
             "approval_task_id": "bound-task",
             "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
             "approval_base_sha": base_sha,
+            "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest(),
         },
     }
     if field in {"sender", "repository"}:
@@ -340,6 +343,7 @@ def test_execution_approval_rejects_mismatched_binding(tmp_path, monkeypatch, fi
     monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "bound-task")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
 
     evidence = guarded_runtime._verify_execution_approval(base_sha, instruction)
 
@@ -360,6 +364,7 @@ def test_execution_approval_rejects_actor_environment_mismatch(tmp_path, monkeyp
                 "approval_task_id": "bound-task",
                 "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
                 "approval_base_sha": base_sha,
+            "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest(),
             },
         }),
         encoding="utf-8",
@@ -370,6 +375,7 @@ def test_execution_approval_rejects_actor_environment_mismatch(tmp_path, monkeyp
     monkeypatch.setenv("GITHUB_ACTOR", "someone-else")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "bound-task")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
 
     evidence = guarded_runtime._verify_execution_approval(base_sha, instruction)
 
@@ -389,6 +395,7 @@ def test_execution_approval_rejects_dispatch_from_non_default_branch(tmp_path, m
                 "approval_task_id": "bound-task",
                 "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
                 "approval_base_sha": base_sha,
+            "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest(),
             },
         }),
         encoding="utf-8",
@@ -399,6 +406,7 @@ def test_execution_approval_rejects_dispatch_from_non_default_branch(tmp_path, m
     monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "bound-task")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
 
     evidence = guarded_runtime._verify_execution_approval(base_sha, instruction)
 
