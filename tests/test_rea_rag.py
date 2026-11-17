@@ -157,3 +157,25 @@ def test_task_id_does_not_create_retrieval_terms(tmp_path):
         instruction="Summarize the requested work",
     )
     assert context == ""
+
+
+def test_retrieval_skips_non_string_persisted_status_without_crashing(tmp_path):
+    db = tmp_path / "rag.sqlite3"
+    RagStore(db).add_document(
+        namespace="distributed-loop",
+        source="rea_evaluation",
+        source_id="malformed-status",
+        title="REA malformed status",
+        content="risk_unknown",
+        metadata={
+            "task_id": "rea-task-19",
+            "status": ["HOLD"],
+            "reason_code": "risk_unknown",
+            "evidence_sha256": "e" * 64,
+            "changed_file_count": 1,
+        },
+    )
+    assert build_rea_context(
+        db, namespace="distributed-loop", task_id="new-task",
+        instruction="Review risk evidence",
+    ) == ""
