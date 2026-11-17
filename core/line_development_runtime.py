@@ -2864,6 +2864,37 @@ def execute(instruction: str) -> int:
     commit = worker.run(["git", *identity, "commit", "-m", "feat: LINE development request"])
     if commit.returncode != 0:
         worker.restore(touched); print(commit.stderr[-2000:], flush=True); return 1
+
+    # Post-generation REA must inspect the immutable commit before any push.
+    try:
+        from scripts.rea_post_generation_gate import verify_generated_commit
+        produced = worker.run(["git", "rev-parse", "HEAD"])
+        if produced.returncode != 0 or not produced.stdout.strip():
+            raise RuntimeError("produced_commit_sha_unavailable")
+        produced_sha = produced.stdout.strip()
+        postgen_report = verify_generated_commit(
+            worker.ROOT, base_sha=baseline_sha, target_sha=produced_sha
+        )
+    except Exception as exc:
+        os.environ["AUTONOMOUS_POSTGEN_REA_STATUS"] = "BLOCKED"
+        rollback_ok = _rollback_to_clean_baseline(baseline_sha)
+        print(
+            f"POST_GENERATION_REA=BLOCKED reason={type(exc).__name__} "
+            f"rollback={'PASS' if rollback_ok else 'FAIL'}",
+            flush=True,
+        )
+        return 1
+
+    os.environ["AUTONOMOUS_POSTGEN_REA_STATUS"] = "PASS"
+    os.environ["AUTONOMOUS_POSTGEN_REA_BASE_SHA"] = baseline_sha
+    os.environ["AUTONOMOUS_POSTGEN_REA_TARGET_SHA"] = produced_sha
+    os.environ["AUTONOMOUS_POSTGEN_REA_DIFF_SHA256"] = postgen_report["diff_sha256"]
+    print(
+        f"POST_GENERATION_REA=PASS base={baseline_sha[:12]} "
+        f"target={produced_sha[:12]} diff_sha256={postgen_report['diff_sha256']}",
+        flush=True,
+    )
+
     checkout = worker.run(["git", "checkout", "-B", branch])
     if checkout.returncode != 0:
         print(checkout.stderr[-2000:], flush=True); return 1
