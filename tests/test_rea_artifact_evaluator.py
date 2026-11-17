@@ -80,3 +80,40 @@ def test_changed_files_without_new_commit_holds():
 def test_malformed_value_types_hold_without_crashing():
     assert evaluate_artifact_evidence(evidence(tests=[]))["status"] == "HOLD"
     assert evaluate_artifact_evidence(evidence(risk={}))["status"] == "HOLD"
+
+
+def test_runtime_summary_adapter_requires_explicit_independent_evidence():
+    from core.rea_artifact_evaluator import evaluate_runtime_summary
+
+    summary = {
+        "task_id": "task-001",
+        "base_sha": BASE,
+        "produced_sha": HEAD,
+        "post_generation_rea": {"status": "PASS"},
+    }
+    result = evaluate_runtime_summary(summary, {"changed_files": ["tests/test_example.py"]})
+    assert result["status"] == "HOLD"
+    assert result["reason_code"] == "stop_active_or_unverified"
+    assert result["execution_authorized"] is False
+
+
+def test_runtime_summary_adapter_passes_only_with_all_explicit_evidence():
+    from core.rea_artifact_evaluator import evaluate_runtime_summary
+
+    summary = {
+        "task_id": "task-001",
+        "base_sha": BASE,
+        "produced_sha": HEAD,
+        "post_generation_rea": {"status": "PASS"},
+    }
+    verification = {
+        "changed_files": ["tests/test_example.py"],
+        "tests": "PASS",
+        "risk": "LOW",
+        "stop_state": "INACTIVE",
+        "hold_state": "CLEAR",
+    }
+    result = evaluate_runtime_summary(summary, verification)
+    assert result["status"] == "PASS"
+    assert result["reason_code"] == "artifact_evidence_verified"
+    assert result["merge_deploy_authorized"] is False
