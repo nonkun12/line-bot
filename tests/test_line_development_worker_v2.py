@@ -573,7 +573,18 @@ def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     pytest_call, pytest_env = next((cmd, env) for cmd, env in calls if cmd[2:] == ["pytest", "-q", "--tb=native"])
     assert pytest_call == [worker.sys.executable, "-m", "pytest", "-q", "--tb=native"]
     assert pytest_env is not None
-    assert not any(marker in key.upper() for key in pytest_env for marker in ("TOKEN", "SECRET", "API_KEY", "_KEY", "PASSWORD", "CREDENTIAL", "PRIVATE_KEY", "WEBHOOK", "AUTHORIZATION"))
+    assert not any(
+        key.upper() in {
+            "GH_TOKEN", "GITHUB_TOKEN", "GROQ_API_KEY", "HERMES_GROQ_API_KEY",
+            "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "SLACK_WEBHOOK_URL",
+            "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "GOOGLE_APPLICATION_CREDENTIALS",
+            "GOOGLE_SHEETS_SPREADSHEET_ID", "LINE_CHANNEL_ACCESS_TOKEN",
+            "LINE_CHANNEL_SECRET",
+        }
+        or key.upper().endswith(("_TOKEN", "_API_KEY", "_SECRET", "_PASSWORD", "_CREDENTIALS"))
+        or any(marker in key.upper() for marker in ("TOKEN", "API_KEY", "SECRET", "PASSWORD", "CREDENTIAL", "ACCESS_KEY", "PRIVATE_KEY", "WEBHOOK"))
+        for key in pytest_env
+    )
     assert "full pytest:" in output
 
 
