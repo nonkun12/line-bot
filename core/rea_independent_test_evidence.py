@@ -82,11 +82,13 @@ def validate_independent_test_evidence(
         return _result("HOLD", "independent_test_outcome_unknown")
     if outcome in {"timeout", "cancelled", "skipped"}:
         return _result("BLOCKED", "independent_test_runner_" + outcome)
+    if outcome not in {"success", "failure"}:
+        return _result("HOLD", "independent_test_outcome_unknown")
+    if evidence["tests_collected"] < 1:
+        return _result("HOLD", "independent_tests_zero_executed")
     if outcome == "failure" or evidence["exit_code"] != 0 or evidence["tests_failed"] > 0:
         return _result("FAIL", "independent_tests_failed")
-    if outcome != "success":
-        return _result("HOLD", "independent_test_outcome_unknown")
-    if evidence["tests_collected"] < 1 or evidence["tests_passed"] < 1:
+    if evidence["tests_passed"] < 1:
         return _result("HOLD", "independent_tests_zero_executed")
     if evidence["tests_passed"] + evidence["tests_failed"] + evidence["tests_skipped"] != evidence["tests_collected"]:
         return _result("HOLD", "independent_test_counts_inconsistent")
