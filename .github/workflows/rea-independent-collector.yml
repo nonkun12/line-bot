@@ -64,8 +64,8 @@ jobs:
               "source_head_branch": os.environ["SOURCE_HEAD_BRANCH"],
               "expected_tasks": [],
           }
-          Path("independent-evidence/rea-independent-test-evidence.jsonl").write_text(json.dumps(marker, sort_keys=True) + "\\n")
-          Path("independent-evidence/collector-context.json").write_text(json.dumps(context, sort_keys=True) + "\\n")
+          Path("independent-evidence/rea-independent-test-evidence.jsonl").write_text(json.dumps(marker, sort_keys=True) + "\n")
+          Path("independent-evidence/collector-context.json").write_text(json.dumps(context, sort_keys=True) + "\n")
           PY
 
       - name: Download exact source-run task artifact
