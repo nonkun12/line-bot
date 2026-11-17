@@ -1,4 +1,7 @@
-import subprocess\nfrom unittest.mock import patch\n\nfrom scripts.rea_independent_collector import is_candidate_task_row, validate_task_rows, parse_counts, captured_output_text, no_candidate_reason, run_test_container
+import subprocess
+from unittest.mock import patch
+
+from scripts.rea_independent_collector import is_candidate_task_row, validate_task_rows, parse_counts, captured_output_text, no_candidate_reason, run_test_container
 
 
 BASE = "1" * 40
