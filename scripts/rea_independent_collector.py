@@ -305,7 +305,7 @@ def main() -> int:
         )
         dockerfile_path = image_dir / "Dockerfile"
         dockerfile_path.write_text(dockerfile, encoding="utf-8")
-        image = f"rea-collector:{args.run_id}"
+        image = f"rea-collector:{args.run_id}-a{args.run_attempt}"
         run(["docker", "build", "-t", image, str(image_dir)])
         image_id = run([
             "docker", "image", "inspect", image, "--format", "{{.Id}}",
@@ -405,7 +405,7 @@ def main() -> int:
             # The same immutable trusted harness is reused for each task.
             # No writable host mount is exposed to task code. The trusted host
             # captures stdout/exit status and creates the evidence record itself.
-            container_name = f"rea-task-{args.run_id}-{index}"
+            container_name = f"rea-task-{args.run_id}-a{args.run_attempt}-{index}"
             sandbox_command = [
                 "docker", "run", "--name", container_name, "--stop-timeout", "5",
                 "--network", "none", "--read-only",
