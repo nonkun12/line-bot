@@ -57,6 +57,9 @@ jobs:
           core_package = types.ModuleType("core")
           core_package.__path__ = ["/workspace/core"]
           sys.modules["core"] = core_package
+          scripts_package = types.ModuleType("scripts")
+          scripts_package.__path__ = ["/workspace/scripts"]
+          sys.modules["scripts"] = scripts_package
           sys.path.insert(0, "/workspace")
           raise SystemExit(pytest.main([
               "-q", "-p", "no:cacheprovider", "--noconftest",
