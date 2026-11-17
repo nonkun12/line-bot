@@ -294,3 +294,39 @@ def test_aggregate_hold_status_rejects_missing_freshness_marker(tmp_path):
 
     with pytest.raises(RecoveryStateError, match="freshness marker missing"):
         store.aggregate_hold_status()
+
+
+
+def test_ensure_initialized_creates_timestamped_canonical_state(tmp_path):
+    path = tmp_path / "nested" / "recovery.json"
+    store = RecoveryStore(path)
+
+    store.ensure_initialized()
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["schema_version"] == 1
+    assert data["tasks"] == {}
+    assert data["checkpoint"] is None
+    assert data["state_updated_at"]
+
+
+def test_ensure_initialized_never_overwrites_existing_state(tmp_path):
+    path = tmp_path / "recovery.json"
+    store = RecoveryStore(path)
+    store._write({"schema_version": 1, "tasks": {"task-a": {"held": True}}, "checkpoint": None})
+    before = path.read_text(encoding="utf-8")
+
+    store.ensure_initialized()
+
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_ensure_initialized_rejects_symlink(tmp_path):
+    target = tmp_path / "target.json"
+    target.write_text('{"schema_version": 1, "tasks": {}, "checkpoint": null}', encoding="utf-8")
+    link = tmp_path / "recovery.json"
+    link.symlink_to(target)
+    store = RecoveryStore(link)
+
+    with pytest.raises(RecoveryStateError, match="not a regular file"):
+        store.ensure_initialized()
