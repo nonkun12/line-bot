@@ -39,3 +39,19 @@ def test_run_passes_explicit_sanitized_environment(monkeypatch):
     worker.run(["python", "-m", "pytest"], env=clean_env)
 
     assert captured["env"] == clean_env
+
+
+def test_test_only_worker_path_does_not_require_model_credentials(monkeypatch, capsys):
+    monkeypatch.setenv("DEV_INSTRUCTION", "接続テスト")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setattr(worker, "run_tests", lambda: (True, "pytest PASS"))
+
+    def forbidden_client(*args, **kwargs):
+        raise AssertionError("test-only path must not initialize a model client")
+
+    monkeypatch.setattr(worker, "Groq", forbidden_client)
+
+    assert worker.main() == 0
+    output = capsys.readouterr().out
+    assert "no model provider required" in output
+    assert "pytest PASS" in output
