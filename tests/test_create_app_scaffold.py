@@ -1,4 +1,7 @@
 from pathlib import Path
+import sys
+
+from scripts import create_app_scaffold
 
 import pytest
 
@@ -74,3 +77,14 @@ def test_symlinked_generated_root_cannot_escape_repository(tmp_path):
         create_app("TODO管理Webアプリを作って", root=root, run_id="42")
     assert not list(outside.iterdir())
 
+
+
+def test_main_blocks_non_app_instruction_without_creating_files(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(create_app_scaffold, "ROOT", tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        "create_app_scaffold", "--instruction", "既存アプリの通知機能を改善して",
+    ])
+
+    assert create_app_scaffold.main() == 1
+    assert "APP_SCAFFOLD=BLOCKED reason=ValueError:" in capsys.readouterr().out
+    assert not (tmp_path / "apps").exists()
