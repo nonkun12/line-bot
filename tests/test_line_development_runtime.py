@@ -1468,3 +1468,14 @@ def test_new_refill_cli_tasks_use_bounded_deterministic_plans(monkeypatch, tmp_p
         assert expected_name in candidate
         assert expected_marker in candidate
         assert runtime.worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+def test_provider_block_reason_rejects_external_model_for_manual_rsi(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "manual")
+    assert runtime._provider_block_reason("") == "external_model_provider_disabled_local_adapter_unavailable"
+
+
+def test_provider_block_reason_allows_only_declared_provider_free_task(monkeypatch):
+    task_id = "uhip-confidence-out-of-range-rejection"
+    assert runtime._provider_block_reason(task_id) is None
+    assert runtime._provider_block_reason("review-coverage-gap-703fa3c06b") == "external_model_provider_disabled_local_adapter_unavailable"
