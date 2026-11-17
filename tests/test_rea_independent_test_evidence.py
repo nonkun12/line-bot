@@ -17,6 +17,7 @@ def expected(**overrides):
         "base_sha": BASE,
         "head_sha": HEAD,
         "diff_sha256": DIFF,
+        "test_command_sha256": COMMAND,
     }
     value.update(overrides)
     return value
