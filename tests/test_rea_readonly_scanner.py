@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.rea_readonly_scanner import ScanBlocked, scan_repository
+from scripts.rea_readonly_scanner import ScanBlocked, scan_commit_diff, scan_repository
 
 
 class ReadonlyScannerTests(unittest.TestCase):
@@ -78,6 +78,32 @@ class ReadonlyScannerTests(unittest.TestCase):
         self.assertIn("safety_flag", categories)
         self.assertNotIn("do-not-print-this-secret", rendered)
         self.assertNotIn("broken(:", rendered)
+
+    def test_commit_diff_scans_generated_output_and_binds_hashes(self) -> None:
+        base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.root, text=True).strip()
+        self._write("scripts/generated.py", "def broken(:\\n  pass\\n")
+        self._commit()
+        target = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.root, text=True).strip()
+
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(report["base_sha"], base)
+        self.assertEqual(report["target_sha"], target)
+        self.assertEqual(len(report["diff_sha256"]), 64)
+        self.assertEqual(report["status"], "FINDINGS")
+        self.assertIn("python_syntax", {item["category"] for item in report["findings"]})
+        self.assertTrue(report["capabilities"]["read_only"])
+
+    def test_commit_diff_blocks_invalid_sha(self) -> None:
+        with self.assertRaises(ScanBlocked):
+            scan_commit_diff(self.root, base_sha="not-a-sha", target_sha="0" * 40)
+
+    def test_commit_diff_flags_deleted_tests(self) -> None:
+        base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.root, text=True).strip()
+        (self.root / "tests" / "valid.json").unlink()
+        self._commit()
+        target = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.root, text=True).strip()
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertIn("deleted_file", {item["category"] for item in report["findings"]})
 
     def test_dirty_worktree_blocks_sha_bound_evidence(self) -> None:
         self._write("scripts/good.py", "VALUE = 2\n")
