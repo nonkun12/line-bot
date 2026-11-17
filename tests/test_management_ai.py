@@ -765,7 +765,7 @@ def test_groq_management_call_uses_planning_only_bounded_completion(monkeypatch)
     def fake_completion(**kwargs):
         captured.update(kwargs)
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content="  {\\"tasks\\": []}  "))]
+            choices=[SimpleNamespace(message=SimpleNamespace(content='  {"tasks": []}  '))]
         )
 
     monkeypatch.setattr(management_ai, "generate_chat_completion", fake_completion)
