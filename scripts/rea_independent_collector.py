@@ -76,6 +76,18 @@ def is_candidate_task_row(row: object) -> bool:
     return base != head or row.get("status") not in {"PASS", "NO_CHANGE"}
 
 
+def install_trusted_tests(source: Path) -> None:
+    """Replace task-supplied tests with the collector's trusted default-branch tests."""
+    trusted_root = Path(__file__).resolve().parents[1]
+    for relative in REA_TESTS:
+        trusted_test = trusted_root / relative
+        if not trusted_test.is_file() or trusted_test.is_symlink():
+            raise SystemExit(f"trusted regression test is unavailable: {relative}")
+        destination = source / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(trusted_test, destination)
+
+
 def evidence_row(*, run_id: str, attempt: int, task_id: str, base: str,
                  head: str, diff_hash: str, outcome: str, exit_code: int,
                  counts: tuple[int, int, int, int], command_hash: str) -> dict:
@@ -247,6 +259,10 @@ def main() -> int:
             archive_path.write_bytes(archive)
             with tarfile.open(archive_path, "r:") as tar:
                 tar.extractall(source, filter="data")
+            # Never treat tests supplied by the task commit as independent
+            # evidence. Overlay only the fixed regression tests from this
+            # workflow's trusted default-branch checkout.
+            install_trusted_tests(source)
 
             evidence_dir = root / f"evidence-{index}"
             evidence_dir.mkdir()
