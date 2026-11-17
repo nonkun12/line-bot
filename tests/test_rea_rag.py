@@ -133,3 +133,27 @@ def test_context_rejects_invalid_namespace_and_oversized_instruction(tmp_path):
         db, namespace="distributed-loop", task_id="next-task",
         instruction="x" * 20001,
     ) == ""
+
+
+def test_retrieval_excludes_current_tasks_own_previous_evaluation(tmp_path):
+    db = tmp_path / "rag.sqlite3"
+    _record(db)
+    context = build_rea_context(
+        db,
+        namespace="distributed-loop",
+        task_id="rea-task-17",
+        instruction="Review test evidence and risk",
+    )
+    assert context == ""
+
+
+def test_task_id_does_not_create_retrieval_terms(tmp_path):
+    db = tmp_path / "rag.sqlite3"
+    _record(db)
+    context = build_rea_context(
+        db,
+        namespace="distributed-loop",
+        task_id="test-risk-42",
+        instruction="Summarize the requested work",
+    )
+    assert context == ""
