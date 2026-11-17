@@ -133,6 +133,7 @@ jobs:
               report = {
                   "schema_version": 1,
                   "collector_run_id": collector_id,
+                  "collector_run_attempt": int(os.environ["COLLECTOR_RUN_ATTEMPT"]),
                   "source_run_id": source_id,
                   "source_run_attempt": context["source_run_attempt"],
                   "results": [{"status": status, "reason_code": reason}],
@@ -218,6 +219,7 @@ jobs:
           report = {
               "schema_version": 1,
               "collector_run_id": collector_id,
+              "collector_run_attempt": int(os.environ["COLLECTOR_RUN_ATTEMPT"]),
               "source_run_id": source_id,
               "source_run_attempt": context["source_run_attempt"],
               "results": results,
