@@ -43,12 +43,12 @@ jobs:
               }],
           }
           Path("rea-independent-postrun.json").write_text(
-              json.dumps(report, indent=2, sort_keys=True) + "\\n"
+              json.dumps(report, indent=2, sort_keys=True) + "\n"
           )
           Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(
-              "# REA Independent Evidence Verification\\n\\n"
-              "- Overall: BLOCKED\\n"
-              "- Reason: collector workflow failed or was cancelled\\n"
+              "# REA Independent Evidence Verification\n\n"
+              "- Overall: BLOCKED\n"
+              "- Reason: collector workflow failed or was cancelled\n"
           )
           PY
           exit 1
