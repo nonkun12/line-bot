@@ -94,3 +94,26 @@ def test_shared_stop_inactive_allows_runtime_checkpoint(tmp_path: Path):
     )
     assert not controller.is_stopped()
     controller.assert_can_execute()
+
+
+
+def test_local_stop_treats_dangling_symlink_as_active(tmp_path: Path, monkeypatch):
+    from core.emergency_stop import local_stop_active
+
+    marker = tmp_path / "configured-stop"
+    marker.symlink_to(tmp_path / "missing-target")
+    monkeypatch.setenv("AUTONOMOUS_STOP_FILE", str(marker))
+
+    assert local_stop_active(tmp_path) is True
+
+
+def test_local_stop_treats_unreadable_path_as_active(tmp_path: Path, monkeypatch):
+    from core.emergency_stop import local_stop_active
+
+    monkeypatch.setenv("AUTONOMOUS_STOP_FILE", str(tmp_path / "configured-stop"))
+
+    def denied(_self):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "lstat", denied)
+    assert local_stop_active(tmp_path) is True
