@@ -186,7 +186,7 @@ def ask(client: LocalModelClient, system: str, user: str, max_tokens: int = MAX_
     )
     return response.choices[0].message.content or ""
 
-def ask_text(client: Groq, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
+def ask_text(client: LocalModelClient, system: str, user: str, max_tokens: int = MAX_RESPONSE_TOKENS) -> str:
     """Request bounded plain text without enabling the provider's JSON mode."""
     response = client.chat.completions.create(
         model=MODEL,
@@ -241,7 +241,7 @@ _E2E_TEST_TARGETS = (
 )
 
 
-def choose_file(client: Groq, instruction: str, files: list[str]) -> str | None:
+def choose_file(client: LocalModelClient, instruction: str, files: list[str]) -> str | None:
     explicit = _extract_explicit_path(instruction, files)
     if explicit:
         return explicit
@@ -312,7 +312,7 @@ def context_for(path: str) -> str:
 
 
 def repair_anchor_plan(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     context: str,
@@ -340,7 +340,7 @@ Do not broaden the requested change. If a unique safe anchor cannot be identifie
 
 
 def repair_size_plan(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     context: str,
@@ -366,7 +366,7 @@ If the requested change cannot be expressed as a small safe search/replace, retu
 
 
 def repair_existing_test_modified_plan(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     context: str,
@@ -579,7 +579,7 @@ def _safe_api_error_detail(exc: Exception) -> str:
 
 
 def build_append_only_test_plan(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     context: str,
@@ -717,7 +717,7 @@ The function name must start with test_. Keep the test focused and concise."""
 
 
 def validate_plan_with_bounded_repairs(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     plan: dict,
@@ -786,7 +786,7 @@ def validate_plan_with_bounded_repairs(
 
 
 def apply_plan_with_bounded_anchor_repair(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     plan: dict,
@@ -1096,7 +1096,7 @@ def restore(paths: list[str]) -> None:
         run(["git", "checkout", "--", *paths])
 
 
-def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_output: str | None = None) -> dict:
+def build_plan(client: LocalModelClient, instruction: str, chosen: str, context: str, test_output: str | None = None) -> dict:
     system = (
         "You edit EXACTLY ONE repository file. Return JSON only.\n\n"
         f"The ONLY editable file is: {chosen}\n\n"
@@ -1123,7 +1123,7 @@ def build_plan(client: Groq, instruction: str, chosen: str, context: str, test_o
     return parse_plan(ask(client, system, prompt, max_tokens=MAX_RESPONSE_TOKENS))
 
 
-def repair_invalid_old_new_plan(client: Groq, instruction: str, chosen: str, context: str, rejected_plan: dict, validation_error: str = "") -> dict:
+def repair_invalid_old_new_plan(client: LocalModelClient, instruction: str, chosen: str, context: str, rejected_plan: dict, validation_error: str = "") -> dict:
     """Perform one bounded repair when the model omitted or malformed old/new fields."""
     rejected = json.dumps(rejected_plan, ensure_ascii=False)
     system = '''Repair ONE rejected JSON search/replace plan. Return JSON only.
@@ -1144,7 +1144,7 @@ the requested change. If a safe exact replacement cannot be identified, return {
 
 
 def repair_invalid_change_count_plan(
-    client: Groq,
+    client: LocalModelClient,
     instruction: str,
     chosen: str,
     context: str,
@@ -1168,7 +1168,7 @@ If no safe single change can be produced, return {"no_change":true}.'''
 
 
 
-def repair_diff_marker_plan(client: Groq, instruction: str, chosen: str, context: str, rejected_plan: dict) -> dict:
+def repair_diff_marker_plan(client: LocalModelClient, instruction: str, chosen: str, context: str, rejected_plan: dict) -> dict:
     """Perform one bounded plan repair focused only on diff-marker contamination."""
     rejected = json.dumps(rejected_plan, ensure_ascii=False)
     system = '''Repair ONE rejected JSON search/replace plan. Return JSON only.
