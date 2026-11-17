@@ -130,8 +130,11 @@ def main() -> int:
     parser.add_argument("--run-attempt", required=True, type=int)
     parser.add_argument("--source-head-sha", required=True)
     parser.add_argument("--source-head-branch", required=True)
+    parser.add_argument("--default-branch", required=True)
     args = parser.parse_args()
 
+    if not args.default_branch or args.source_head_branch != args.default_branch:
+        raise SystemExit("source workflow did not run from the repository default branch")
     repo = os.environ["GH_REPOSITORY"]
     token = os.environ.get("GH_TOKEN", "")
     if not token or not args.run_id.isdigit() or args.run_attempt < 1:
