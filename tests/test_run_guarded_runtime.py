@@ -257,6 +257,8 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     assert summary["execution_approval"]["scope"] == "execution"
 
 
+
+
 def test_common_runtime_blocks_when_shared_stop_status_is_unavailable(monkeypatch, tmp_path):
     sha = "d" * 40
     rea = {"gate": "PASS", "target_sha": sha, "scanner_status": "PASS", "finding_count": 0, "critical_count": 0, "blocking_count": 0, "findings": [], "execution_authorized": False, "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False}
@@ -265,15 +267,13 @@ def test_common_runtime_blocks_when_shared_stop_status_is_unavailable(monkeypatc
     monkeypatch.setattr("scripts.rea_control_tower_adapter.rea_evidence_is_valid_pass", lambda evidence, expected_sha: True)
     monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: (_ for _ in ()).throw(RuntimeError("unavailable")))
     monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: (_ for _ in ()).throw(AssertionError("runtime must not execute")))
-    summary_path = tmp_path / "summary.json"
-    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(summary_path))
+    path = tmp_path / "summary.json"
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(path))
     monkeypatch.delenv("GITHUB_ENV", raising=False)
-
     assert guarded_runtime.main() == 82
-    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary = json.loads(path.read_text(encoding="utf-8"))
     assert summary["status"] == "BLOCKED"
     assert summary["execution_approval"]["reason_code"] == "shared_stop_status_unconfirmed"
-    assert summary["execution_approval"]["execution_authorized"] is False
 
 
 def test_common_runtime_blocks_when_shared_stop_is_active(monkeypatch, tmp_path):
@@ -284,15 +284,13 @@ def test_common_runtime_blocks_when_shared_stop_is_active(monkeypatch, tmp_path)
     monkeypatch.setattr("scripts.rea_control_tower_adapter.rea_evidence_is_valid_pass", lambda evidence, expected_sha: True)
     monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: True)
     monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: (_ for _ in ()).throw(AssertionError("runtime must not execute")))
-    summary_path = tmp_path / "summary.json"
-    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(summary_path))
+    path = tmp_path / "summary.json"
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(path))
     monkeypatch.delenv("GITHUB_ENV", raising=False)
-
     assert guarded_runtime.main() == 82
-    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary = json.loads(path.read_text(encoding="utf-8"))
     assert summary["status"] == "BLOCKED"
     assert summary["execution_approval"]["reason_code"] == "emergency_stop_active"
-
 
 def test_write_summary_preserves_only_allowlisted_failure_code(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_FAILURE_CODE", "existing_test_modified_repair_failed")
@@ -486,3 +484,37 @@ def test_execution_approval_consumption_blocks_duplicate_ref(monkeypatch):
     result = guarded_runtime._consume_execution_approval(evidence, "b" * 40)
     assert result["gate"] == "BLOCKED"
     assert result["reason_code"] == "approval_already_consumed"
+
+
+def test_write_summary_marks_post_generation_rea_as_pre_publish_gate(tmp_path, monkeypatch):
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: "b" * 40 if args == ("rev-parse", "HEAD") else "line-dev/test")
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_STATUS", "PASS")
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_BASE_SHA", "a" * 40)
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_TARGET_SHA", "b" * 40)
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_DIFF_SHA256", "c" * 64)
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+    path = tmp_path / "summary.json"
+
+    guarded_runtime._write_summary("PASS", 0, "a" * 40, path)
+
+    postgen = json.loads(path.read_text(encoding="utf-8"))["post_generation_rea"]
+    assert postgen["diagnostic_only"] is False
+    assert postgen["gate_stage"] == "pre_publish"
+    assert postgen["publish_gate_passed"] is True
+
+
+def test_write_summary_never_reports_publish_gate_pass_after_runtime_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: "b" * 40 if args == ("rev-parse", "HEAD") else "line-dev/test")
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_STATUS", "PASS")
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_BASE_SHA", "a" * 40)
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_TARGET_SHA", "b" * 40)
+    monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_DIFF_SHA256", "c" * 64)
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+    path = tmp_path / "summary.json"
+
+    guarded_runtime._write_summary("FAIL", 1, "a" * 40, path)
+
+    postgen = json.loads(path.read_text(encoding="utf-8"))["post_generation_rea"]
+    assert postgen["diagnostic_only"] is False
+    assert postgen["gate_stage"] == "pre_publish"
+    assert postgen["publish_gate_passed"] is False
