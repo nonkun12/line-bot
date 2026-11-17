@@ -73,7 +73,10 @@ class PostGenerationREAGateTests(unittest.TestCase):
     def test_blocks_scanner_errors(self, scanner):
         scanner.side_effect = RuntimeError("network or git unavailable")
         with self.assertRaises(PostGenerationREABlocked):
-            verify_generated_commit(".", base_sha="a" * 40, target_sha="b" * 40)
+            verify_generated_commit(
+                ".", base_sha="a" * 40, target_sha="b" * 40,
+                allowed_paths=["scripts/generated.py"],
+            )
 
 
 if __name__ == "__main__":
