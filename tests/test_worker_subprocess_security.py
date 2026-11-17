@@ -49,7 +49,7 @@ def test_test_only_worker_path_does_not_require_model_credentials(monkeypatch, c
     def forbidden_client(*args, **kwargs):
         raise AssertionError("test-only path must not initialize a model client")
 
-    monkeypatch.setattr(worker, "Groq", forbidden_client)
+    monkeypatch.setattr(worker, "create_local_model_client_from_env", forbidden_client)
 
     assert worker.main() == 0
     output = capsys.readouterr().out
