@@ -107,3 +107,23 @@ def test_redirects_are_disabled():
 
     with pytest.raises(LocalModelError, match="redirect_blocked"):
         handler.redirect_request(None, None, 302, "Found", {}, "https://example.com")
+
+
+
+def test_environment_proxy_is_disabled_for_local_model_requests(monkeypatch):
+    monkeypatch.setenv("HTTP_PROXY", "http://203.0.113.10:8080")
+    monkeypatch.setenv("HTTPS_PROXY", "http://203.0.113.10:8080")
+    client = LocalModelClient("http://127.0.0.1:11434", "model-a", "ollama")
+
+    proxy_handlers = [
+        handler for handler in client.opener.handlers
+        if handler.__class__.__name__ == "ProxyHandler"
+    ]
+    assert len(proxy_handlers) == 1
+    assert proxy_handlers[0].proxies == {}
+
+
+def test_ipv6_loopback_is_allowed_without_hostname_resolution():
+    client = LocalModelClient("http://[::1]:11434", "model-a", "ollama")
+
+    assert client.base_url == "http://[::1]:11434"
