@@ -65,7 +65,14 @@ _TEST_INSTRUCTION_EXACT = {"開発接続テスト", "接続テスト", "動作�
 
 
 def run(cmd: list[str], timeout: int = 900, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=ROOT, text=True, input=input_text, capture_output=True, timeout=timeout)
+    # Test/compiler/Git child processes never need repository-write or provider credentials.
+    child_env = os.environ.copy()
+    for secret_name in ("GITHUB_TOKEN", "GH_TOKEN", "ACTIONS_RUNTIME_TOKEN", "GROQ_API_KEY"):
+        child_env.pop(secret_name, None)
+    return subprocess.run(
+        cmd, cwd=ROOT, env=child_env, text=True, input=input_text,
+        capture_output=True, timeout=timeout,
+    )
 
 
 def is_protected(path: str) -> bool:
