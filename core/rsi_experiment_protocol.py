@@ -106,6 +106,7 @@ def evaluate_comparison(record: Mapping[str, Any]) -> dict[str, Any]:
         or not metric.strip()
         or not isinstance(version, str)
         or not version.strip()
+        or not isinstance(direction, str)
         or direction not in {"higher", "lower"}
         or not _finite_number(minimum_delta)
         or float(minimum_delta) < 0
@@ -126,13 +127,16 @@ def evaluate_comparison(record: Mapping[str, Any]) -> dict[str, Any]:
     )
     status = "PASS" if improvement > 0 and improvement >= float(minimum_delta) else "FAIL"
 
-    canonical = json.dumps(
-        dict(record),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
+    try:
+        canonical = json.dumps(
+            dict(record),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError):
+        return _blocked(experiment_id, "record_not_canonicalizable")
     evidence_sha256 = hashlib.sha256(canonical).hexdigest()
     return {
         "experiment_id": experiment_id,
