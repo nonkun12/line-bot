@@ -125,12 +125,12 @@ jobs:
                   "results": [{"status": status, "reason_code": reason}],
                   "overall": status,
               }
-              Path("rea-independent-postrun.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\\n")
+              Path("rea-independent-postrun.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
               Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(
-                  "# REA Independent Evidence Verification\\n\\n"
-                  + f"- Source run: {source_id}\\n"
-                  + f"- Collector run: {collector_id}\\n"
-                  + f"- Overall: {status} ({reason})\\n"
+                  "# REA Independent Evidence Verification\n\n"
+                  + f"- Source run: {source_id}\n"
+                  + f"- Collector run: {collector_id}\n"
+                  + f"- Overall: {status} ({reason})\n"
               )
               if status == "BLOCKED":
                   raise SystemExit("source workflow did not complete successfully; fail closed")
