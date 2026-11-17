@@ -91,3 +91,36 @@ def test_runtime_artifact_scan_failure_is_persisted_as_hold(tmp_path, monkeypatc
     assert result["status"] == "HOLD"
     assert result["reason_code"] == "artifact_evidence_collection_failed"
     assert result["patch_authorized"] is False
+
+
+
+def test_runtime_artifact_records_sanitized_rea_history_when_configured(tmp_path, monkeypatch):
+    monkeypatch.setenv("RECOVERY_RAG_DB_PATH", str(tmp_path / "recovery-rag.sqlite3"))
+    monkeypatch.setenv("RECOVERY_RAG_NAMESPACE", "distributed-loop")
+    monkeypatch.setattr(
+        rea_artifact_runtime,
+        "scan_commit_diff",
+        lambda *args, **kwargs: {
+            "status": "PASS",
+            "changed_paths": ["core/example.py", "tests/test_example.py"],
+            "diff_sha256": "c" * 64,
+        },
+    )
+    result = rea_artifact_runtime.evaluate_and_record_runtime_artifact(
+        _summary(),
+        repo_root=tmp_path,
+        output_path=tmp_path / "rea.jsonl",
+        stop_state="INACTIVE",
+        hold_state="CLEAR",
+    )
+    assert result["status"] == "HOLD"
+    assert result["rea_rag_recorded"] is True
+    from scripts.rea_rag import build_rea_context
+    context = build_rea_context(
+        tmp_path / "recovery-rag.sqlite3",
+        namespace="distributed-loop",
+        task_id="next-task",
+        instruction="Review tests and unknown risk evidence",
+    )
+    assert "status=HOLD" in context
+    assert "risk_unknown" in context

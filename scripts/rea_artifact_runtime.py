@@ -79,6 +79,29 @@ def evaluate_and_record_runtime_artifact(
         "base_sha": summary.get("base_sha") if isinstance(summary, dict) else None,
         "head_sha": summary.get("produced_sha") if isinstance(summary, dict) else None,
     }
+    # Optional RAG memory stores only the evaluator's sanitized metadata.
+    # A cache failure must never change the REA decision or block evidence output.
+    rag_db_path = os.environ.get("RECOVERY_RAG_DB_PATH", "").strip()
+    rag_namespace = os.environ.get("RECOVERY_RAG_NAMESPACE", "distributed-loop").strip()
+    record["rea_rag_recorded"] = False
+    if rag_db_path and rag_namespace:
+        try:
+            from scripts.rea_rag import record_rea_evaluation
+            evidence_sha = record.get("evidence_sha256")
+            if isinstance(evidence_sha, str):
+                record_rea_evaluation(
+                    rag_db_path,
+                    namespace=rag_namespace,
+                    task_id=str(record.get("task_id") or ""),
+                    status=str(record.get("status") or ""),
+                    reason_code=str(record.get("reason_code") or "unknown"),
+                    evidence_sha256=evidence_sha,
+                    changed_file_count=len(verification.get("changed_files", [])),
+                )
+                record["rea_rag_recorded"] = True
+        except Exception:
+            # Keep RAG optional and fail-closed as a knowledge source, not as a gate.
+            record["rea_rag_recorded"] = False
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"

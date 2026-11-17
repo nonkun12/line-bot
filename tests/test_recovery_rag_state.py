@@ -69,3 +69,43 @@ def test_export_is_namespace_and_source_scoped(tmp_path):
     output = tmp_path / "export.json"
     assert export_state(db, output, "distributed-loop") == 1
     assert json.loads(output.read_text())["records"] == [record()]
+
+
+
+def test_rea_rag_state_round_trip_is_separate_and_sanitized(tmp_path):
+    from scripts.rea_rag import record_rea_evaluation
+
+    db = tmp_path / "rag.sqlite3"
+    durable = tmp_path / "loop-state.json"
+    durable.write_text(json.dumps({
+        "recovery_rag": [],
+        "rea_rag": [{
+            "task_id": "rea-task-1",
+            "status": "HOLD",
+            "reason_code": "risk_unknown",
+            "evidence_sha256": "a" * 64,
+            "changed_file_count": 3,
+        }],
+    }))
+    assert import_state(durable, db, "distributed-loop", kind="rea") == 1
+    exported = tmp_path / "rea-export.json"
+    assert export_state(db, exported, "distributed-loop", kind="rea") == 1
+    payload = json.loads(exported.read_text())
+    assert payload["records"][0]["status"] == "HOLD"
+    assert payload["records"][0]["reason_code"] == "risk_unknown"
+    assert payload["records"][0]["changed_file_count"] == 3
+    assert "diff" not in exported.read_text().lower()
+
+
+def test_rea_rag_state_rejects_untrusted_records(tmp_path):
+    db = tmp_path / "rag.sqlite3"
+    durable = tmp_path / "loop-state.json"
+    durable.write_text(json.dumps({"rea_rag": [{
+        "task_id": "../bad",
+        "status": "PASS",
+        "reason_code": "ok",
+        "evidence_sha256": "b" * 64,
+        "changed_file_count": 0,
+    }]}))
+    with pytest.raises(ValueError):
+        import_state(durable, db, "distributed-loop", kind="rea")

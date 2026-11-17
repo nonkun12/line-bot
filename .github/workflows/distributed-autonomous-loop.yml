@@ -394,6 +394,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m scripts.recovery_rag_state --mode import --state /tmp/autonomous-loop-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
+          python -m scripts.recovery_rag_state --mode import --kind rea --state /tmp/autonomous-loop-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
 
       - name: Restore sanitized self-improvement history
         if: success()
@@ -423,13 +424,33 @@ jobs:
         run: |
           set -euo pipefail
           # Include closed issues too: candidate IDs are immutable and must not be re-issued.
-          gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" \
-            | jq -s 'add | map(select(has("pull_request") | not) | {number,title,body,state,labels})' > /tmp/autonomous-loop-all-issues.json
+          # GitHub occasionally returns transient 5xx/partial JSON for paginated API calls.
+          # Retry boundedly and validate every page before producing candidate inputs.
+          fetch_paginated_json() {
+            local endpoint="$1" output="$2" attempt=1
+            local raw="${output}.raw" err="${output}.err"
+            while [ "$attempt" -le 3 ]; do
+              if gh api --paginate "$endpoint" > "$raw" 2> "$err" \
+                && jq -es 'length > 0 and all(.[]; type == "array")' "$raw" >/dev/null 2>&1; then
+                jq -s 'add' "$raw" > "$output"
+                rm -f "$raw" "$err"
+                return 0
+              fi
+              echo "::warning::GitHub API pagination failed or returned invalid JSON (attempt ${attempt}/3)."
+              if [ "$attempt" -lt 3 ]; then sleep "$((attempt * 2))"; fi
+              attempt=$((attempt + 1))
+            done
+            rm -f "$raw" "$err"
+            echo "::error::GitHub API pagination failed after 3 attempts; task discovery is blocked."
+            return 1
+          }
+          fetch_paginated_json "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" /tmp/autonomous-loop-all-issues.json
+          jq 'map(select(has("pull_request") | not) | {number,title,body,state,labels})' /tmp/autonomous-loop-all-issues.json > /tmp/autonomous-loop-all-issues-filtered.json
+          mv /tmp/autonomous-loop-all-issues-filtered.json /tmp/autonomous-loop-all-issues.json
           jq '[.[] | select(.state == "open")]' /tmp/autonomous-loop-all-issues.json > /tmp/autonomous-loop-open-issues.json
-          gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
-            | jq -s 'add | map({number,state,body,merged_at})' > /tmp/autonomous-loop-open-pulls.json
+          fetch_paginated_json "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" /tmp/autonomous-loop-open-pulls-raw.json
+          jq 'map({number,state,body,merged_at})' /tmp/autonomous-loop-open-pulls-raw.json > /tmp/autonomous-loop-open-pulls.json
+          rm -f /tmp/autonomous-loop-open-pulls-raw.json
 
       - name: Publish read-only task review backlog digest
         if: success() && env.TRIGGER_MODE == 'normal'
@@ -668,6 +689,7 @@ jobs:
             exit 1
           fi
           python -m scripts.recovery_rag_state --mode export --state /tmp/recovery-rag-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
+          python -m scripts.recovery_rag_state --mode export --kind rea --state /tmp/rea-rag-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
 
       - name: Publish verified development branch
         id: publish
@@ -973,6 +995,12 @@ jobs:
                   or len(rag_payload['records']) > 200):
               raise SystemExit('Recovery RAG export is invalid; durable update blocked')
           data['recovery_rag'] = rag_payload['records']
+          rea_rag_payload = json.loads(Path('/tmp/rea-rag-state.json').read_text(encoding='utf-8'))
+          if (not isinstance(rea_rag_payload, dict) or rea_rag_payload.get('schema_version') != 1
+                  or not isinstance(rea_rag_payload.get('records'), list)
+                  or len(rea_rag_payload['records']) > 200):
+              raise SystemExit('REA RAG export is invalid; durable update blocked')
+          data['rea_rag'] = rea_rag_payload['records']
           local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
           from scripts.self_improvement_state import validate_durable_history
           try:
@@ -1006,6 +1034,9 @@ jobs:
           rag_payload = json.loads(Path('/tmp/recovery-rag-state.json').read_text(encoding='utf-8'))
           if durable.get('recovery_rag') != rag_payload.get('records'):
               raise SystemExit('Recovery RAG durable read-back mismatch')
+          rea_rag_payload = json.loads(Path('/tmp/rea-rag-state.json').read_text(encoding='utf-8'))
+          if durable.get('rea_rag') != rea_rag_payload.get('records'):
+              raise SystemExit('REA RAG durable read-back mismatch')
           local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
           if durable.get('self_improvement_history') != local_state.get('self_improvement_history'):
               raise SystemExit('self-improvement durable read-back mismatch')
@@ -1040,10 +1071,13 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
+          RUN_TASK_CONCLUSION: ${{ steps.run_task.conclusion }}
         run: |
           set -euo pipefail
           if [ ! -s /tmp/recovery-ai-state-readback.json ]; then
-            if [ ! -f /tmp/autonomous-loop-not-run ] && [ ! -f /tmp/autonomous-loop-held-tasks ]; then
+            # A skipped task step means preflight failed before execution; this is not
+            # missing evidence from an attempted task. Candidate discovery stays read-only.
+            if [ "$RUN_TASK_CONCLUSION" != "skipped" ] && [ ! -f /tmp/autonomous-loop-not-run ] && [ ! -f /tmp/autonomous-loop-held-tasks ]; then
               echo "::error::Recovery AI read-back is missing after an attempted task; refusing to generate an empty candidate pool."
               exit 1
             fi
