@@ -39,11 +39,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
           SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
           set -euo pipefail
           mkdir -p source-evidence
           gh run download "$SOURCE_RUN_ID" --repo "$GH_REPOSITORY" \
-            --name "minimal-autonomous-loop-$SOURCE_RUN_ID" --dir source-evidence
+            --name "minimal-autonomous-loop-$SOURCE_RUN_ID-attempt-$SOURCE_RUN_ATTEMPT" --dir source-evidence
           test -s source-evidence/minimal-autonomous-loop.jsonl
 
       - name: Verify provenance and independently test exact task commits
