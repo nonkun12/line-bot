@@ -65,7 +65,7 @@ jobs:
           set -euo pipefail
           mkdir -p collector-evidence
           gh run download "$COLLECTOR_RUN_ID" --repo "$GH_REPOSITORY" \
-            --name "rea-independent-evidence-$COLLECTOR_RUN_ID" \
+            --name "rea-independent-evidence-$COLLECTOR_RUN_ID-attempt-$COLLECTOR_RUN_ATTEMPT" \
             --dir collector-evidence
           test -s collector-evidence/collector-context.json
           test -s collector-evidence/rea-independent-test-evidence.jsonl
