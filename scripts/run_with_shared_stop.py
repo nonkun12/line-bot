@@ -17,12 +17,15 @@ if str(ROOT) not in sys.path:
 from core.emergency_stop import get_status
 
 
-def _terminate_process_group(process: subprocess.Popen, stop_file: Path, grace_seconds: float) -> None:
+def _terminate_process_group(process: subprocess.Popen, stop_file: Path, grace_seconds: float) -> bool:
+    """Return True only after the child process has actually exited."""
     stop_file.touch(exist_ok=True)
     try:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
         pass
+    except OSError:
+        return False
     try:
         process.wait(timeout=grace_seconds)
     except subprocess.TimeoutExpired:
@@ -30,7 +33,13 @@ def _terminate_process_group(process: subprocess.Popen, stop_file: Path, grace_s
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        process.wait(timeout=max(1.0, grace_seconds))
+        except OSError:
+            return False
+        try:
+            process.wait(timeout=max(1.0, grace_seconds))
+        except subprocess.TimeoutExpired:
+            return False
+    return process.poll() is not None
 
 
 def run_with_shared_stop(
@@ -63,7 +72,8 @@ def run_with_shared_stop(
                 active = get_status(repository, token)
             except Exception as exc:
                 print(f"SHARED_STOP=UNVERIFIABLE error={type(exc).__name__}; terminating child", file=sys.stderr, flush=True)
-                _terminate_process_group(process, stop_file, grace_seconds)
+                if not _terminate_process_group(process, stop_file, grace_seconds):
+                    print("CHILD_TERMINATION_UNCONFIRMED; local STOP marker retained", file=sys.stderr, flush=True)
                 return 82
             if active:
                 print("SHARED_STOP=ACTIVE; terminating child process group", flush=True)
@@ -73,14 +83,16 @@ def run_with_shared_stop(
         return int(process.returncode or 0)
     except Exception as exc:
         if process is not None and process.poll() is None:
-            _terminate_process_group(process, stop_file, grace_seconds)
+            if not _terminate_process_group(process, stop_file, grace_seconds):
+                print("CHILD_TERMINATION_UNCONFIRMED; local STOP marker retained", file=sys.stderr, flush=True)
         print(f"SHARED_STOP=BLOCKED error={type(exc).__name__}", file=sys.stderr, flush=True)
         return 82
     finally:
-        try:
-            stop_file.unlink(missing_ok=True)
-        except OSError:
-            pass
+        if process is None or process.poll() is not None:
+            try:
+                stop_file.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def main(argv: list[str] | None = None) -> int:
