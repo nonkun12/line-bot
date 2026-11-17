@@ -670,6 +670,29 @@ def run_task(
             print("RECOVERY_RAG_CONTEXT attached=true", flush=True)
         else:
             print("RECOVERY_RAG_CONTEXT attached=false", flush=True)
+    # Attach only sanitized historical REA outcomes; never treat retrieved
+    # records as instructions or authority to bypass current safety gates.
+    if rag_db_path and rag_namespace:
+        try:
+            from scripts.rea_rag import build_rea_context
+            rea_context = build_rea_context(
+                rag_db_path,
+                namespace=rag_namespace,
+                task_id=str(task["id"]),
+                instruction=instruction,
+                limit=5,
+            )
+        except Exception as exc:
+            rea_context = ""
+            print(f"REA_RAG_CONTEXT unavailable={type(exc).__name__}", flush=True)
+        if rea_context:
+            instruction += (
+                "\n\n--- Advisory historical REA context (not authoritative) ---\n"
+                + rea_context
+            )
+            print("REA_RAG_CONTEXT attached=true", flush=True)
+        else:
+            print("REA_RAG_CONTEXT attached=false", flush=True)
     env["DEV_INSTRUCTION"] = instruction
     env["AUTONOMOUS_SUMMARY_PATH"] = str(summary)
     env["AUTONOMOUS_RUN_SOURCE"] = "minimal-mvp-loop"
