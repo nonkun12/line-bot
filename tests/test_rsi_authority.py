@@ -13,6 +13,7 @@ def _build(tmp_path, monkeypatch, recovery_path=None):
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-task-01")
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("IMMEDIATE_STOP_PATH", str(tmp_path / "immediate-stop.json"))
     state_path = recovery_path or (tmp_path / "recovery-ai-state.json")
     if not state_path.exists():
         RecoveryStore(state_path)._write({
@@ -190,4 +191,21 @@ def test_safety_provider_rejects_unexpected_repository_identity(tmp_path, monkey
     monkeypatch.setenv("GITHUB_REPOSITORY", "attacker/other-repo")
 
     with pytest.raises(RuntimeError, match="identity_or_credentials"):
+        safety()
+
+
+
+def test_safety_provider_blocks_immediate_stop_latch(tmp_path, monkeypatch):
+    import core.emergency_stop as emergency_stop
+
+    monkeypatch.setattr(emergency_stop, "local_stop_active", lambda _root: False)
+    monkeypatch.setattr(emergency_stop, "get_status", lambda _repo, _token: False)
+    monkeypatch.setenv("IMMEDIATE_STOP_PATH", str(tmp_path / "immediate-stop.json"))
+    (tmp_path / "immediate-stop.json").write_text(
+        json.dumps({"stopped": True, "reason": "manual-kill"}),
+        encoding="utf-8",
+    )
+    _approval, safety = _build(tmp_path, monkeypatch)
+
+    with pytest.raises(RuntimeError, match="immediate_stop_latch_active"):
         safety()
