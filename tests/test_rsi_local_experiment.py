@@ -67,7 +67,7 @@ def test_runner_generates_both_candidates_locally_and_evaluates_outputs():
     assert result["challenger_correct"] == 2
     assert len(client.calls) == 4
     assert all(call["temperature"] == 0.0 for call in client.calls)
-    assert all(call["max_completion_tokens"] == 512 for call in client.calls)
+    assert all(call["max_completion_tokens"] == 256 for call in client.calls)
     assert result["result"]["execution_authorized"] is False
 
 
