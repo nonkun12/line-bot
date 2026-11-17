@@ -62,3 +62,32 @@ def test_cloud_snapshot_attributes_core_vocabulary_only_with_explicit_stream_met
     assert streams["side_core_vocabulary"]["status"] == "observed"
     assert streams["side_core_vocabulary"]["task_count"] == 1
     assert payload["tasks"][0]["stream_key"] == "side_core_vocabulary"
+
+
+def test_cloud_snapshot_includes_only_sanitized_rea_artifact_metadata():
+    payload = build_snapshot(
+        [{
+            "task_id": "task-rea",
+            "status": "BLOCKED",
+            "rea_artifact": {
+                "status": "HOLD",
+                "reason_code": "risk_unknown",
+                "evidence_sha256": "a" * 64,
+                "execution_authorized": False,
+                "patch_authorized": False,
+                "hold_clear_authorized": False,
+                "merge_deploy_authorized": False,
+                "raw_diff": "must not leak",
+            },
+        }],
+        "24680",
+        "BLOCKED",
+        "2026-11-05T13:00:00+00:00",
+    )
+    task = payload["tasks"][0]
+    assert task["rea_artifact_status"] == "HOLD"
+    assert task["rea_artifact_reason_code"] == "risk_unknown"
+    assert task["rea_artifact_evidence_sha256"] == "a" * 64
+    assert task["rea_artifact_execution_authorized"] is False
+    assert task["rea_artifact_merge_deploy_authorized"] is False
+    assert "raw_diff" not in task
