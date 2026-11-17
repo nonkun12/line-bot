@@ -129,6 +129,18 @@ def main() -> int:
         (args.output / "rea-independent-test-evidence.jsonl").write_text(
             json.dumps(marker, sort_keys=True) + "\\n", encoding="utf-8"
         )
+        context = {
+            "schema_version": 1,
+            "collector_run_id": os.environ.get("GITHUB_RUN_ID", ""),
+            "source_run_id": str(args.run_id),
+            "source_run_attempt": args.run_attempt,
+            "source_head_sha": args.source_head_sha,
+            "source_head_branch": args.source_head_branch,
+            "expected_tasks": [],
+        }
+        (args.output / "collector-context.json").write_text(
+            json.dumps(context, sort_keys=True) + "\\n", encoding="utf-8"
+        )
         return 0
 
     # The source workflow publishes only to this run-scoped branch. Require its
