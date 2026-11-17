@@ -50,3 +50,18 @@ def test_dependencies_force_later_batch() -> None:
 def test_invalid_schedules_fail_closed(tasks: list[AgentTask], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         plan_batches(tasks)
+
+## Backlog coverage tests
+def test_default_development_team_is_the_bounded_core_team():
+    from core.multi_agent import AgentRole, default_development_team
+
+    assert default_development_team() == (
+        AgentRole.MANAGER,
+        AgentRole.IMPLEMENTER,
+        AgentRole.TESTER,
+        AgentRole.DEBUGGER,
+        AgentRole.REFACTORER,
+        AgentRole.REVIEWER,
+        AgentRole.REPAIRER,
+        AgentRole.INTEGRATOR,
+    )
