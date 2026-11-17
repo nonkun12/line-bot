@@ -1198,12 +1198,19 @@ def main() -> int:
     if not instruction:
         print("No development instruction supplied.")
         return 2
-    client = Groq(api_key=os.environ["GROQ_API_KEY"])
     if is_test_instruction(instruction):
-        print("Test-only instruction detected; no file target required.", flush=True)
+        print("Test-only instruction detected; no model provider required.", flush=True)
         passed, output = run_tests()
         print(output, flush=True)
         return 0 if passed else 1
+
+    # Resolve a model client only after deterministic/test-only paths have exited.
+    # This prevents read-only tests from requiring a provider credential.
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        print("MODEL_PROVIDER=BLOCKED reason=local_model_adapter_unavailable", flush=True)
+        return 1
+    client = Groq(api_key=api_key)
 
     files = repo_files()
     chosen = choose_file(client, instruction, files)
