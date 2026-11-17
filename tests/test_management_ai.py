@@ -742,3 +742,52 @@ def test_model_management_planner_receives_deterministic_routing_hints() -> None
     assert "Routing candidates (advisory): english, music" in prompts[0]
     assert "Routing priority (1=highest): 2" in prompts[0]
     assert "validate every planned role" in prompts[0]
+
+## Backlog coverage tests
+def test_management_cycle_run_returns_last_round_and_rejects_empty_cycle():
+    import pytest
+    from core.management_ai import ManagementCycleRun
+
+    first, final = object(), object()
+    cycle = ManagementCycleRun(rounds=(first, final), stopped_reason="completed")
+    assert cycle.final_run is final
+
+    with pytest.raises(ValueError, match="management cycle has no rounds"):
+        _ = ManagementCycleRun(rounds=(), stopped_reason="empty").final_run
+
+
+def test_groq_management_call_uses_planning_only_bounded_completion(monkeypatch):
+    from types import SimpleNamespace
+    import core.management_ai as management_ai
+
+    captured = {}
+
+    def fake_completion(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='  {"tasks": []}  '))]
+        )
+
+    monkeypatch.setattr(management_ai, "generate_chat_completion", fake_completion)
+    assert management_ai.groq_management_call("bounded plan request") == '{"tasks": []}'
+    assert captured["messages"][-1] == {"role": "user", "content": "bounded plan request"}
+    assert captured["temperature"] == 0.2
+    assert captured["max_tokens"] == 1600
+
+
+def test_groq_management_call_rejects_missing_or_empty_provider_content(monkeypatch):
+    from types import SimpleNamespace
+    import pytest
+    import core.management_ai as management_ai
+
+    monkeypatch.setattr(management_ai, "generate_chat_completion", lambda **kwargs: SimpleNamespace(choices=[]))
+    with pytest.raises(management_ai.ManagementPlanningError, match="no choices"):
+        management_ai.groq_management_call("request")
+
+    monkeypatch.setattr(
+        management_ai,
+        "generate_chat_completion",
+        lambda **kwargs: SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="  "))]),
+    )
+    with pytest.raises(management_ai.ManagementPlanningError, match="empty content"):
+        management_ai.groq_management_call("request")

@@ -44,3 +44,13 @@ def test_missing_vault_fails_closed(tmp_path: Path):
     vault = ObsidianVault(tmp_path / "missing")
     with pytest.raises(ObsidianError):
         vault.list_notes()
+
+## Backlog coverage tests
+def test_obsidian_vault_from_env_is_optional_and_uses_configured_path(monkeypatch, tmp_path):
+    monkeypatch.delenv("OBSIDIAN_VAULT_PATH", raising=False)
+    assert ObsidianVault.from_env() is None
+
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    vault = ObsidianVault.from_env()
+    assert vault is not None
+    assert vault.root == tmp_path

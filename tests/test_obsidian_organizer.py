@@ -35,3 +35,14 @@ def test_proposal_is_never_destructive():
     proposal.validate()
     assert proposal.destructive is False
     assert proposal.requires_human_approval is True
+
+## Backlog coverage tests
+
+def test_project_and_knowledge_signals_are_classified_through_public_proposal_api():
+    from core.obsidian_organizer import OrganizerCategory, make_proposal
+    project = make_proposal("project.md", "プロジェクトの開発を進める")
+    knowledge = make_proposal("reference.md", "仕様の参考資料")
+    assert project.category is OrganizerCategory.PROJECT
+    assert project.destination_path == "01_Projects/project.md"
+    assert knowledge.category is OrganizerCategory.KNOWLEDGE
+    assert knowledge.destination_path == "04_Knowledge/reference.md"

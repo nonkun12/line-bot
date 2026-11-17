@@ -77,3 +77,31 @@ def test_project_record_to_dict_serializes_supported_agents_as_list():
     assert serialized["repository"] == "nonkun12/sample-app"
     assert serialized["supported_agents"] == ["implementer", "tester"]
     assert isinstance(serialized["supported_agents"], list)
+
+## Backlog coverage tests
+def test_registry_from_environment_loads_configured_file_and_defaults_when_unset(monkeypatch, tmp_path):
+    path = tmp_path / "projects.json"
+    path.write_text(
+        '[{"name":"from-env","repository":"owner/from-env","project_type":"software"}]',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PROJECT_REGISTRY_PATH", str(path))
+    assert ProjectRegistry.from_environment().require("from-env").repository == "owner/from-env"
+
+    monkeypatch.delenv("PROJECT_REGISTRY_PATH")
+    assert ProjectRegistry.from_environment().require("line-bot") == DEFAULT_PROJECT
+
+
+def test_registry_get_returns_none_for_unknown_names_and_normalizes_whitespace():
+    registry = ProjectRegistry([ProjectRecord(name="sample", repository="owner/sample")])
+
+    assert registry.get(" sample ") == registry.require("sample")
+    assert registry.get("missing") is None
+
+
+def test_registry_require_repository_returns_exact_match_and_rejects_unknown():
+    registry = ProjectRegistry([ProjectRecord(name="sample", repository="owner/sample")])
+
+    assert registry.require_repository("owner/sample").name == "sample"
+    with pytest.raises(KeyError, match="unknown repository"):
+        registry.require_repository("owner/missing")

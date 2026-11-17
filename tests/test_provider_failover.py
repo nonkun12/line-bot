@@ -62,3 +62,15 @@ def test_gemini_success_clears_unavailable_state(monkeypatch):
     assert reply == "gemini-ok"
     assert provider == "gemini"
     assert failover.available("gemini") is True
+
+## Backlog coverage tests
+def test_both_unavailable_tracks_circuit_state_and_recovers_on_success():
+    failover = ProviderFailover(cooldown_seconds=60)
+
+    assert failover.both_unavailable() is False
+    failover.mark_failure("gemini")
+    failover.mark_failure("groq")
+    assert failover.both_unavailable() is True
+
+    failover.mark_success("gemini")
+    assert failover.both_unavailable() is False

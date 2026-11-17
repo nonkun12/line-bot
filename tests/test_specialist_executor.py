@@ -105,3 +105,11 @@ def test_factory_maps_job_role_to_existing_job_seeking_agent() -> None:
         AgentRequest("u1", "求人を探して")
     )
     assert set(executors) == {AgentRole.JOBS}
+
+## Backlog coverage tests
+
+def test_registry_specialist_executor_exposes_underlying_agent_name():
+    agent = FakeAgent("stocks")
+    request = AgentRequest("u1", "original", channel="slack")
+    executor = RegistrySpecialistExecutor(agent, request)
+    assert executor.agent_name == "stocks"
