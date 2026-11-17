@@ -133,7 +133,7 @@ def prepare_trusted_harness(harness: Path) -> None:
         "sys.modules['scripts'] = scripts_package\n"
         "sys.path.insert(0, '/workspace')\n"
         "raise SystemExit(pytest.main(['-q', '-p', 'no:cacheprovider', "
-        "'--noconftest', '--junitxml=/evidence/junit.xml', "
+        "'--noconftest', "
         + test_args + "]))\n"
     )
     (harness / "runner.py").write_text(runner, encoding="utf-8")
