@@ -693,7 +693,7 @@ def run_task(
                 limit=3,
             )
             if regression_proposals:
-                rea_context = (rea_context + "\\n\\n" + regression_proposals).strip()
+                rea_context = (rea_context + "\n\n" + regression_proposals).strip()
         except Exception as exc:
             rea_context = ""
             print(f"REA_RAG_CONTEXT unavailable={type(exc).__name__}", flush=True)
