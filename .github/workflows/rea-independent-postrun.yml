@@ -168,13 +168,26 @@ jobs:
               results.append({"status": "HOLD", "reason_code": "collector_expected_task_set_mismatch"})
           if not results:
               results.append({"status": "BLOCKED", "reason_code": "no_independent_evidence_rows"})
+          statuses = [item.get("status") for item in results]
+          if "FAIL" in statuses:
+              overall = "FAIL"
+          elif "BLOCKED" in statuses:
+              overall = "BLOCKED"
+          elif "HOLD" in statuses:
+              overall = "HOLD"
+          elif statuses and all(status == "PASS" for status in statuses):
+              overall = "PASS"
+          elif statuses and all(status == "NOT_APPLICABLE" for status in statuses):
+              overall = "NOT_APPLICABLE"
+          else:
+              overall = "HOLD"
           report = {
               "schema_version": 1,
               "collector_run_id": collector_id,
               "source_run_id": source_id,
               "source_run_attempt": context["source_run_attempt"],
               "results": results,
-              "overall": ("PASS" if results and all(x.get("status") == "PASS" for x in results) else ("NOT_APPLICABLE" if results and all(x.get("status") == "NOT_APPLICABLE" for x in results) else "HOLD")),
+              "overall": overall,
           }
           Path("rea-independent-postrun.json").write_text(
               json.dumps(report, indent=2, sort_keys=True) + "\n"
