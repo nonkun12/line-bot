@@ -2694,9 +2694,24 @@ def _prepare_idea_stage(instruction: str) -> tuple[str, str | None, str | None]:
     )
     return handoff.instruction, handoff.task_id, None
 
+def _shared_stop_is_active() -> bool:
+    """Poll the shared STOP ref at every runtime safety checkpoint."""
+    from core.emergency_stop import get_status
+
+    repository = (
+        os.environ.get("AI_REPORT_GITHUB_REPO")
+        or os.environ.get("GITHUB_REPOSITORY")
+        or "nonkun12/line-bot"
+    ).strip()
+    token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
+    if not repository or not token:
+        raise RuntimeError("shared_stop_credentials_missing")
+    return get_status(repository, token)
+
+
 def execute(instruction: str) -> int:
     """Run one real guarded development request through the quality pipeline."""
-    stop_controller = ImmediateStopController()
+    stop_controller = ImmediateStopController(shared_status_checker=_shared_stop_is_active)
     try:
         stop_controller.assert_can_execute()
     except ImmediateStop as exc:
