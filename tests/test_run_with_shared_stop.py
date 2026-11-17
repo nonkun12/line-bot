@@ -56,3 +56,23 @@ def test_returns_child_exit_code_when_stop_stays_inactive():
         watchdog.subprocess, "Popen", return_value=process
     ), patch.object(watchdog.time, "sleep"):
         assert watchdog.run_with_shared_stop(["python", "-c", "pass"], repository="o/r", token="t") == 7
+
+
+def test_retains_local_stop_marker_when_process_termination_is_unconfirmed(tmp_path):
+    process = _FakeProcess()
+    captured = {}
+
+    def spawn(command, *, env, start_new_session):
+        captured.update(env)
+        return process
+
+    with patch.object(watchdog, "get_status", side_effect=[False, True]), patch.object(
+        watchdog.subprocess, "Popen", side_effect=spawn
+    ), patch.object(watchdog.os, "killpg", side_effect=PermissionError("denied")), patch.object(
+        watchdog.tempfile, "gettempdir", return_value=str(tmp_path)
+    ), patch.object(watchdog.time, "sleep"):
+        assert watchdog.run_with_shared_stop(["python", "-c", "pass"], repository="o/r", token="t") == 82
+
+    marker = captured["AUTONOMOUS_STOP_FILE"]
+    assert marker.startswith(str(tmp_path))
+    assert __import__("pathlib").Path(marker).exists()
