@@ -81,6 +81,8 @@ def test_pytest_summary_counts_are_parsed_from_captured_output():
     assert parse_counts("33 passed in 0.16s") == (33, 33, 0, 0)
     assert parse_counts("4 passed, 2 skipped in 0.21s") == (6, 4, 0, 2)
     assert parse_counts("3 passed, 1 failed in 0.30s") == (4, 3, 1, 0)
+    assert parse_counts("4 passed, 2 skipped, 1 warning in 0.21s") == (6, 4, 0, 2)
+    assert parse_counts("2 passed, 1 xfailed, 1 xpassed in 0.21s") == (4, 2, 0, 2)
 
 
 def test_missing_pytest_summary_fails_closed_with_zero_counts():
