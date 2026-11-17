@@ -1477,3 +1477,32 @@ def test_lfm3_shadow_advisory_never_runs_in_github_actions(monkeypatch, tmp_path
         tmp_path,
     ) is None
     assert not (tmp_path / "lfm3-rea-shadow.jsonl").exists()
+
+
+def test_artifact_stop_state_includes_shared_emergency_stop(monkeypatch, tmp_path):
+    from core import emergency_stop, immediate_stop
+
+    monkeypatch.delenv("AUTONOMOUS_LOOP_STOP", raising=False)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr(emergency_stop, "local_stop_active", lambda _root: False)
+    monkeypatch.setattr(immediate_stop.ImmediateStopController, "is_stopped", lambda self: False)
+    monkeypatch.setattr(emergency_stop, "get_status", lambda _repo, _token: True)
+
+    assert loop.artifact_stop_state(tmp_path / "missing-stop-file") == "ACTIVE"
+
+
+def test_artifact_stop_state_unknown_when_shared_status_cannot_be_verified(monkeypatch, tmp_path):
+    from core import emergency_stop, immediate_stop
+
+    monkeypatch.delenv("AUTONOMOUS_LOOP_STOP", raising=False)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr(emergency_stop, "local_stop_active", lambda _root: False)
+    monkeypatch.setattr(immediate_stop.ImmediateStopController, "is_stopped", lambda self: False)
+
+    def unavailable(_repo, _token):
+        raise RuntimeError("network unavailable")
+
+    monkeypatch.setattr(emergency_stop, "get_status", unavailable)
+    assert loop.artifact_stop_state(tmp_path / "missing-stop-file") == "UNKNOWN"
