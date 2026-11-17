@@ -38,12 +38,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           mkdir -p evidence
           gh run download "$RUN_ID" --repo "$REPOSITORY" \
-            --name "minimal-autonomous-loop-$RUN_ID" --dir evidence
+            --name "minimal-autonomous-loop-$RUN_ID-attempt-$RUN_ATTEMPT" --dir evidence
           find evidence -maxdepth 3 -type f -print
           echo "downloaded=true" >> "$GITHUB_OUTPUT"
 
