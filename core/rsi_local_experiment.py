@@ -205,3 +205,55 @@ def run_local_prompt_comparison(
         return {"record": None, "result": _blocked(experiment_id, reason)}
     except Exception as exc:
         return {"record": None, "result": _blocked(experiment_id, f"local_model_error:{type(exc).__name__}")}
+
+
+def run_trusted_local_prompt_comparison(
+    *,
+    start_sha: str,
+    instruction: str,
+    recovery_state_path: str | Path,
+    client: Any,
+    experiment_id: str,
+    dataset: Sequence[Mapping[str, Any]],
+    held_out_expected_sha256: str,
+    held_out_locked: bool,
+    baseline_candidate_id: str,
+    baseline_system_prompt: str,
+    challenger_candidate_id: str,
+    challenger_system_prompt: str,
+    evaluator_id: str,
+    evaluator_version: str,
+    minimum_delta: float,
+    ledger_path: str | Path,
+) -> dict[str, Any]:
+    """Run RSI through repository-authenticated approval and live safety sources.
+
+    Unlike the lower-level dependency-injected runner, this entrypoint wires the
+    authenticated workflow-dispatch approval, one-time approval consumption,
+    shared/local emergency STOP, and aggregate Recovery AI HOLD itself.
+    """
+    from core.rsi_authority import build_rsi_authority
+
+    approval_verifier, safety_provider = build_rsi_authority(
+        experiment_id=experiment_id,
+        start_sha=start_sha,
+        instruction=instruction,
+        recovery_state_path=recovery_state_path,
+    )
+    return run_local_prompt_comparison(
+        client=client,
+        experiment_id=experiment_id,
+        dataset=dataset,
+        held_out_expected_sha256=held_out_expected_sha256,
+        held_out_locked=held_out_locked,
+        baseline_candidate_id=baseline_candidate_id,
+        baseline_system_prompt=baseline_system_prompt,
+        challenger_candidate_id=challenger_candidate_id,
+        challenger_system_prompt=challenger_system_prompt,
+        evaluator_id=evaluator_id,
+        evaluator_version=evaluator_version,
+        minimum_delta=minimum_delta,
+        safety_provider=safety_provider,
+        approval_verifier=approval_verifier,
+        ledger_path=ledger_path,
+    )
