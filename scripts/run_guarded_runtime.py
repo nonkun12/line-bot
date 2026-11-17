@@ -300,6 +300,16 @@ def _write_summary(
         payload["rea"] = rea_evidence
     if approval_evidence is not None:
         payload["execution_approval"] = approval_evidence
+    postgen_status = os.environ.get("AUTONOMOUS_POSTGEN_REA_STATUS", "")
+    if postgen_status:
+        payload["post_generation_rea"] = {
+            "status": postgen_status,
+            "base_sha": os.environ.get("AUTONOMOUS_POSTGEN_REA_BASE_SHA", ""),
+            "target_sha": os.environ.get("AUTONOMOUS_POSTGEN_REA_TARGET_SHA", ""),
+            "diff_sha256": os.environ.get("AUTONOMOUS_POSTGEN_REA_DIFF_SHA256", ""),
+            "diagnostic_only": True,
+            "publish_gate_passed": postgen_status == "PASS",
+        }
     failure_code = extract_safe_failure_code(os.environ.get("AUTONOMOUS_FAILURE_CODE", ""))
     if failure_code is not None:
         payload["failure_code"] = failure_code
