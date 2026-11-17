@@ -108,9 +108,11 @@ jobs:
               ["gh", "api", f"repos/{repo}/actions/runs/{source_id}"],
               check=True, capture_output=True, text=True,
           ).stdout)
-          if (source.get("name") != "Distributed Autonomous Development Loop"
+          if (str(source.get("id")) != source_id
+                  or source.get("name") != "Distributed Autonomous Development Loop"
                   or source.get("run_attempt") != context["source_run_attempt"]
                   or source.get("head_sha") != context["source_head_sha"]
+                  or source.get("head_branch") != context.get("source_head_branch")
                   or source.get("head_branch") != os.environ["DEFAULT_BRANCH"]):
               raise SystemExit("source workflow run identity does not match collector context")
 
