@@ -120,6 +120,17 @@ def _git(*args: str) -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
+def _shared_stop_active() -> bool:
+    """Read the authoritative shared STOP marker; missing credentials fail closed."""
+    from core.emergency_stop import get_status
+
+    repository = os.environ.get("AI_REPORT_GITHUB_REPO", os.environ.get("GITHUB_REPOSITORY", "nonkun12/line-bot")).strip()
+    token = os.environ.get("GITHUB_TOKEN", os.environ.get("GH_TOKEN", "")).strip()
+    if not repository or not token:
+        raise RuntimeError("shared_stop_credentials_missing")
+    return get_status(repository, token)
+
+
 def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, object]:
     """Verify approval against the exact task, instruction, base, and path scope."""
     instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
@@ -422,6 +433,16 @@ def main() -> int:
 
     from core.emergency_stop import local_stop_active
     if local_stop_active(ROOT):
+        _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "emergency_stop_active", "execution_authorized": False})
+        print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
+        return 82
+    try:
+        shared_stop_active = _shared_stop_active()
+    except Exception:
+        _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "shared_stop_status_unconfirmed", "execution_authorized": False})
+        print("EMERGENCY_STOP=UNVERIFIABLE; runtime not started", flush=True)
+        return 82
+    if shared_stop_active:
         _write_summary("BLOCKED", 82, start_sha, summary_path, rea_evidence, {"gate": "BLOCKED", "reason_code": "emergency_stop_active", "execution_authorized": False})
         print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
         return 82
