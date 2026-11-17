@@ -51,10 +51,15 @@ def _request(method: str, repository: str, token: str, path: str, payload: dict 
 
 def get_status(repository: str, token: str) -> bool:
     status, _ = _request("GET", repository, token, "/git/ref/heads/control-tower-emergency-stop")
-    if status == 404:
-        return False
     if status == 200:
         return True
+    if status == 404:
+        # A missing ref is RUNNING only after the repository itself is confirmed
+        # to exist. GitHub also returns 404 for inaccessible or misspelled repos.
+        repo_status, repo_payload = _request("GET", repository, token, "")
+        if repo_status == 200 and isinstance(repo_payload, dict):
+            return False
+        raise RuntimeError("stop_status_unconfirmed_repository")
     raise RuntimeError("stop_status_unconfirmed")
 
 
