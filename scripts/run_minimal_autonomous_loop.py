@@ -674,7 +674,10 @@ def run_task(
     # records as instructions or authority to bypass current safety gates.
     if rag_db_path and rag_namespace:
         try:
-            from scripts.rea_rag import build_rea_context
+            from scripts.rea_rag import (
+                build_rea_context,
+                build_rea_regression_test_proposals,
+            )
             rea_context = build_rea_context(
                 rag_db_path,
                 namespace=rag_namespace,
@@ -682,6 +685,15 @@ def run_task(
                 instruction=instruction,
                 limit=5,
             )
+            regression_proposals = build_rea_regression_test_proposals(
+                rag_db_path,
+                namespace=rag_namespace,
+                task_id=str(task["id"]),
+                instruction=instruction,
+                limit=3,
+            )
+            if regression_proposals:
+                rea_context = (rea_context + "\\n\\n" + regression_proposals).strip()
         except Exception as exc:
             rea_context = ""
             print(f"REA_RAG_CONTEXT unavailable={type(exc).__name__}", flush=True)
