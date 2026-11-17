@@ -74,9 +74,12 @@ def evaluate_exact_match(
     evaluator_version: str,
     minimum_delta: float,
     safety: Mapping[str, Any],
+    held_out_locked: bool,
 ) -> dict[str, Any]:
     """Build and evaluate an exact-match comparison from actual held-out rows."""
     try:
+        if held_out_locked is not True:
+            raise ValueError("held_out_fixture_lock_not_attested")
         if isinstance(dataset, (str, bytes)) or not isinstance(dataset, Sequence) or not dataset:
             raise ValueError("held_out_dataset_empty_or_invalid")
         if not all(isinstance(row, Mapping) and "sample_id" in row and "expected" in row for row in dataset):
@@ -96,6 +99,8 @@ def evaluate_exact_match(
 
         dataset_rows = [dict(row) for row in dataset]
         dataset_sha256 = hashlib.sha256(_canonical(dataset_rows)).hexdigest()
+        baseline_predictions_sha256 = hashlib.sha256(_canonical(list(baseline_predictions))).hexdigest()
+        challenger_predictions_sha256 = hashlib.sha256(_canonical(list(challenger_predictions))).hexdigest()
         baseline_score, baseline_correct = _score(dataset_rows, baseline_predictions)
         challenger_score, challenger_correct = _score(dataset_rows, challenger_predictions)
 
@@ -106,12 +111,14 @@ def evaluate_exact_match(
                 "artifact_sha256": baseline_artifact_sha256,
                 "score": baseline_score,
                 "correct_count": baseline_correct,
+                "predictions_sha256": baseline_predictions_sha256,
             },
             "challenger": {
                 "candidate_id": challenger_candidate_id,
                 "artifact_sha256": challenger_artifact_sha256,
                 "score": challenger_score,
                 "correct_count": challenger_correct,
+                "predictions_sha256": challenger_predictions_sha256,
             },
             "evaluator": {
                 "evaluator_id": evaluator_id,
@@ -124,7 +131,7 @@ def evaluate_exact_match(
                 "dataset_id": f"{experiment_id}:held-out",
                 "dataset_sha256": dataset_sha256,
                 "sample_count": len(dataset_rows),
-                "locked": True,
+                "locked": held_out_locked,
             },
             "safety": dict(safety),
         }
