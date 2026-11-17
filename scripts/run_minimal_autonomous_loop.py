@@ -332,6 +332,23 @@ def stopped(stop_file: Path) -> bool:
         return True
 
 
+def artifact_stop_state(stop_file: Path) -> str:
+    """Resolve local and shared emergency STOP; uncertainty is not INACTIVE."""
+    try:
+        from core.emergency_stop import get_status, local_stop_active
+        from core.immediate_stop import ImmediateStopController
+
+        if stopped(stop_file) or local_stop_active(ROOT) or ImmediateStopController().is_stopped():
+            return "ACTIVE"
+        repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
+        token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
+        if repository != "nonkun12/line-bot" or not token:
+            return "UNKNOWN"
+        return "ACTIVE" if get_status(repository, token) else "INACTIVE"
+    except Exception:
+        return "UNKNOWN"
+
+
 def _valid_sha(value: object) -> bool:
     text = str(value or "")
     return len(text) == 40 and all(ch in "0123456789abcdef" for ch in text.lower())
@@ -1421,7 +1438,7 @@ def main() -> int:
                     result,
                     repo_root=ROOT,
                     output_path=args.state.parent / "rea-artifact-evaluations.jsonl",
-                    stop_state="ACTIVE" if stopped(args.stop_file) else "INACTIVE",
+                    stop_state=artifact_stop_state(args.stop_file),
                     hold_state=aggregate_hold.get("state", "UNKNOWN"),
                 )
                 result["rea_artifact"] = artifact_rea
