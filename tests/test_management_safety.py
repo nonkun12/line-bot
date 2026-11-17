@@ -182,3 +182,27 @@ def test_protected_scope_needs_human_before_execution() -> None:
         build_request(plan, changed_paths=("core/control_tower.py",))
     )
     assert result.decision is GateDecision.NEEDS_HUMAN
+
+## Backlog coverage tests
+def test_management_plan_canonical_payload_normalizes_and_sorts_paths():
+    plan = build_plan(
+        scope_paths=("tests/z.py", "tests/a.py"),
+        expected_changed_paths=("tests/b.py", "tests/a.py"),
+        rollback_plan="  revert the branch commit  ",
+    )
+
+    payload = plan.canonical_payload()
+
+    assert payload["scope_paths"] == ["tests/a.py", "tests/z.py"]
+    assert payload["expected_changed_paths"] == ["tests/a.py", "tests/b.py"]
+    assert payload["rollback_plan"] == "revert the branch commit"
+    assert payload["task_id"] == "task-1"
+    assert payload["expected_diff_hash"] is None
+
+
+def test_management_gate_result_allowed_is_true_only_for_allow():
+    from core.management_safety import GateDecision, ManagementGateResult
+
+    assert ManagementGateResult(GateDecision.ALLOW, ()).allowed is True
+    assert ManagementGateResult(GateDecision.DENY, ("blocked",)).allowed is False
+    assert ManagementGateResult(GateDecision.NEEDS_HUMAN, ("review",)).allowed is False
