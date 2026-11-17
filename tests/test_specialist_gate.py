@@ -384,3 +384,16 @@ def test_management_ai_never_keeps_an_executor_for_an_unapproved_role(monkeypatc
         planner=_TwoStepPlanner(),
     )
     assert set(manager._executors) == {AgentRole.STOCKS}
+
+## Backlog coverage tests
+
+def test_assert_specialist_capability_requires_the_exact_declared_capability(monkeypatch):
+    from core.management_contract import SpecialistBoundary
+    monkeypatch.setattr(
+        gate,
+        "specialist_boundary",
+        lambda specialist: SpecialistBoundary(specialist, ("stock_quotes",)),
+    )
+    assert gate.assert_specialist_capability(Specialist.STOCKS, "stock_quotes") is Specialist.STOCKS
+    with pytest.raises(SpecialistGateError, match="specialist capability not approved"):
+        gate.assert_specialist_capability(Specialist.STOCKS, "news_retrieval")
