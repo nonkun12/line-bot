@@ -18,6 +18,8 @@ from typing import Any
 from core.rsi_experiment_protocol import evaluate_comparison
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+EVALUATOR_ID = "rsi.exact_match.v1"
+EVALUATOR_VERSION = "1"
 
 
 def _canonical(value: Any) -> bytes:
@@ -81,6 +83,8 @@ def evaluate_exact_match(
     try:
         if held_out_locked is not True:
             raise ValueError("held_out_fixture_lock_not_attested")
+        if evaluator_id != EVALUATOR_ID or evaluator_version != EVALUATOR_VERSION:
+            raise ValueError("evaluator_identity_mismatch")
         if isinstance(dataset, (str, bytes)) or not isinstance(dataset, Sequence) or not dataset:
             raise ValueError("held_out_dataset_empty_or_invalid")
         if not all(isinstance(row, Mapping) and "sample_id" in row and "expected" in row for row in dataset):
