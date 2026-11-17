@@ -19,8 +19,9 @@ def evaluate_and_record_runtime_artifact(
 ) -> dict[str, Any]:
     """Evaluate immutable runtime output and append a metadata-only JSONL record.
 
-    Tests and risk are accepted only when explicitly present in the runtime
-    summary. Missing values remain NOT_RUN / UNKNOWN and therefore cannot PASS.
+    Runtime summaries are not an independent source for tests or risk. Until a
+    separate verifier supplies those facts, they remain NOT_RUN / UNKNOWN and
+    changed artifacts cannot receive PASS.
     """
     verification: dict[str, Any] = {
         "tests": "NOT_RUN",
@@ -41,8 +42,9 @@ def evaluate_and_record_runtime_artifact(
         verification["changed_files"] = scan.get("changed_paths", [])
         verification["diff_scan"] = "PASS" if scan.get("status") == "PASS" else "FAIL"
         verification["diff_sha256"] = scan.get("diff_sha256")
-        verification["tests"] = summary.get("tests", "NOT_RUN")
-        verification["risk"] = summary.get("risk", "UNKNOWN")
+        # Deliberately ignore summary["tests"] and summary["risk"]: the runtime
+        # child can write its own summary, so those fields are self-reported.
+        # Independent test/risk evidence is not wired yet; remain fail-closed.
 
         adapted_summary = dict(summary)
         if head_sha == base_sha and not isinstance(adapted_summary.get("post_generation_rea"), dict):
