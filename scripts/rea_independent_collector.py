@@ -66,8 +66,10 @@ def parse_counts(output: str) -> tuple[int, int, int, int]:
     )
     if not matches:
         return 0, 0, 0, 0
+    # On successful pytest runs, test stdout is captured. Use the first terminal
+    # summary so late atexit output from candidate code cannot replace it.
     passed, failed, errors, skipped, xfailed, xpassed = (
-        int(value or 0) for value in matches[-1]
+        int(value or 0) for value in matches[0]
     )
     skipped += xfailed + xpassed
     collected = passed + failed + errors + skipped
