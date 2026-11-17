@@ -334,6 +334,9 @@ def _prepare_selector_main(monkeypatch, tmp_path, tasks, head_reader=None):
         def task_status(self, _task_id):
             return {"held": False}
 
+        def aggregate_hold_status(self):
+            return {"state": "CLEAR"}
+
     monkeypatch.setattr("scripts.recovery_ai.RecoveryStore", _RecoveryStore)
     monkeypatch.setattr(
         loop.sys,
