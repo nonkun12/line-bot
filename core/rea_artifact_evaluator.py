@@ -104,18 +104,43 @@ def evaluate_runtime_summary(summary: object, verification: object) -> dict[str,
         return _result("HOLD", "post_generation_rea_missing")
 
     changed_files = verification.get("changed_files")
+    # A child runtime's tests=PASS is not independent evidence. Only a trusted
+    # collector, established by the caller from workflow provenance, can promote
+    # tests to PASS. The expected identity/diff must also come from trusted inputs.
+    independent = verification.get("independent_test_evidence")
+    expected = verification.get("independent_test_expected")
+    trusted_collector = verification.get("trusted_test_collector") is True
+    if isinstance(independent, dict):
+        from core.rea_independent_test_evidence import validate_independent_test_evidence
+
+        independent_result = validate_independent_test_evidence(
+            independent,
+            expected=expected,
+            trusted_collector=trusted_collector,
+        )
+        tests = independent_result["tests"]
+    else:
+        tests = "NOT_RUN"
     evidence = {
         "task_id": summary.get("task_id"),
         "base_sha": summary.get("base_sha"),
         "head_sha": summary.get("produced_sha"),
         "changed_files": changed_files,
-        "tests": verification.get("tests", "NOT_RUN"),
+        "tests": tests,
         "diff_scan": verification.get("diff_scan", postgen.get("status", "UNKNOWN")),
         "risk": verification.get("risk", "UNKNOWN"),
         "stop_state": verification.get("stop_state", "UNKNOWN"),
         "hold_state": verification.get("hold_state", "UNKNOWN"),
     }
-    return evaluate_artifact_evidence(evidence)
+    result = evaluate_artifact_evidence(evidence)
+    if isinstance(independent, dict) and independent_result["status"] in {"BLOCKED", "FAIL"}:
+        # Preserve the stricter independent-runner classification.
+        result["status"] = independent_result["status"]
+        result["reason_code"] = independent_result["reason_code"]
+    elif isinstance(independent, dict) and independent_result["status"] == "HOLD":
+        result["status"] = "HOLD"
+        result["reason_code"] = independent_result["reason_code"]
+    return result
 
 
 __all__ = ["evaluate_artifact_evidence", "evaluate_runtime_summary"]
