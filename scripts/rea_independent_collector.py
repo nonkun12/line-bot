@@ -49,9 +49,9 @@ def sha256_file(path: Path) -> str:
 def parse_counts(output: str) -> tuple[int, int, int, int]:
     """Parse pytest's terminal summary captured outside the sandbox."""
     matches = re.findall(
-        r"=\s*(?:(\d+)\s+passed)?(?:,\s*)?(?:(\d+)\s+failed)?"
-        r"(?:,\s*)?(?:(\d+)\s+error(?:s)?)?(?:,\s*)?"
-        r"(?:(\d+)\s+skipped)?\s+in\s+[0-9.]+s\s*=",
+        r"(?:(\d+)\s+passed)?(?:,\s*)?(?:(\d+)\s+failed)?"
+        r"(?:,\s*)?(?:(\d+)\s+errors?)?(?:,\s*)?"
+        r"(?:(\d+)\s+skipped)?\s+in\s+[0-9.]+s",
         output,
     )
     if not matches:
