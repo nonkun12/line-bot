@@ -219,6 +219,150 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
     }
 
 
+def scan_commit_diff(
+    repo_root: str | Path, *, base_sha: str, target_sha: str
+) -> dict[str, Any]:
+    """Read-only scan of the exact immutable base..target commit diff.
+
+    Unlike scan_repository(), this deliberately inspects committed output,
+    not the pre-generation HEAD or a mutable worktree. It never executes code.
+    """
+    root = Path(repo_root).resolve()
+    if not root.is_dir():
+        raise ScanBlocked("repository_root_unavailable")
+    for value in (base_sha, target_sha):
+        if not re.fullmatch(r"[0-9a-f]{40}", value):
+            raise ScanBlocked("commit_sha_invalid")
+        _git(root, "cat-file", "-e", f"{value}^{{commit}}")
+
+    patch = subprocess.run(
+        ["git", "diff", "--binary", base_sha, target_sha, "--"],
+        cwd=str(root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, check=False, timeout=30,
+    )
+    if patch.returncode != 0:
+        raise ScanBlocked("commit_diff_unavailable")
+    diff_sha256 = hashlib.sha256(patch.stdout).hexdigest()
+
+    changed_raw = _git(root, "diff", "--name-only", "-z", base_sha, target_sha)
+    deleted_raw = _git(root, "diff", "--diff-filter=D", "--name-only", "-z", base_sha, target_sha)
+    changed = [item for item in changed_raw.split("\0") if item]
+    deleted = set(item for item in deleted_raw.split("\0") if item)
+    if len(changed) > MAX_FILES:
+        raise ScanBlocked("scan_file_limit_exceeded")
+
+    findings: list[dict[str, Any]] = []
+    scanned = 0
+    for relative in sorted(changed):
+        if not relative.startswith(ALLOWED_ROOTS):
+            findings.append(_finding(
+                category="path_policy", severity="CRITICAL", confidence="HIGH",
+                target_sha=target_sha, path=relative, line=None,
+                evidence_code="changed_path_outside_rea_allowlist",
+                hypothesis="The generated commit changes a path outside the REA review allowlist.",
+                suggested_fix="Reject the change or explicitly review and authorize the path policy update.",
+                required_tests=["Verify the task-bound allowed-path manifest."],
+            ))
+            continue
+        if relative in deleted:
+            severity = "HIGH" if relative.startswith("tests/") else "MEDIUM"
+            findings.append(_finding(
+                category="deleted_file", severity=severity, confidence="HIGH",
+                target_sha=target_sha, path=relative, line=None,
+                evidence_code="tracked_file_deleted",
+                hypothesis="The generated commit deletes a tracked file; deleted tests may reduce regression protection.",
+                suggested_fix="Review the deletion and preserve or replace required coverage.",
+                required_tests=["Review deleted-file impact and regression coverage."],
+            ))
+            continue
+        if Path(relative).suffix.lower() not in ALLOWED_SUFFIXES:
+            findings.append(_finding(
+                category="file_type", severity="HIGH", confidence="HIGH",
+                target_sha=target_sha, path=relative, line=None,
+                evidence_code="changed_file_type_not_scannable",
+                hypothesis="A changed file type is outside the deterministic REA scanner's supported formats.",
+                suggested_fix="Block until a suitable read-only scanner is available.",
+                required_tests=["Provide an independent format-specific review."],
+            ))
+            continue
+        blob = subprocess.run(
+            ["git", "show", f"{target_sha}:{relative}"], cwd=str(root),
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, check=False, timeout=15,
+        )
+        if blob.returncode != 0:
+            raise ScanBlocked("target_blob_unavailable")
+        if len(blob.stdout) > MAX_FILE_BYTES:
+            raise ScanBlocked("target_blob_oversize")
+        try:
+            source = blob.stdout.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ScanBlocked("target_blob_not_utf8") from None
+        scanned += 1
+        if relative.endswith(".py"):
+            try:
+                ast.parse(source, filename=relative)
+            except (SyntaxError, ValueError, TypeError) as exc:
+                line = getattr(exc, "lineno", None)
+                findings.append(_finding(
+                    category="python_syntax", severity="HIGH", confidence="HIGH",
+                    target_sha=target_sha, path=relative,
+                    line=line if isinstance(line, int) else None,
+                    evidence_code="ast_parse_failed",
+                    hypothesis="The generated commit contains invalid Python syntax.",
+                    suggested_fix="Repair the syntax and rerun focused regression tests.",
+                    required_tests=["python -m py_compile <reviewed-file>"],
+                ))
+        elif relative.endswith(".json"):
+            try:
+                json.loads(source)
+            except (json.JSONDecodeError, ValueError):
+                findings.append(_finding(
+                    category="json_syntax", severity="HIGH", confidence="HIGH",
+                    target_sha=target_sha, path=relative, line=None,
+                    evidence_code="json_parse_failed",
+                    hypothesis="The generated commit contains malformed JSON.",
+                    suggested_fix="Repair the JSON and validate its schema.",
+                    required_tests=["python -m json.tool <reviewed-file>"],
+                ))
+        if relative.startswith(".github/workflows/"):
+            for match in DANGEROUS_FLAG_RE.finditer(source):
+                line = source.count("\n", 0, match.start()) + 1
+                flag_name = match.group(1).upper()
+                findings.append(_finding(
+                    category="safety_flag", severity="CRITICAL", confidence="MEDIUM",
+                    target_sha=target_sha, path=relative, line=line,
+                    evidence_code=f"{flag_name.lower()}_enabled_literal",
+                    hypothesis=f"{flag_name} appears explicitly enabled in generated workflow code.",
+                    suggested_fix=f"Restore {flag_name}=false and review downstream gates.",
+                    required_tests=["Review workflow expressions and safety-gate tests."],
+                ))
+
+    findings.sort(key=lambda item: (
+        item["evidence"]["path"], item["evidence"]["line"] or 0,
+        item["category"], item["finding_id"],
+    ))
+    return {
+        "schema_version": 1,
+        "scanner": "rea-readonly-diff",
+        "status": "FINDINGS" if findings else "PASS",
+        "complete": True,
+        "base_sha": base_sha,
+        "target_sha": target_sha,
+        "diff_sha256": diff_sha256,
+        "files_changed": len(changed),
+        "files_scanned": scanned,
+        "files_deleted": len(deleted),
+        "findings_count": len(findings),
+        "findings": findings,
+        "capabilities": {
+            "read_only": True, "executes_project_code": False,
+            "runs_tests": False, "network_access": False,
+            "patches_tasks_hold_merge_deploy": False,
+        },
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", default=".", help="Repository root to inspect")
