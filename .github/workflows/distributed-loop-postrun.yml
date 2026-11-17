@@ -88,14 +88,15 @@ jobs:
           # not accepted as a successful distributed-loop result.
           import re
           rea_states = []
+          issues = []
           for index, item in enumerate(tasks, start=1):
               task_status = str(item.get("status", "UNKNOWN"))
               base_sha = str(item.get("base_sha", ""))
               produced_sha = str(item.get("produced_sha", ""))
               attestation = item.get("post_generation_rea")
               if task_status == "NO_CHANGE":
-                  if base_sha and produced_sha and base_sha != produced_sha:
-                      issues.append(f"Task {index} reports NO_CHANGE with different base/produced SHAs.")
+                  if not base_sha or not produced_sha or base_sha != produced_sha:
+                      issues.append(f"Task {index} NO_CHANGE is missing matching base/produced SHA identity.")
                       rea_states.append("INVALID")
                   else:
                       rea_states.append("NO_CHANGE")
@@ -153,7 +154,6 @@ jobs:
               "catalog_exhausted_mixed:",
           ))
           expected_no_task = queue_empty or catalog_blocked
-          issues = []
           # Other BLOCKED outcomes still require investigation; catalog exhaustion
           # is an explicit human-review gate and must retain its exact reason.
           if source_blocked and not catalog_blocked:
