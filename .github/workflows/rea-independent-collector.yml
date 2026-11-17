@@ -15,7 +15,6 @@ concurrency:
 
 jobs:
   collect:
-    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -26,6 +25,14 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
+
+      - name: Require successful source workflow
+        if: github.event.workflow_run.conclusion != 'success'
+        run: |
+          set -euo pipefail
+          mkdir -p independent-evidence
+          printf '%s\\n' '{"schema_version":1,"outcome":"skipped","reason_code":"source_workflow_not_success"}' > independent-evidence/rea-independent-test-evidence.jsonl
+          exit 1
 
       - name: Download exact source-run task artifact
         env:
