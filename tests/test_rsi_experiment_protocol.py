@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+import pytest
+
 from core.rsi_experiment_protocol import evaluate_comparison
 
 
@@ -43,7 +45,7 @@ def test_challenger_pass_is_comparison_only_and_grants_no_authority():
     result = evaluate_comparison(_record())
 
     assert result["status"] == "PASS"
-    assert result["improvement"] == 0.06
+    assert result["improvement"] == pytest.approx(0.06)
     assert result["execution_authorized"] is False
     assert result["patch_authorized"] is False
     assert result["hold_clear_authorized"] is False
@@ -67,7 +69,7 @@ def test_lower_is_better_metric_uses_inverse_delta():
 
     result = evaluate_comparison(record)
     assert result["status"] == "PASS"
-    assert result["improvement"] == 0.1
+    assert result["improvement"] == pytest.approx(0.1)
 
 
 def test_active_or_unverified_stop_blocks_evaluation():
