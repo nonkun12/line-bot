@@ -66,3 +66,18 @@ def test_rejects_untrusted_rea_fields(tmp_path, override):
     args.update(override)
     with pytest.raises(ValueError):
         record_rea_evaluation(tmp_path / "rag.sqlite3", **args)
+
+
+
+def test_retrieves_rea_history_for_japanese_task_instruction(tmp_path):
+    db = tmp_path / "rag.sqlite3"
+    _record(db)
+    context = build_rea_context(
+        db,
+        namespace="distributed-loop",
+        task_id="next-task",
+        instruction="テスト証拠とリスクを確認して",
+    )
+    assert "Historical REA outcomes" in context
+    assert "status=HOLD" in context
+    assert "risk_unknown" in context
