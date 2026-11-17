@@ -34,10 +34,6 @@ def _args(client=None):
         {"sample_id": "a", "input": "first", "expected": "one"},
         {"sample_id": "b", "input": "second", "expected": "two"},
     ]
-    expected_rows = [{"sample_id": row["sample_id"], "expected": row["expected"]} for row in dataset]
-    digest = hashlib.sha256(
-        json.dumps(expected_rows, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
-    ).hexdigest()
     return {
         "client": client or FakeClient(["one", "wrong", "one", "two"]),
         "experiment_id": "rsi-local-prompt-001",
@@ -53,7 +49,11 @@ def _args(client=None):
         "evaluator_id": "independent-exact-match-v1",
         "evaluator_version": "1",
         "minimum_delta": 0.5,
-        "safety_snapshot": {"stop_state": "INACTIVE", "global_hold_state": "CLEAR"},
+        "safety_snapshot": {
+            "stop_state": "INACTIVE",
+            "global_hold_state": "CLEAR",
+            "snapshot_sha256": "c" * 64,
+        },
         "execution_approved": True,
     }
 
@@ -128,3 +128,26 @@ def test_runner_blocks_invalid_client_without_execution():
 
     assert result["result"]["status"] == "BLOCKED"
     assert result["result"]["reason"] == "local_model_client_invalid"
+
+
+
+def test_runner_binds_full_input_manifest_digest_into_evidence():
+    args = _args()
+    expected_digest = args["held_out_expected_sha256"]
+
+    result = run_local_prompt_comparison(**args)
+
+    assert result["record"]["held_out"]["dataset_sha256"] == expected_digest
+    assert result["record"]["safety"]["snapshot_sha256"] == "c" * 64
+
+
+def test_runner_blocks_without_safety_snapshot_digest_before_model_call():
+    client = FakeClient([])
+    args = _args(client)
+    args["safety_snapshot"].pop("snapshot_sha256")
+
+    result = run_local_prompt_comparison(**args)
+
+    assert result["result"]["status"] == "BLOCKED"
+    assert result["result"]["reason"] == "safety_snapshot_digest_missing_or_invalid"
+    assert client.calls == []
