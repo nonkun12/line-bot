@@ -4,29 +4,24 @@ from __future__ import annotations
 import hashlib
 import json
 
+from core.local_model_client import LocalModelClient
 from core.rsi_local_experiment import run_local_prompt_comparison
 
 
-class FakeClient:
-    model = "test-local"
-
+class FakeClient(LocalModelClient):
     def __init__(self, responses):
+        super().__init__("http://127.0.0.1:11434", "test-local", "ollama")
         self.responses = iter(responses)
         self.calls = []
+        self.chat.completions.create = self._create
 
-        class Completions:
-            def __init__(inner, outer):
-                inner.outer = outer
-
-            def create(inner, **kwargs):
-                inner.outer.calls.append(kwargs)
-                return type(
-                    "Response",
-                    (),
-                    {"choices": [type("Choice", (), {"message": type("Message", (), {"content": next(inner.outer.responses)})()})()]},
-                )()
-
-        self.chat = type("Chat", (), {"completions": Completions(self)})()
+    def _create(self, **kwargs):
+        self.calls.append(kwargs)
+        return type(
+            "Response",
+            (),
+            {"choices": [type("Choice", (), {"message": type("Message", (), {"content": next(self.responses)})()})()]},
+        )()
 
 
 def _args(client=None):
@@ -34,6 +29,13 @@ def _args(client=None):
         {"sample_id": "a", "input": "first", "expected": "one"},
         {"sample_id": "b", "input": "second", "expected": "two"},
     ]
+    safety_snapshot = {
+        "stop_state": "INACTIVE",
+        "global_hold_state": "CLEAR",
+    }
+    safety_snapshot["snapshot_sha256"] = hashlib.sha256(
+        json.dumps(safety_snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    ).hexdigest()
     return {
         "client": client or FakeClient(["one", "wrong", "one", "two"]),
         "experiment_id": "rsi-local-prompt-001",
@@ -46,14 +48,10 @@ def _args(client=None):
         "baseline_system_prompt": "Answer with the expected vocabulary item.",
         "challenger_candidate_id": "prompt-v2",
         "challenger_system_prompt": "Answer with only the correct vocabulary item.",
-        "evaluator_id": "independent-exact-match-v1",
+        "evaluator_id": "rsi.exact_match.v1",
         "evaluator_version": "1",
         "minimum_delta": 0.5,
-        "safety_snapshot": {
-            "stop_state": "INACTIVE",
-            "global_hold_state": "CLEAR",
-            "snapshot_sha256": "c" * 64,
-        },
+        "safety_snapshot": safety_snapshot,
         "execution_approved": True,
     }
 
@@ -138,7 +136,7 @@ def test_runner_binds_full_input_manifest_digest_into_evidence():
     result = run_local_prompt_comparison(**args)
 
     assert result["record"]["held_out"]["dataset_sha256"] == expected_digest
-    assert result["record"]["safety"]["snapshot_sha256"] == "c" * 64
+    assert result["record"]["safety"]["snapshot_sha256"] == args["safety_snapshot"]["snapshot_sha256"]
 
 
 def test_runner_blocks_without_safety_snapshot_digest_before_model_call():
@@ -151,3 +149,13 @@ def test_runner_blocks_without_safety_snapshot_digest_before_model_call():
     assert result["result"]["status"] == "BLOCKED"
     assert result["result"]["reason"] == "safety_snapshot_digest_missing_or_invalid"
     assert client.calls == []
+
+def test_runner_blocks_when_safety_snapshot_digest_is_tampered():
+    args = _args()
+    args["safety_snapshot"]["snapshot_sha256"] = "f" * 64
+
+    result = run_local_prompt_comparison(**args)
+
+    assert result["result"]["status"] == "BLOCKED"
+    assert result["result"]["reason"] == "safety_snapshot_digest_mismatch"
+    assert args["client"].calls == []
