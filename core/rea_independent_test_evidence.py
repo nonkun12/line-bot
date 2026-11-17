@@ -53,7 +53,7 @@ def validate_independent_test_evidence(
     if type(evidence.get("schema_version")) is not int or evidence.get("schema_version") != 1:
         return _result("HOLD", "independent_test_schema_unsupported")
 
-    identity_fields = ("run_id", "run_attempt", "task_id", "base_sha", "head_sha", "diff_sha256")
+    identity_fields = ("run_id", "run_attempt", "task_id", "base_sha", "head_sha", "diff_sha256", "test_command_sha256")
     for field in identity_fields:
         if field not in expected or evidence.get(field) != expected.get(field):
             return _result("HOLD", "independent_test_identity_mismatch")
