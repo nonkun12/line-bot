@@ -237,8 +237,6 @@ def scan_commit_diff(
 
     # Evidence must describe a forward change from the approved base. Reject
     # unrelated histories and reversed ranges before computing any diff.
-    _git(root, "merge-base", "--is-ancestor", base_sha, target_sha)
-
     ancestry = subprocess.run(
         ["git", "merge-base", "--is-ancestor", base_sha, target_sha],
         cwd=str(root), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
