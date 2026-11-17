@@ -2,6 +2,8 @@ name: Distributed Autonomous Development Loop
 run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || '0' }}, request_id=${{ inputs.request_id || 'scheduled' }})
 
 on:
+  schedule:
+    - cron: "0,30 * * * *"
   issue_comment:
     types: [created]
   workflow_dispatch:
