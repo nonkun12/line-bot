@@ -97,6 +97,20 @@ class ReadonlyScannerTests(unittest.TestCase):
         with self.assertRaises(ScanBlocked):
             scan_commit_diff(self.root, base_sha="not-a-sha", target_sha="0" * 40)
 
+    def test_commit_diff_blocks_unrelated_base_history(self) -> None:
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        tree = subprocess.check_output(
+            ["git", "rev-parse", f"{target}^{{tree}}"], cwd=self.root, text=True
+        ).strip()
+        unrelated = subprocess.check_output(
+            ["git", "commit-tree", tree, "-m", "unrelated history"],
+            cwd=self.root, text=True,
+        ).strip()
+        with self.assertRaises(ScanBlocked):
+            scan_commit_diff(self.root, base_sha=unrelated, target_sha=target)
+
     def test_commit_diff_flags_deleted_tests(self) -> None:
         base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.root, text=True).strip()
         (self.root / "tests" / "valid.json").unlink()
