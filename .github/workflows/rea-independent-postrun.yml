@@ -58,6 +58,7 @@ jobs:
           exit 1
 
       - name: Download collector evidence artifact
+        id: download_collector
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
@@ -238,8 +239,36 @@ jobs:
               raise SystemExit("independent REA evidence is not PASS; fail closed")
           PY
 
+      - name: Ensure a fail-closed report exists for every unsuccessful path
+        if: always()
+        env:
+          COLLECTOR_RUN_ID: ${{ github.event.workflow_run.id }}
+          COLLECTOR_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -euo pipefail
+          if [ ! -s rea-independent-postrun.json ]; then
+            python - <<'PY'
+            import json, os
+            from pathlib import Path
+            report = {
+                "schema_version": 1,
+                "collector_run_id": os.environ["COLLECTOR_RUN_ID"],
+                "collector_run_attempt": int(os.environ["COLLECTOR_RUN_ATTEMPT"]),
+                "overall": "BLOCKED",
+                "results": [{
+                    "status": "BLOCKED",
+                    "reason_code": "collector_evidence_artifact_missing_or_unreadable",
+                }],
+            }
+            Path("rea-independent-postrun.json").write_text(
+                json.dumps(report, indent=2, sort_keys=True) + "\\n",
+                encoding="utf-8",
+            )
+            PY
+          fi
+
       - name: Open a deduplicated follow-up issue when independent evidence is blocked
-        if: always() && (steps.fail_collector.outcome == 'failure' || steps.validate.outcome == 'failure')
+        if: always() && (steps.fail_collector.outcome == 'failure' || steps.download_collector.outcome == 'failure' || steps.validate.outcome == 'failure')
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
