@@ -8,6 +8,7 @@ on:
 permissions:
   actions: read
   contents: read
+  issues: write
 
 concurrency:
   group: rea-independent-postrun-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
@@ -26,6 +27,7 @@ jobs:
           persist-credentials: false
 
       - name: Fail closed when collector did not succeed
+        id: fail_collector
         if: github.event.workflow_run.conclusion != 'success'
         env:
           COLLECTOR_RUN_ID: ${{ github.event.workflow_run.id }}
@@ -71,6 +73,7 @@ jobs:
           test -s collector-evidence/rea-independent-test-evidence.jsonl
 
       - name: Validate trusted provenance and evidence
+        id: validate
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
@@ -234,6 +237,44 @@ jobs:
           if report["overall"] not in {"PASS", "NOT_APPLICABLE"}:
               raise SystemExit("independent REA evidence is not PASS; fail closed")
           PY
+
+      - name: Open a deduplicated follow-up issue when independent evidence is blocked
+        if: always() && (steps.fail_collector.outcome == 'failure' || steps.validate.outcome == 'failure')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          COLLECTOR_RUN_ID: ${{ github.event.workflow_run.id }}
+          COLLECTOR_RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          title="REA independent evidence follow-up: collector $COLLECTOR_RUN_ID"
+          if gh issue list --repo "$REPOSITORY" --state open --search "$title in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then
+            echo "An open follow-up issue already exists for this collector run."
+            exit 0
+          fi
+          body="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          report_path = Path("rea-independent-postrun.json")
+          print("Independent REA evidence verification did not reach PASS.")
+          print()
+          print(f"Collector run: {__import__('os').environ.get('COLLECTOR_RUN_URL', '')}")
+          if report_path.is_file():
+              report = json.loads(report_path.read_text(encoding="utf-8"))
+              print(f"Overall: {report.get('overall', 'UNKNOWN')}")
+              print()
+              for item in report.get("results", []):
+                  print(f"- {item.get('task_id', 'run')}: {item.get('status', 'UNKNOWN')} ({item.get('reason_code', 'reason_missing')})")
+          else:
+              print("The post-run report artifact could not be generated; treat the result as BLOCKED.")
+          print()
+          print("Required: inspect the collector and source-run evidence. Do not clear HOLD, merge, or deploy automatically.")
+          PY
+          )"
+          gh issue create --repo "$REPOSITORY" --title "$title" --body "$body" || {
+            echo "::warning::Could not create the REA follow-up issue."
+            exit 0
+          }
 
       - name: Upload verified REA evidence decision
         if: always()
