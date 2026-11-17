@@ -612,17 +612,12 @@ The function name must start with test_. Keep the test focused and concise."""
         ).strip()
     except Exception as exc:
         detail = _safe_api_error_detail(exc)
-        try:
-            from importlib.metadata import version as package_version
-
-            sdk_version = package_version("groq")
-        except Exception:
-            sdk_version = "unknown"
-        model = re.sub(r"[^A-Za-z0-9_./-]", "", MODEL)[:100] or "unknown"
+        model = re.sub(r"[^A-Za-z0-9_./-]", "", getattr(client, "model", MODEL))[:100] or "unknown"
+        protocol = re.sub(r"[^A-Za-z0-9_.-]", "", getattr(client, "protocol", "unknown"))[:40] or "unknown"
         suffix = f":{detail}" if detail else ""
         return None, (
             f"append_only_test_generation_failed:{type(exc).__name__}:"
-            f"model={model}:groq_sdk={sdk_version}{suffix}"
+            f"model={model}:local_protocol={protocol}{suffix}"
         )
     if generated == "NO_CHANGE":
         return {"no_change": True, "source": "append_only_review_task"}, ""
