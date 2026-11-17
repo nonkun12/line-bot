@@ -111,9 +111,30 @@ jobs:
           if (source.get("name") != "Distributed Autonomous Development Loop"
                   or source.get("run_attempt") != context["source_run_attempt"]
                   or source.get("head_sha") != context["source_head_sha"]
-                  or source.get("head_branch") != os.environ["DEFAULT_BRANCH"]
-                  or source.get("conclusion") != "success"):
+                  or source.get("head_branch") != os.environ["DEFAULT_BRANCH"]):
               raise SystemExit("source workflow run identity does not match collector context")
+
+          if source.get("conclusion") != "success":
+              status = "NOT_APPLICABLE" if source.get("conclusion") == "skipped" else "BLOCKED"
+              reason = "source_workflow_skipped" if status == "NOT_APPLICABLE" else "source_workflow_not_success"
+              report = {
+                  "schema_version": 1,
+                  "collector_run_id": collector_id,
+                  "source_run_id": source_id,
+                  "source_run_attempt": context["source_run_attempt"],
+                  "results": [{"status": status, "reason_code": reason}],
+                  "overall": status,
+              }
+              Path("rea-independent-postrun.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\\n")
+              Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(
+                  "# REA Independent Evidence Verification\\n\\n"
+                  + f"- Source run: {source_id}\\n"
+                  + f"- Collector run: {collector_id}\\n"
+                  + f"- Overall: {status} ({reason})\\n"
+              )
+              if status == "BLOCKED":
+                  raise SystemExit("source workflow did not complete successfully; fail closed")
+              raise SystemExit(0)
 
           expected = {}
           required_identity = {
