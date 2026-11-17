@@ -115,10 +115,16 @@ def main() -> int:
     args.output.mkdir(parents=True, exist_ok=True)
     candidate_rows = [
         row for row in rows
-        if row.get("status") in {"PASS", "NO_CHANGE"}
+        if isinstance(row.get("task_id"), str)
+        and row.get("task_id", "").strip()
         and isinstance(row.get("base_sha"), str)
+        and SHA40.fullmatch(row.get("base_sha", "")) is not None
         and isinstance(row.get("produced_sha"), str)
-        and row.get("base_sha") != row.get("produced_sha")
+        and SHA40.fullmatch(row.get("produced_sha", "")) is not None
+        and (
+            row.get("base_sha") != row.get("produced_sha")
+            or row.get("status") not in {"PASS", "NO_CHANGE"}
+        )
     ]
     if not candidate_rows:
         marker = {
@@ -187,9 +193,6 @@ def main() -> int:
             status = row.get("status")
             if not isinstance(task_id, str) or not task_id.strip():
                 raise SystemExit(f"task {index} has no valid task ID")
-            if status not in {"PASS", "NO_CHANGE"}:
-                # Preserve a non-success result as a non-PASS evidence record.
-                continue
             if not isinstance(base, str) or not SHA40.fullmatch(base):
                 raise SystemExit(f"task {task_id} base SHA is invalid")
             if not isinstance(head, str) or not SHA40.fullmatch(head):
@@ -206,6 +209,20 @@ def main() -> int:
             diff_hash = hashlib.sha256(diff).hexdigest()
             changed = run(git + ["diff", "--name-only", base, head],
                           capture_output=True).stdout.splitlines()
+            if status not in {"PASS", "NO_CHANGE"}:
+                # Never silently discard failed, held, or blocked task outcomes.
+                # Emit identity-bound non-PASS evidence so the trusted post-run
+                # validator must classify the task as FAIL/BLOCKED/HOLD.
+                output_rows.append(evidence_row(
+                    run_id=args.run_id, attempt=args.run_attempt, task_id=task_id,
+                    base=base, head=head, diff_hash=diff_hash,
+                    outcome=("failure" if status == "FAIL" else "skipped"),
+                    exit_code=(row.get("exit_code") if isinstance(row.get("exit_code"), int)
+                               and not isinstance(row.get("exit_code"), bool)
+                               and row.get("exit_code") >= 0 else 1),
+                    counts=(0, 0, 0, 0), command_hash=command_hash,
+                ))
+                continue
             if not changed:
                 continue
             if head != branch_tip and index == len(rows):
