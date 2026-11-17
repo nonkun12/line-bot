@@ -48,7 +48,7 @@ def evaluate_artifact_evidence(evidence: object) -> dict[str, Any]:
         "task_id", "base_sha", "head_sha", "changed_files", "tests",
         "diff_scan", "risk", "stop_state", "hold_state",
     }
-    if set(evidence) < required:
+    if not required.issubset(evidence):
         return _result("HOLD", "required_evidence_missing", evidence_hash)
 
     if evidence["stop_state"] != "INACTIVE":
