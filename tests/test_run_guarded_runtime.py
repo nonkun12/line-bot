@@ -228,6 +228,7 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(guarded_runtime, "_augment_instruction_with_history", lambda instruction, path: instruction)
     monkeypatch.setattr(guarded_runtime, "_augment_with_hermes_advice", lambda instruction, path: instruction)
+    monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: False)
     monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: 0)
     monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
     instruction = "safe test instruction"
@@ -254,6 +255,43 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     assert summary["rea"] == rea
     assert summary["execution_approval"]["gate"] == "PASS"
     assert summary["execution_approval"]["scope"] == "execution"
+
+
+def test_common_runtime_blocks_when_shared_stop_status_is_unavailable(monkeypatch, tmp_path):
+    sha = "d" * 40
+    rea = {"gate": "PASS", "target_sha": sha, "scanner_status": "PASS", "finding_count": 0, "critical_count": 0, "blocking_count": 0, "findings": [], "execution_authorized": False, "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False}
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: sha if args == ("rev-parse", "HEAD") else "test-branch")
+    monkeypatch.setattr("scripts.rea_control_tower_adapter.prepare_rea_evidence", lambda root, expected_sha: rea)
+    monkeypatch.setattr("scripts.rea_control_tower_adapter.rea_evidence_is_valid_pass", lambda evidence, expected_sha: True)
+    monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: (_ for _ in ()).throw(RuntimeError("unavailable")))
+    monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: (_ for _ in ()).throw(AssertionError("runtime must not execute")))
+    summary_path = tmp_path / "summary.json"
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(summary_path))
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+
+    assert guarded_runtime.main() == 82
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "BLOCKED"
+    assert summary["execution_approval"]["reason_code"] == "shared_stop_status_unconfirmed"
+    assert summary["execution_approval"]["execution_authorized"] is False
+
+
+def test_common_runtime_blocks_when_shared_stop_is_active(monkeypatch, tmp_path):
+    sha = "e" * 40
+    rea = {"gate": "PASS", "target_sha": sha, "scanner_status": "PASS", "finding_count": 0, "critical_count": 0, "blocking_count": 0, "findings": [], "execution_authorized": False, "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False}
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: sha if args == ("rev-parse", "HEAD") else "test-branch")
+    monkeypatch.setattr("scripts.rea_control_tower_adapter.prepare_rea_evidence", lambda root, expected_sha: rea)
+    monkeypatch.setattr("scripts.rea_control_tower_adapter.rea_evidence_is_valid_pass", lambda evidence, expected_sha: True)
+    monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: True)
+    monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: (_ for _ in ()).throw(AssertionError("runtime must not execute")))
+    summary_path = tmp_path / "summary.json"
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(summary_path))
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+
+    assert guarded_runtime.main() == 82
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "BLOCKED"
+    assert summary["execution_approval"]["reason_code"] == "emergency_stop_active"
 
 
 def test_write_summary_preserves_only_allowlisted_failure_code(tmp_path, monkeypatch):
@@ -291,6 +329,7 @@ def test_common_runtime_blocks_without_independent_approval_even_if_env_claims_a
     monkeypatch.setattr("scripts.rea_control_tower_adapter.prepare_rea_evidence", lambda root, expected_sha: rea)
     monkeypatch.setattr("scripts.rea_control_tower_adapter.rea_evidence_is_valid_pass", lambda evidence, expected_sha: True)
     monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: (_ for _ in ()).throw(AssertionError("runtime must not execute")))
+    monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: False)
     monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
     monkeypatch.setenv("DEV_INSTRUCTION", "safe test instruction")
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-test-task")
