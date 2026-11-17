@@ -44,6 +44,10 @@ def build_rsi_authority(
     """
     if not isinstance(experiment_id, str) or not experiment_id.strip():
         raise ValueError("rsi_experiment_id_missing")
+    if not isinstance(instruction, str):
+        raise ValueError("rsi_experiment_not_bound_to_approved_instruction")
+    if f"RSI_EXPERIMENT_ID={experiment_id}" not in instruction:
+        raise ValueError("rsi_experiment_not_bound_to_approved_instruction")
     if not isinstance(config_sha256, str) or len(config_sha256) != 64 or any(char not in "0123456789abcdef" for char in config_sha256):
         raise ValueError("rsi_experiment_config_digest_invalid")
     if f"RSI_EXPERIMENT_CONFIG_SHA256={config_sha256}" not in instruction:
@@ -54,8 +58,6 @@ def build_rsi_authority(
         or any(char not in "0123456789abcdef" for char in start_sha)
     ):
         raise ValueError("rsi_start_sha_invalid")
-    if not isinstance(instruction, str) or f"RSI_EXPERIMENT_ID={experiment_id}" not in instruction:
-        raise ValueError("rsi_experiment_not_bound_to_approved_instruction")
     if not isinstance(recovery_state_path, (str, Path)) or not str(recovery_state_path).strip():
         raise ValueError("recovery_state_path_missing")
 
