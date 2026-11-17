@@ -153,4 +153,4 @@ def test_risk_levels_keep_deterministic_fail_closed_authority():
         assert result["patch_authorized"] is False
         assert result["hold_clear_authorized"] is False
         assert result["merge_deploy_authorized"] is False
-\n
+
