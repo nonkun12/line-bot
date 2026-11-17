@@ -6,6 +6,17 @@ import sys
 import scripts.line_development_worker_v2 as worker
 
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _authorize_existing_apply_plan_contract_tests(monkeypatch, request):
+    # Unit tests may exercise the write path, but production remains fail-closed.
+    monkeypatch.setenv("AUTO_APPLY_PATCH", "true")
+    if not request.node.name.startswith("test_rea_write_gate_"):
+        monkeypatch.setattr(worker, "_rea_write_gate_passes", lambda: True)
+
+
 class _Message:
     def __init__(self, content):
         self.content = content
@@ -1595,3 +1606,46 @@ def test_every_deterministic_task_mapping_has_an_executable_plan():
             missing.append(task_id)
     assert missing == []
 
+
+
+def test_rea_write_gate_binds_evidence_to_current_head(monkeypatch):
+    from types import SimpleNamespace
+    from scripts import rea_control_tower_adapter as adapter
+
+    head = "a" * 40
+    evidence = {"gate": "PASS", "target_sha": head}
+    calls = []
+    monkeypatch.setattr(worker, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=head + "\\n"))
+    monkeypatch.setattr(adapter, "prepare_rea_evidence", lambda root, expected_sha: calls.append(("prepare", expected_sha)) or evidence)
+    monkeypatch.setattr(adapter, "rea_evidence_is_valid_pass", lambda item, expected_sha: calls.append(("validate", expected_sha)) or item["target_sha"] == expected_sha)
+    assert worker._rea_write_gate_passes() is True
+    assert calls == [("prepare", head), ("validate", head)]
+
+
+def test_rea_write_gate_rejects_stale_evidence_and_scanner_errors(monkeypatch):
+    from types import SimpleNamespace
+    from scripts import rea_control_tower_adapter as adapter
+
+    head = "b" * 40
+    monkeypatch.setattr(worker, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=head))
+    monkeypatch.setattr(adapter, "prepare_rea_evidence", lambda root, expected_sha: {"gate": "PASS", "target_sha": "c" * 40})
+    monkeypatch.setattr(adapter, "rea_evidence_is_valid_pass", lambda item, expected_sha: item.get("target_sha") == expected_sha)
+    assert worker._rea_write_gate_passes() is False
+
+    monkeypatch.setattr(adapter, "prepare_rea_evidence", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("scanner unavailable")))
+    assert worker._rea_write_gate_passes() is False
+
+
+def test_apply_plan_blocks_without_explicit_patch_gate(tmp_path, monkeypatch):
+    target = tmp_path / "app.py"
+    original = "before\\nTARGET\\nafter\\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.delenv("AUTO_APPLY_PATCH", raising=False)
+    monkeypatch.setattr(worker, "_rea_write_gate_passes", lambda: True)
+    ok, detail, touched = worker.apply_plan({
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "TARGET", "new": "REPLACED"}],
+    })
+    assert (ok, detail, touched) == (False, "patch_application_disabled", [])
+    assert target.read_text(encoding="utf-8") == original
