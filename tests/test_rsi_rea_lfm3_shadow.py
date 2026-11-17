@@ -49,6 +49,7 @@ def test_lfm3_structured_output_is_sent_to_local_client():
     assert result["mode"] == "SHADOW_ONLY"
     assert result["execution_authorized"] is False
     assert client.completions.kwargs["response_format"]["type"] == "json_schema"
+    assert client.completions.kwargs["include_reasoning"] is False
 
 
 def test_financial_rsi_misclassification_is_held():
