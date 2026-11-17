@@ -1407,6 +1407,42 @@ def main() -> int:
         # This is diagnostic metadata only and grants no execution or repair authority.
         if not isinstance(result.get("rea"), dict):
             result["rea"] = rea_evidence
+        # Independently evaluate the immutable artifact before recording recovery
+        # or allowing the orchestrator to continue to another queued task.
+        try:
+            from scripts.rea_artifact_runtime import evaluate_and_record_runtime_artifact
+            from scripts.recovery_ai import RecoveryStore
+
+            aggregate_hold = RecoveryStore(
+                args.state.parent / "recovery-ai-state.json"
+            ).aggregate_hold_status()
+            artifact_rea = evaluate_and_record_runtime_artifact(
+                result,
+                repo_root=ROOT,
+                output_path=args.state.parent / "rea-artifact-evaluations.jsonl",
+                stop_state="ACTIVE" if stopped(args.stop_file) else "INACTIVE",
+                hold_state=aggregate_hold.get("state", "UNKNOWN"),
+            )
+            result["rea_artifact"] = artifact_rea
+            if artifact_rea.get("status") not in {"PASS", "NO_CHANGE"}:
+                artifact_status = str(artifact_rea.get("status", "HOLD"))
+                result["status"] = "FAIL" if artifact_status == "FAIL" else "BLOCKED"
+                result["exit_code"] = 1
+                result["failure_reason"] = "rea_artifact_" + artifact_status.lower()
+        except Exception:
+            # Missing scanner, state, or durable evidence is a hard stop.
+            result["rea_artifact"] = {
+                "status": "HOLD",
+                "reason_code": "artifact_evaluation_or_persistence_failed",
+                "execution_authorized": False,
+                "patch_authorized": False,
+                "hold_clear_authorized": False,
+                "merge_deploy_authorized": False,
+            }
+            result["status"] = "BLOCKED"
+            result["exit_code"] = 1
+            result["failure_reason"] = "rea_artifact_evaluation_or_persistence_failed"
+
         recovery_error = False
         try:
             from scripts.recovery_ai_loop_adapter import record_loop_outcome
