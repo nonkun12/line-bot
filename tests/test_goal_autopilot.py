@@ -45,9 +45,7 @@ def test_duplicate_acceptance_criterion_ids_are_invalid():
         {"id": "same", "verified": False},
         {"id": "same", "verified": True, "evidence_ref": "commit:abc123"},
     ])
-    assert evaluate_goal(g) == {
-        "decision": "INVALID", "reason": "criterion_id_missing_or_duplicate"
-    }
+    assert evaluate_goal(g)["reason"] == "criterion_id_missing_or_duplicate"
 
 
 def test_blank_acceptance_criterion_id_is_invalid():
@@ -141,3 +139,40 @@ def test_duplicate_dependencies_are_invalid():
         {"task_id": "done", "status": "COMPLETED", "kind": "TEST"},
     ])
     assert evaluate_goal(g)["reason"] == "task_dependencies_duplicate_or_self_referential"
+
+
+def test_cyclic_dependencies_are_invalid():
+    g = goal(tasks=[
+        {"task_id": "x", "status": "PENDING", "kind": "TEST",
+         "execution_authorized": True, "allowed_paths": [], "depends_on": ["y"]},
+        {"task_id": "y", "status": "PENDING", "kind": "TEST",
+         "execution_authorized": True, "allowed_paths": [], "depends_on": ["x"]},
+    ])
+    assert evaluate_goal(g)["reason"] == "cyclic_task_dependencies"
+
+
+def test_path_traversal_is_held():
+    g = goal(tasks=[{
+        "task_id": "t1", "status": "PENDING", "kind": "TEST",
+        "execution_authorized": True, "allowed_paths": ["tests/../../.github"]
+    }])
+    assert evaluate_goal(g)["reason"] == "allowed_paths_invalid"
+
+
+def test_absolute_and_windows_paths_are_held():
+    for path in ("/etc/passwd", r"..\secrets", "C:/secrets"):
+        g = goal(tasks=[{
+            "task_id": "t1", "status": "PENDING", "kind": "TEST",
+            "execution_authorized": True, "allowed_paths": [path]
+        }])
+        assert evaluate_goal(g)["reason"] == "allowed_paths_invalid"
+
+
+def test_dependencies_are_validated_even_for_completed_tasks():
+    g = goal(tasks=[
+        {"task_id": "done", "status": "COMPLETED", "kind": "TEST",
+         "depends_on": ["missing"]},
+        {"task_id": "next", "status": "PENDING", "kind": "TEST",
+         "execution_authorized": True, "allowed_paths": []},
+    ])
+    assert evaluate_goal(g)["decision"] == "INVALID"
