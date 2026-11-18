@@ -170,6 +170,8 @@ def apply_and_test(proposal: dict[str, Any], *, root: Path) -> dict[str, Any]:
         if not (root / path).is_file():
             raise RepairRejected("patch may only modify existing tracked files")
     patch_file = root / ".ai-repair-candidate.patch"
+    applied_ok = False
+    keep_patch = False
     try:
         patch_file.write_text(proposal["patch"], encoding="utf-8")
         check = _run(["git", "apply", "--check", str(patch_file)], cwd=root)
@@ -178,23 +180,34 @@ def apply_and_test(proposal: dict[str, Any], *, root: Path) -> dict[str, Any]:
         applied = _run(["git", "apply", str(patch_file)], cwd=root)
         if applied.returncode:
             raise RepairRejected("git apply failed")
+        applied_ok = True
         test_results = []
         for test in proposal["tests"]:
             if not (root / test).is_file():
                 raise RepairRejected("focused test file does not exist")
-            result = _run([sys.executable, "-m", "pytest", "-q", test], cwd=root)
-            test_results.append({
-                "test": test, "exit_code": result.returncode,
-                "passed": result.returncode == 0,
-                "output_tail": (result.stdout + result.stderr)[-4000:],
-            })
-            if result.returncode:
-                _run(["git", "apply", "--reverse", str(patch_file)], cwd=root)
+            try:
+                result = _run([sys.executable, "-m", "pytest", "-q", test], cwd=root)
+                test_results.append({
+                    "test": test, "exit_code": result.returncode,
+                    "passed": result.returncode == 0,
+                    "output_tail": (result.stdout + result.stderr)[-4000:],
+                })
+            except subprocess.TimeoutExpired:
+                test_results.append({
+                    "test": test, "exit_code": None, "passed": False,
+                    "output_tail": "test timed out; patch rolled back",
+                })
                 return {"status": "ROLLED_BACK_TEST_FAILURE", "tests": test_results}
+            if result.returncode:
+                return {"status": "ROLLED_BACK_TEST_FAILURE", "tests": test_results}
+        keep_patch = True
         return {"status": "PATCH_TESTED_IN_WORKTREE", "tests": test_results}
     finally:
+        if applied_ok and not keep_patch:
+            rollback = _run(["git", "apply", "--reverse", str(patch_file)], cwd=root)
+            if rollback.returncode:
+                raise RuntimeError("automatic rollback failed; repository requires immediate human inspection")
         patch_file.unlink(missing_ok=True)
-
 
 def build_prompts(evidence: dict[str, Any], previous_failures: list[str]) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     evidence_json = json.dumps(evidence, ensure_ascii=False, sort_keys=True)
@@ -222,47 +235,78 @@ def build_prompts(evidence: dict[str, Any], previous_failures: list[str]) -> tup
 
 def run_repair(evidence_raw: Any, *, endpoint: str, model: str, root: Path, apply: bool) -> dict[str, Any]:
     evidence = sanitize_evidence(evidence_raw)
-    creator_messages, critic_template = build_prompts(evidence, [])
-    creator_text = call_local_model(creator_messages, endpoint=endpoint, model=model)
-    generated = parse_json_object(creator_text).get("proposals")
-    if not isinstance(generated, list) or not generated:
-        raise RepairRejected("model produced no repair proposals")
-    attempts = []
-    for index, raw in enumerate(generated[:MAX_PROPOSALS], 1):
-        proposal = validate_proposal(raw)
-        critic_messages = critic_template + [
-            {"role": "user", "content": json.dumps({
-                "evidence": evidence, "proposal": proposal["summary"],
-                "patch": proposal["patch"], "tests": proposal["tests"],
-            }, ensure_ascii=False)},
-        ]
-        critique = parse_json_object(call_local_model(critic_messages, endpoint=endpoint, model=model))
-        decision = critique.get("decision")
-        if decision != "ACCEPT":
-            attempts.append({"proposal": index, "status": "CRITIC_HOLD", "risks": critique.get("risks", [])})
-            continue
-        if not apply:
-            attempts.append({"proposal": index, "status": "PROPOSAL_ONLY", "summary": proposal["summary"]})
-            continue
-        result = apply_and_test(proposal, root=root)
-        attempts.append({"proposal": index, "summary": proposal["summary"], **result})
-        if result["status"] == "PATCH_TESTED_IN_WORKTREE":
+    attempts: list[dict[str, Any]] = []
+    previous_failures: list[str] = []
+    any_proposal = False
+    any_test_failure = False
+    for round_number in range(1, MAX_ATTEMPTS + 1):
+        creator_messages, critic_template = build_prompts(evidence, previous_failures)
+        creator_text = call_local_model(creator_messages, endpoint=endpoint, model=model)
+        generated = parse_json_object(creator_text).get("proposals")
+        if not isinstance(generated, list) or not generated:
+            attempts.append({"round": round_number, "status": "NO_PROPOSALS"})
             break
-    status = next((item["status"] for item in reversed(attempts)
-                   if item["status"] == "PATCH_TESTED_IN_WORKTREE"), "NO_PATCH_APPLIED")
+        for index, raw in enumerate(generated[:MAX_PROPOSALS], 1):
+            proposal = validate_proposal(raw)
+            any_proposal = True
+            critic_messages = critic_template + [
+                {"role": "user", "content": json.dumps({
+                    "evidence": evidence, "proposal": proposal["summary"],
+                    "patch": proposal["patch"], "tests": proposal["tests"],
+                }, ensure_ascii=False)},
+            ]
+            critique = parse_json_object(call_local_model(critic_messages, endpoint=endpoint, model=model))
+            if critique.get("decision") != "ACCEPT":
+                risks = critique.get("risks", [])
+                attempts.append({
+                    "round": round_number, "proposal": index,
+                    "status": "CRITIC_HOLD",
+                    "risks": risks if isinstance(risks, list) else ["critic output malformed"],
+                })
+                continue
+            if not apply:
+                attempts.append({
+                    "round": round_number, "proposal": index,
+                    "status": "PROPOSAL_ONLY", "summary": proposal["summary"],
+                })
+                continue
+            result = apply_and_test(proposal, root=root)
+            attempts.append({
+                "round": round_number, "proposal": index,
+                "summary": proposal["summary"], **result,
+            })
+            if result["status"] == "PATCH_TESTED_IN_WORKTREE":
+                return _report("PATCH_TESTED_IN_WORKTREE", evidence, attempts, model, apply)
+            any_test_failure = True
+            for test_result in result.get("tests", []):
+                previous_failures.append(
+                    f"{test_result.get('test')}: {test_result.get('output_tail', 'failed')}"
+                )
+        if not apply:
+            break
+    final_status = (
+        "PROPOSAL_ONLY" if any_proposal and not apply
+        else "ROLLED_BACK_TEST_FAILURE" if any_test_failure
+        else "NO_PATCH_APPLIED"
+    )
+    return _report(final_status, evidence, attempts, model, apply)
+
+
+def _report(status: str, evidence: dict[str, Any], attempts: list[dict[str, Any]],
+            model: str, apply: bool) -> dict[str, Any]:
     return {
         "schema_version": 1, "agent": "AIRecoveryCouncil",
         "status": status, "evidence": evidence, "attempts": attempts,
         "model": model, "critic_independent": False,
         "human_review_required": True,
         "permissions": {
-            "modify_files": bool(apply), "commit": False, "push": False,
-            "create_pr": False, "clear_hold": False, "merge": False, "deploy": False,
+            "modify_files": bool(apply and status == "PATCH_TESTED_IN_WORKTREE"),
+            "commit": False, "push": False, "create_pr": False,
+            "clear_hold": False, "merge": False, "deploy": False,
         },
         "effectiveness": "NOT_MEASURED",
         "note": "A tested worktree patch is not a commit, approval, merge, deployment, or proof of long-term effectiveness.",
     }
-
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
