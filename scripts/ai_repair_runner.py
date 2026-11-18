@@ -245,8 +245,21 @@ def build_prompts(evidence: dict[str, Any], previous_failures: list[str]) -> tup
     return creator, critic
 
 
-def run_repair(evidence_raw: Any, *, endpoint: str, model: str, root: Path, apply: bool) -> dict[str, Any]:
+def run_repair(
+    evidence_raw: Any, *, endpoint: str, model: str, root: Path, apply: bool,
+    critic_endpoint: str | None = None, critic_model: str | None = None,
+) -> dict[str, Any]:
     evidence = sanitize_evidence(evidence_raw)
+    critic_endpoint = critic_endpoint or endpoint
+    critic_model = critic_model or model
+    independent_config = (
+        _local_endpoint(critic_endpoint) != _local_endpoint(endpoint)
+        and critic_model != model
+    )
+    if apply and not independent_config:
+        raise RepairRejected(
+            "automatic patch application requires a separately configured critic endpoint and model"
+        )
     attempts: list[dict[str, Any]] = []
     previous_failures: list[str] = []
     any_proposal = False
@@ -267,7 +280,7 @@ def run_repair(evidence_raw: Any, *, endpoint: str, model: str, root: Path, appl
                     "patch": proposal["patch"], "tests": proposal["tests"],
                 }, ensure_ascii=False)},
             ]
-            critique = parse_json_object(call_local_model(critic_messages, endpoint=endpoint, model=model))
+            critique = parse_json_object(call_local_model(critic_messages, endpoint=critic_endpoint, model=critic_model))
             if critique.get("decision") != "ACCEPT":
                 risks = critique.get("risks", [])
                 attempts.append({
@@ -288,7 +301,7 @@ def run_repair(evidence_raw: Any, *, endpoint: str, model: str, root: Path, appl
                 "summary": proposal["summary"], **result,
             })
             if result["status"] == "PATCH_TESTED_IN_WORKTREE":
-                return _report("PATCH_TESTED_IN_WORKTREE", evidence, attempts, model, apply)
+                return _report("PATCH_TESTED_IN_WORKTREE", evidence, attempts, model, critic_model, independent_config, apply)
             any_test_failure = True
             for test_result in result.get("tests", []):
                 previous_failures.append(
@@ -301,15 +314,16 @@ def run_repair(evidence_raw: Any, *, endpoint: str, model: str, root: Path, appl
         else "ROLLED_BACK_TEST_FAILURE" if any_test_failure
         else "NO_PATCH_APPLIED"
     )
-    return _report(final_status, evidence, attempts, model, apply)
+    return _report(final_status, evidence, attempts, model, critic_model, independent_config, apply)
 
 
 def _report(status: str, evidence: dict[str, Any], attempts: list[dict[str, Any]],
-            model: str, apply: bool) -> dict[str, Any]:
+            model: str, critic_model: str, independent_config: bool, apply: bool) -> dict[str, Any]:
     return {
         "schema_version": 1, "agent": "AIRecoveryCouncil",
         "status": status, "evidence": evidence, "attempts": attempts,
-        "model": model, "critic_independent": False,
+        "model": model, "critic_model": critic_model, "critic_independent": False,
+        "critic_configuration_distinct": independent_config,
         "human_review_required": True,
         "permissions": {
             "modify_files": bool(apply and status == "PATCH_TESTED_IN_WORKTREE"),
@@ -324,20 +338,27 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--model-url", default=os.getenv("AI_REPAIR_MODEL_URL", "http://127.0.0.1:8081/v1"))
-    parser.add_argument("--model", default=os.getenv("AI_REPAIR_MODEL", "local-model"))
+    parser.add_argument("--model-url", default=os.getenv("AI_REPAIR_MODEL_URL"))
+    parser.add_argument("--model", default=os.getenv("AI_REPAIR_MODEL"))
+    parser.add_argument("--critic-model-url", default=os.getenv("AI_REPAIR_CRITIC_MODEL_URL"))
+    parser.add_argument("--critic-model", default=os.getenv("AI_REPAIR_CRITIC_MODEL"))
     parser.add_argument("--apply", action="store_true", help="apply a critic-accepted patch on ai-repair/* and run focused tests")
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)
     try:
         raw = json.loads(args.evidence.read_text(encoding="utf-8"))
-        report = run_repair(raw, endpoint=args.model_url, model=args.model, root=args.repo, apply=args.apply)
+        if not args.model_url or not args.model:
+            raise RepairRejected("AI_REPAIR_MODEL_URL and AI_REPAIR_MODEL must be configured")
+        report = run_repair(
+            raw, endpoint=args.model_url, model=args.model, root=args.repo, apply=args.apply,
+            critic_endpoint=args.critic_model_url, critic_model=args.critic_model,
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"AI_REPAIR_STATUS={report['status']}")
         print(f"AI_REPAIR_ATTEMPTS={len(report['attempts'])}")
         return 0 if report["status"] in {"PROPOSAL_ONLY", "PATCH_TESTED_IN_WORKTREE"} else 2
-    except (OSError, ValueError, KeyError, IndexError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+    except Exception as exc:
         print(f"AI_REPAIR_HOLD={type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
 
