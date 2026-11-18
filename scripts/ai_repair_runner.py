@@ -80,7 +80,7 @@ def _local_endpoint(value: str) -> str:
 
 def call_local_model(messages: list[dict[str, str]], *, endpoint: str, model: str) -> str:
     base = _local_endpoint(endpoint)
-    url = base if base.endswith("/chat/completions") else base + "/v1/chat/completions"
+    url = base if base.endswith("/chat/completions") else base + "/chat/completions" if base.endswith("/v1") else base + "/v1/chat/completions"
     body = json.dumps({
         "model": model,
         "messages": messages,
@@ -122,7 +122,11 @@ def validate_proposal(proposal: Any) -> dict[str, Any]:
         raise RepairRejected("only unified git diffs are accepted")
     paths = set()
     for line in patch.splitlines():
+        if line.startswith(("new file mode ", "deleted file mode ", "rename from ", "rename to ", "copy from ", "copy to ")):
+            raise RepairRejected("file creation, deletion, copy, and rename are forbidden")
         if line.startswith(("--- ", "+++ ")):
+            if line[4:].split("\\t", 1)[0] == "/dev/null":
+                raise RepairRejected("file creation and deletion are forbidden")
             raw = line[4:].split("\t", 1)[0]
             if raw == "/dev/null":
                 continue
