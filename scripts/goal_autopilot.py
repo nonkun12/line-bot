@@ -71,7 +71,8 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
         if not isinstance(task_id, str) or not task_id.strip() or task_id in seen:
             return {"decision": "INVALID", "reason": "task_id_missing_or_duplicate"}
         seen.add(task_id)
-        if task.get("status") not in TASK_STATES:
+        status = task.get("status")
+        if not isinstance(status, str) or status not in TASK_STATES:
             return {"decision": "INVALID", "reason": "unsupported_task_status"}
         if type(task.get("priority", 0)) is not int:
             return {"decision": "INVALID", "reason": "task_priority_must_be_integer"}
@@ -130,6 +131,9 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
     eligible.sort(key=lambda t: (-t.get("priority", 0), t["task_id"]))
     task = eligible[0]
     kind = task.get("kind")
+    if not isinstance(kind, str):
+        return {"decision": "HOLD", "reason": "action_kind_not_allowlisted",
+                "task_id": task["task_id"]}
     if kind in BLOCKED_KINDS:
         return {"decision": "HOLD", "reason": "action_kind_forbidden",
                 "task_id": task["task_id"]}
