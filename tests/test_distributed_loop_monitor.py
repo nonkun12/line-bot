@@ -7,7 +7,8 @@ import sys
 import tempfile
 from unittest.mock import patch
 
-from datetime import datetime, timedelta, timezone\n\nfrom scripts.distributed_loop_monitor import evaluate, evaluate_schedule_coverage
+from datetime import datetime, timedelta, timezone
+from scripts.distributed_loop_monitor import evaluate, evaluate_schedule_coverage
 
 
 def valid_state():
