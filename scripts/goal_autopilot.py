@@ -60,6 +60,9 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
         seen.add(task_id)
         if task.get("status") not in TASK_STATES:
             return {"decision": "INVALID", "reason": "unsupported_task_status"}
+        priority = task.get("priority", 0)
+        if type(priority) is not int:
+            return {"decision": "INVALID", "reason": "task_priority_must_be_integer"}
 
     # Any in-flight task must be reconciled before another task is selected.
     in_flight = [t for t in tasks if t["status"] == "IN_PROGRESS"]
