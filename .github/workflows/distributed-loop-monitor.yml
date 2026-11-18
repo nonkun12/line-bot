@@ -37,7 +37,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          if gh api --paginate --slurp "repos/$REPOSITORY/actions/runs?per_page=100" > /tmp/monitor-runs.json; then
+          if gh api "repos/$REPOSITORY/actions/runs?per_page=100" > /tmp/monitor-runs.json; then
             echo "collected=true" >> "$GITHUB_OUTPUT"
           else
             printf '%s\n' '{}' > /tmp/monitor-runs.json
