@@ -154,18 +154,21 @@ document.addEventListener('DOMContentLoaded', () => {
       }).join('')).join('');
       const streamLabels={main_star_night:'本線：STAR-NIGHT',side_task_supply:'サイド1：タスク枯渇対策',side_media_ai:'サイド2：映像・音楽AI',side_self_improvement:'サイド3：自己改善AI',side_line_full_control:'サイド4：LINE全指示化',side_core_vocabulary:'サイド5：英単語コア語彙'};
       const wf=data.work_finder;
+      const candidatePreview=Array.isArray(wf?.candidate_preview)&&wf.candidate_preview.length
+        ? '<div class="system-details"><strong>テスト不足レビュー候補（最大5件）</strong><ul>'+wf.candidate_preview.map(item=>'<li>'+esc(item.source_function)+' — '+esc(item.target_test)+' ('+esc(item.evidence||'証跡なし')+')</li>').join('')+'</ul></div>'
+        : '<div class="system-details">テスト不足候補なし</div>';
+      const functionalCandidatePreview=Array.isArray(wf?.functional_candidate_preview)&&wf.functional_candidate_preview.length
+        ? '<div class="system-details"><strong>機能改善レビュー候補（最大5件）</strong><ul>'+wf.functional_candidate_preview.map(item=>'<li>'+esc(item.title)+' ('+esc(item.evidence||'証跡なし')+' ・ '+esc(item.priority||'優先度未設定')+')</li>').join('')+'</ul><div>人による範囲・リスク確認が必要。実装承認は未付与。</div></div>'
+        : '<div class="system-details">機能改善候補なし</div>';
       const workFinderCard=wf
         ? '<div class="section-subtitle">Work Finder AI — 発見から実行まで</div><div class="system-grid">'
-          + [['発見候補',wf.discovered_candidate_count],['レビュー待ち',wf.review_pending_count],
+          + [['テスト不足候補',wf.discovered_candidate_count],['機能改善候補',wf.functional_improvement_candidate_count??0],['レビュー待ち',wf.review_pending_count],
              ['実行承認済み',wf.execution_eligibility_status==='verified'?(wf.execution_eligible_count??0):'未証明'],
              ['実際の完了',wf.completed_task_count]].map(([name,value])=>'<div class="system-card"><div class="system-card-title">'+esc(name)+'</div><div class="history-metric-value">'+esc(value??'未取得')+'</div></div>').join('')
           + '</div><div class="system-details">次の安全な動作：'+esc(wf.next_action)+' ・ Queue '+esc(wf.runtime_queue_task_count??'未取得')
           +' ・ HOLD '+esc(wf.held_task_count??'未取得')+' ・ 要レビュー '+esc(wf.resume_review_required_count??'未取得')
-          +' ・ 実行承認は候補生成から自動付与しません</div>'+candidatePreview
+          +' ・ 実行承認は候補生成から自動付与しません</div>'+candidatePreview+functionalCandidatePreview
         : '<div class="section-subtitle">Work Finder AI：今回のスナップショットに診断結果なし</div>';
-      const candidatePreview=Array.isArray(wf?.candidate_preview)&&wf.candidate_preview.length
-        ? '<div class="system-details"><strong>レビュー候補（最大5件）</strong><ul>'+wf.candidate_preview.map(item=>'<li>'+esc(item.source_function)+' — '+esc(item.target_test)+' ('+esc(item.evidence||'証跡なし')+')</li>').join('')+'</ul></div>'
-        : '<div class="system-details">個別候補のプレビューなし</div>';
       const streamRows=(Array.isArray(data.streams)?data.streams:[]).map(item=>{
         const observed=item.status==='observed';
         const counts='Task '+Number(item.task_count||0)+' / Dispatch '+Number(item.dispatch_count||0)+' / Worker '+Number(item.worker_count||0);
