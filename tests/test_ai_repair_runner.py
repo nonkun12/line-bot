@@ -175,7 +175,7 @@ def test_apply_refuses_same_model_and_endpoint_for_creator_and_critic(tmp_path):
 def test_validate_proposal_rejects_added_credential_like_material():
     proposal = _proposal()
     proposal["patch"] = proposal["patch"].replace(
-        "+after\\n", "+password=supersecretvalue123\\n"
+        "+after\n", "+password=supersecretvalue123\n"
     )
     with pytest.raises(repair.RepairRejected, match="credential"):
         repair.validate_proposal(proposal)
