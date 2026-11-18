@@ -28,6 +28,7 @@ def discover_roadmap_candidates(readme_path: Path) -> list[dict[str, Any]]:
     in_section = False
     found_heading = False
     candidates: list[dict[str, Any]] = []
+    seen_fingerprints: set[str] = set()
     for line_number, line in enumerate(lines, start=1):
         if line.startswith("#"):
             heading = line.lstrip("#").strip()
@@ -56,8 +57,12 @@ def discover_roadmap_candidates(readme_path: Path) -> list[dict[str, Any]]:
             "title": title,
             "evidence": evidence,
             "fingerprint": fingerprint,
-            "priority": "medium",
-            "confidence": 1.0,
+            "priority": "unranked",
+            "confidence": "high",
+            "target_capability": title,
+            "impact_assessment": "NOT_ASSESSED",
+            "risk_assessment": "NOT_ASSESSED",
+            "test_strategy": "REQUIRES_SCOPE_REVIEW",
             "status": "REVIEW_REQUIRED",
             "human_review_required": True,
             "execution_approval_granted": False,
