@@ -148,9 +148,10 @@ def test_failed_focused_test_triggers_reverse_patch(tmp_path, monkeypatch):
 
 
 def test_report_never_grants_commit_push_merge_or_deploy_authority():
-    report = repair._report("PATCH_TESTED_IN_WORKTREE", {}, [], "local-model", True)
+    report = repair._report("PATCH_TESTED_IN_WORKTREE", {}, [], "local-model", "critic-model", True, True)
     assert report["human_review_required"] is True
     assert report["critic_independent"] is False
+    assert report["critic_configuration_distinct"] is True
     assert report["permissions"]["modify_files"] is True
     assert report["permissions"]["commit"] is False
     assert report["permissions"]["push"] is False
@@ -158,3 +159,15 @@ def test_report_never_grants_commit_push_merge_or_deploy_authority():
     assert report["permissions"]["merge"] is False
     assert report["permissions"]["deploy"] is False
     assert report["effectiveness"] == "NOT_MEASURED"
+
+def test_apply_refuses_same_model_and_endpoint_for_creator_and_critic(tmp_path):
+    with pytest.raises(repair.RepairRejected, match="separately configured critic"):
+        repair.run_repair(
+            {"status": "FAIL", "failure_reason": "task_runtime_failed"},
+            endpoint="http://127.0.0.1:8081/v1",
+            model="same-model",
+            critic_endpoint="http://127.0.0.1:8081/v1",
+            critic_model="same-model",
+            root=tmp_path,
+            apply=True,
+        )
