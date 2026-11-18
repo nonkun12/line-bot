@@ -195,3 +195,16 @@ def test_load_existing_extracts_keys_and_end_line_for_both_assignment_forms():
     plain_keys, plain_end_line = builder.load_existing(plain_source)
     assert plain_keys == {"gamma"}
     assert plain_end_line == 3
+
+
+def test_validate_entry_rejects_related_with_fewer_than_two_items():
+    builder = _load_builder()
+    candidate = _candidate("boundary")
+    candidate["related"] = ["understand（理解する）"]
+
+    try:
+        builder.validate_entry(candidate)
+    except ValueError as exc:
+        assert "related must contain at least two non-empty strings" in str(exc)
+    else:
+        raise AssertionError("related with fewer than two items must be rejected")
