@@ -104,6 +104,11 @@ on:
         required: false
         default: false
         type: boolean
+      allow_review_issue_creation:
+        description: 'Explicitly allow creating review-only GitHub Issues in this manual run'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   actions: write
@@ -504,7 +509,8 @@ jobs:
           fi
 
       - name: Create bounded review-only task issues from analyzer findings
-        if: success() && env.TRIGGER_MODE == 'normal'
+        # Issue writes are opt-in for a human-dispatched run; scheduled runs only retain artifacts.
+        if: success() && env.TRIGGER_MODE == 'normal' && github.event_name == 'workflow_dispatch' && inputs.allow_review_issue_creation == true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
