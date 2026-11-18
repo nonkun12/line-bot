@@ -27,7 +27,7 @@ class DistributedSlotLedgerContractTests(unittest.TestCase):
     def test_rejects_wrong_slot_minute(self):
         record = pending_record()
         record["slot_id"] = "2026-11-19T10:30:00Z"
-        self.assertIn("slot_id must be a UTC :17 or :47 schedule timestamp", validate_slot_record(record))
+        self.assertIn("slot_id must be a real UTC :17 or :47 calendar timestamp", validate_slot_record(record))
 
     def test_rejects_impossible_calendar_slot(self):
         record = pending_record()
@@ -50,7 +50,7 @@ class DistributedSlotLedgerContractTests(unittest.TestCase):
         record["workflow_id"] = True
         record["attempt"] = False
         errors = validate_slot_record(record)
-        self.assertIn("workflow_id must be a positive integer", errors)
+        self.assertIn("workflow_id must match the designated distributed-loop workflow", errors)
         self.assertIn("attempt must be a non-negative integer", errors)
 
     def test_claimed_requires_explicit_lease(self):
