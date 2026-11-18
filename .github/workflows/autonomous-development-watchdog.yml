@@ -3,8 +3,8 @@ name: Autonomous Development Watchdog
 on:
   workflow_dispatch:
   schedule:
-    # Hourly progress/safety audit, offset from the main loop and Creator-Critic.
-    - cron: '47 * * * *'
+    # Audit each 30-minute loop slot after its scheduled trigger.
+    - cron: '17,47 * * * *'
       timezone: 'Asia/Tokyo'
 
 permissions:

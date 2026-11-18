@@ -17,8 +17,8 @@ from agents.sheets.autonomous_ledger import (
 from agents.sheets.client import GoogleSheetsClient
 
 JST = ZoneInfo("Asia/Tokyo")
-SLOT_MINUTE = 17
-DISCOVERY_GRACE_MINUTES = 50
+SLOT_MINUTES = (17, 47)
+DISCOVERY_GRACE_MINUTES = 20
 QUEUED_GRACE_MINUTES = 120
 INVALID_TASK_IDS = {"", "NOT_RUN", "QUEUE_EMPTY", "QUEUE_EXHAUSTED_NO_TASKS"}
 
@@ -33,12 +33,16 @@ def github_json(url: str) -> dict:
 
 
 def expected_slot(now: datetime) -> datetime:
-    """Return the most recent hourly loop slot (minute 17 JST)."""
+    """Return the most recent half-hour loop slot (minute 17 or 47 JST)."""
     local = now.astimezone(JST).replace(second=0, microsecond=0)
-    candidate = local.replace(minute=SLOT_MINUTE)
-    if candidate > local:
-        candidate -= timedelta(hours=1)
-    return candidate
+    candidates = [
+        local.replace(minute=minute)
+        for minute in SLOT_MINUTES
+        if local.minute >= minute
+    ]
+    if candidates:
+        return candidates[-1]
+    return local.replace(minute=SLOT_MINUTES[-1]) - timedelta(hours=1)
 
 
 def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
@@ -48,8 +52,8 @@ def find_scheduled_run(repo: str, slot: datetime) -> dict | None:
         + quote(repo, safe="/")
         + f"/actions/workflows/{workflow}/runs?event=schedule&per_page=20"
     )
-    # The loop is hourly. A four-hour window overlaps several slots and can
-    # attach an old run to the current slot, creating false watchdog failures.
+    # The loop is every 30 minutes. Keep the discovery window shorter than one slot
+    # so a delayed run cannot be attached to its neighboring slot.
     window_end = slot + timedelta(minutes=DISCOVERY_GRACE_MINUTES)
     window_start = slot - timedelta(minutes=10)
     matches = []
@@ -94,12 +98,12 @@ def run_is_pending_within_grace(run: dict | None, slot: datetime, now: datetime)
 
     if run is None:
         # Scheduled events may be delayed, but only within this slot's
-        # non-overlapping discovery window.
+        # non-overlapping half-hour discovery window.
         return elapsed <= timedelta(minutes=DISCOVERY_GRACE_MINUTES)
 
     status = run.get("status")
     if status == "queued":
-        # Allow two hourly slots for a run queued behind existing work.
+        # Allow four half-hour slots for a run queued behind existing work.
         return elapsed <= timedelta(minutes=QUEUED_GRACE_MINUTES)
     if status != "in_progress":
         return False
