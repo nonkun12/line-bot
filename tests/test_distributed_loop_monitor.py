@@ -7,7 +7,7 @@ import sys
 import tempfile
 from unittest.mock import patch
 
-from scripts.distributed_loop_monitor import evaluate
+from datetime import datetime, timedelta, timezone\n\nfrom scripts.distributed_loop_monitor import evaluate, evaluate_schedule_coverage
 
 
 def valid_state():
@@ -48,6 +48,59 @@ def valid_runs():
 
 
 class DistributedLoopMonitorTests(unittest.TestCase):
+    def test_schedule_coverage_distinguishes_workflow_success_from_task_completion(self):
+        now = datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc)
+        latest = datetime(2026, 11, 13, 23, 47, tzinfo=timezone.utc)
+        runs = []
+        for index in range(12):
+            slot = latest - timedelta(minutes=30 * index)
+            runs.append({"workflow_id": 357086091, "event": "schedule", "id": 1000 + index,
+                         "created_at": slot.isoformat(), "status": "completed", "conclusion": "success"})
+        result = evaluate_schedule_coverage({"workflow_runs": runs}, now)
+        self.assertEqual(result["status"], "OBSERVED")
+        self.assertEqual(result["counts"], {"WORKFLOW_SUCCESS": 12})
+        self.assertIs(result["task_completion_verified"], False)
+
+    def test_schedule_coverage_flags_missing_slot_after_discovery_grace(self):
+        now = datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc)
+        latest = datetime(2026, 11, 13, 23, 47, tzinfo=timezone.utc)
+        runs = []
+        for index in range(12):
+            if index == 2:
+                continue
+            slot = latest - timedelta(minutes=30 * index)
+            runs.append({"workflow_id": 357086091, "event": "schedule", "id": 2000 + index,
+                         "created_at": slot.isoformat(), "status": "completed", "conclusion": "success"})
+        result = evaluate_schedule_coverage({"workflow_runs": runs}, now)
+        self.assertEqual(result["status"], "GAPS_DETECTED")
+        self.assertEqual(result["counts"].get("MISSING"), 1)
+
+    def test_schedule_coverage_marks_recent_unseen_slot_pending(self):
+        now = datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc)
+        result = evaluate_schedule_coverage({"workflow_runs": []}, now)
+        self.assertEqual(result["status"], "GAPS_DETECTED")
+        self.assertEqual(result["slots"][0]["status"], "PENDING")
+        self.assertEqual(result["counts"].get("MISSING"), 11)
+
+    def test_schedule_coverage_detects_duplicate_scheduled_runs(self):
+        now = datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc)
+        created = "2026-11-13T23:47:00Z"
+        runs = [
+            {"workflow_id": 357086091, "event": "schedule", "id": 1, "created_at": created, "status": "completed", "conclusion": "success"},
+            {"workflow_id": 357086091, "event": "schedule", "id": 2, "created_at": created, "status": "completed", "conclusion": "success"},
+        ]
+        result = evaluate_schedule_coverage({"workflow_runs": runs}, now)
+        self.assertEqual(result["slots"][0]["status"], "DUPLICATE")
+
+    def test_schedule_coverage_ignores_other_workflows_and_manual_runs(self):
+        now = datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc)
+        runs = [
+            {"workflow_id": 999, "event": "schedule", "id": 1, "created_at": "2026-11-13T23:47:00Z", "status": "completed", "conclusion": "success"},
+            {"workflow_id": 357086091, "event": "workflow_dispatch", "id": 2, "created_at": "2026-11-13T23:47:00Z", "status": "completed", "conclusion": "success"},
+        ]
+        result = evaluate_schedule_coverage({"workflow_runs": runs}, now)
+        self.assertNotEqual(result["slots"][0]["status"], "WORKFLOW_SUCCESS")
+
     def evaluate(self, runs=None, state=None, meta=None, response=None):
         state = valid_state() if state is None else state
         response = contents_response(state) if response is None else response
