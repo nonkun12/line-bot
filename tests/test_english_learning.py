@@ -339,3 +339,19 @@ def test_english_agent_routes_vocabulary_to_side5(monkeypatch):
 
     assert response.text == "test-user:daily"
     assert response.metadata["side_id"] == "side_5_english_core_vocabulary"
+
+
+
+def test_side5_review_action_preserves_review_prompt(monkeypatch, tmp_path):
+    from agents.english import progress, quiz_state
+    from agents.english.core_vocabulary import run_core_vocabulary
+
+    db = str(tmp_path / "side5-review.sqlite3")
+    monkeypatch.setattr(progress, "DB_PATH", db)
+    monkeypatch.setattr(quiz_state, "DB_PATH", db)
+
+    result = run_core_vocabulary("learner-review", "review")
+
+    assert "英語復習モードです" in result.text
+    assert "今回の復習語:" in result.text
+    assert "英文を1つ作ってください" in result.text
