@@ -132,3 +132,25 @@ def test_validate_snapshot_rejects_rea_authority_escalation_and_bad_hash():
     data["tasks"][0]["rea_artifact_evidence_sha256"] = "bad"
     with pytest.raises(ValueError):
         validate_snapshot(data)
+
+
+def test_validate_snapshot_keeps_work_finder_counts_separate_and_review_only():
+    data = payload()
+    data["work_finder"] = {
+        "cycle_status": "WORK_FOUND", "next_action": "human_review_candidates",
+        "execution_eligibility_status": "not_proven",
+        "candidate_policy": "review_only_no_execution_approval",
+        "safety": {"read_only": True, "execution_approval_granted": False},
+        "discovered_candidate_count": 2, "review_pending_count": 2,
+        "completed_task_count": 5, "catalog_task_count": 30,
+        "runtime_queue_task_count": 0, "held_task_count": 4,
+        "resume_review_required_count": 1, "scanned_target_pairs": 9,
+    }
+    clean = validate_snapshot(data)
+    assert clean["work_finder"]["discovered_candidate_count"] == 2
+    assert clean["work_finder"]["review_pending_count"] == 2
+    assert "execution_eligible_count" not in clean["work_finder"]
+    assert clean["work_finder"]["completed_task_count"] == 5
+    data["work_finder"]["safety"]["execution_approval_granted"] = True
+    with pytest.raises(ValueError):
+        validate_snapshot(data)
