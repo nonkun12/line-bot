@@ -113,6 +113,13 @@ def evaluate_schedule_coverage(runs_payload: Any, now: datetime) -> dict[str, An
     if latest is None:
         latest = now_utc.replace(minute=SCHEDULE_SLOT_MINUTES[-1], second=0, microsecond=0) - timedelta(hours=1)
 
+    all_created = [
+        parsed for run in normalized["workflow_runs"]
+        if isinstance(run, dict)
+        for parsed in [parse_utc(run.get("created_at"))]
+        if parsed is not None
+    ]
+    history_floor = min(all_created) if all_created else None
     scheduled = []
     for run in normalized["workflow_runs"]:
         if not isinstance(run, dict) or run.get("workflow_id") != SCHEDULE_WORKFLOW_ID or run.get("event") != "schedule":
@@ -131,7 +138,15 @@ def evaluate_schedule_coverage(runs_payload: Any, now: datetime) -> dict[str, An
         if len(matches) > 1:
             record["status"] = "DUPLICATE"
         elif not matches:
-            record["status"] = "PENDING" if now_utc <= end else "MISSING"
+            if now_utc <= end:
+                record["status"] = "PENDING"
+            elif history_floor is not None and history_floor <= start:
+                record["status"] = "MISSING"
+            else:
+                # A bounded Actions API page may not include enough history to
+                # prove this slot was absent. Never turn truncated history into
+                # a false missed-slot alert.
+                record["status"] = "UNOBSERVED"
         else:
             created, run = matches[0]
             record["run_id"] = str(run.get("id")) if run.get("id") is not None else None
@@ -155,10 +170,16 @@ def evaluate_schedule_coverage(runs_payload: Any, now: datetime) -> dict[str, An
     counts = {status: statuses.count(status) for status in sorted(set(statuses))}
     gap_states = {"DUPLICATE", "MISSING", "WORKFLOW_FAILED", "STALE_QUEUED", "STALE_IN_PROGRESS", "UNKNOWN"}
     pending_states = {"PENDING", "QUEUED", "IN_PROGRESS"}
-    overall = "GAPS_DETECTED" if any(status in gap_states for status in statuses) else (
-        "PENDING" if any(status in pending_states for status in statuses) else "OBSERVED"
-    )
+    if any(status in gap_states for status in statuses):
+        overall = "GAPS_DETECTED"
+    elif "UNOBSERVED" in statuses:
+        overall = "INSUFFICIENT_HISTORY"
+    elif any(status in pending_states for status in statuses):
+        overall = "PENDING"
+    else:
+        overall = "OBSERVED"
     return {"status": overall, "window_slots": SCHEDULE_COVERAGE_SLOTS, "counts": counts,
+            "history_floor": history_floor.isoformat() if history_floor else None,
             "slots": slots, "task_completion_verified": False}
 
 
