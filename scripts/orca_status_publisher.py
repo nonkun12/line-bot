@@ -113,11 +113,27 @@ def validate_snapshot(payload: object) -> dict:
                         "expand_allowlisted_discovery_sources", "investigate_discovery_status"}
         if work_finder.get("next_action") not in next_actions:
             raise ValueError("invalid Work Finder next action")
+        previews = work_finder.get("candidate_preview", [])
+        if not isinstance(previews, list) or len(previews) > 5:
+            raise ValueError("invalid Work Finder candidate preview list")
+        clean_previews = []
+        for item in previews:
+            if not isinstance(item, dict) or item.get("status") != "REVIEW_REQUIRED":
+                raise ValueError("invalid Work Finder candidate preview")
+            clean_item = {}
+            for key, limit in (("id", 100), ("target_test", 200), ("source_function", 120), ("evidence", 250)):
+                value = item.get(key)
+                if not isinstance(value, str) or not value.strip() or len(value) > limit:
+                    raise ValueError(f"invalid Work Finder candidate field: {key}")
+                clean_item[key] = value.strip()
+            clean_item["status"] = "REVIEW_REQUIRED"
+            clean_previews.append(clean_item)
         clean["work_finder"] = {
             "cycle_status": work_finder["cycle_status"],
             "next_action": work_finder["next_action"],
             "execution_eligibility_status": work_finder["execution_eligibility_status"],
             "candidate_policy": work_finder["candidate_policy"],
+            "candidate_preview": clean_previews,
             "safety": {"read_only": True, "execution_approval_granted": False},
             **clean_counts,
         }
