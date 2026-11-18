@@ -134,7 +134,20 @@ def evaluate_schedule_coverage(runs_payload: Any, now: datetime) -> dict[str, An
         start = slot - timedelta(minutes=SCHEDULE_DISCOVERY_BEFORE_MINUTES)
         end = slot + timedelta(minutes=SCHEDULE_DISCOVERY_AFTER_MINUTES)
         matches = [(created, run) for created, run in scheduled if start <= created < end]
-        record = {"slot": slot.isoformat(), "run_id": None, "run_status": None, "conclusion": None}
+        slot_utc = slot.astimezone(timezone.utc).replace(second=0, microsecond=0)
+        slot_id = slot_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        idempotency_material = f"distributed-loop:{SCHEDULE_WORKFLOW_ID}:{slot_id}"
+        idempotency_key = hashlib.sha256(idempotency_material.encode("ascii")).hexdigest()
+        record = {
+            "slot": slot.isoformat(),
+            "slot_id": slot_id,
+            "idempotency_key": idempotency_key,
+            "replay_allowed": False,
+            "replay_block_reason": "read_only_monitor_no_dispatch",
+            "run_id": None,
+            "run_status": None,
+            "conclusion": None,
+        }
         if len(matches) > 1:
             record["status"] = "DUPLICATE"
         elif not matches:
