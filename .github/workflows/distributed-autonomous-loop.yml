@@ -3,7 +3,8 @@ run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || 
 
 on:
   schedule:
-    - cron: "0,30 * * * *"
+    # Keep the established minute-17/47 slots used by the watchdog ledger.
+    - cron: "17,47 * * * *"
   issue_comment:
     types: [created]
   workflow_dispatch:
