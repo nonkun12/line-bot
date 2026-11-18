@@ -87,7 +87,27 @@ def _is_non_executable_stub(node: ast.FunctionDef | ast.AsyncFunctionDef) -> boo
     )
 
 
-def _public_functions(source: str) -> list[tuple[str, int]]:
+def _priority_signals(node: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, int]:
+    """Return transparent structural signals; these are review-order hints, not risk verdicts."""
+    counts = {"conditionals": 0, "loops": 0, "exception_paths": 0, "boolean_branches": 0}
+    stack = list(node.body)
+    while stack:
+        item = stack.pop()
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if isinstance(item, ast.If) or isinstance(item, ast.IfExp) or isinstance(item, ast.Match):
+            counts["conditionals"] += 1
+        elif isinstance(item, (ast.For, ast.AsyncFor, ast.While)):
+            counts["loops"] += 1
+        elif isinstance(item, (ast.Try, getattr(ast, "TryStar", ast.Try), ast.ExceptHandler)):
+            counts["exception_paths"] += 1
+        elif isinstance(item, ast.BoolOp):
+            counts["boolean_branches"] += max(1, len(item.values) - 1)
+        stack.extend(ast.iter_child_nodes(item))
+    return counts
+
+
+def _public_function_nodes(source: str) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -96,7 +116,7 @@ def _public_functions(source: str) -> list[tuple[str, int]]:
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("_"):
             if not _is_non_executable_stub(node):
-                found.append((node.name, node.lineno))
+                found.append((node.name, node))
         elif isinstance(node, ast.ClassDef):
             for member in node.body:
                 if (
@@ -104,8 +124,17 @@ def _public_functions(source: str) -> list[tuple[str, int]]:
                     and not member.name.startswith("_")
                     and not _is_non_executable_stub(member)
                 ):
-                    found.append((f"{node.name}.{member.name}", member.lineno))
+                    found.append((f"{node.name}.{member.name}", member))
     return found
+
+
+def _public_functions(source: str) -> list[tuple[str, int]]:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    found = []
+    return [(name, node.lineno) for name, node in _public_function_nodes(source)]
 
 
 def _referenced_symbols(test_source: str) -> set[str]:
@@ -232,7 +261,8 @@ def analyze(
         test_source = test_path.read_text(encoding="utf-8")
         referenced_symbols = _referenced_symbols(test_source)
         group = []
-        for function, line in _public_functions(code_source):
+        for function, function_node in _public_function_nodes(code_source):
+            line = function_node.lineno
             public_symbol_count += 1
             leaf = function.rsplit(".", 1)[-1]
             # AST references avoid false "covered" matches in comments and strings.
@@ -247,6 +277,13 @@ def analyze(
                 continue
             candidate_pool_count += 1
             evidence = f"{code_rel}:{line}"
+            priority_signals = _priority_signals(function_node)
+            priority_score = (
+                2 * priority_signals["conditionals"]
+                + 2 * priority_signals["loops"]
+                + 2 * priority_signals["exception_paths"]
+                + priority_signals["boolean_branches"]
+            )
             fingerprint = hashlib.sha256(
                 f"{code_rel}\0{function}\0{line}\0{hashlib.sha256(code_source.encode()).hexdigest()}\0{hashlib.sha256(test_source.encode()).hexdigest()}".encode()
             ).hexdigest()
@@ -258,9 +295,15 @@ def analyze(
                 "source_function": function,
                 "status": "REVIEW_REQUIRED",
                 "heuristic": "public-symbol-name-not-found-in-test-ast; may have indirect coverage",
+                "priority_score": priority_score,
+                "priority_signals": priority_signals,
+                "priority_note": "deterministic structural complexity hint for review ordering only; not a defect or execution approval",
                 "fingerprint": fingerprint,
             })
         if group:
+            # Higher structural complexity is reviewed first within each target;
+            # stable source order breaks ties and preserves reproducibility.
+            group.sort(key=lambda item: -item["priority_score"])
             candidate_groups.append(group)
 
     # Round-robin across allowlisted target pairs so a large early module cannot
@@ -298,6 +341,7 @@ def analyze(
             "candidate_pool_count_before_global_cap": candidate_pool_count,
             "global_candidate_cap": MAX_CANDIDATES,
             "global_candidate_cap_reached": candidate_pool_count > MAX_CANDIDATES,
+            "priority_strategy": "per-target structural complexity, then stable source order; round-robin across targets",
         },
         "safety": {
             "read_only": True,
