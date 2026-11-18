@@ -123,3 +123,13 @@ def test_atomic_write_validates_records_and_registered_tasks(tmp_path):
     assert not path.exists()
     atomic_write(path, [_record()], {"task-1"})
     assert read_state(path, {"task-1"}) == [_record()]
+
+
+
+def test_sanitize_records_enforces_max_record_boundary():
+    from scripts.creator_critic_state import sanitize_records
+
+    accepted = sanitize_records([_record()] * MAX_RECORDS, {"task-1"})
+    assert len(accepted) == MAX_RECORDS
+    with pytest.raises(ValueError, match="record limit"):
+        sanitize_records([_record()] * (MAX_RECORDS + 1), {"task-1"})
