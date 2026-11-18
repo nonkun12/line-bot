@@ -34,6 +34,10 @@ class DistributedSlotLedgerContractTests(unittest.TestCase):
         record["slot_id"] = "2026-99-99T10:17:00Z"
         self.assertIn("slot_id must be a real UTC :17 or :47 calendar timestamp", validate_slot_record(record))
 
+    def test_idempotency_key_rejects_impossible_calendar_slot(self):
+        with self.assertRaises(ValueError):
+            expected_idempotency_key("2026-99-99T10:17:00Z")
+
     def test_rejects_other_workflow_identity(self):
         record = pending_record()
         record["workflow_id"] = 12345
