@@ -261,7 +261,16 @@ def test_whitespace_and_colon_paths_are_held():
 
 def test_protected_paths_are_held():
     for path in (".github/workflows/", ".git/hooks/", "CODEOWNERS",
-                 ".env", "config/secrets/token.txt", ".aws/credentials"):
+                 ".env", "config/secrets/token.txt", ".aws/credentials", ".netrc", ".npmrc", ".pypirc", ".git-credentials"):
+        g = goal(tasks=[{
+            "task_id": "t1", "status": "PENDING", "kind": "TEST",
+            "execution_authorized": True, "allowed_paths": [path],
+        }])
+        assert evaluate_goal(g)["reason"] == "allowed_paths_invalid"
+
+
+def test_repeated_trailing_separators_are_rejected():
+    for path in ("src//", "tests///", "src//module.py"):
         g = goal(tasks=[{
             "task_id": "t1", "status": "PENDING", "kind": "TEST",
             "execution_authorized": True, "allowed_paths": [path],
