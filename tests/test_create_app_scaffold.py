@@ -63,6 +63,7 @@ def test_non_app_instruction_cannot_create_files(tmp_path):
         create_app("既存アプリの通知機能を改善して", root=tmp_path, run_id="42")
     assert not (tmp_path / "apps").exists()
 
+
 def test_symlinked_generated_root_cannot_escape_repository(tmp_path):
     root = tmp_path / "repo"
     root.mkdir()
@@ -74,3 +75,12 @@ def test_symlinked_generated_root_cannot_escape_repository(tmp_path):
         create_app("TODO管理Webアプリを作って", root=root, run_id="42")
     assert not list(outside.iterdir())
 
+
+def test_main_requires_instruction_argument(monkeypatch):
+    import sys
+    from scripts.create_app_scaffold import main
+
+    monkeypatch.setattr(sys, "argv", ["create_app_scaffold"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 2
