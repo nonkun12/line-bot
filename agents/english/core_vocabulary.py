@@ -40,7 +40,9 @@ def run_core_vocabulary(user_id: str, action: str, answer: str = "", word_select
     if selected_action not in {"daily", "review", "quiz", "answer"}:
         raise ValueError("unsupported Side 5 action")
 
-    selector = word_selector or select_daily_words\n\n    if selected_action == "quiz":
+    selector = word_selector or select_daily_words
+
+    if selected_action == "quiz":
         text = start_quiz(key)
     elif selected_action == "answer":
         text = grade_quiz(key, answer)
@@ -51,17 +53,17 @@ def run_core_vocabulary(user_id: str, action: str, answer: str = "", word_select
         words = " / ".join(word for word, _, _ in selected)
         first_word = selected[0][0] if selected else "英単語"
         text = (
-            "🔁 英語復習モードです。\\n\\n"
-            f"今回の復習語: {words}\\n"
+            "🔁 英語復習モードです。\n\n"
+            f"今回の復習語: {words}\n"
             f"まず「{first_word}」を使って英文を1つ作ってください。"
         )
     else:
-        selected = select_daily_words(key, 3)
+        selected = selector(key, 3)
         lines = ["📘 今日の英単語コアイメージ（確認済みローカル辞書）", ""]
         for word, core_image, example in selected:
             lines.extend((f"• {word}", f"  コアイメージ: {core_image}", f"  例: {example}"))
         lines.extend(("", "クイズを始めるには「クイズ」と送ってください。"))
-        text = "\\n".join(lines) if selected else "現在、確認済みの出題可能な単語がありません。"
+        text = "\n".join(lines) if selected else "現在、確認済みの出題可能な単語がありません。"
 
     return CoreVocabularyResult(
         side_id=SIDE_ID,
