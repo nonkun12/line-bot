@@ -209,29 +209,43 @@ def analyze(
     # is rediscovered forever and issue creation filters every result as duplicate.
     excluded = queued_ids | completed | held | review | catalog_ids | _existing_issue_task_ids(existing_issues_path)
     candidate_groups = []
+    scanned_target_pairs = 0
+    missing_target_pairs = 0
+    symlink_target_pairs = 0
+    public_symbol_count = 0
+    referenced_symbol_count = 0
+    excluded_candidate_count = 0
+    candidate_pool_count = 0
     for code_rel, test_rel in TARGETS:
         code_path, test_path = repo_root / code_rel, repo_root / test_rel
         # Never follow repository-controlled symlinks while scanning source or tests.
         if code_path.is_symlink() or test_path.is_symlink():
+            symlink_target_pairs += 1
             continue
         if not code_path.is_file() or not test_path.is_file():
+            missing_target_pairs += 1
             continue
         if not TEST_PATH.fullmatch(test_rel):
             continue
+        scanned_target_pairs += 1
         code_source = code_path.read_text(encoding="utf-8")
         test_source = test_path.read_text(encoding="utf-8")
         referenced_symbols = _referenced_symbols(test_source)
         group = []
         for function, line in _public_functions(code_source):
+            public_symbol_count += 1
             leaf = function.rsplit(".", 1)[-1]
             # AST references avoid false "covered" matches in comments and strings.
             # Indirect coverage may still exist, so candidates remain review-only.
             if leaf in referenced_symbols:
+                referenced_symbol_count += 1
                 continue
             suffix = hashlib.sha256(f"{code_rel}:{function}".encode()).hexdigest()[:10]
             task_id = f"review-coverage-gap-{suffix}"
             if task_id in excluded:
+                excluded_candidate_count += 1
                 continue
+            candidate_pool_count += 1
             evidence = f"{code_rel}:{line}"
             fingerprint = hashlib.sha256(
                 f"{code_rel}\0{function}\0{line}\0{hashlib.sha256(code_source.encode()).hexdigest()}\0{hashlib.sha256(test_source.encode()).hexdigest()}".encode()
@@ -275,6 +289,18 @@ def analyze(
         "candidates": candidates,
         "catalog_ids_without_runtime_plan": missing_plan,
         "runtime_plan_count": len(planned),
+        "discovery_diagnostics": {
+            "allowlisted_target_pair_count": len(TARGETS),
+            "scanned_target_pair_count": scanned_target_pairs,
+            "missing_target_pair_count": missing_target_pairs,
+            "symlink_target_pair_count": symlink_target_pairs,
+            "public_symbol_count": public_symbol_count,
+            "referenced_symbol_count": referenced_symbol_count,
+            "excluded_candidate_count": excluded_candidate_count,
+            "candidate_pool_count_before_global_cap": candidate_pool_count,
+            "global_candidate_cap": MAX_CANDIDATES,
+            "global_candidate_cap_reached": candidate_pool_count > MAX_CANDIDATES,
+        },
         "safety": {
             "read_only": True,
             "queue_or_catalog_mutated": False,
@@ -305,6 +331,7 @@ def main() -> int:
     print(json.dumps({
         "status": report["status"],
         "candidate_count": report["candidate_count"],
+        "discovery_diagnostics": report["discovery_diagnostics"],
         "catalog_ids_without_runtime_plan_count": len(report["catalog_ids_without_runtime_plan"]),
         "reason": report["reason"],
     }, sort_keys=True))
