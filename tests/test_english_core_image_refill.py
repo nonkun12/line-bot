@@ -53,3 +53,20 @@ def test_refill_plan_reports_gap_without_fabricating_missing_entries():
     assert plan["reviewed_gap"] == 1000
     assert len(plan["tasks"]) == 1
     assert plan["tasks"][0]["runtime_lexicon_mutation_authorized"] is False
+
+
+def test_cli_main_fails_closed_on_malformed_candidate_json(tmp_path, monkeypatch, capsys):
+    from scripts.english_core_image_refill import main
+
+    candidates = tmp_path / "candidates.json"
+    candidates.write_text('{"broken":', encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv",
+        ["english-core-image-refill", "--candidates", str(candidates)],
+    )
+
+    assert main() == 2
+    assert capsys.readouterr().out.strip() == (
+        '{"status": "BLOCKED", "reason_code": "catalog_invalid", '
+        '"error_type": "JSONDecodeError"}'
+    )
