@@ -223,8 +223,8 @@ jobs:
           retention-days: 14
 
       # The source loop sends the canonical one-per-run LINE report.
-      # Post-run verification records discrepancies as GitHub issues; it must
-      # not send a second success/queue/blocked message for the same Run ID.
+      # Post-run verification preserves discrepancies as artifacts only; it must
+      # not create GitHub Issues or send a duplicate message for the same Run ID.
       - name: LINE duplicate notification disabled (source loop is authoritative)
         if: github.event.workflow_run.run_attempt < 0
         env:
