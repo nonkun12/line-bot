@@ -79,9 +79,20 @@ class DistributedLoopMonitorTests(unittest.TestCase):
     def test_schedule_coverage_marks_recent_unseen_slot_pending(self):
         now = datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc)
         result = evaluate_schedule_coverage({"workflow_runs": []}, now)
-        self.assertEqual(result["status"], "GAPS_DETECTED")
+        self.assertEqual(result["status"], "INSUFFICIENT_HISTORY")
         self.assertEqual(result["slots"][0]["status"], "PENDING")
-        self.assertEqual(result["counts"].get("MISSING"), 11)
+        self.assertEqual(result["counts"].get("UNOBSERVED"), 11)
+
+    def test_schedule_coverage_does_not_call_truncated_history_a_missing_slot(self):
+        now = datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc)
+        recent_only = [{
+            "workflow_id": 999, "event": "workflow_dispatch", "id": 5,
+            "created_at": "2026-11-13T23:55:00Z", "status": "completed", "conclusion": "success",
+        }]
+        result = evaluate_schedule_coverage({"workflow_runs": recent_only}, now)
+        self.assertEqual(result["status"], "INSUFFICIENT_HISTORY")
+        self.assertEqual(result["counts"].get("MISSING", 0), 0)
+        self.assertEqual(result["counts"].get("UNOBSERVED"), 11)
 
     def test_schedule_coverage_detects_duplicate_scheduled_runs(self):
         now = datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc)
