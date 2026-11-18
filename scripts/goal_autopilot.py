@@ -5,18 +5,27 @@ dispatches workflows, changes permissions, merges, or deploys.
 """
 from __future__ import annotations
 
+import re
+from datetime import datetime
 from typing import Any
 
 TASK_STATES = frozenset({"PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "HELD"})
 SAFE_KINDS = frozenset({"READ_ONLY", "TEST", "DRAFT_PR"})
 BLOCKED_KINDS = frozenset({"MERGE", "DEPLOY", "PERMISSION_CHANGE", "SECRET_CHANGE", "PRODUCTION_WRITE"})
 
+MAX_TASKS = 500
+MAX_DEPENDENCIES_PER_TASK = 100
+MAX_ACCEPTANCE_CRITERIA = 100
+MAX_ALLOWED_PATHS = 100
+MAX_PATH_LENGTH = 512
+_SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
+
 
 def _safe_relative_path(value: Any) -> bool:
     """Reject absolute, traversing, ambiguous, and cross-platform paths."""
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str) or not value.strip() or len(value) > MAX_PATH_LENGTH:
         return False
-    if "\\" in value or "\x00" in value or value.startswith(("~", "/")):
+    if "\\\\" in value or "\\x00" in value or value.startswith(("~", "/")):
         return False
     parts = value.rstrip("/").split("/")
     if any(part in {"", ".", ".."} for part in parts):
@@ -24,6 +33,35 @@ def _safe_relative_path(value: Any) -> bool:
     if ":" in parts[0]:
         return False
     return True
+
+
+def _valid_completion_evidence(task: dict[str, Any]) -> bool:
+    """Require a task-bound, timestamped, independently verified evidence record.
+
+    The referenced verifier record must be checked by the integration layer;
+    this pure planner validates its shape but cannot authenticate remote content.
+    """
+    evidence = task.get("completion_evidence")
+    if not isinstance(evidence, dict):
+        return False
+    if evidence.get("task_id") != task.get("task_id"):
+        return False
+    if evidence.get("verified") is not True:
+        return False
+    evidence_sha = evidence.get("evidence_sha")
+    if not isinstance(evidence_sha, str) or not _SHA1_RE.fullmatch(evidence_sha):
+        return False
+    verification_ref = evidence.get("verification_ref")
+    if not isinstance(verification_ref, str) or not verification_ref.strip():
+        return False
+    completed_at = evidence.get("completed_at")
+    if not isinstance(completed_at, str) or not completed_at.strip():
+        return False
+    try:
+        timestamp = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return timestamp.tzinfo is not None and timestamp.utcoffset() is not None
 
 
 def evaluate_goal(goal: Any) -> dict[str, Any]:
@@ -38,8 +76,8 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
         return {"decision": "INVALID", "reason": "objective_required"}
 
     criteria = goal.get("acceptance_criteria")
-    if not isinstance(criteria, list) or not criteria:
-        return {"decision": "INVALID", "reason": "acceptance_criteria_required"}
+    if not isinstance(criteria, list) or not criteria or len(criteria) > MAX_ACCEPTANCE_CRITERIA:
+        return {"decision": "INVALID", "reason": "acceptance_criteria_count_invalid"}
     criterion_ids: set[str] = set()
     for criterion in criteria:
         if not isinstance(criterion, dict):
@@ -62,6 +100,8 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
     tasks = goal.get("tasks")
     if not isinstance(tasks, list):
         return {"decision": "INVALID", "reason": "tasks_must_be_list"}
+    if len(tasks) > MAX_TASKS:
+        return {"decision": "INVALID", "reason": "task_count_exceeds_limit"}
 
     seen: set[str] = set()
     for task in tasks:
@@ -79,48 +119,56 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
 
     # Validate every dependency declaration, including completed tasks.
     graph: dict[str, list[str]] = {}
+    dependents: dict[str, list[str]] = {task_id: [] for task_id in seen}
+    indegree: dict[str, int] = {}
     for task in tasks:
         deps = task.get("depends_on", [])
-        if not isinstance(deps, list) or any(not isinstance(d, str) or not d.strip() for d in deps):
+        if (not isinstance(deps, list) or len(deps) > MAX_DEPENDENCIES_PER_TASK
+                or any(not isinstance(dep, str) or not dep.strip() for dep in deps)):
             return {"decision": "INVALID", "reason": "task_dependencies_invalid"}
         if len(deps) != len(set(deps)) or task["task_id"] in deps:
             return {"decision": "INVALID", "reason": "task_dependencies_duplicate_or_self_referential"}
         if any(dep not in seen for dep in deps):
             return {"decision": "INVALID", "reason": "unknown_task_dependency"}
         graph[task["task_id"]] = deps
+        indegree[task["task_id"]] = len(deps)
+        for dep in deps:
+            dependents[dep].append(task["task_id"])
 
-    # Cycles cannot make progress and must be surfaced as invalid input.
-    visiting: set[str] = set()
-    visited: set[str] = set()
-
-    def has_cycle(task_id: str) -> bool:
-        if task_id in visiting:
-            return True
-        if task_id in visited:
-            return False
-        visiting.add(task_id)
-        if any(has_cycle(dep) for dep in graph[task_id]):
-            return True
-        visiting.remove(task_id)
-        visited.add(task_id)
-        return False
-
-    if any(has_cycle(task_id) for task_id in graph):
+    # Iterative Kahn traversal avoids recursion-depth failures on long chains.
+    ready = [task_id for task_id, degree in indegree.items() if degree == 0]
+    visited_count = 0
+    while ready:
+        current = ready.pop()
+        visited_count += 1
+        for child in dependents[current]:
+            indegree[child] -= 1
+            if indegree[child] == 0:
+                ready.append(child)
+    if visited_count != len(graph):
         return {"decision": "INVALID", "reason": "cyclic_task_dependencies"}
 
-    in_flight = [t for t in tasks if t["status"] == "IN_PROGRESS"]
+    # A COMPLETED label alone never unlocks dependents.
+    completed: set[str] = set()
+    for task in tasks:
+        if task["status"] == "COMPLETED":
+            if not _valid_completion_evidence(task):
+                return {"decision": "HOLD", "reason": "completed_task_evidence_invalid",
+                        "task_id": task["task_id"]}
+            completed.add(task["task_id"])
+
+    in_flight = [task for task in tasks if task["status"] == "IN_PROGRESS"]
     if in_flight:
         if len(in_flight) > 1:
             return {"decision": "HOLD", "reason": "multiple_in_flight_tasks"}
         return {"decision": "HOLD", "reason": "in_flight_task_requires_reconciliation",
                 "task_id": in_flight[0]["task_id"]}
 
-    blocked = [t for t in tasks if t["status"] in {"FAILED", "HELD"}]
+    blocked = [task for task in tasks if task["status"] in {"FAILED", "HELD"}]
     if blocked:
         return {"decision": "HOLD", "reason": "failed_or_held_task_requires_review",
-                "task_ids": [t["task_id"] for t in blocked]}
+                "task_ids": [task["task_id"] for task in blocked]}
 
-    completed = {t["task_id"] for t in tasks if t["status"] == "COMPLETED"}
     eligible = [
         task for task in tasks
         if task["status"] == "PENDING" and set(graph[task["task_id"]]).issubset(completed)
@@ -128,7 +176,7 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
     if not eligible:
         return {"decision": "HOLD", "reason": "goal_incomplete_but_no_eligible_task"}
 
-    eligible.sort(key=lambda t: (-t.get("priority", 0), t["task_id"]))
+    eligible.sort(key=lambda task: (-task.get("priority", 0), task["task_id"]))
     task = eligible[0]
     kind = task.get("kind")
     if not isinstance(kind, str):
@@ -145,7 +193,8 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
                   else "task_execution_not_explicitly_authorized")
         return {"decision": "HOLD", "reason": reason, "task_id": task["task_id"]}
     paths = task.get("allowed_paths", [])
-    if not isinstance(paths, list) or any(not _safe_relative_path(p) for p in paths):
+    if (not isinstance(paths, list) or len(paths) > MAX_ALLOWED_PATHS
+            or any(not _safe_relative_path(path) for path in paths)):
         return {"decision": "HOLD", "reason": "allowed_paths_invalid",
                 "task_id": task["task_id"]}
     return {"decision": "CONTINUE", "reason": "next_task_selected",
