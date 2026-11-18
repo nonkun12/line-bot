@@ -65,7 +65,7 @@ def test_find_scheduled_run_accepts_workflow_run_name_override(monkeypatch):
         "/actions/workflows/distributed-autonomous-loop.yml/runs?event=schedule&per_page=20"
     )
 
-def test_find_scheduled_run_accepts_delayed_run_within_hourly_slot_grace(monkeypatch):
+def test_find_scheduled_run_accepts_delayed_run_within_half_hour_slot_grace(monkeypatch):
     scheduled = {
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
