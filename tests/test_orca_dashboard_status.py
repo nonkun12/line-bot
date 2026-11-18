@@ -157,6 +157,7 @@ def test_orca_dashboard_exposes_distinct_work_finder_lifecycle_counts(orca_clien
         "completed_task_count": 8, "catalog_task_count": 50,
         "runtime_queue_task_count": 0, "held_task_count": 6,
         "resume_review_required_count": 2, "scanned_target_pairs": 10,
+        "candidate_preview": [{"id": "review-coverage-gap-a1b2", "target_test": "tests/test_x.py", "source_function": "do_work", "evidence": "core/x.py:12", "status": "REVIEW_REQUIRED"}],
     }
     assert post_snapshot(orca_client, snapshot(work_finder=work_finder)).status_code == 200
     read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
@@ -164,6 +165,7 @@ def test_orca_dashboard_exposes_distinct_work_finder_lifecycle_counts(orca_clien
     assert body["discovered_candidate_count"] == 4
     assert body["review_pending_count"] == 4
     assert body["completed_task_count"] == 8
+    assert body["candidate_preview"][0]["source_function"] == "do_work"
     assert "execution_eligible_count" not in body
     assert body["execution_eligibility_status"] == "not_proven"
 
