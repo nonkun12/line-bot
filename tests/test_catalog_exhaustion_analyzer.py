@@ -43,6 +43,16 @@ def test_analyzer_emits_review_only_candidate_without_mutating_inputs(tmp_path: 
     assert candidate["fingerprint"]
     assert report["safety"]["candidates_executable"] is False
     assert report["catalog_ids_without_runtime_plan"] == []
+    diagnostics = report["discovery_diagnostics"]
+    assert diagnostics["scanned_target_pair_count"] == 1
+    assert diagnostics["missing_target_pair_count"] == diagnostics["allowlisted_target_pair_count"] - 1
+    assert diagnostics["symlink_target_pair_count"] == 0
+    assert diagnostics["public_symbol_count"] == 1
+    assert diagnostics["referenced_symbol_count"] == 0
+    assert diagnostics["excluded_candidate_count"] == 0
+    assert diagnostics["candidate_pool_count_before_global_cap"] == 1
+    assert diagnostics["global_candidate_cap"] == 4
+    assert diagnostics["global_candidate_cap_reached"] is False
     assert [p.read_bytes() for p in (catalog, queue, state, runtime)] == before
 
 
