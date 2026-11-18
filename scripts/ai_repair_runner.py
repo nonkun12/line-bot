@@ -23,10 +23,12 @@ MAX_ADDED_LINES = 120
 MAX_DELETED_LINES = 80
 MAX_PROPOSALS = 2
 MAX_ATTEMPTS = 2
-ALLOWED_PREFIXES = ("scripts/", "core/", "tests/", "agents/english/")
+ALLOWED_PREFIXES = ("scripts/", "agents/english/")
 DENIED_PARTS = {
     ".github/", ".env", "secret", "credential", "token", "auth",
     "permission", "policy", "workflow", "deploy", "release",
+    "safety", "guard", "approval", "control", "maintenance",
+    "debug_agent", "recovery", "rea", "critic",
 }
 SAFE_EVIDENCE_KEYS = {
     "task_id", "status", "failure_reason", "failure_code",
@@ -194,12 +196,11 @@ def apply_and_test(proposal: dict[str, Any], *, root: Path) -> dict[str, Any]:
                 test_results.append({
                     "test": test, "exit_code": result.returncode,
                     "passed": result.returncode == 0,
-                    "output_tail": (result.stdout + result.stderr)[-4000:],
                 })
             except subprocess.TimeoutExpired:
                 test_results.append({
                     "test": test, "exit_code": None, "passed": False,
-                    "output_tail": "test timed out; patch rolled back",
+                    "reason": "timeout",
                 })
                 return {"status": "ROLLED_BACK_TEST_FAILURE", "tests": test_results}
             if result.returncode:
@@ -284,7 +285,7 @@ def run_repair(evidence_raw: Any, *, endpoint: str, model: str, root: Path, appl
             any_test_failure = True
             for test_result in result.get("tests", []):
                 previous_failures.append(
-                    f"{test_result.get('test')}: {test_result.get('output_tail', 'failed')}"
+                    f"{test_result.get('test')}: failed, exit_code={test_result.get('exit_code')}"
                 )
         if not apply:
             break
