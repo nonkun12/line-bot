@@ -352,3 +352,14 @@ def test_analyzer_round_robins_targets_before_applying_candidate_cap(tmp_path: P
     assert report["discovery_diagnostics"]["candidate_pool_count_before_global_cap"] == 7
     assert report["discovery_diagnostics"]["global_candidate_cap_reached"] is True
     assert report["safety"]["candidates_executable"] is False
+
+
+
+def test_main_requires_catalog_argument(monkeypatch):
+    import sys
+    from scripts.catalog_exhaustion_analyzer import main
+
+    monkeypatch.setattr(sys, "argv", ["catalog_exhaustion_analyzer"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 2
