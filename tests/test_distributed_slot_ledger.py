@@ -29,6 +29,17 @@ class DistributedSlotLedgerContractTests(unittest.TestCase):
         record["slot_id"] = "2026-11-19T10:30:00Z"
         self.assertIn("slot_id must be a UTC :17 or :47 schedule timestamp", validate_slot_record(record))
 
+    def test_rejects_impossible_calendar_slot(self):
+        record = pending_record()
+        record["slot_id"] = "2026-99-99T10:17:00Z"
+        self.assertIn("slot_id must be a real UTC :17 or :47 calendar timestamp", validate_slot_record(record))
+
+    def test_rejects_other_workflow_identity(self):
+        record = pending_record()
+        record["workflow_id"] = 12345
+        errors = validate_slot_record(record)
+        self.assertIn("workflow_id must match the designated distributed-loop workflow", errors)
+
     def test_rejects_idempotency_key_mismatch(self):
         record = pending_record()
         record["idempotency_key"] = "0" * 64
