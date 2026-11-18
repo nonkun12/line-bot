@@ -104,7 +104,7 @@ def validate_snapshot(payload: object) -> dict:
         clean_counts = {}
         for key in allowed_counts:
             value = work_finder.get(key)
-            if value is None and key == "execution_eligible_count":
+            if value is None and key in {"execution_eligible_count", "functional_improvement_candidate_count"}:
                 continue
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 10000:
                 raise ValueError(f"invalid Work Finder count: {key}")
