@@ -8,6 +8,7 @@ from agents.english.intents import classify_english_mode, is_english_learning_in
 from core.agents import AgentRequest, AgentResponse
 from agents.english.progress import profile_prompt, record_observation
 from agents.english.quiz import grade_quiz
+from agents.english.quiz_state import select_daily_words
 from agents.english.core_vocabulary import SIDE_ID, run_core_vocabulary
 import random
 
@@ -127,7 +128,7 @@ class EnglishLearningAgent:
             )
             mode = "ai_tutor"
         elif mode == "vocabulary":
-            text = run_core_vocabulary(request.user_id, "daily").text
+            text = run_core_vocabulary(request.user_id, "daily", word_selector=select_daily_words).text
         elif mode == "quiz":
             text = run_core_vocabulary(request.user_id, "quiz").text
         elif mode == "grammar":
@@ -157,7 +158,7 @@ class EnglishLearningAgent:
                     "送ってくれた英文を、自然さ・文法・より良い表現の3点で添削します。"
                 )
         elif mode == "review":
-            text = run_core_vocabulary(request.user_id, "review").text
+            text = run_core_vocabulary(request.user_id, "review", word_selector=select_daily_words).text
         elif _english_sentence(original):
             ai_text = _ai_tutor_reply(original, user_id=request.user_id, mode="correction")
             if ai_text:
