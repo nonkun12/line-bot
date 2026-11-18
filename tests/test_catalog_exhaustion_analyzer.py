@@ -354,19 +354,20 @@ def test_analyzer_round_robins_targets_before_applying_candidate_cap(tmp_path: P
     assert report["safety"]["candidates_executable"] is False
 
 
+
 def test_analyzer_prioritizes_structurally_complex_candidates_within_target(tmp_path: Path):
     root, catalog, queue, state, runtime = _fixture(tmp_path)
     (root / "core" / "agent_runtime.py").write_text(
-        "def simple_gap(value):\\n"
-        "    return value\\n\\n"
-        "def complex_gap(values):\\n"
-        "    try:\\n"
-        "        for value in values:\\n"
-        "            if value and value > 0:\\n"
-        "                return value\\n"
-        "    except (TypeError, ValueError):\\n"
-        "        return None\\n"
-        "    return None\\n",
+        "def simple_gap(value):\n"
+        "    return value\n\n"
+        "def complex_gap(values):\n"
+        "    try:\n"
+        "        for value in values:\n"
+        "            if value and value > 0:\n"
+        "                return value\n"
+        "    except (TypeError, ValueError):\n"
+        "        return None\n"
+        "    return None\n",
         encoding="utf-8",
     )
 
