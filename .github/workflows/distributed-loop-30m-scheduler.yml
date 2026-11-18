@@ -2,7 +2,7 @@ name: Distributed Loop 30-Minute Scheduler
 
 on:
   # The main distributed-autonomous-loop workflow is the sole 30-minute
-  # schedule owner (00/30 UTC). Keep this dispatcher manual-only to avoid
+  # schedule owner (minute 17 and 47 UTC). Keep this dispatcher manual-only to avoid
   # creating a second, offset schedule that doubles the intended cadence.
   workflow_dispatch:
 
