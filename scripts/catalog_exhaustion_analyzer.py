@@ -129,11 +129,6 @@ def _public_function_nodes(source: str) -> list[tuple[str, ast.FunctionDef | ast
 
 
 def _public_functions(source: str) -> list[tuple[str, int]]:
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return []
-    found = []
     return [(name, node.lineno) for name, node in _public_function_nodes(source)]
 
 
