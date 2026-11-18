@@ -260,8 +260,6 @@ def analyze(
                 "heuristic": "public-symbol-name-not-found-in-test-ast; may have indirect coverage",
                 "fingerprint": fingerprint,
             })
-            if len(group) >= MAX_CANDIDATES:
-                break
         if group:
             candidate_groups.append(group)
 
