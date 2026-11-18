@@ -333,7 +333,7 @@ def test_english_agent_routes_vocabulary_to_side5(monkeypatch):
     monkeypatch.setattr(
         node,
         "run_core_vocabulary",
-        lambda user_id, action: type("Result", (), {"text": f"{user_id}:{action}"})(),
+        lambda user_id, action, **kwargs: type("Result", (), {"text": f"{user_id}:{action}"})(),
     )
     response = node.EnglishLearningAgent().handle(_request("単語"))
 
