@@ -28,6 +28,8 @@ a user to say "next" between ordinary, pre-authorized tasks.
 - One task per decision; no unbounded recursion or self-dispatch.
 - Kill switch or failed safety gate returns HOLD.
 - Missing evidence never satisfies an acceptance criterion.
+- The pure planner validates evidence-reference shape only; the integration layer must independently resolve each reference, verify its repository/run identity and content hash, and reject stale or mismatched evidence before persisting completion.
+- The integration runner must independently canonicalize and enforce allowed paths; planner path checks are defense in depth, not a filesystem sandbox.
 - FAILED, HELD, and IN_PROGRESS tasks block new selection until reconciled.
 - The planner is pure: no file writes, state persistence, queue mutation,
   workflow dispatch, task execution, retries, merge, or deployment.
