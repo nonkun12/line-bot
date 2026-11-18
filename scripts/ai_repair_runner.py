@@ -124,14 +124,15 @@ def validate_proposal(proposal: Any) -> dict[str, Any]:
         raise RepairRejected("only unified git diffs are accepted")
     paths = set()
     for line in patch.splitlines():
-        if line.startswith(("new file mode ", "deleted file mode ", "rename from ", "rename to ", "copy from ", "copy to ")):
-            raise RepairRejected("file creation, deletion, copy, and rename are forbidden")
+        if line.startswith((
+            "new file mode ", "deleted file mode ", "old mode ", "new mode ",
+            "rename from ", "rename to ", "copy from ", "copy to ",
+        )):
+            raise RepairRejected("file creation, deletion, mode change, copy, and rename are forbidden")
         if line.startswith(("--- ", "+++ ")):
-            if line[4:].split("\\t", 1)[0] == "/dev/null":
-                raise RepairRejected("file creation and deletion are forbidden")
-            raw = line[4:].split("\t", 1)[0]
+            raw = line[4:].split("\\t", 1)[0]
             if raw == "/dev/null":
-                continue
+                raise RepairRejected("file creation and deletion are forbidden")
             match = PATCH_PATH.fullmatch(raw)
             if not match:
                 raise RepairRejected("patch contains an invalid path")
@@ -175,6 +176,9 @@ def apply_and_test(proposal: dict[str, Any], *, root: Path) -> dict[str, Any]:
     for path in proposal["paths"]:
         if not (root / path).is_file():
             raise RepairRejected("patch may only modify existing tracked files")
+        tracked = _run(["git", "ls-files", "--error-unmatch", path], cwd=root)
+        if tracked.returncode:
+            raise RepairRejected("patch target is not a tracked repository file")
     patch_file = root / ".ai-repair-candidate.patch"
     applied_ok = False
     keep_patch = False
@@ -187,6 +191,9 @@ def apply_and_test(proposal: dict[str, Any], *, root: Path) -> dict[str, Any]:
         if applied.returncode:
             raise RepairRejected("git apply failed")
         applied_ok = True
+        whitespace = _run(["git", "diff", "--check"], cwd=root)
+        if whitespace.returncode:
+            raise RepairRejected("git diff --check rejected the patch")
         test_results = []
         for test in proposal["tests"]:
             if not (root / test).is_file():
