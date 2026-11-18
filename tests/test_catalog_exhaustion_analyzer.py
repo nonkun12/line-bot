@@ -43,6 +43,16 @@ def test_analyzer_emits_review_only_candidate_without_mutating_inputs(tmp_path: 
     assert candidate["fingerprint"]
     assert report["safety"]["candidates_executable"] is False
     assert report["catalog_ids_without_runtime_plan"] == []
+    diagnostics = report["discovery_diagnostics"]
+    assert diagnostics["scanned_target_pair_count"] == 1
+    assert diagnostics["missing_target_pair_count"] == diagnostics["allowlisted_target_pair_count"] - 1
+    assert diagnostics["symlink_target_pair_count"] == 0
+    assert diagnostics["public_symbol_count"] == 1
+    assert diagnostics["referenced_symbol_count"] == 0
+    assert diagnostics["excluded_candidate_count"] == 0
+    assert diagnostics["candidate_pool_count_before_global_cap"] == 1
+    assert diagnostics["global_candidate_cap"] == 4
+    assert diagnostics["global_candidate_cap_reached"] is False
     assert [p.read_bytes() for p in (catalog, queue, state, runtime)] == before
 
 
@@ -88,6 +98,8 @@ def test_analyzer_skips_already_issued_candidates_and_fills_next_batch(tmp_path:
     assert report["candidate_count"] == 2
     assert [item["source_function"] for item in report["candidates"]] == names[4:]
     assert all(item["status"] == "REVIEW_REQUIRED" for item in report["candidates"])
+    assert report["discovery_diagnostics"]["candidate_pool_count_before_global_cap"] == 2
+    assert report["discovery_diagnostics"]["global_candidate_cap_reached"] is False
     assert report["safety"]["candidates_executable"] is False
 
 
@@ -337,4 +349,6 @@ def test_analyzer_round_robins_targets_before_applying_candidate_cap(tmp_path: P
         for item in report["candidates"]
     ) == 3
     assert all(item["status"] == "REVIEW_REQUIRED" for item in report["candidates"])
+    assert report["discovery_diagnostics"]["candidate_pool_count_before_global_cap"] == 7
+    assert report["discovery_diagnostics"]["global_candidate_cap_reached"] is True
     assert report["safety"]["candidates_executable"] is False
