@@ -103,7 +103,7 @@ def run_is_pending_within_grace(run: dict | None, slot: datetime, now: datetime)
 
     status = run.get("status")
     if status == "queued":
-        # Allow two hourly slots for a run queued behind existing work.
+        # Allow four half-hour slots for a run queued behind existing work.
         return elapsed <= timedelta(minutes=QUEUED_GRACE_MINUTES)
     if status != "in_progress":
         return False
