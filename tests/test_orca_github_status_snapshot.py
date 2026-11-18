@@ -49,6 +49,7 @@ def test_cloud_status_publisher_is_optional_and_non_blocking():
     assert "continue-on-error: true" in step
     assert "scripts.orca_github_status_snapshot" in step
     assert "scripts/orca_status_publisher.py" in step
+    assert "--work-finder-report /tmp/catalog-exhaustion-report.json" in step
 
 
 def test_cloud_snapshot_attributes_core_vocabulary_only_with_explicit_stream_metadata():
@@ -91,3 +92,21 @@ def test_cloud_snapshot_includes_only_sanitized_rea_artifact_metadata():
     assert task["rea_artifact_execution_authorized"] is False
     assert task["rea_artifact_merge_deploy_authorized"] is False
     assert "raw_diff" not in task
+
+
+def test_cloud_snapshot_carries_distinct_work_finder_lifecycle_counts():
+    report = {"work_finder": {
+        "cycle_status": "WORK_FOUND", "next_action": "human_review_candidates",
+        "discovered_candidate_count": 3, "review_pending_count": 3,
+        "execution_eligible_count": None, "execution_eligibility_status": "not_proven",
+        "completed_task_count": 7, "catalog_task_count": 40, "runtime_queue_task_count": 2,
+        "held_task_count": 5, "resume_review_required_count": 1, "scanned_target_pairs": 12,
+        "candidate_policy": "review_only_no_execution_approval",
+        "safety": {"read_only": True, "execution_approval_granted": False},
+    }}
+    state = build_snapshot([], "999", "NO_CHANGE", "2026-11-05T14:00:00+00:00", report)["work_finder"]
+    assert state["discovered_candidate_count"] == 3
+    assert state["review_pending_count"] == 3
+    assert "execution_eligible_count" not in state
+    assert state["execution_eligibility_status"] == "not_proven"
+    assert state["completed_task_count"] == 7
