@@ -13,17 +13,27 @@ from scripts.check_autonomous_loop_watchdog import (
 
 def test_expected_slot_selects_latest_completed_jst_slot():
     now = datetime(2026, 9, 23, 7, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
-    assert expected_slot(now) == datetime(2026, 9, 23, 6, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert expected_slot(now) == datetime(2026, 9, 23, 6, 47, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+
+def test_expected_slot_selects_minute_17_half_hour_slot():
+    now = datetime(2026, 9, 23, 4, 40, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert expected_slot(now) == datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+
+def test_expected_slot_selects_minute_47_half_hour_slot():
+    now = datetime(2026, 9, 23, 4, 50, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert expected_slot(now) == datetime(2026, 9, 23, 4, 47, tzinfo=ZoneInfo("Asia/Tokyo"))
 
 
 def test_expected_slot_selects_evening_slot():
     now = datetime(2026, 9, 23, 17, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
-    assert expected_slot(now) == datetime(2026, 9, 23, 16, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert expected_slot(now) == datetime(2026, 9, 23, 16, 47, tzinfo=ZoneInfo("Asia/Tokyo"))
 
 
 def test_expected_slot_selects_previous_hour_before_minute_17():
     now = datetime(2026, 9, 23, 3, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
-    assert expected_slot(now) == datetime(2026, 9, 23, 2, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
+    assert expected_slot(now) == datetime(2026, 9, 23, 2, 47, tzinfo=ZoneInfo("Asia/Tokyo"))
 
 
 def test_find_scheduled_run_accepts_workflow_run_name_override(monkeypatch):
@@ -60,7 +70,7 @@ def test_find_scheduled_run_accepts_delayed_run_within_hourly_slot_grace(monkeyp
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
         "id": 789,
-        "created_at": "2026-09-22T19:56:00Z",
+        "created_at": "2026-09-22T19:32:00Z",
         "status": "completed",
         "conclusion": "failure",
     }
@@ -72,12 +82,12 @@ def test_find_scheduled_run_accepts_delayed_run_within_hourly_slot_grace(monkeyp
     assert find_scheduled_run("nonkun12/line-bot", slot) == scheduled
 
 
-def test_find_scheduled_run_rejects_run_after_four_hour_window(monkeypatch):
+def test_find_scheduled_run_rejects_run_after_half_hour_discovery_window(monkeypatch):
     too_late = {
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
         "id": 790,
-        "created_at": "2026-09-22T20:08:00Z",
+        "created_at": "2026-09-22T19:38:00Z",
         "status": "completed",
         "conclusion": "success",
     }
@@ -94,7 +104,7 @@ def test_find_scheduled_run_accepts_small_scheduler_delay(monkeypatch):
         "name": "Distributed Autonomous Development Loop",
         "event": "schedule",
         "id": 456,
-        "created_at": "2026-09-22T19:41:00Z",
+        "created_at": "2026-09-22T19:25:00Z",
         "status": "completed",
         "conclusion": "success",
     }
@@ -259,23 +269,23 @@ def test_completed_run_is_never_classified_as_pending():
     assert not run_is_pending_within_grace({"status": "completed"}, slot, slot)
 
 
-def test_missing_scheduled_run_is_pending_within_hourly_discovery_grace():
+def test_missing_scheduled_run_is_pending_within_half_hour_discovery_grace():
     slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
-    for minutes in (0, 30, 50):
+    for minutes in (0, 10, 20):
         now = slot + timedelta(minutes=minutes)
         assert run_is_pending_within_grace(None, slot, now)
 
 
 def test_missing_scheduled_run_remains_pending_through_discovery_window():
     slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
-    for minutes in (0, 30, 49, 50):
+    for minutes in (0, 10, 19, 20):
         now = slot + timedelta(minutes=minutes)
         assert run_is_pending_within_grace(None, slot, now)
 
 
 def test_missing_scheduled_run_is_not_pending_after_discovery_window():
     slot = datetime(2026, 9, 23, 4, 17, tzinfo=ZoneInfo("Asia/Tokyo"))
-    now = slot + timedelta(minutes=51)
+    now = slot + timedelta(minutes=21)
     assert not run_is_pending_within_grace(None, slot, now)
 
 
