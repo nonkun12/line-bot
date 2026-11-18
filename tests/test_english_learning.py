@@ -366,9 +366,14 @@ def test_expanded_core_vocabulary_contains_reviewed_practical_words():
         "provide", "respond", "result", "suggest", "enable", "manage",
         "focus", "solve", "challenge", "effect", "issue", "factor",
         "process", "method", "purpose", "source", "evidence", "claim",
+        "achieve", "adapt", "avoid", "benefit", "cause", "choose",
+        "communicate", "complete", "contain", "continue", "decide",
+        "define", "depend", "design", "determine", "encourage", "ensure",
+        "exist", "expand", "expect", "experience", "express", "form",
+        "function", "generate", "handle", "indicate",
     }
     assert expected <= set(_ENTRIES)
-    assert len(_ENTRIES) == 149
+    assert len(_ENTRIES) == 174
     for word in expected:
         explanation = explain_core_image(word)
         assert f"🔎 {word}（" in explanation
