@@ -85,6 +85,42 @@ def validate_snapshot(payload: object) -> dict:
             "worker_count": max(0, min(int(item.get("worker_count", 0)), 100)),
             "evidence": "matched_runtime_records" if item.get("evidence") == "matched_runtime_records" else "no_matching_stream_metadata",
         })
+    work_finder = payload.get("work_finder")
+    if work_finder is not None:
+        if not isinstance(work_finder, dict):
+            raise ValueError("work_finder must be an object")
+        if work_finder.get("cycle_status") not in {"WORK_FOUND", "NO_SAFE_CANDIDATE", "BLOCKED"}:
+            raise ValueError("invalid Work Finder cycle status")
+        if work_finder.get("execution_eligibility_status") not in {"verified", "not_proven"}:
+            raise ValueError("invalid execution eligibility status")
+        if work_finder.get("candidate_policy") != "review_only_no_execution_approval":
+            raise ValueError("Work Finder candidates must remain review-only")
+        safety = work_finder.get("safety")
+        if not isinstance(safety, dict) or safety.get("read_only") is not True or safety.get("execution_approval_granted") is not False:
+            raise ValueError("Work Finder safety contract must remain read-only")
+        allowed_counts = {"discovered_candidate_count", "review_pending_count", "completed_task_count",
+                          "catalog_task_count", "runtime_queue_task_count", "held_task_count",
+                          "resume_review_required_count", "scanned_target_pairs", "execution_eligible_count"}
+        clean_counts = {}
+        for key in allowed_counts:
+            value = work_finder.get(key)
+            if value is None and key == "execution_eligible_count":
+                continue
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 10000:
+                raise ValueError(f"invalid Work Finder count: {key}")
+            clean_counts[key] = value
+        next_actions = {"human_review_candidates", "review_catalog_runtime_plan_gaps",
+                        "expand_allowlisted_discovery_sources", "investigate_discovery_status"}
+        if work_finder.get("next_action") not in next_actions:
+            raise ValueError("invalid Work Finder next action")
+        clean["work_finder"] = {
+            "cycle_status": work_finder["cycle_status"],
+            "next_action": work_finder["next_action"],
+            "execution_eligibility_status": work_finder["execution_eligibility_status"],
+            "candidate_policy": work_finder["candidate_policy"],
+            "safety": {"read_only": True, "execution_approval_granted": False},
+            **clean_counts,
+        }
     review = payload.get("rsi_review")
     if review is not None:
         if not isinstance(review, dict):
