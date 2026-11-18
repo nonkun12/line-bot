@@ -29,6 +29,17 @@ def expected_idempotency_key(slot_id: str, workflow_id: int = SCHEDULE_WORKFLOW_
     return hashlib.sha256(material.encode("ascii")).hexdigest()
 
 
+def _valid_slot_id(value: Any) -> bool:
+    """Validate both the slot format and the actual UTC calendar timestamp."""
+    if not isinstance(value, str) or not SLOT_ID_RE.fullmatch(value):
+        return False
+    try:
+        datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return False
+    return True
+
+
 def _valid_timestamp(value: Any) -> bool:
     if not isinstance(value, str) or not value:
         return False
@@ -36,7 +47,7 @@ def _valid_timestamp(value: Any) -> bool:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return False
-    return parsed.tzinfo is not None
+    return parsed.tzinfo is not None and parsed.utcoffset() is not None
 
 
 def validate_slot_record(record: Any) -> list[str]:
@@ -46,17 +57,17 @@ def validate_slot_record(record: Any) -> list[str]:
 
     errors: list[str] = []
     slot_id = record.get("slot_id")
-    if not isinstance(slot_id, str) or not SLOT_ID_RE.fullmatch(slot_id):
-        errors.append("slot_id must be a UTC :17 or :47 schedule timestamp")
+    if not _valid_slot_id(slot_id):
+        errors.append("slot_id must be a real UTC :17 or :47 calendar timestamp")
 
     workflow_id = record.get("workflow_id")
-    if type(workflow_id) is not int or workflow_id <= 0:
-        errors.append("workflow_id must be a positive integer")
+    if type(workflow_id) is not int or workflow_id != SCHEDULE_WORKFLOW_ID:
+        errors.append("workflow_id must match the designated distributed-loop workflow")
 
     key = record.get("idempotency_key")
     if not isinstance(key, str) or not SHA256_RE.fullmatch(key):
         errors.append("idempotency_key must be a lowercase SHA-256 hex digest")
-    elif isinstance(slot_id, str) and SLOT_ID_RE.fullmatch(slot_id) and type(workflow_id) is int and workflow_id > 0:
+    elif _valid_slot_id(slot_id) and type(workflow_id) is int and workflow_id == SCHEDULE_WORKFLOW_ID:
         if key != expected_idempotency_key(slot_id, workflow_id):
             errors.append("idempotency_key does not match workflow_id and slot_id")
 
