@@ -184,7 +184,7 @@ def test_unknown_dependency_is_invalid():
 def test_self_referential_dependency_is_invalid():
     g = goal(tasks=[{
         "task_id": "x", "status": "PENDING", "kind": "TEST",
-        "execution_authorized": True, "allowed_paths:": [],
+        "execution_authorized": True, "allowed_paths": [],
         "depends_on": ["x"],
     }])
     assert evaluate_goal(g)["reason"] == "task_dependencies_duplicate_or_self_referential"
@@ -213,15 +213,16 @@ def test_cyclic_dependencies_are_invalid():
 
 def test_deep_dependency_chain_does_not_raise_recursion_error():
     tasks = []
-    for i in range(1200):
+    for i in range(500):
         task = {"task_id": f"t{i}", "status": "PENDING", "kind": "READ_ONLY",
                 "execution_authorized": True, "allowed_paths": []}
         if i:
             task["depends_on"] = [f"t{i-1}"]
         tasks.append(task)
     g = goal(tasks=tasks)
-    assert evaluate_goal(g)["decision"] == "INVALID"
-    assert evaluate_goal(g)["reason"] == "task_count_exceeds_limit"
+    result = evaluate_goal(g)
+    assert result["decision"] == "CONTINUE"
+    assert result["task_id"] == "t0"
 
 
 def test_task_count_is_bounded():
