@@ -22,6 +22,7 @@ _SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
 _CRITERION_EVIDENCE_RE = re.compile(r"^(commit:[0-9a-f]{40}|pr:[1-9][0-9]*|artifact:[A-Za-z0-9._/-]{1,200})$")
 _PROTECTED_PARTS = frozenset({
     ".git", ".github", ".env", ".envrc", ".ssh", ".aws", ".config",
+    ".netrc", ".npmrc", ".pypirc", ".gitconfig", ".git-credentials",
     "secrets", "secret", "credentials", "credential", "codeowners",
 })
 
@@ -34,7 +35,10 @@ def _safe_relative_path(value: Any) -> bool:
         return False
     if value.startswith(("/", "~")):
         return False
-    parts = value.rstrip("/").split("/")
+    # Permit one trailing slash for a directory, but never normalize away
+    # repeated separators or empty path segments.
+    normalized = value[:-1] if value.endswith("/") else value
+    parts = normalized.split("/")
     if any(not part or part != part.strip() or part in {".", ".."} for part in parts):
         return False
     if any(":" in part for part in parts):
