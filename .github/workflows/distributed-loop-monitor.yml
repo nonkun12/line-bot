@@ -103,6 +103,10 @@ jobs:
           print(f"- State age seconds: {report['state_age_seconds']}")
           print("- Dispatch allowed: **false**")
           print(f"- Reason: {report['failure_reason'] or 'none'}")
+          coverage = report.get("schedule_coverage", {})
+          print(f"- Recent schedule coverage: {coverage.get('status', 'UNVERIFIED')}")
+          print(f"- Slot outcomes: {coverage.get('counts', {})}")
+          print("- Task completion verified by schedule coverage: false")
           PY
           else
             echo "Monitor report was not produced." >> "$GITHUB_STEP_SUMMARY"
