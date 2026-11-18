@@ -30,12 +30,16 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
     criteria = goal.get("acceptance_criteria")
     if not isinstance(criteria, list) or not criteria:
         return {"decision": "INVALID", "reason": "acceptance_criteria_required"}
+    criterion_ids: set[str] = set()
     for criterion in criteria:
-        if not isinstance(criterion, dict) or not isinstance(criterion.get("id"), str):
+        if not isinstance(criterion, dict):
             return {"decision": "INVALID", "reason": "criterion_schema_invalid"}
-        if criterion.get("verified") is not True:
-            break
-    else:
+        criterion_id = criterion.get("id")
+        if not isinstance(criterion_id, str) or not criterion_id.strip() or criterion_id in criterion_ids:
+            return {"decision": "INVALID", "reason": "criterion_id_missing_or_duplicate"}
+        criterion_ids.add(criterion_id)
+
+    if all(c.get("verified") is True for c in criteria):
         # A goal is complete only when every criterion has a verifiable evidence ref.
         if all(isinstance(c.get("evidence_ref"), str) and c["evidence_ref"].strip()
                for c in criteria):
@@ -81,13 +85,15 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
     completed = {t["task_id"] for t in tasks if t["status"] == "COMPLETED"}
     eligible = []
     for task in tasks:
-        if task["status"] != "PENDING":
-            continue
         deps = task.get("depends_on", [])
-        if not isinstance(deps, list) or any(not isinstance(d, str) for d in deps):
+        if not isinstance(deps, list) or any(not isinstance(d, str) or not d.strip() for d in deps):
             return {"decision": "INVALID", "reason": "task_dependencies_invalid"}
+        if len(deps) != len(set(deps)) or task["task_id"] in deps:
+            return {"decision": "INVALID", "reason": "task_dependencies_duplicate_or_self_referential"}
         if any(dep not in seen for dep in deps):
             return {"decision": "INVALID", "reason": "unknown_task_dependency"}
+        if task["status"] != "PENDING":
+            continue
         if not set(deps).issubset(completed):
             continue
         eligible.append(task)
@@ -105,12 +111,10 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
     if kind not in SAFE_KINDS:
         return {"decision": "HOLD", "reason": "action_kind_not_allowlisted",
                 "task_id": task["task_id"]}
-    if kind == "DRAFT_PR" and task.get("execution_authorized") is not True:
-        return {"decision": "HOLD", "reason": "draft_pr_requires_explicit_task_authorization",
-                "task_id": task["task_id"]}
-    if kind in {"READ_ONLY", "TEST"} and task.get("execution_authorized") is not True:
-        return {"decision": "HOLD", "reason": "task_execution_not_explicitly_authorized",
-                "task_id": task["task_id"]}
+    if task.get("execution_authorized") is not True:
+        reason = ("draft_pr_requires_explicit_task_authorization" if kind == "DRAFT_PR"
+                  else "task_execution_not_explicitly_authorized")
+        return {"decision": "HOLD", "reason": reason, "task_id": task["task_id"]}
     paths = task.get("allowed_paths", [])
     if not isinstance(paths, list) or any(not isinstance(p, str) or not p.strip() for p in paths):
         return {"decision": "HOLD", "reason": "allowed_paths_invalid",
