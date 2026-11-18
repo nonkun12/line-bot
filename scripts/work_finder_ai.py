@@ -13,6 +13,7 @@ from typing import Any
 
 from scripts.autonomous_task_target_allowlist import TARGETS
 from scripts.catalog_exhaustion_analyzer import analyze
+from scripts.functional_roadmap_discovery import discover_roadmap_candidates
 
 
 def _read_json(path: Path) -> Any:
@@ -64,9 +65,13 @@ def find_work(
         if isinstance(item, dict) and item.get("resume_requires_review") is True
     )
     candidate_count = report["candidate_count"]
+    functional_candidates = discover_roadmap_candidates(repo_root / "README.md")
     if candidate_count:
         next_action = "human_review_candidates"
         cycle_status = "WORK_FOUND"
+    elif functional_candidates:
+        next_action = "human_review_functional_improvements"
+        cycle_status = "FUNCTIONAL_WORK_FOUND"
     elif report["catalog_ids_without_runtime_plan"]:
         next_action = "review_catalog_runtime_plan_gaps"
         cycle_status = "NO_SAFE_CANDIDATE"
@@ -76,6 +81,7 @@ def find_work(
 
     # Preserve the exact analyzer schema expected by the existing safe issue
     # draft builder. Additional metadata is diagnostic only, never executable.
+    report["functional_improvement_candidates"] = functional_candidates
     report["work_finder"] = {
         "name": "Work Finder AI",
         "version": 1,
@@ -88,6 +94,8 @@ def find_work(
         "held_task_count": held_count,
         "resume_review_required_count": review_count,
         "candidate_count": candidate_count,
+        "functional_improvement_candidate_count": len(functional_candidates),
+        "functional_improvement_candidates_review_only": True,
         "discovered_candidate_count": candidate_count,
         "review_pending_count": candidate_count,
         "completed_task_count": len(state.get("completed", [])) if isinstance(state.get("completed", []), list) else 0,
