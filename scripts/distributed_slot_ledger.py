@@ -61,8 +61,9 @@ def validate_slot_record(record: Any) -> list[str]:
             errors.append("idempotency_key does not match workflow_id and slot_id")
 
     status = record.get("status")
-    if status not in SLOT_STATUSES:
+    if not isinstance(status, str) or status not in SLOT_STATUSES:
         errors.append("status is not a supported lifecycle state")
+        status = None
 
     attempt = record.get("attempt")
     if type(attempt) is not int or attempt < 0:
@@ -126,14 +127,16 @@ def transition_decision(current_status: str, next_status: str) -> dict[str, Any]
         "FAILED": set(),
         "HELD": set(),
     }
+    if not isinstance(current_status, str) or not isinstance(next_status, str):
+        return {"allowed": False, "reason": "unknown_lifecycle_state"}
     if current_status not in SLOT_STATUSES or next_status not in SLOT_STATUSES:
         return {"allowed": False, "reason": "unknown_lifecycle_state"}
+    if current_status == "FAILED" and next_status == "PENDING":
+        return {"allowed": False, "reason": "retry_requires_separate_human_review"}
     if next_status in allowed[current_status]:
         return {"allowed": True, "reason": "contract_transition_only"}
     if current_status in TERMINAL_STATUSES:
         return {"allowed": False, "reason": "terminal_state_no_automatic_transition"}
-    if current_status == "FAILED" and next_status == "PENDING":
-        return {"allowed": False, "reason": "retry_requires_separate_human_review"}
     if current_status == "CLAIMED" and next_status == "CLAIMED":
         return {"allowed": False, "reason": "lease_renewal_not_implemented"}
     return {"allowed": False, "reason": "transition_not_in_allowlist"}
