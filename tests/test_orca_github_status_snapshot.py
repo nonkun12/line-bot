@@ -103,6 +103,7 @@ def test_cloud_snapshot_carries_distinct_work_finder_lifecycle_counts():
         "held_task_count": 5, "resume_review_required_count": 1, "scanned_target_pairs": 12,
         "candidate_policy": "review_only_no_execution_approval",
         "safety": {"read_only": True, "execution_approval_granted": False},
+        "candidates": [{"id": "review-coverage-gap-a1b2", "target_test": "tests/test_x.py", "source_function": "do_work", "evidence": "core/x.py:12"}],
     }}
     state = build_snapshot([], "999", "NO_CHANGE", "2026-11-05T14:00:00+00:00", report)["work_finder"]
     assert state["discovered_candidate_count"] == 3
@@ -110,3 +111,4 @@ def test_cloud_snapshot_carries_distinct_work_finder_lifecycle_counts():
     assert "execution_eligible_count" not in state
     assert state["execution_eligibility_status"] == "not_proven"
     assert state["completed_task_count"] == 7
+    assert state["candidate_preview"][0]["source_function"] == "do_work"
