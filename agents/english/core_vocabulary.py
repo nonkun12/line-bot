@@ -33,21 +33,21 @@ def _user_key(user_id: str) -> str:
     return value[:_MAX_USER_ID_CHARS]
 
 
-def run_core_vocabulary(user_id: str, action: str, answer: str = "") -> CoreVocabularyResult:
+def run_core_vocabulary(user_id: str, action: str, answer: str = "", word_selector=None) -> CoreVocabularyResult:
     """Run one bounded Side 5 action for one identified learner."""
     key = _user_key(user_id)
     selected_action = str(action or "").strip().lower()
     if selected_action not in {"daily", "review", "quiz", "answer"}:
         raise ValueError("unsupported Side 5 action")
 
-    if selected_action == "quiz":
+    selector = word_selector or select_daily_words\n\n    if selected_action == "quiz":
         text = start_quiz(key)
     elif selected_action == "answer":
         text = grade_quiz(key, answer)
         if text is None:
             raise ValueError("answer must be A, B, or C")
     elif selected_action == "review":
-        selected = select_daily_words(key, 3)
+        selected = selector(key, 3)
         words = " / ".join(word for word, _, _ in selected)
         first_word = selected[0][0] if selected else "英単語"
         text = (
