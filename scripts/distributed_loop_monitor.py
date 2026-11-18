@@ -85,6 +85,98 @@ def normalize_actions_runs(payload: Any) -> dict[str, Any] | None:
     return {"workflow_runs": combined}
 
 
+SCHEDULE_WORKFLOW_ID = 357086091
+SCHEDULE_SLOT_MINUTES = (17, 47)
+SCHEDULE_COVERAGE_SLOTS = 12
+SCHEDULE_DISCOVERY_BEFORE_MINUTES = 10
+SCHEDULE_DISCOVERY_AFTER_MINUTES = 20
+SCHEDULE_QUEUED_GRACE_MINUTES = 120
+SCHEDULE_RUNNING_GRACE_MINUTES = 90
+
+
+def evaluate_schedule_coverage(runs_payload: Any, now: datetime) -> dict[str, Any]:
+    """Report recent 30-minute scheduled slots separately from task completion.
+
+    This is observation only: a successful Actions run is not proof that a task
+    completed. Task-level evidence remains the responsibility of the watchdog's
+    independent ledger checks.
+    """
+    normalized = normalize_actions_runs(runs_payload)
+    if not isinstance(normalized, dict) or not isinstance(normalized.get("workflow_runs"), list):
+        return {"status": "UNVERIFIED", "slots": [], "counts": {}}
+    now_utc = now.astimezone(timezone.utc)
+    local = now_utc
+    latest = None
+    for minute in reversed(SCHEDULE_SLOT_MINUTES):
+        if local.minute >= minute:
+            latest = local.replace(minute=minute, second=0, microsecond=0)
+            break
+    if latest is None:
+        latest = local.replace(minute=SCHEDULE_SLOT_MINUTES[-1], second=0, microsecond=0) - timedelta(hours=1)
+
+    scheduled = []
+    for run in normalized["workflow_runs"]:
+        if not isinstance(run, dict) or run.get("workflow_id") != SCHEDULE_WORKFLOW_ID or run.get("event") != "schedule":
+            continue
+        created = parse_utc(run.get("created_at"))
+        if created is not None:
+            scheduled.append((created, run))
+
+    slots = []
+    for offset in range(SCHEDULE_COVERAGE_SLOTS):
+        slot = latest - timedelta(minutes=30 * offset)
+        start = slot - timedelta(minutes=SCHEDULE_DISCOVERY_BEFORE_MINUTES)
+        end = slot + timedelta(minutes=SCHEDULE_DISCOVERY_AFTER_MINUTES)
+        matches = [(created, run) for created, run in scheduled if start <= created < end]
+        record = {"slot": slot.isoformat(), "run_id": None, "run_status": None, "conclusion": None}
+        if len(matches) > 1:
+            record["status"] = "DUPLICATE"
+        elif not matches:
+            record["status"] = (
+                "PENDING" if now_utc <= end else "MISSING"
+            )
+        else:
+            created, run = matches[0]
+            record["run_id"] = str(run.get("id")) if run.get("id") is not None else None
+            record["run_status"] = run.get("status")
+            record["conclusion"] = run.get("conclusion")
+            status = run.get("status")
+            elapsed = now_utc - slot
+            if status == "completed":
+                record["status"] = "WORKFLOW_SUCCESS" if run.get("conclusion") == "success" else "WORKFLOW_FAILED"
+            elif status == "queued":
+                record["status"] = "QUEUED" if elapsed <= timedelta(minutes=SCHEDULE_QUEUED_GRACE_MINUTES) else "STALE_QUEUED"
+            elif status == "in_progress":
+                started = parse_utc(run.get("run_started_at"))
+                running_for = now_utc - started if started is not None else elapsed
+                record["status"] = (
+                    "IN_PROGRESS"
+                    if timedelta(0) <= running_for <= timedelta(minutes=SCHEDULE_RUNNING_GRACE_MINUTES)
+                    else "STALE_IN_PROGRESS"
+                )
+            else:
+                record["status"] = "UNKNOWN"
+        slots.append(record)
+
+    statuses = [item["status"] for item in slots]
+    counts = {status: statuses.count(status) for status in sorted(set(statuses))}
+    gap_states = {"DUPLICATE", "MISSING", "WORKFLOW_FAILED", "STALE_QUEUED", "STALE_IN_PROGRESS", "UNKNOWN"}
+    pending_states = {"PENDING", "QUEUED", "IN_PROGRESS"}
+    if any(status in gap_states for status in statuses):
+        overall = "GAPS_DETECTED"
+    elif any(status in pending_states for status in statuses):
+        overall = "PENDING"
+    else:
+        overall = "OBSERVED"
+    return {
+        "status": overall,
+        "window_slots": SCHEDULE_COVERAGE_SLOTS,
+        "counts": counts,
+        "slots": slots,
+        "task_completion_verified": False,
+    }
+
+
 def evaluate(
     runs_payload: Any,
     durable_payload: Any,
@@ -118,6 +210,18 @@ def evaluate(
     }
     if not runs_ok:
         reasons.append("Actions API evidence unavailable or malformed (workflow_id validation failed)")
+
+    schedule_coverage = (
+        evaluate_schedule_coverage(runs_payload, started_dt)
+        if runs_ok and started_dt is not None
+        else {"status": "UNVERIFIED", "slots": [], "counts": {}, "task_completion_verified": False}
+    )
+    checks["schedule_coverage"] = {
+        "status": "INFO",
+        "coverage_status": schedule_coverage["status"],
+        "counts": schedule_coverage.get("counts", {}),
+        "detail": "Recent scheduled slot presence is reported separately; this check does not verify task completion or authorize execution",
+    }
 
     state_ok = isinstance(durable_payload, dict)
     recovery = durable_payload.get("recovery_ai") if state_ok else None
@@ -322,7 +426,8 @@ def evaluate(
         "recovery_state_updated_at": recovery.get("state_updated_at") if isinstance(recovery, dict) else None,
         "recovery_state_age_seconds": recovery_age_seconds,
         "scheduled_at": None,
-        "schedule_expression": "*/30 * * * * (UTC)",
+        "schedule_expression": "17,47 * * * * (UTC; same minute slots as JST)",
+        "schedule_coverage": schedule_coverage,
         "started_at": started_at,
         "completed_at": utc_now(),
         "status": status,
@@ -334,7 +439,8 @@ def evaluate(
             "Queue eligibility and independent human approval are not evaluated by this health monitor and must be enforced by a separate execution gate.",
             "The 24-hour state-age ceiling is a conservative monitoring guard, not a verified normal writer cadence.",
             "Recovery AI state freshness is measured from its own state_updated_at field, separately from the outer Git commit timestamp.",
-            "GitHub scheduled events may be delayed or skipped; this report does not imply a missed run succeeded.",
+            "GitHub scheduled events may be delayed or skipped; recent slot coverage is observational and does not imply a missed run succeeded.",
+            "WORKFLOW_SUCCESS in schedule coverage is not task completion; independent task-level evidence is still required.",
         ],
     }
 
