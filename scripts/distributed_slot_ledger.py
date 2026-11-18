@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 SCHEDULE_WORKFLOW_ID = 357086091
@@ -23,8 +23,8 @@ def expected_idempotency_key(slot_id: str, workflow_id: int = SCHEDULE_WORKFLOW_
     """Return the stable key for one known workflow schedule slot."""
     if type(workflow_id) is not int or workflow_id <= 0:
         raise ValueError("workflow_id must be a positive integer")
-    if not isinstance(slot_id, str) or not SLOT_ID_RE.fullmatch(slot_id):
-        raise ValueError("slot_id must be a UTC :17 or :47 schedule timestamp")
+    if not _valid_slot_id(slot_id):
+        raise ValueError("slot_id must be a real UTC :17 or :47 calendar timestamp")
     material = f"distributed-loop:{workflow_id}:{slot_id}"
     return hashlib.sha256(material.encode("ascii")).hexdigest()
 
