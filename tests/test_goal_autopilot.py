@@ -176,3 +176,19 @@ def test_dependencies_are_validated_even_for_completed_tasks():
          "execution_authorized": True, "allowed_paths": []},
     ])
     assert evaluate_goal(g)["decision"] == "INVALID"
+
+
+def test_malformed_unhashable_status_is_invalid_not_exception():
+    g = goal(tasks=[{
+        "task_id": "t1", "status": ["PENDING"], "kind": "TEST",
+        "execution_authorized": True, "allowed_paths": []
+    }])
+    assert evaluate_goal(g)["reason"] == "unsupported_task_status"
+
+
+def test_malformed_unhashable_action_kind_is_held_not_exception():
+    g = goal(tasks=[{
+        "task_id": "t1", "status": "PENDING", "kind": ["DEPLOY"],
+        "execution_authorized": True, "allowed_paths": []
+    }])
+    assert evaluate_goal(g)["reason"] == "action_kind_not_allowlisted"
