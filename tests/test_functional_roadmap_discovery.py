@@ -37,7 +37,7 @@ def test_discovers_only_unchecked_items_in_explicit_roadmap_section(tmp_path: Pa
     assert rows[0]["impact_assessment"] == "NOT_ASSESSED"
     assert rows[0]["risk_assessment"] == "NOT_ASSESSED"
     assert rows[0]["test_strategy"] == "REQUIRES_SCOPE_REVIEW"
-    readme.write_text("Intro\\n\\n" + readme.read_text(encoding="utf-8"), encoding="utf-8")
+    readme.write_text("Intro\n\n" + readme.read_text(encoding="utf-8"), encoding="utf-8")
     moved = discover_roadmap_candidates(readme)
     assert moved[0]["id"] == rows[0]["id"]
 
