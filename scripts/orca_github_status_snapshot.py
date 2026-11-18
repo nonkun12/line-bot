@@ -81,6 +81,20 @@ def build_snapshot(results: list[dict], run_id: str, outcome: str, captured_at: 
             eligible = source.get("execution_eligible_count")
             if isinstance(eligible, int) and not isinstance(eligible, bool):
                 counts["execution_eligible_count"] = max(0, min(eligible, 10000))
+            previews = []
+            raw_candidates = work_finder_report.get("candidates")
+            if isinstance(raw_candidates, list):
+                for candidate in raw_candidates[:5]:
+                    if not isinstance(candidate, dict):
+                        continue
+                    preview = {}
+                    for key, limit in (("id", 100), ("target_test", 200), ("source_function", 120), ("evidence", 250)):
+                        value = candidate.get(key)
+                        if isinstance(value, str) and value.strip():
+                            preview[key] = value.strip()[:limit]
+                    if preview.get("id") and preview.get("target_test") and preview.get("source_function"):
+                        preview["status"] = "REVIEW_REQUIRED"
+                        previews.append(preview)
             safety = source.get("safety")
             work_finder = {
                 "cycle_status": source.get("cycle_status") if source.get("cycle_status") in {"WORK_FOUND", "NO_SAFE_CANDIDATE"} else "BLOCKED",
@@ -89,6 +103,7 @@ def build_snapshot(results: list[dict], run_id: str, outcome: str, captured_at: 
                 } else "investigate_discovery_status",
                 "execution_eligibility_status": "verified" if source.get("execution_eligibility_status") == "verified" and "execution_eligible_count" in counts else "not_proven",
                 "candidate_policy": "review_only_no_execution_approval",
+                "candidate_preview": previews,
                 "safety": {"read_only": isinstance(safety, dict) and safety.get("read_only") is True,
                            "execution_approval_granted": False},
                 **counts,
