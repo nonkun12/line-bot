@@ -71,10 +71,10 @@ jobs:
           if [[ "${DEV_INSTRUCTION}" == *E2E* && "${DEV_INSTRUCTION}" == *テスト* ]] || [[ "${DEV_INSTRUCTION}" == *本線E2E* ]]; then
             echo "E2E test-only instruction detected; bypassing autonomous file-edit planning."
             echo "test_only=true" >> "$GITHUB_OUTPUT"
-            python -m pytest -q --tb=native
+            python scripts/run_with_shared_stop.py -- python -m pytest -q --tb=native
           else
             echo "test_only=false" >> "$GITHUB_OUTPUT"
-            python scripts/run_guarded_runtime.py
+            python scripts/run_with_shared_stop.py -- python scripts/run_guarded_runtime.py
           fi
 
       - name: Create or reuse GitHub PR

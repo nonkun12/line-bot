@@ -46,7 +46,6 @@ jobs:
         continue-on-error: true
         env:
           HERMES_HOME: ${{ runner.temp }}/hermes-home
-          HERMES_GROQ_API_KEY: ${{ secrets.HERMES_GROQ_API_KEY || secrets.GROQ_API_KEY }}
           HERMES_ALLOW_PRIVATE_URLS: "false"
           HERMES_REDACT_SECRETS: "true"
           HERMES_DISABLE_LAZY_INSTALLS: "true"
@@ -135,8 +134,6 @@ jobs:
       - name: Run common guarded development runtime
         id: development
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          HERMES_GROQ_API_KEY: ${{ secrets.HERMES_GROQ_API_KEY || secrets.GROQ_API_KEY }}
           DEV_INSTRUCTION: "自律開発です。既存機能を壊さない安全な小規模改善を1件だけ実装してください。まずリポジトリ内の安全な候補から現在のコードとテストに基づいて改善対象を1ファイルだけ選び、既存機能との重複や不要な変更を避けてください。テスト可能な改善を優先し、必ずpytestとレビューゲートを通してください。mainへ直接変更せずPRを作成する前提です。"
           DEV_USER_ID: autonomous
           GITHUB_RUN_ID: ${{ github.run_id }}
@@ -150,7 +147,7 @@ jobs:
           HERMES_DISABLE_LAZY_INSTALLS: "true"
           HERMES_HOME: ${{ runner.temp }}/hermes-home
         run: |
-          python scripts/run_guarded_runtime.py
+          python scripts/run_with_shared_stop.py -- python scripts/run_guarded_runtime.py
           echo "AUTONOMOUS_SUMMARY_PATH=${RUNNER_TEMP}/autonomous_run_summary.json" >> "$GITHUB_ENV"
 
       - name: Validate autonomous result and Safety Gate
