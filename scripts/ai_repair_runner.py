@@ -45,7 +45,7 @@ PATCH_PATH = re.compile(r"^(?:a|b)/([A-Za-z0-9_./-]+)$")
 SECRET_PATTERNS = (
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     re.compile(r"(?i)(?:ghp_|github_pat_|sk_live_|AKIA)[A-Za-z0-9_]{12,}"),
-    re.compile(r"(?i)(?:password|passwd|api[_-]?key|access[_-]?token)\\s*[:=]\\s*[^\\s]{8,}"),
+    re.compile(r"(?i)(?:password|passwd|api[_-]?key|access[_-]?token)\s*[:=]\s*[^\s]{8,}"),
 )
 
 
