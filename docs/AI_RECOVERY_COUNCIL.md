@@ -39,6 +39,8 @@ identifier exposed by that server:
 \`\`\`sh
 export AI_REPAIR_MODEL_URL="http://127.0.0.1:8081/v1"
 export AI_REPAIR_MODEL="your-local-model-id"
+export AI_REPAIR_CRITIC_MODEL_URL="http://127.0.0.1:11434/v1"
+export AI_REPAIR_CRITIC_MODEL="your-distinct-critic-model-id"
 python -m scripts.ai_repair_runner \\
   --evidence /path/to/sanitized-failure.json \\
   --output artifacts/ai-repair/report.json
