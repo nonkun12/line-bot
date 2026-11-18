@@ -19,34 +19,39 @@ MAX_ACCEPTANCE_CRITERIA = 100
 MAX_ALLOWED_PATHS = 100
 MAX_PATH_LENGTH = 512
 _SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
+_CRITERION_EVIDENCE_RE = re.compile(r"^(commit:[0-9a-f]{40}|pr:[1-9][0-9]*|artifact:[A-Za-z0-9._/-]{1,200})$")
+_PROTECTED_PARTS = frozenset({
+    ".git", ".github", ".env", ".envrc", ".ssh", ".aws", ".config",
+    "secrets", "secret", "credentials", "credential", "codeowners",
+})
 
 
 def _safe_relative_path(value: Any) -> bool:
-    """Reject absolute, traversing, ambiguous, and cross-platform paths."""
-    if not isinstance(value, str) or not value.strip() or len(value) > MAX_PATH_LENGTH:
+    """Reject absolute, traversing, ambiguous, protected, and cross-platform paths."""
+    if not isinstance(value, str) or not value or len(value) > MAX_PATH_LENGTH:
         return False
-    if "\\\\" in value or "\\x00" in value or value.startswith(("~", "/")):
+    if value != value.strip() or "\\" in value or "\x00" in value:
+        return False
+    if value.startswith(("/", "~")):
         return False
     parts = value.rstrip("/").split("/")
-    if any(part in {"", ".", ".."} for part in parts):
+    if any(not part or part != part.strip() or part in {".", ".."} for part in parts):
         return False
-    if ":" in parts[0]:
+    if any(":" in part for part in parts):
+        return False
+    if any(part.lower() in _PROTECTED_PARTS for part in parts):
+        return False
+    if any(part.lower().startswith((".env.", "secret", "credential")) for part in parts):
         return False
     return True
 
 
 def _valid_completion_evidence(task: dict[str, Any]) -> bool:
-    """Require a task-bound, timestamped, independently verified evidence record.
-
-    The referenced verifier record must be checked by the integration layer;
-    this pure planner validates its shape but cannot authenticate remote content.
-    """
+    """Validate task-bound evidence shape; integration must authenticate the record."""
     evidence = task.get("completion_evidence")
     if not isinstance(evidence, dict):
         return False
-    if evidence.get("task_id") != task.get("task_id"):
-        return False
-    if evidence.get("verified") is not True:
+    if evidence.get("task_id") != task.get("task_id") or evidence.get("verified") is not True:
         return False
     evidence_sha = evidence.get("evidence_sha")
     if not isinstance(evidence_sha, str) or not _SHA1_RE.fullmatch(evidence_sha):
@@ -62,6 +67,10 @@ def _valid_completion_evidence(task: dict[str, Any]) -> bool:
     except ValueError:
         return False
     return timestamp.tzinfo is not None and timestamp.utcoffset() is not None
+
+
+def _valid_criterion_evidence(value: Any) -> bool:
+    return isinstance(value, str) and _CRITERION_EVIDENCE_RE.fullmatch(value) is not None
 
 
 def evaluate_goal(goal: Any) -> dict[str, Any]:
@@ -87,13 +96,9 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
             return {"decision": "INVALID", "reason": "criterion_id_missing_or_duplicate"}
         criterion_ids.add(criterion_id)
 
-    if all(c.get("verified") is True for c in criteria):
-        if all(isinstance(c.get("evidence_ref"), str) and c["evidence_ref"].strip()
-               for c in criteria):
-            return {"decision": "COMPLETE", "reason": "all_acceptance_criteria_verified"}
-
-    if goal.get("kill_switch") is True:
-        return {"decision": "HOLD", "reason": "kill_switch_active"}
+    # Fail closed: only the literal boolean False means the kill switch is off.
+    if goal.get("kill_switch") is not False:
+        return {"decision": "HOLD", "reason": "kill_switch_active_or_invalid"}
     if goal.get("safety_gate") is not True:
         return {"decision": "HOLD", "reason": "safety_gate_not_explicitly_passed"}
 
@@ -117,7 +122,6 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
         if type(task.get("priority", 0)) is not int:
             return {"decision": "INVALID", "reason": "task_priority_must_be_integer"}
 
-    # Validate every dependency declaration, including completed tasks.
     graph: dict[str, list[str]] = {}
     dependents: dict[str, list[str]] = {task_id: [] for task_id in seen}
     indegree: dict[str, int] = {}
@@ -135,7 +139,7 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
         for dep in deps:
             dependents[dep].append(task["task_id"])
 
-    # Iterative Kahn traversal avoids recursion-depth failures on long chains.
+    # Iterative Kahn traversal avoids recursion-depth failures.
     ready = [task_id for task_id, degree in indegree.items() if degree == 0]
     visited_count = 0
     while ready:
@@ -148,7 +152,6 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
     if visited_count != len(graph):
         return {"decision": "INVALID", "reason": "cyclic_task_dependencies"}
 
-    # A COMPLETED label alone never unlocks dependents.
     completed: set[str] = set()
     for task in tasks:
         if task["status"] == "COMPLETED":
@@ -168,6 +171,15 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
     if blocked:
         return {"decision": "HOLD", "reason": "failed_or_held_task_requires_review",
                 "task_ids": [task["task_id"] for task in blocked]}
+
+    criteria_complete = all(
+        criterion.get("verified") is True and _valid_criterion_evidence(criterion.get("evidence_ref"))
+        for criterion in criteria
+    )
+    if criteria_complete:
+        if len(completed) != len(tasks):
+            return {"decision": "HOLD", "reason": "acceptance_criteria_met_but_tasks_incomplete"}
+        return {"decision": "COMPLETE", "reason": "all_acceptance_criteria_verified"}
 
     eligible = [
         task for task in tasks
@@ -196,6 +208,9 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
     if (not isinstance(paths, list) or len(paths) > MAX_ALLOWED_PATHS
             or any(not _safe_relative_path(path) for path in paths)):
         return {"decision": "HOLD", "reason": "allowed_paths_invalid",
+                "task_id": task["task_id"]}
+    if kind == "DRAFT_PR" and not paths:
+        return {"decision": "HOLD", "reason": "draft_pr_requires_explicit_paths",
                 "task_id": task["task_id"]}
     return {"decision": "CONTINUE", "reason": "next_task_selected",
             "task_id": task["task_id"], "kind": kind,
