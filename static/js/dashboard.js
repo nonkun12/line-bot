@@ -161,8 +161,11 @@ document.addEventListener('DOMContentLoaded', () => {
              ['実際の完了',wf.completed_task_count]].map(([name,value])=>'<div class="system-card"><div class="system-card-title">'+esc(name)+'</div><div class="history-metric-value">'+esc(value??'未取得')+'</div></div>').join('')
           + '</div><div class="system-details">次の安全な動作：'+esc(wf.next_action)+' ・ Queue '+esc(wf.runtime_queue_task_count??'未取得')
           +' ・ HOLD '+esc(wf.held_task_count??'未取得')+' ・ 要レビュー '+esc(wf.resume_review_required_count??'未取得')
-          +' ・ 実行承認は候補生成から自動付与しません</div>'
+          +' ・ 実行承認は候補生成から自動付与しません</div>'+candidatePreview
         : '<div class="section-subtitle">Work Finder AI：今回のスナップショットに診断結果なし</div>';
+      const candidatePreview=Array.isArray(wf?.candidate_preview)&&wf.candidate_preview.length
+        ? '<div class="system-details"><strong>レビュー候補（最大5件）</strong><ul>'+wf.candidate_preview.map(item=>'<li>'+esc(item.source_function)+' — '+esc(item.target_test)+' ('+esc(item.evidence||'証跡なし')+')</li>').join('')+'</ul></div>'
+        : '<div class="system-details">個別候補のプレビューなし</div>';
       const streamRows=(Array.isArray(data.streams)?data.streams:[]).map(item=>{
         const observed=item.status==='observed';
         const counts='Task '+Number(item.task_count||0)+' / Dispatch '+Number(item.dispatch_count||0)+' / Worker '+Number(item.worker_count||0);
