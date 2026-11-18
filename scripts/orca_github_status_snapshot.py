@@ -71,7 +71,7 @@ def build_snapshot(results: list[dict], run_id: str, outcome: str, captured_at: 
         source = work_finder_report.get("work_finder")
         if isinstance(source, dict):
             counts = {}
-            count_keys = ("discovered_candidate_count", "review_pending_count", "completed_task_count",
+            count_keys = ("discovered_candidate_count", "review_pending_count", "functional_improvement_candidate_count", "completed_task_count",
                           "catalog_task_count", "runtime_queue_task_count", "held_task_count",
                           "resume_review_required_count", "scanned_target_pairs")
             for key in count_keys:
@@ -95,15 +95,30 @@ def build_snapshot(results: list[dict], run_id: str, outcome: str, captured_at: 
                     if preview.get("id") and preview.get("target_test") and preview.get("source_function"):
                         preview["status"] = "REVIEW_REQUIRED"
                         previews.append(preview)
+            functional_previews = []
+            raw_functional = work_finder_report.get("functional_improvement_candidates")
+            if isinstance(raw_functional, list):
+                for candidate in raw_functional[:5]:
+                    if not isinstance(candidate, dict) or candidate.get("status") != "REVIEW_REQUIRED":
+                        continue
+                    preview = {}
+                    for key, limit in (("id", 100), ("title", 240), ("evidence", 250), ("priority", 20)):
+                        value = candidate.get(key)
+                        if isinstance(value, str) and value.strip():
+                            preview[key] = value.strip()[:limit]
+                    if preview.get("id") and preview.get("title") and preview.get("evidence"):
+                        preview["status"] = "REVIEW_REQUIRED"
+                        functional_previews.append(preview)
             safety = source.get("safety")
             work_finder = {
-                "cycle_status": source.get("cycle_status") if source.get("cycle_status") in {"WORK_FOUND", "NO_SAFE_CANDIDATE"} else "BLOCKED",
+                "cycle_status": source.get("cycle_status") if source.get("cycle_status") in {"WORK_FOUND", "FUNCTIONAL_WORK_FOUND", "NO_SAFE_CANDIDATE"} else "BLOCKED",
                 "next_action": source.get("next_action") if source.get("next_action") in {
-                    "human_review_candidates", "review_catalog_runtime_plan_gaps", "expand_allowlisted_discovery_sources"
+                    "human_review_candidates", "human_review_functional_improvements", "review_catalog_runtime_plan_gaps", "expand_allowlisted_discovery_sources"
                 } else "investigate_discovery_status",
                 "execution_eligibility_status": "verified" if source.get("execution_eligibility_status") == "verified" and "execution_eligible_count" in counts else "not_proven",
                 "candidate_policy": "review_only_no_execution_approval",
                 "candidate_preview": previews,
+                "functional_candidate_preview": functional_previews,
                 "safety": {"read_only": isinstance(safety, dict) and safety.get("read_only") is True,
                            "execution_approval_granted": False},
                 **counts,
