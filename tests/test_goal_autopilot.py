@@ -40,6 +40,21 @@ def test_verified_without_evidence_does_not_complete():
     assert evaluate_goal(g)["decision"] == "HOLD"
 
 
+def test_duplicate_acceptance_criterion_ids_are_invalid():
+    g = goal(acceptance_criteria=[
+        {"id": "same", "verified": False},
+        {"id": "same", "verified": True, "evidence_ref": "commit:abc123"},
+    ])
+    assert evaluate_goal(g) == {
+        "decision": "INVALID", "reason": "criterion_id_missing_or_duplicate"
+    }
+
+
+def test_blank_acceptance_criterion_id_is_invalid():
+    g = goal(acceptance_criteria=[{"id": "  ", "verified": False}])
+    assert evaluate_goal(g)["reason"] == "criterion_id_missing_or_duplicate"
+
+
 def test_kill_switch_holds_before_task_selection():
     assert evaluate_goal(goal(kill_switch=True))["reason"] == "kill_switch_active"
 
@@ -69,7 +84,7 @@ def test_failed_or_held_tasks_are_never_silently_retried():
 def test_dependency_order_is_enforced():
     g = goal(tasks=[
         {"task_id": "later", "status": "PENDING", "kind": "TEST",
-         "execution_authorized": True, "allowed_paths": [],
+         "execution_authorized": True, "allowed_paths:": [],
          "depends_on": ["first"]},
         {"task_id": "first", "status": "COMPLETED", "kind": "TEST"},
     ])
@@ -107,3 +122,22 @@ def test_unknown_dependency_is_invalid():
          "depends_on": ["missing"]}
     ])
     assert evaluate_goal(g)["decision"] == "INVALID"
+
+
+def test_self_referential_dependency_is_invalid():
+    g = goal(tasks=[
+        {"task_id": "x", "status": "PENDING", "kind": "TEST",
+         "execution_authorized": True, "allowed_paths:": [],
+         "depends_on": ["x"]}
+    ])
+    assert evaluate_goal(g)["reason"] == "task_dependencies_duplicate_or_self_referential"
+
+
+def test_duplicate_dependencies_are_invalid():
+    g = goal(tasks=[
+        {"task_id": "x", "status": "PENDING", "kind": "TEST",
+         "execution_authorized": True, "allowed_paths": [],
+         "depends_on": ["done", "done"]},
+        {"task_id": "done", "status": "COMPLETED", "kind": "TEST"},
+    ])
+    assert evaluate_goal(g)["reason"] == "task_dependencies_duplicate_or_self_referential"
