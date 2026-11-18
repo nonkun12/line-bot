@@ -149,15 +149,16 @@ def test_orca_dashboard_rejects_rea_artifact_authority_escalation(orca_client):
 
 def test_orca_dashboard_exposes_distinct_work_finder_lifecycle_counts(orca_client):
     work_finder = {
-        "cycle_status": "WORK_FOUND", "next_action": "human_review_candidates",
+        "cycle_status": "FUNCTIONAL_WORK_FOUND", "next_action": "human_review_functional_improvements",
         "execution_eligibility_status": "not_proven",
         "candidate_policy": "review_only_no_execution_approval",
         "safety": {"read_only": True, "execution_approval_granted": False},
-        "discovered_candidate_count": 4, "review_pending_count": 4,
+        "discovered_candidate_count": 4, "review_pending_count": 4, "functional_improvement_candidate_count": 1,
         "completed_task_count": 8, "catalog_task_count": 50,
         "runtime_queue_task_count": 0, "held_task_count": 6,
         "resume_review_required_count": 2, "scanned_target_pairs": 10,
         "candidate_preview": [{"id": "review-coverage-gap-a1b2", "target_test": "tests/test_x.py", "source_function": "do_work", "evidence": "core/x.py:12", "status": "REVIEW_REQUIRED"}],
+        "functional_candidate_preview": [{"id": "functional-roadmap-a1b2", "title": "Improve agent capability", "evidence": "README.md:88", "priority": "medium", "status": "REVIEW_REQUIRED"}],
     }
     assert post_snapshot(orca_client, snapshot(work_finder=work_finder)).status_code == 200
     read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
@@ -166,6 +167,8 @@ def test_orca_dashboard_exposes_distinct_work_finder_lifecycle_counts(orca_clien
     assert body["review_pending_count"] == 4
     assert body["completed_task_count"] == 8
     assert body["candidate_preview"][0]["source_function"] == "do_work"
+    assert body["functional_improvement_candidate_count"] == 1
+    assert body["functional_candidate_preview"][0]["title"] == "Improve agent capability"
     assert "execution_eligible_count" not in body
     assert body["execution_eligibility_status"] == "not_proven"
 
