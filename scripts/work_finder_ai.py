@@ -88,6 +88,12 @@ def find_work(
         "held_task_count": held_count,
         "resume_review_required_count": review_count,
         "candidate_count": candidate_count,
+        "discovered_candidate_count": candidate_count,
+        "review_pending_count": candidate_count,
+        "completed_task_count": len(state.get("completed", [])) if isinstance(state.get("completed", []), list) else 0,
+        # Queue membership alone is not proof of execution approval.
+        "execution_eligible_count": None,
+        "execution_eligibility_status": "not_proven",
         "candidate_policy": "review_only_no_execution_approval",
         "repeat_policy": "run_on_every_normal_distributed_loop_cycle",
         "exhaustion_policy": (
