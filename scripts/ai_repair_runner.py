@@ -85,6 +85,11 @@ def _local_endpoint(value: str) -> str:
     return value.rstrip("/")
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def call_local_model(messages: list[dict[str, str]], *, endpoint: str, model: str) -> str:
     base = _local_endpoint(endpoint)
     url = base if base.endswith("/chat/completions") else base + "/chat/completions" if base.endswith("/v1") else base + "/v1/chat/completions"
@@ -97,7 +102,11 @@ def call_local_model(messages: list[dict[str, str]], *, endpoint: str, model: st
     request = urllib.request.Request(
         url, data=body, headers={"Content-Type": "application/json"}, method="POST"
     )
-    with urllib.request.urlopen(request, timeout=90) as response:
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _NoRedirectHandler(),
+    )
+    with opener.open(request, timeout=90) as response:
         payload = json.loads(response.read(1_000_000).decode("utf-8"))
     content = payload["choices"][0]["message"]["content"]
     if not isinstance(content, str) or len(content) > 60_000:
@@ -185,12 +194,17 @@ def apply_and_test(proposal: dict[str, Any], *, root: Path) -> dict[str, Any]:
     if status.returncode or status.stdout.strip():
         raise RepairRejected("working tree must be clean before repair")
     for path in proposal["paths"]:
-        if not (root / path).is_file():
-            raise RepairRejected("patch may only modify existing tracked files")
+        target = root / path
+        if target.is_symlink() or not target.is_file() or not target.resolve().is_relative_to(root):
+            raise RepairRejected("patch may only modify regular files inside the repository")
+        if any(parent.is_symlink() for parent in target.parents if parent != root):
+            raise RepairRejected("symlinked patch paths are forbidden")
         tracked = _run(["git", "ls-files", "--error-unmatch", path], cwd=root)
         if tracked.returncode:
             raise RepairRejected("patch target is not a tracked repository file")
     patch_file = root / ".ai-repair-candidate.patch"
+    if patch_file.exists() or patch_file.is_symlink():
+        raise RepairRejected("temporary repair patch path already exists")
     applied_ok = False
     keep_patch = False
     try:
@@ -207,8 +221,13 @@ def apply_and_test(proposal: dict[str, Any], *, root: Path) -> dict[str, Any]:
             raise RepairRejected("git diff --check rejected the patch")
         test_results = []
         for test in proposal["tests"]:
-            if not (root / test).is_file():
-                raise RepairRejected("focused test file does not exist")
+            test_path = root / test
+            if (
+                test_path.is_symlink() or not test_path.is_file()
+                or not test_path.resolve().is_relative_to(root)
+                or any(parent.is_symlink() for parent in test_path.parents if parent != root)
+            ):
+                raise RepairRejected("focused test must be an existing regular file inside the repository")
             try:
                 result = _run([sys.executable, "-m", "pytest", "-q", test], cwd=root)
                 test_results.append({
