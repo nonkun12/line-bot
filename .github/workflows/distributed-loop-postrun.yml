@@ -212,40 +212,16 @@ jobs:
           print("\n".join(report))
           PY
 
-      - name: Open a deduplicated follow-up issue when evidence is incomplete or failed
-        if: steps.verify.outputs.issues != '0'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
-        run: |
-          set -euo pipefail
-          title="Distributed Loop follow-up: run $RUN_ID"
-          if gh issue list --repo "$REPOSITORY" --state open --search "$title in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then
-            echo "An open follow-up issue already exists for this run."
-            exit 0
-          fi
-          body="$(python - <<'PY'
-          import json, os
-          from pathlib import Path
-          findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
-          print("Automated post-run verification found an issue requiring investigation.\n")
-          print(f"- Run: {os.environ.get('RUN_URL', '')}")
-          print(f"- Run ID: {os.environ.get('RUN_ID', '')}")
-          print("\n## Findings")
-          for item in findings:
-              print(f"- {item}")
-          print("\n## Required follow-up")
-          print("- Inspect the original run logs and uploaded evidence.")
-          print("- Verify the Google Sheets row directly; an artifact alone is not proof of a live row.")
-          print("- Make only a reviewed, bounded fix. Do not auto-deploy, bypass safety gates, or loop-retry.")
-          PY
-          )"
-          gh issue create --repo "$REPOSITORY" --title "$title" --body "$body" || {
-            echo "::warning::Could not create issue (label may be unavailable or token lacks permission)."
-            exit 0
-          }
+      - name: Preserve post-run findings without creating a GitHub Issue
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributed-loop-postrun-${{ github.event.workflow_run.id }}
+          path: |
+            postrun-report.md
+            postrun-findings.json
+          if-no-files-found: warn
+          retention-days: 14
 
       # The source loop sends the canonical one-per-run LINE report.
       # Post-run verification records discrepancies as GitHub issues; it must
