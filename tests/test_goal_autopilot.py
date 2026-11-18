@@ -84,7 +84,7 @@ def test_failed_or_held_tasks_are_never_silently_retried():
 def test_dependency_order_is_enforced():
     g = goal(tasks=[
         {"task_id": "later", "status": "PENDING", "kind": "TEST",
-         "execution_authorized": True, "allowed_paths:": [],
+         "execution_authorized": True, "allowed_paths": [],
          "depends_on": ["first"]},
         {"task_id": "first", "status": "COMPLETED", "kind": "TEST"},
     ])
@@ -127,7 +127,7 @@ def test_unknown_dependency_is_invalid():
 def test_self_referential_dependency_is_invalid():
     g = goal(tasks=[
         {"task_id": "x", "status": "PENDING", "kind": "TEST",
-         "execution_authorized": True, "allowed_paths:": [],
+         "execution_authorized": True, "allowed_paths": [],
          "depends_on": ["x"]}
     ])
     assert evaluate_goal(g)["reason"] == "task_dependencies_duplicate_or_self_referential"
