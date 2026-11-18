@@ -45,14 +45,17 @@ export AI_REPAIR_MODEL="your-local-model-id"
 export AI_REPAIR_CRITIC_MODEL_URL="http://127.0.0.1:11434/v1"
 export AI_REPAIR_CRITIC_MODEL="your-distinct-critic-model-id"
 python -m scripts.ai_repair_runner \
-  --evidence /path/to/sanitized-failure.json \\
+  --evidence /path/to/sanitized-failure.json \
   --output artifacts/ai-repair/report.json
 ```
 
 The command above generates proposals only. To apply and test a candidate, first
-create and check out a dedicated clean branch named `ai-repair/<task-id>` from main, then
-run the same command with `--apply`. For example: `git switch main && git pull --ff-only && git switch -c ai-repair/<task-id>`. The repository must be clean before the
-runner starts. Review the resulting diff before committing or publishing it.
+create and check out a dedicated clean branch named `ai-repair/<task-id>` from main,
+then run the same command with `--apply`. For example:
+
+`git switch main && git pull --ff-only && git switch -c ai-repair/<task-id>`
+
+The repository must be clean before the runner starts. Review the resulting diff before committing or publishing it.
 
 ## Completion status
 
