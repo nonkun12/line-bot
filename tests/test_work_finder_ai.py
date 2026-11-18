@@ -32,6 +32,7 @@ def _fixture(tmp_path: Path):
     })
     runtime = root / "core" / "line_development_runtime.py"
     runtime.write_text("_DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {}\n", encoding="utf-8")
+    (root / "README.md").write_text("## 今後の実装予定\n", encoding="utf-8")
     return root, catalog, queue, state, runtime
 
 
