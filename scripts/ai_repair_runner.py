@@ -130,7 +130,7 @@ def validate_proposal(proposal: Any) -> dict[str, Any]:
         )):
             raise RepairRejected("file creation, deletion, mode change, copy, and rename are forbidden")
         if line.startswith(("--- ", "+++ ")):
-            raw = line[4:].split("\\t", 1)[0]
+            raw = line[4:].split("\t", 1)[0]
             if raw == "/dev/null":
                 raise RepairRejected("file creation and deletion are forbidden")
             match = PATCH_PATH.fullmatch(raw)
