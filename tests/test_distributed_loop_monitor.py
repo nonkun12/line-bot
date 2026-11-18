@@ -62,6 +62,32 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertEqual(result["counts"], {"WORKFLOW_SUCCESS": 12})
         self.assertIs(result["task_completion_verified"], False)
 
+    def test_schedule_coverage_emits_stable_slot_identity_and_disables_replay(self):
+        now = datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc)
+        slot = datetime(2026, 11, 13, 23, 47, tzinfo=timezone.utc)
+        run = {
+            "workflow_id": 357086091, "event": "schedule", "id": 314,
+            "created_at": slot.isoformat(), "status": "completed", "conclusion": "success",
+        }
+        first = evaluate_schedule_coverage({"workflow_runs": [run]}, now)["slots"][0]
+        second = evaluate_schedule_coverage({"workflow_runs": [dict(run, conclusion="failure")]}, now)["slots"][0]
+        expected_material = "distributed-loop:357086091:2026-11-13T23:47:00Z"
+        expected_key = hashlib.sha256(expected_material.encode("ascii")).hexdigest()
+        self.assertEqual(first["slot_id"], "2026-11-13T23:47:00Z")
+        self.assertEqual(first["idempotency_key"], expected_key)
+        self.assertEqual(first["idempotency_key"], second["idempotency_key"])
+        self.assertIs(first["replay_allowed"], False)
+        self.assertEqual(first["replay_block_reason"], "read_only_monitor_no_dispatch")
+
+    def test_schedule_coverage_missing_and_unobserved_slots_never_enable_replay(self):
+        now = datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc)
+        result = evaluate_schedule_coverage({"workflow_runs": []}, now)
+        self.assertTrue(result["slots"])
+        for slot in result["slots"]:
+            self.assertRegex(slot["slot_id"], r"^2026-11-\d{2}T\d{2}:\d{2}:00Z$")
+            self.assertRegex(slot["idempotency_key"], r"^[0-9a-f]{64}$")
+            self.assertIs(slot["replay_allowed"], False)
+
     def test_schedule_coverage_flags_missing_slot_after_discovery_grace(self):
         now = datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc)
         latest = datetime(2026, 11, 13, 23, 47, tzinfo=timezone.utc)
@@ -103,6 +129,8 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         ]
         result = evaluate_schedule_coverage({"workflow_runs": runs}, now)
         self.assertEqual(result["slots"][0]["status"], "DUPLICATE")
+        self.assertEqual(result["slots"][0]["idempotency_key"], result["slots"][0]["idempotency_key"])
+        self.assertIs(result["slots"][0]["replay_allowed"], False)
 
     def test_schedule_coverage_ignores_other_workflows_and_manual_runs(self):
         now = datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc)
