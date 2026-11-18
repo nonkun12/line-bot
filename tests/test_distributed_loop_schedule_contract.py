@@ -19,3 +19,9 @@ def test_scheduled_loop_is_bounded_to_one_task_and_serialized():
     assert "cancel-in-progress: false" in text
     assert "AUTO_APPLY_PATCH: 'false'" in text
     assert "AUTO_DEPLOY: 'false'" in text
+
+
+def test_recovery_ai_durable_write_refreshes_freshness_timestamp():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "recovery['state_updated_at'] = datetime.now(timezone.utc).isoformat()" in text
+    assert "data['recovery_ai'] = recovery" in text
