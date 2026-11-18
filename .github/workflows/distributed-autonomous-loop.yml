@@ -992,6 +992,10 @@ jobs:
                   or recovery.get('schema_version') != 1
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('Recovery AI schema is invalid')
+          # Refresh the durable document-level freshness marker at the commit boundary.
+          # This also upgrades legacy state files that predate RecoveryStore timestamps.
+          from datetime import datetime, timezone
+          recovery['state_updated_at'] = datetime.now(timezone.utc).isoformat()
           data['recovery_ai'] = recovery
           rag_payload = json.loads(Path('/tmp/recovery-rag-state.json').read_text(encoding='utf-8'))
           if (not isinstance(rag_payload, dict) or rag_payload.get('schema_version') != 1
