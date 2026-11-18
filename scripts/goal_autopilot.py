@@ -12,8 +12,18 @@ SAFE_KINDS = frozenset({"READ_ONLY", "TEST", "DRAFT_PR"})
 BLOCKED_KINDS = frozenset({"MERGE", "DEPLOY", "PERMISSION_CHANGE", "SECRET_CHANGE", "PRODUCTION_WRITE"})
 
 
-def _is_true(value: Any) -> bool:
-    return value is True
+def _safe_relative_path(value: Any) -> bool:
+    """Reject absolute, traversing, ambiguous, and cross-platform paths."""
+    if not isinstance(value, str) or not value.strip():
+        return False
+    if "\\" in value or "\x00" in value or value.startswith(("~", "/")):
+        return False
+    parts = value.rstrip("/").split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        return False
+    if ":" in parts[0]:
+        return False
+    return True
 
 
 def evaluate_goal(goal: Any) -> dict[str, Any]:
@@ -40,7 +50,6 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
         criterion_ids.add(criterion_id)
 
     if all(c.get("verified") is True for c in criteria):
-        # A goal is complete only when every criterion has a verifiable evidence ref.
         if all(isinstance(c.get("evidence_ref"), str) and c["evidence_ref"].strip()
                for c in criteria):
             return {"decision": "COMPLETE", "reason": "all_acceptance_criteria_verified"}
@@ -64,26 +73,11 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
         seen.add(task_id)
         if task.get("status") not in TASK_STATES:
             return {"decision": "INVALID", "reason": "unsupported_task_status"}
-        priority = task.get("priority", 0)
-        if type(priority) is not int:
+        if type(task.get("priority", 0)) is not int:
             return {"decision": "INVALID", "reason": "task_priority_must_be_integer"}
 
-    # Any in-flight task must be reconciled before another task is selected.
-    in_flight = [t for t in tasks if t["status"] == "IN_PROGRESS"]
-    if in_flight:
-        if len(in_flight) > 1:
-            return {"decision": "HOLD", "reason": "multiple_in_flight_tasks"}
-        return {"decision": "HOLD", "reason": "in_flight_task_requires_reconciliation",
-                "task_id": in_flight[0]["task_id"]}
-
-    # Failures and holds are never silently retried or released.
-    blocked = [t for t in tasks if t["status"] in {"FAILED", "HELD"}]
-    if blocked:
-        return {"decision": "HOLD", "reason": "failed_or_held_task_requires_review",
-                "task_ids": [t["task_id"] for t in blocked]}
-
-    completed = {t["task_id"] for t in tasks if t["status"] == "COMPLETED"}
-    eligible = []
+    # Validate every dependency declaration, including completed tasks.
+    graph: dict[str, list[str]] = {}
     for task in tasks:
         deps = task.get("depends_on", [])
         if not isinstance(deps, list) or any(not isinstance(d, str) or not d.strip() for d in deps):
@@ -92,17 +86,48 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
             return {"decision": "INVALID", "reason": "task_dependencies_duplicate_or_self_referential"}
         if any(dep not in seen for dep in deps):
             return {"decision": "INVALID", "reason": "unknown_task_dependency"}
-        if task["status"] != "PENDING":
-            continue
-        if not set(deps).issubset(completed):
-            continue
-        eligible.append(task)
+        graph[task["task_id"]] = deps
 
+    # Cycles cannot make progress and must be surfaced as invalid input.
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def has_cycle(task_id: str) -> bool:
+        if task_id in visiting:
+            return True
+        if task_id in visited:
+            return False
+        visiting.add(task_id)
+        if any(has_cycle(dep) for dep in graph[task_id]):
+            return True
+        visiting.remove(task_id)
+        visited.add(task_id)
+        return False
+
+    if any(has_cycle(task_id) for task_id in graph):
+        return {"decision": "INVALID", "reason": "cyclic_task_dependencies"}
+
+    in_flight = [t for t in tasks if t["status"] == "IN_PROGRESS"]
+    if in_flight:
+        if len(in_flight) > 1:
+            return {"decision": "HOLD", "reason": "multiple_in_flight_tasks"}
+        return {"decision": "HOLD", "reason": "in_flight_task_requires_reconciliation",
+                "task_id": in_flight[0]["task_id"]}
+
+    blocked = [t for t in tasks if t["status"] in {"FAILED", "HELD"}]
+    if blocked:
+        return {"decision": "HOLD", "reason": "failed_or_held_task_requires_review",
+                "task_ids": [t["task_id"] for t in blocked]}
+
+    completed = {t["task_id"] for t in tasks if t["status"] == "COMPLETED"}
+    eligible = [
+        task for task in tasks
+        if task["status"] == "PENDING" and set(graph[task["task_id"]]).issubset(completed)
+    ]
     if not eligible:
         return {"decision": "HOLD", "reason": "goal_incomplete_but_no_eligible_task"}
 
-    # Stable priority ordering prevents run-to-run task drift.
-    eligible.sort(key=lambda t: (-int(t.get("priority", 0)), t["task_id"]))
+    eligible.sort(key=lambda t: (-t.get("priority", 0), t["task_id"]))
     task = eligible[0]
     kind = task.get("kind")
     if kind in BLOCKED_KINDS:
@@ -116,7 +141,7 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
                   else "task_execution_not_explicitly_authorized")
         return {"decision": "HOLD", "reason": reason, "task_id": task["task_id"]}
     paths = task.get("allowed_paths", [])
-    if not isinstance(paths, list) or any(not isinstance(p, str) or not p.strip() for p in paths):
+    if not isinstance(paths, list) or any(not _safe_relative_path(p) for p in paths):
         return {"decision": "HOLD", "reason": "allowed_paths_invalid",
                 "task_id": task["task_id"]}
     return {"decision": "CONTINUE", "reason": "next_task_selected",
