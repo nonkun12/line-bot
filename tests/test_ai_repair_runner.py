@@ -71,6 +71,7 @@ def test_validate_proposal_accepts_small_existing_source_patch():
     ".github/workflows/example.yml",
     "scripts/../secrets/token.txt",
     "core/authentication.py",
+    "tests/test_example.py",
     "scripts/deploy_config.py",
 ])
 def test_validate_proposal_rejects_protected_or_unsafe_paths(path):
