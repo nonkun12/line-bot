@@ -351,6 +351,14 @@ def test_analyzer_round_robins_targets_before_applying_candidate_cap(tmp_path: P
     assert all(item["status"] == "REVIEW_REQUIRED" for item in report["candidates"])
     assert report["discovery_diagnostics"]["candidate_pool_count_before_global_cap"] == 7
     assert report["discovery_diagnostics"]["global_candidate_cap_reached"] is True
+    assert report["discovery_diagnostics"]["candidate_pool_counts_by_target"] == {
+        "tests/test_agent_events.py": 6,
+        "tests/test_github_integration_status.py": 1,
+    }
+    assert report["discovery_diagnostics"]["selected_candidate_counts_by_target"] == {
+        "tests/test_agent_events.py": 3,
+        "tests/test_github_integration_status.py": 1,
+    }
     assert report["safety"]["candidates_executable"] is False
 
 
