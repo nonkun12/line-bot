@@ -1490,6 +1490,7 @@ jobs:
             --results /tmp/minimal-autonomous-loop.jsonl \
             --run-id "$GITHUB_RUN_ID" \
             --outcome "$outcome" \
+            --work-finder-report /tmp/catalog-exhaustion-report.json \
             | python scripts/orca_status_publisher.py
 
       - name: Notify LINE of distributed loop final report
