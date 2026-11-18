@@ -42,6 +42,11 @@ SAFE_REASONS = {
     "summary_exit_code_mismatch", "summary_stale",
 }
 PATCH_PATH = re.compile(r"^(?:a|b)/([A-Za-z0-9_./-]+)$")
+SECRET_PATTERNS = (
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+    re.compile(r"(?i)(?:ghp_|github_pat_|sk_live_|AKIA)[A-Za-z0-9_]{12,}"),
+    re.compile(r"(?i)(?:password|passwd|api[_-]?key|access[_-]?token)\\s*[:=]\\s*[^\\s]{8,}"),
+)
 
 
 class RepairRejected(ValueError):
@@ -147,7 +152,13 @@ def validate_proposal(proposal: Any) -> dict[str, Any]:
             paths.add(path)
     if not paths or len(paths) > MAX_FILES:
         raise RepairRejected("patch file count is outside the limit")
-    added = sum(1 for line in patch.splitlines() if line.startswith("+") and not line.startswith("+++"))
+    added_lines = [
+        line[1:] for line in patch.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    ]
+    if any(pattern.search(line) for line in added_lines for pattern in SECRET_PATTERNS):
+        raise RepairRejected("patch appears to introduce a credential or private key")
+    added = len(added_lines)
     deleted = sum(1 for line in patch.splitlines() if line.startswith("-") and not line.startswith("---"))
     if added > MAX_ADDED_LINES or deleted > MAX_DELETED_LINES:
         raise RepairRejected("patch line budget exceeded")
