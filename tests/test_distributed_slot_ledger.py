@@ -87,13 +87,18 @@ class DistributedSlotLedgerContractTests(unittest.TestCase):
         retry = transition_decision("FAILED", "PENDING")
         reopen = transition_decision("COMPLETED", "CLAIMED")
         self.assertFalse(retry["allowed"])
-        self.assertEqual(retry["reason"], "terminal_state_no_automatic_transition")
+        self.assertEqual(retry["reason"], "retry_requires_separate_human_review")
         self.assertFalse(reopen["allowed"])
         self.assertEqual(reopen["reason"], "terminal_state_no_automatic_transition")
 
     def test_lease_renewal_and_unknown_states_are_blocked(self):
         renewal = transition_decision("CLAIMED", "CLAIMED")
         unknown = transition_decision("UNKNOWN", "CLAIMED")
+        malformed = transition_decision([], "CLAIMED")
+        bad_record = pending_record()
+        bad_record["status"] = []
+        self.assertTrue(validate_slot_record(bad_record))
+        self.assertFalse(malformed["allowed"])
         self.assertFalse(renewal["allowed"])
         self.assertEqual(renewal["reason"], "lease_renewal_not_implemented")
         self.assertFalse(unknown["allowed"])
