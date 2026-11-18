@@ -355,3 +355,22 @@ def test_side5_review_action_preserves_review_prompt(monkeypatch, tmp_path):
     assert "英語復習モードです" in result.text
     assert "今回の復習語:" in result.text
     assert "英文を1つ作ってください" in result.text
+
+
+def test_expanded_core_vocabulary_contains_reviewed_practical_words():
+    from agents.english.core_image import _ENTRIES, explain_core_image
+
+    expected = {
+        "analyze", "create", "develop", "improve", "increase", "decrease",
+        "compare", "consider", "explain", "identify", "involve", "occur",
+        "provide", "respond", "result", "suggest", "enable", "manage",
+        "focus", "solve", "challenge", "effect", "issue", "factor",
+        "process", "method", "purpose", "source", "evidence", "claim",
+    }
+    assert expected <= set(_ENTRIES)
+    assert len(_ENTRIES) == 149
+    for word in expected:
+        explanation = explain_core_image(word)
+        assert f"🔎 {word}（" in explanation
+        assert "コアイメージ：" in explanation
+        assert "例文：" in explanation
