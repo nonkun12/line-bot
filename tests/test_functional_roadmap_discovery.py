@@ -32,6 +32,13 @@ def test_discovers_only_unchecked_items_in_explicit_roadmap_section(tmp_path: Pa
     assert all(row["execution_approval_granted"] is False for row in rows)
     assert all(row["allowed_paths"] == [] for row in rows)
     assert rows == discover_roadmap_candidates(readme)
+    assert rows[0]["priority"] == "unranked"
+    assert rows[0]["impact_assessment"] == "NOT_ASSESSED"
+    assert rows[0]["risk_assessment"] == "NOT_ASSESSED"
+    assert rows[0]["test_strategy"] == "REQUIRES_SCOPE_REVIEW"
+    readme.write_text("Intro\\n\\n" + readme.read_text(encoding="utf-8"), encoding="utf-8")
+    moved = discover_roadmap_candidates(readme)
+    assert moved[0]["id"] == rows[0]["id"]
 
 
 def test_returns_empty_when_roadmap_heading_is_absent(tmp_path: Path):
