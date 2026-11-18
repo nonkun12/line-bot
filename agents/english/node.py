@@ -198,7 +198,7 @@ class EnglishLearningAgent:
 
         return AgentResponse(
             text=text,
-            metadata={"feature": self.name, "status": "online", "mode": mode},
+            metadata={"feature": self.name, "status": "online", "mode": mode, **({"side_id": SIDE_ID} if mode in {"vocabulary", "quiz", "review"} else {})},
         )
 
 
