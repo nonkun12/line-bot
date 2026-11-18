@@ -233,6 +233,7 @@ def analyze(
     # is rediscovered forever and issue creation filters every result as duplicate.
     excluded = queued_ids | completed | held | review | catalog_ids | _existing_issue_task_ids(existing_issues_path)
     candidate_groups = []
+    target_candidate_pool_counts: dict[str, int] = {}
     scanned_target_pairs = 0
     missing_target_pairs = 0
     symlink_target_pairs = 0
@@ -271,6 +272,7 @@ def analyze(
                 excluded_candidate_count += 1
                 continue
             candidate_pool_count += 1
+            target_candidate_pool_counts[test_rel] = target_candidate_pool_counts.get(test_rel, 0) + 1
             evidence = f"{code_rel}:{line}"
             priority_signals = _priority_signals(function_node)
             priority_score = (
@@ -317,6 +319,11 @@ def analyze(
             break
         depth += 1
 
+    target_selected_counts: dict[str, int] = {}
+    for candidate in candidates:
+        target = candidate["target_test"]
+        target_selected_counts[target] = target_selected_counts.get(target, 0) + 1
+
     return {
         "version": 1,
         "status": "REVIEW_REQUIRED" if candidates else "NO_SAFE_CANDIDATE",
@@ -337,6 +344,8 @@ def analyze(
             "global_candidate_cap": MAX_CANDIDATES,
             "global_candidate_cap_reached": candidate_pool_count > MAX_CANDIDATES,
             "priority_strategy": "per-target structural complexity, then stable source order; round-robin across targets",
+            "candidate_pool_counts_by_target": dict(sorted(target_candidate_pool_counts.items())),
+            "selected_candidate_counts_by_target": dict(sorted(target_selected_counts.items())),
         },
         "safety": {
             "read_only": True,
