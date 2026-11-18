@@ -7,8 +7,8 @@ from ai_client import generate_chat_completion
 from agents.english.intents import classify_english_mode, is_english_learning_intent
 from core.agents import AgentRequest, AgentResponse
 from agents.english.progress import profile_prompt, record_observation
-from agents.english.quiz_state import select_daily_words
-from agents.english.quiz import grade_quiz, start_quiz
+from agents.english.quiz import grade_quiz
+from agents.english.core_vocabulary import SIDE_ID, run_core_vocabulary
 import random
 
 
@@ -127,15 +127,9 @@ class EnglishLearningAgent:
             )
             mode = "ai_tutor"
         elif mode == "vocabulary":
-            lines = ["📘 今日の英単語コアイメージ（確認済みローカル辞書）", ""]
-            for word, core_image, example in select_daily_words(request.user_id, 3):
-                lines.append(f"• {word}")
-                lines.append(f"  コアイメージ: {core_image}")
-                lines.append(f"  例: {example}")
-            lines.extend(["", "クイズを始めるには「クイズ」と送ってください。"])
-            text = "\n".join(lines)
+            text = run_core_vocabulary(request.user_id, "daily").text
         elif mode == "quiz":
-            text = start_quiz(request.user_id)
+            text = run_core_vocabulary(request.user_id, "quiz").text
         elif mode == "grammar":
             if re.search(r"\bi\s+want\s+to\s+\w+", original.lower()):
                 text = (
@@ -163,14 +157,7 @@ class EnglishLearningAgent:
                     "送ってくれた英文を、自然さ・文法・より良い表現の3点で添削します。"
                 )
         elif mode == "review":
-            selected = select_daily_words(request.user_id, 3)
-            words = " / ".join(word for word, _, _ in selected)
-            first_word = selected[0][0] if selected else "英単語"
-            text = (
-                "🔁 英語復習モードです。\n\n"
-                f"今回の復習語: {words}\n"
-                f"まず「{first_word}」を使って英文を1つ作ってください。"
-            )
+            text = run_core_vocabulary(request.user_id, "review").text
         elif _english_sentence(original):
             ai_text = _ai_tutor_reply(original, user_id=request.user_id, mode="correction")
             if ai_text:
