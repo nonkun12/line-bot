@@ -212,8 +212,8 @@ def evaluate(
         reasons.append("Actions API evidence unavailable or malformed (workflow_id validation failed)")
 
     schedule_coverage = (
-        evaluate_schedule_coverage(runs_payload, started_dt)
-        if runs_ok and started_dt is not None
+        evaluate_schedule_coverage(runs_payload, parse_utc(started_at))
+        if runs_ok and parse_utc(started_at) is not None
         else {"status": "UNVERIFIED", "slots": [], "counts": {}, "task_completion_verified": False}
     )
     checks["schedule_coverage"] = {
