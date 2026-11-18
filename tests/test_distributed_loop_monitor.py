@@ -129,7 +129,6 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         ]
         result = evaluate_schedule_coverage({"workflow_runs": runs}, now)
         self.assertEqual(result["slots"][0]["status"], "DUPLICATE")
-        self.assertEqual(result["slots"][0]["idempotency_key"], result["slots"][0]["idempotency_key"])
         self.assertIs(result["slots"][0]["replay_allowed"], False)
 
     def test_schedule_coverage_ignores_other_workflows_and_manual_runs(self):
