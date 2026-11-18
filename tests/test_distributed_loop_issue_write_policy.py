@@ -1,5 +1,6 @@
 """Safety contract for automatic GitHub Issue writes in the distributed loop."""
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,7 +10,9 @@ POSTRUN = ROOT / ".github" / "workflows" / "distributed-loop-postrun.yml"
 
 def test_review_issue_creation_is_explicitly_opt_in_for_manual_runs():
     source = LOOP.read_text(encoding="utf-8")
-    input_block = source.split("      allow_review_issue_creation:", 1)[1].split("      ", 1)[0]
+    match = re.search(r"(?ms)^      allow_review_issue_creation:\n(.*?)(?=^      [a-z_]+:|^permissions:)", source)
+    assert match, "manual issue-creation input must exist"
+    input_block = match.group(1)
     assert "default: false" in input_block
     assert "type: boolean" in input_block
     step = source.split(
