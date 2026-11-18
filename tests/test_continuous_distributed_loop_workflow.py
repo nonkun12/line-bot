@@ -167,7 +167,7 @@ def test_distributed_loop_has_bounded_manual_and_scheduled_triggers():
     source = path.read_text(encoding="utf-8")
     assert "workflow_dispatch:" in source
     assert "schedule:" in source
-    assert 'cron: "0,30 * * * *"' in source
+    assert 'cron: "17,47 * * * *"' in source
     assert "timezone: 'Asia/Tokyo'" not in source
     assert "default: '1'" in source
     assert "          - '4'" in source
