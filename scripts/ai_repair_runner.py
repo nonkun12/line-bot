@@ -28,7 +28,7 @@ DENIED_PARTS = {
     ".github/", ".env", "secret", "credential", "token", "auth",
     "permission", "policy", "workflow", "deploy", "release",
     "safety", "guard", "approval", "control", "maintenance",
-    "debug_agent", "recovery", "rea", "critic",
+    "debug_agent", "recovery", "critic",
 }
 SAFE_EVIDENCE_KEYS = {
     "task_id", "status", "failure_reason", "failure_code",
