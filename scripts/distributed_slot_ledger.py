@@ -16,7 +16,7 @@ SLOT_STATUSES = frozenset({"PENDING", "CLAIMED", "COMPLETED", "FAILED", "HELD"})
 TERMINAL_STATUSES = frozenset({"COMPLETED", "FAILED", "HELD"})
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
-SLOT_ID_RE = re.compile(r"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:(17|47):00Z$")
+SLOT_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:(17|47):00Z$")
 
 
 def expected_idempotency_key(slot_id: str, workflow_id: int = SCHEDULE_WORKFLOW_ID) -> str:
