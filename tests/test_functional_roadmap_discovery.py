@@ -15,6 +15,7 @@ def test_discovers_only_unchecked_items_in_explicit_roadmap_section(tmp_path: Pa
         "- [ ] AI生成コードの品質自動チェック\n"
         "* [x] 完了済み機能\n"
         "- [ ] 各エージェントの対応インテント拡充\n"
+        "- [ ] AI生成コードの品質自動チェック\n"
         "## Tests\n- [ ] ignored after next heading\n",
         encoding="utf-8",
     )
