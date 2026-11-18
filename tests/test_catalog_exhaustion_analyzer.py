@@ -98,8 +98,8 @@ def test_analyzer_skips_already_issued_candidates_and_fills_next_batch(tmp_path:
     assert report["candidate_count"] == 2
     assert [item["source_function"] for item in report["candidates"]] == names[4:]
     assert all(item["status"] == "REVIEW_REQUIRED" for item in report["candidates"])
-    assert report["discovery_diagnostics"]["candidate_pool_count_before_global_cap"] == 7
-    assert report["discovery_diagnostics"]["global_candidate_cap_reached"] is True
+    assert report["discovery_diagnostics"]["candidate_pool_count_before_global_cap"] == 2
+    assert report["discovery_diagnostics"]["global_candidate_cap_reached"] is False
     assert report["safety"]["candidates_executable"] is False
 
 
@@ -349,4 +349,6 @@ def test_analyzer_round_robins_targets_before_applying_candidate_cap(tmp_path: P
         for item in report["candidates"]
     ) == 3
     assert all(item["status"] == "REVIEW_REQUIRED" for item in report["candidates"])
+    assert report["discovery_diagnostics"]["candidate_pool_count_before_global_cap"] == 7
+    assert report["discovery_diagnostics"]["global_candidate_cap_reached"] is True
     assert report["safety"]["candidates_executable"] is False
