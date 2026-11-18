@@ -153,12 +153,22 @@ document.addEventListener('DOMContentLoaded', () => {
         return '<div class="system-details">'+name+'：'+title+' ・ '+state+'</div>'+rea;
       }).join('')).join('');
       const streamLabels={main_star_night:'本線：STAR-NIGHT',side_task_supply:'サイド1：タスク枯渇対策',side_media_ai:'サイド2：映像・音楽AI',side_self_improvement:'サイド3：自己改善AI',side_line_full_control:'サイド4：LINE全指示化',side_core_vocabulary:'サイド5：英単語コア語彙'};
+      const wf=data.work_finder;
+      const workFinderCard=wf
+        ? '<div class="section-subtitle">Work Finder AI — 発見から実行まで</div><div class="system-grid">'
+          + [['発見候補',wf.discovered_candidate_count],['レビュー待ち',wf.review_pending_count],
+             ['実行承認済み',wf.execution_eligibility_status==='verified'?(wf.execution_eligible_count??0):'未証明'],
+             ['実際の完了',wf.completed_task_count]].map(([name,value])=>'<div class="system-card"><div class="system-card-title">'+esc(name)+'</div><div class="history-metric-value">'+esc(value??'未取得')+'</div></div>').join('')
+          + '</div><div class="system-details">次の安全な動作：'+esc(wf.next_action)+' ・ Queue '+esc(wf.runtime_queue_task_count??'未取得')
+          +' ・ HOLD '+esc(wf.held_task_count??'未取得')+' ・ 要レビュー '+esc(wf.resume_review_required_count??'未取得')
+          +' ・ 実行承認は候補生成から自動付与しません</div>'
+        : '<div class="section-subtitle">Work Finder AI：今回のスナップショットに診断結果なし</div>';
       const streamRows=(Array.isArray(data.streams)?data.streams:[]).map(item=>{
         const observed=item.status==='observed';
         const counts='Task '+Number(item.task_count||0)+' / Dispatch '+Number(item.dispatch_count||0)+' / Worker '+Number(item.worker_count||0);
         return '<div class="system-card"><div class="system-card-title">'+esc(streamLabels[item.key]||item.label||item.key)+'</div><div class="system-status">'+(observed?'🟢 実データ観測あり':'⚪ 未確認')+'</div><div class="system-details">'+esc(counts)+'</div><div class="system-details">'+(observed?'実レコードとの一致あり':'対応する系統メタデータ未検出')+'</div></div>';
       }).join('');
-      panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">'+statusLabel+'</div><div class="system-details">'+esc(age)+'</div></div>'+summary+'<div class="section-subtitle">6系統の実データ照合</div>'+(streamRows||'<div class="system-details">系統データ未取得</div>')+(rows||'<div class="system-details">Task / Dispatch / Workerの明細は未受信です。</div>');
+      panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">'+statusLabel+'</div><div class="system-details">'+esc(age)+'</div></div>'+summary+'<div class="section-subtitle">6系統の実データ照合</div>'+workFinderCard+(streamRows||'<div class="system-details">系統データ未取得</div>')+(rows||'<div class="system-details">Task / Dispatch / Workerの明細は未受信です。</div>');
     }catch(error){
       panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">⚪ 未確認</div><div class="system-details">'+esc(error.message)+'</div></div>';
     }
