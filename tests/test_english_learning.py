@@ -293,3 +293,47 @@ def test_unknown_core_image_word_fails_closed_without_guessing():
 def test_core_image_command_is_classified_as_english_learning_intent():
     assert is_english_learning_intent("interesting コアイメージ")
     assert is_english_learning_intent("コアイメージ interesting")
+
+
+
+def test_side5_core_vocabulary_worker_is_bounded_and_reports_verified_count(monkeypatch, tmp_path):
+    from agents.english import progress, quiz_state
+    from agents.english.core_vocabulary import SIDE_ID, TARGET_WORDS, run_core_vocabulary
+    from agents.english.core_image import _ENTRIES
+
+    db = str(tmp_path / "side5.sqlite3")
+    monkeypatch.setattr(progress, "DB_PATH", db)
+    monkeypatch.setattr(quiz_state, "DB_PATH", db)
+
+    result = run_core_vocabulary("learner-a", "daily")
+
+    assert result.side_id == SIDE_ID == "side_5_english_core_vocabulary"
+    assert result.action == "daily"
+    assert result.status == "READY"
+    assert result.verified_word_count == len(_ENTRIES)
+    assert result.target_word_count == TARGET_WORDS == 1000
+    assert result.verified_word_count < result.target_word_count
+    assert "確認済みローカル辞書" in result.text
+
+
+def test_side5_core_vocabulary_worker_rejects_anonymous_or_unknown_actions():
+    from agents.english.core_vocabulary import run_core_vocabulary
+
+    with pytest.raises(ValueError, match="non-empty user_id"):
+        run_core_vocabulary("", "daily")
+    with pytest.raises(ValueError, match="unsupported Side 5 action"):
+        run_core_vocabulary("learner-a", "generate-unreviewed")
+
+
+def test_english_agent_routes_vocabulary_to_side5(monkeypatch):
+    from agents.english import node
+
+    monkeypatch.setattr(
+        node,
+        "run_core_vocabulary",
+        lambda user_id, action: type("Result", (), {"text": f"{user_id}:{action}"})(),
+    )
+    response = node.EnglishLearningAgent().handle(_request("単語"))
+
+    assert response.text == "test-user:daily"
+    assert response.metadata["side_id"] == "side_5_english_core_vocabulary"
