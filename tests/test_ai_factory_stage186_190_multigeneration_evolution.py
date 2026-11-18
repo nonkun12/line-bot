@@ -280,7 +280,7 @@ def test_stage189_rejects_duplicates_gaps_forged_predecessor_and_entry_signature
         )
     with pytest.raises(LongitudinalEvolutionError, match="bounded append"):
         Stage189SurvivalLedger().build(
-            entries=(replace(entries[0], generation=99),), **kwargs
+            entries=(replace(entries[0], generation=99, signature="entry-signature-99-s"),), **kwargs
         )
     with pytest.raises(LongitudinalEvolutionError, match="previous ledger signature"):
         Stage189SurvivalLedger().build(
