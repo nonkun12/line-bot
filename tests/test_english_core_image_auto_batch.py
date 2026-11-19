@@ -195,3 +195,17 @@ def test_load_existing_extracts_keys_and_end_line_for_both_assignment_forms():
     plain_keys, plain_end_line = builder.load_existing(plain_source)
     assert plain_keys == {"gamma"}
     assert plain_end_line == 3
+
+
+def test_render_omits_empty_note_and_repr_quotes_nonempty_note():
+    builder = _load_builder()
+    entry = _candidate("boundary")
+
+    entry["note"] = ""
+    without_note = builder.render(entry)
+    assert "note=" not in without_note
+
+    entry["note"] = "reader's note\nwith newline"
+    with_note = builder.render(entry)
+    assert with_note.endswith(f"note={entry['note']!r}),")
+
