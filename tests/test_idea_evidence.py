@@ -8,6 +8,7 @@ from core.idea_evidence import (
     ExperimentEvidenceLedger,
     evidence_digest,
 )
+from core.idea_hypothesis import ExperimentHypothesis
 
 
 def verification(**overrides):
@@ -104,3 +105,50 @@ def test_digest_is_deterministic_and_requires_bytes():
     assert evidence_digest(b"same artifact") != evidence_digest(b"different artifact")
     with pytest.raises(ValueError):
         evidence_digest(b"")
+
+
+
+def test_observation_factory_uses_hypothesis_thresholds_and_starts_unverified():
+    hypothesis = ExperimentHypothesis(
+        hypothesis_id="latency-v1",
+        statement="Cache reduces p95 latency",
+        prediction="p95 reaches 80ms or lower",
+        metric="p95 latency ms",
+        direction="decrease",
+        baseline=100.0,
+        success_threshold=80.0,
+        failure_threshold=95.0,
+        baseline_source="baseline artifact and commit",
+        measurement_method="fixed 100-request benchmark",
+        evidence_requirements=("raw samples",),
+        reproducibility_steps=("run benchmark",),
+    )
+    record = ExperimentEvidence.from_observation(
+        hypothesis,
+        style="recombine",
+        observed_value=79.0,
+        source_ref="artifact://run/1",
+        commit_sha="c" * 40,
+        environment="linux-x86_64",
+        sample_count=100,
+        measured_at="2026-11-19T00:00:00Z",
+        evidence_sha256="d" * 64,
+    )
+    assert record.result == "success"
+    assert record.verification is None
+    assert record.to_idea_outcome().result == "unverified"
+
+
+def test_observation_factory_rejects_mismatched_hypothesis_type():
+    with pytest.raises(TypeError):
+        ExperimentEvidence.from_observation(
+            object(),
+            style="recombine",
+            observed_value=1.0,
+            source_ref="artifact://run/1",
+            commit_sha="c" * 40,
+            environment="linux-x86_64",
+            sample_count=1,
+            measured_at="2026-11-19T00:00:00Z",
+            evidence_sha256="d" * 64,
+        )
