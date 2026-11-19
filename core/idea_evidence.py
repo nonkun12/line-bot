@@ -1,13 +1,18 @@
-"""Evidence provenance and verified-outcome adapter for Idea AI.
+"""Evidence provenance and signed-review adapter for Idea AI.
 
-This module classifies recorded measurements against a declared hypothesis.
-It does not run experiments, verify external artifacts, persist records, or grant
-approval. A record marked verified must have been independently checked upstream.
+Measurements are classified against a declared hypothesis. A verified result is
+accepted for learning only when its reviewer HMAC matches a caller-supplied
+trusted key. This module does not execute experiments or inspect artifacts.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 from dataclasses import dataclass
 from math import isfinite
+from typing import Mapping
+
 from core.idea_hypothesis import ExperimentHypothesis
 from core.idea_learning import IdeaOutcome
 
@@ -16,6 +21,7 @@ _MAX_REFS = 8
 _MAX_REF_CHARS = 300
 _MAX_RECORDS = 500
 _MAX_PROVENANCE_CHARS = 300
+_MIN_KEY_BYTES = 32
 
 
 def _text(value: str, field: str, limit: int = _MAX_ID_CHARS) -> None:
@@ -38,6 +44,7 @@ class ExperimentEvidence:
     environment: str
     verification_status: str = "pending"
     verified_by: str = ""
+    verification_signature: str = ""
 
     def __post_init__(self) -> None:
         _text(self.experiment_id, "experiment_id")
@@ -53,12 +60,45 @@ class ExperimentEvidence:
             raise ValueError("verified_by must be a string")
         if self.verification_status == "verified":
             _text(self.verified_by, "verified_by")
-        elif self.verified_by:
-            raise ValueError("verified_by is only valid for verified records")
+        elif self.verified_by or self.verification_signature:
+            raise ValueError("reviewer identity/signature is only valid for verified records")
+        if not isinstance(self.verification_signature, str):
+            raise ValueError("verification_signature must be a string")
+        if self.verification_signature and (
+            len(self.verification_signature) != 64
+            or any(char not in "0123456789abcdef" for char in self.verification_signature)
+        ):
+            raise ValueError("verification_signature must be a lowercase SHA-256 HMAC hex digest")
         if not isinstance(self.evidence_refs, tuple) or not 1 <= len(self.evidence_refs) <= _MAX_REFS:
             raise ValueError(f"evidence_refs must contain 1 to {_MAX_REFS} references")
         for ref in self.evidence_refs:
             _text(ref, "evidence reference", _MAX_REF_CHARS)
+
+
+def _attestation_payload(record: ExperimentEvidence) -> bytes:
+    values = {
+        "experiment_id": record.experiment_id,
+        "hypothesis_id": record.hypothesis_id,
+        "style": record.style,
+        "measured_value": record.measured_value,
+        "evidence_refs": record.evidence_refs,
+        "code_revision": record.code_revision,
+        "environment": record.environment,
+        "verification_status": record.verification_status,
+        "verified_by": record.verified_by,
+    }
+    return json.dumps(
+        values, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+
+
+def sign_evidence_record(record: ExperimentEvidence, reviewer_key: bytes) -> str:
+    """Create a reviewer attestation; caller must hold an authorized key."""
+    if not isinstance(record, ExperimentEvidence) or record.verification_status != "verified":
+        raise ValueError("only verified ExperimentEvidence records can be attested")
+    if not isinstance(reviewer_key, bytes) or len(reviewer_key) < _MIN_KEY_BYTES:
+        raise ValueError(f"reviewer_key must contain at least {_MIN_KEY_BYTES} bytes")
+    return hmac.new(reviewer_key, _attestation_payload(record), hashlib.sha256).hexdigest()
 
 
 def classify_measurement(
@@ -86,12 +126,14 @@ def classify_measurement(
 def build_verified_idea_outcomes(
     hypothesis: ExperimentHypothesis,
     records: tuple[ExperimentEvidence, ...],
+    *,
+    reviewer_keys: Mapping[str, bytes],
 ) -> tuple[IdeaOutcome, ...]:
-    """Convert independently verified records into bounded learning signals.
+    """Convert signed, independently reviewed records into bounded learning signals.
 
-    Pending/rejected records and measurements in the threshold gray zone are
-    retained as unverified signals, which rank_idea_styles deliberately ignores.
-    The tuple input is capped at 500 records to keep processing bounded.
+    Pending/rejected records and threshold gray-zone measurements remain
+    unverified. A claimed verified record with an absent/invalid trusted
+    signature fails closed instead of entering the learning signal.
     """
     if not isinstance(hypothesis, ExperimentHypothesis):
         raise TypeError("hypothesis must be an ExperimentHypothesis")
@@ -99,6 +141,8 @@ def build_verified_idea_outcomes(
         raise TypeError("records must be a bounded tuple")
     if len(records) > _MAX_RECORDS:
         raise ValueError(f"records must contain at most {_MAX_RECORDS} items")
+    if not isinstance(reviewer_keys, Mapping):
+        raise TypeError("reviewer_keys must be a mapping of reviewer IDs to keys")
     seen: set[str] = set()
     outcomes: list[IdeaOutcome] = []
     for record in records:
@@ -110,11 +154,16 @@ def build_verified_idea_outcomes(
         if record.hypothesis_id != hypothesis.hypothesis_id:
             raise ValueError("record hypothesis_id does not match hypothesis")
         measured_result = classify_measurement(hypothesis, record.measured_value)
-        result = (
-            measured_result
-            if record.verification_status == "verified"
-            else "unverified"
-        )
+        if record.verification_status == "verified":
+            key = reviewer_keys.get(record.verified_by)
+            if not isinstance(key, bytes) or len(key) < _MIN_KEY_BYTES:
+                raise ValueError(f"no trusted reviewer key for {record.verified_by}")
+            expected = hmac.new(key, _attestation_payload(record), hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(expected, record.verification_signature):
+                raise ValueError(f"invalid evidence attestation: {record.experiment_id}")
+            result = measured_result
+        else:
+            result = "unverified"
         provenance = (
             f"{record.experiment_id}; reviewer={record.verified_by or 'pending'}; "
             f"rev={record.code_revision}; env={record.environment}; "
@@ -130,4 +179,5 @@ __all__ = [
     "ExperimentEvidence",
     "build_verified_idea_outcomes",
     "classify_measurement",
+    "sign_evidence_record",
 ]
