@@ -5,6 +5,7 @@ import pytest
 from core.idea_evidence import EvidenceVerification
 from core.idea_hypothesis import ExperimentHypothesis
 from core.idea_research_cycle import IdeaResearchCycle
+from core.idea_evidence_store import SQLiteIdeaEvidenceStore
 
 
 def hypothesis(**overrides):
@@ -109,3 +110,27 @@ def test_cycle_rejects_unrelated_style_and_duplicate_evidence():
     cycle = record(cycle)
     with pytest.raises(ValueError):
         record(cycle)
+
+
+
+def test_cycle_persists_and_restores_evidence_ledger_only(tmp_path):
+    store = SQLiteIdeaEvidenceStore(tmp_path / "idea-cycle.sqlite3")
+    cycle = IdeaResearchCycle.start("improve research").register_hypothesis(hypothesis())
+    cycle = record(cycle)
+    revision = cycle.persist_evidence(store, "cycle-1", expected_revision=0)
+    assert revision == 1
+
+    fresh_cycle = IdeaResearchCycle.start("improve research")
+    restored = fresh_cycle.restore_evidence(store, "cycle-1")
+    assert restored.ledger == cycle.ledger
+    assert restored.hypotheses == ()
+    assert fresh_cycle.ledger.records == ()
+
+
+def test_cycle_restore_requires_existing_snapshot_and_valid_store(tmp_path):
+    store = SQLiteIdeaEvidenceStore(tmp_path / "idea-cycle.sqlite3")
+    cycle = IdeaResearchCycle.start("improve research")
+    with pytest.raises(LookupError):
+        cycle.restore_evidence(store, "missing")
+    with pytest.raises(TypeError):
+        cycle.persist_evidence(object(), "cycle-1")

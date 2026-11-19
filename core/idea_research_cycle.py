@@ -16,6 +16,7 @@ from .idea_evidence import (
 )
 from .idea_hypothesis import ExperimentHypothesis
 from .idea_learning import IdeaOutcome
+from .idea_evidence_store import SQLiteIdeaEvidenceStore
 from .idea_workflow import build_idea_workflow
 from .multi_agent import TaskBatch
 
@@ -125,6 +126,35 @@ class IdeaResearchCycle:
             limit=limit,
             outcomes=self.ledger.learning_outcomes(),
         )
+
+    def persist_evidence(
+        self,
+        store: SQLiteIdeaEvidenceStore,
+        namespace: str,
+        *,
+        expected_revision: int,
+    ) -> int:
+        """Persist this cycle's evidence ledger using caller-managed local storage."""
+        if not isinstance(store, SQLiteIdeaEvidenceStore):
+            raise TypeError("store must be a SQLiteIdeaEvidenceStore")
+        return store.save(
+            namespace,
+            self.ledger,
+            expected_revision=expected_revision,
+        )
+
+    def restore_evidence(
+        self,
+        store: SQLiteIdeaEvidenceStore,
+        namespace: str,
+    ) -> "IdeaResearchCycle":
+        """Restore only the evidence ledger; current ideas and hypotheses are retained."""
+        if not isinstance(store, SQLiteIdeaEvidenceStore):
+            raise TypeError("store must be a SQLiteIdeaEvidenceStore")
+        snapshot = store.load(namespace)
+        if snapshot is None:
+            raise LookupError("no stored evidence snapshot exists for this namespace")
+        return replace(self, ledger=snapshot.ledger)
 
     def evidence_snapshot(self) -> str:
         """Return a versioned JSON snapshot for caller-managed persistence."""
