@@ -10,7 +10,6 @@ import re
 from typing import Any
 
 WORKFLOW_PATH = ".github/workflows/rea-independent-verification.yml"
-WORKFLOW_ID = 424216566
 REPOSITORY = "nonkun12/line-bot"
 
 
@@ -24,9 +23,9 @@ def evaluate_independent_verification_receipt(
     *,
     expected_sha: str,
     repository: str = REPOSITORY,
-    workflow_id: int = WORKFLOW_ID,
+    workflow_path: str = WORKFLOW_PATH,
 ) -> dict[str, Any]:
-    """Return PASS/FAIL/NOT_RUN only when receipt and API run identity agree.
+    """Return test status only when receipt and trusted API run identity agree.
 
     run_metadata must be the GitHub Actions workflow-run object fetched from the
     trusted GitHub API, not a field copied from the downloadable artifact.
@@ -44,13 +43,12 @@ def evaluate_independent_verification_receipt(
     repo = run_metadata.get("repository")
     if not isinstance(repo, dict) or repo.get("full_name") != repository:
         return _unknown("verification_repository_mismatch")
-    if run_metadata.get("workflow_id") != workflow_id:
-        return _unknown("verification_workflow_mismatch")
-    if run_metadata.get("path") != WORKFLOW_PATH:
+    if run_metadata.get("path") != workflow_path:
         return _unknown("verification_workflow_path_mismatch")
-    event = run_metadata.get("event")
     if run_metadata.get("head_sha") != expected_sha:
         return _unknown("verification_run_sha_mismatch")
+
+    event = run_metadata.get("event")
     if event == "pull_request":
         pull_requests = run_metadata.get("pull_requests")
         if not isinstance(pull_requests, list) or not pull_requests:
@@ -58,8 +56,7 @@ def evaluate_independent_verification_receipt(
         pr = pull_requests[0]
         if not isinstance(pr, dict):
             return _unknown("verification_pull_request_binding_invalid")
-        head = pr.get("head")
-        base = pr.get("base")
+        head, base = pr.get("head"), pr.get("base")
         if not isinstance(head, dict) or head.get("sha") != expected_sha:
             return _unknown("verification_pull_request_head_mismatch")
         if not isinstance(base, dict) or base.get("ref") != "main":
@@ -87,12 +84,9 @@ def evaluate_independent_verification_receipt(
     if receipt.get("test_outcome") != "SUCCESS":
         return {"tests": "NOT_RUN", "reason_code": "independent_pytest_not_passed"}
 
-    # A verification receipt must never smuggle in authority.
     authority_fields = (
-        "execution_authorized",
-        "patch_authorized",
-        "hold_clear_authorized",
-        "merge_deploy_authorized",
+        "execution_authorized", "patch_authorized",
+        "hold_clear_authorized", "merge_deploy_authorized",
     )
     if any(receipt.get(field) is not False for field in authority_fields):
         return _unknown("verification_receipt_authority_violation")
@@ -101,7 +95,6 @@ def evaluate_independent_verification_receipt(
         "tests": "PASS",
         "reason_code": "independent_pytest_passed",
         "verified_sha": expected_sha,
-        "verification_workflow_id": workflow_id,
         "verification_run_id": run_metadata.get("id"),
         "risk": "UNKNOWN",
         "execution_authorized": False,
