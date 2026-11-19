@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import isfinite
 
+
 _MAX_TEXT_CHARS = 1000
 _MAX_LIST_ITEMS = 8
 _MAX_LIST_ITEM_CHARS = 300
@@ -60,13 +61,36 @@ class ExperimentHypothesis:
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
                 raise ValueError(f"{field_name} must be a finite number")
 
-        if self.direction == "increase" and self.success_threshold <= self.failure_threshold:
-            raise ValueError("increase requires success_threshold > failure_threshold")
-        if self.direction == "decrease" and self.success_threshold >= self.failure_threshold:
-            raise ValueError("decrease requires success_threshold < failure_threshold")
+        if self.direction == "increase":
+            if not self.failure_threshold < self.baseline < self.success_threshold:
+                raise ValueError("increase requires failure_threshold < baseline < success_threshold")
+        elif not self.success_threshold < self.baseline < self.failure_threshold:
+            raise ValueError("decrease requires success_threshold < baseline < failure_threshold")
 
         _bounded_text_list(self.evidence_requirements, "evidence_requirements")
         _bounded_text_list(self.reproducibility_steps, "reproducibility_steps")
 
 
-__all__ = ["ExperimentHypothesis"]
+def classify_observation(hypothesis: ExperimentHypothesis, observed_value: float) -> str:
+    """Classify a measurement against predeclared thresholds, without executing it."""
+    if not isinstance(hypothesis, ExperimentHypothesis):
+        raise TypeError("hypothesis must be an ExperimentHypothesis")
+    if isinstance(observed_value, bool) or not isinstance(observed_value, (int, float)):
+        raise ValueError("observed_value must be numeric")
+    if not isfinite(observed_value):
+        raise ValueError("observed_value must be finite")
+
+    if hypothesis.direction == "increase":
+        if observed_value >= hypothesis.success_threshold:
+            return "success"
+        if observed_value <= hypothesis.failure_threshold:
+            return "failure"
+    else:
+        if observed_value <= hypothesis.success_threshold:
+            return "success"
+        if observed_value >= hypothesis.failure_threshold:
+            return "failure"
+    return "unverified"
+
+
+__all__ = ["ExperimentHypothesis", "classify_observation"]
