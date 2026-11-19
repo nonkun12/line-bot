@@ -103,6 +103,9 @@ def _load_goal(store: GoalStateStore, state: dict[str, Any], tasks: list[dict[st
         if resume_target["status"] in {"HELD", "FAILED"}:
             resume_target["status"] = "PENDING"
             resume_target.pop("hold_reason", None)
+            resume_target["priority"] = max(
+                (int(t.get("priority", 0)) for t in goal["tasks"]), default=0
+            ) + 1
             changed = True
     if changed:
         for criterion in goal["acceptance_criteria"]:
@@ -143,25 +146,32 @@ def _append_blocked(path: Path, task_id: str, reason: str) -> None:
     with path.open("a", encoding="utf-8") as stream:
         stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
-def _hold_claimed_tasks(store: GoalStateStore, task_ids: set[str], output: Path) -> None:
+def _reconcile_claimed_tasks(store: GoalStateStore, task_ids: set[str], output: Path,
+                            failed_task_id: str | None = None) -> None:
     if not task_ids:
         return
     loaded = store.read(GOAL_ID)
     if loaded is None:
-        raise RuntimeError("goal_state_missing_while_holding")
+        raise RuntimeError("goal_state_missing_while_reconciling")
     revision, goal = loaded
     for task in goal["tasks"]:
         if task["task_id"] in task_ids:
-            task["status"] = "HELD"
             task.pop("completion_evidence", None)
-            task["hold_reason"] = "workflow_run_not_fully_published_or_task_failed"
+            if task["task_id"] == failed_task_id:
+                task["status"] = "HELD"
+                task["hold_reason"] = "guarded_runtime_or_evidence_gate_failed"
+            else:
+                # Earlier tasks in this un-published workflow are not complete
+                # in durable state; leave them pending for a later safe cycle.
+                task["status"] = "PENDING"
+                task.pop("hold_reason", None)
     for criterion in goal["acceptance_criteria"]:
         criterion["verified"] = False
         criterion.pop("evidence_ref", None)
     store.compare_and_swap(GOAL_ID, revision, goal)
     latest = store.read(GOAL_ID)
     if latest is None:
-        raise RuntimeError("goal_state_missing_after_hold")
+        raise RuntimeError("goal_state_missing_after_reconciliation")
     _write_state(output, latest[1])
 
 
@@ -188,7 +198,7 @@ def run(args: argparse.Namespace) -> int:
         for _ in range(args.max_tasks):
             if stop_file.exists():
                 if claimed_this_run:
-                    _hold_claimed_tasks(store, claimed_this_run, goal_output)
+                    _reconcile_claimed_tasks(store, claimed_this_run, goal_output)
                     return 80
                 return 79
             claim = store.claim_next(GOAL_ID)
@@ -196,7 +206,7 @@ def run(args: argparse.Namespace) -> int:
                 break
             if claim.get("decision") != "CLAIMED":
                 if claimed_this_run:
-                    _hold_claimed_tasks(store, claimed_this_run, goal_output)
+                    _reconcile_claimed_tasks(store, claimed_this_run, goal_output, selected["task_id"])
                     return 80
                 return 79
             claimed_this_run.add(str(claim["task_id"]))
