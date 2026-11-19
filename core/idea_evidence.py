@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
 from math import isfinite
+import json
 import re
 
 from .idea_learning import IdeaOutcome
@@ -175,6 +176,56 @@ class ExperimentEvidenceLedger:
 
     def learning_outcomes(self) -> tuple[IdeaOutcome, ...]:
         return tuple(record.to_idea_outcome() for record in self.records)
+
+    def to_json(self) -> str:
+        """Serialize a stable, versioned snapshot; performs no file I/O."""
+        from dataclasses import asdict
+        return json.dumps(
+            {"schema_version": 1, "records": [asdict(record) for record in self.records]},
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+
+    @classmethod
+    def from_json(cls, payload: str) -> "ExperimentEvidenceLedger":
+        """Load and validate a serialized snapshot supplied by the caller."""
+        if not isinstance(payload, str) or len(payload) > 1_000_000:
+            raise ValueError("payload must be a string no larger than 1MB")
+        try:
+            data = json.loads(payload)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("payload must be valid JSON") from exc
+        if not isinstance(data, dict) or set(data) != {"schema_version", "records"}:
+            raise ValueError("payload must contain schema_version and records only")
+        if data["schema_version"] != 1:
+            raise ValueError("unsupported evidence ledger schema version")
+        if not isinstance(data["records"], list) or len(data["records"]) > _MAX_RECORDS:
+            raise ValueError("records must be a list of at most 500 items")
+
+        allowed = {
+            "hypothesis_id", "style", "result", "observed_value", "metric",
+            "source_ref", "commit_sha", "environment", "sample_count",
+            "measured_at", "evidence_sha256", "note", "verification",
+        }
+        records = []
+        for item in data["records"]:
+            if not isinstance(item, dict) or set(item) != allowed:
+                raise ValueError("each evidence record must contain the exact schema fields")
+            values = dict(item)
+            verification = values["verification"]
+            if verification is not None:
+                if not isinstance(verification, dict) or set(verification) != {
+                    "verifier", "verification_ref", "verified_at", "checks"
+                }:
+                    raise ValueError("verification must contain the exact attestation fields")
+                verification = dict(verification)
+                if not isinstance(verification["checks"], list):
+                    raise ValueError("verification checks must be a list")
+                verification["checks"] = tuple(verification["checks"])
+                values["verification"] = EvidenceVerification(**verification)
+            records.append(ExperimentEvidence(**values))
+        return cls(tuple(records))
 
 
 def evidence_digest(content: bytes) -> str:
