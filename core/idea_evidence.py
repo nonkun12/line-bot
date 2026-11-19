@@ -1,6 +1,6 @@
 """Evidence provenance and verified-outcome adapter for Idea AI.
 
-This module classifies recorded measurements against an approved hypothesis.
+This module classifies recorded measurements against a declared hypothesis.
 It does not run experiments, verify external artifacts, persist records, or grant
 approval. A record marked verified must have been independently checked upstream.
 """
@@ -17,6 +17,7 @@ _MAX_ID_CHARS = 120
 _MAX_REFS = 8
 _MAX_REF_CHARS = 300
 _MAX_RECORDS = 500
+_MAX_PROVENANCE_CHARS = 300
 
 
 def _text(value: str, field: str, limit: int = _MAX_ID_CHARS) -> None:
@@ -48,7 +49,7 @@ class ExperimentEvidence:
         _text(self.environment, "environment", 500)
         if isinstance(self.measured_value, bool) or not isinstance(self.measured_value, (int, float)) or not isfinite(self.measured_value):
             raise ValueError("measured_value must be a finite number")
-        if self.verification_status not in {"pending", "verified", "rejected"}:
+        if not isinstance(self.verification_status, str) or self.verification_status not in {"pending", "verified", "rejected"}:
             raise ValueError("verification_status must be pending, verified, or rejected")
         if self.verification_status == "verified":
             _text(self.verified_by, "verified_by")
@@ -65,6 +66,8 @@ def classify_measurement(
     measured_value: float,
 ) -> str:
     """Return success/failure only outside the predeclared threshold gray zone."""
+    if not isinstance(hypothesis, ExperimentHypothesis):
+        raise TypeError("hypothesis must be an ExperimentHypothesis")
     if isinstance(measured_value, bool) or not isinstance(measured_value, (int, float)) or not isfinite(measured_value):
         raise ValueError("measured_value must be a finite number")
     if hypothesis.direction == "increase":
@@ -89,6 +92,8 @@ def build_verified_idea_outcomes(
     Pending/rejected records and measurements in the threshold gray zone are
     retained as unverified signals, which rank_idea_styles deliberately ignores.
     """
+    if not isinstance(hypothesis, ExperimentHypothesis):
+        raise TypeError("hypothesis must be an ExperimentHypothesis")
     bounded = tuple(records)
     if len(bounded) > _MAX_RECORDS:
         bounded = bounded[-_MAX_RECORDS:]
@@ -109,10 +114,13 @@ def build_verified_idea_outcomes(
             else "unverified"
         )
         provenance = (
-            f"{record.experiment_id}; rev={record.code_revision}; "
-            f"env={record.environment}; refs={','.join(record.evidence_refs)}"
+            f"{record.experiment_id}; reviewer={record.verified_by or 'pending'}; "
+            f"rev={record.code_revision}; env={record.environment}; "
+            f"refs={','.join(record.evidence_refs)}"
         )
-        outcomes.append(IdeaOutcome(record.style, result, provenance[:300]))
+        if len(provenance) > _MAX_PROVENANCE_CHARS:
+            raise ValueError("combined evidence provenance exceeds 300 characters")
+        outcomes.append(IdeaOutcome(record.style, result, provenance))
     return tuple(outcomes)
 
 
