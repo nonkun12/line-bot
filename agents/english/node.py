@@ -9,7 +9,7 @@ from core.agents import AgentRequest, AgentResponse
 from agents.english.progress import profile_prompt, record_observation
 from agents.english.quiz import grade_quiz
 from agents.english.quiz_state import select_daily_words
-from agents.english.core_vocabulary import SIDE_ID, run_core_vocabulary
+from agents.english.core_vocabulary import run_core_vocabulary
 import random
 
 
@@ -115,6 +115,7 @@ class EnglishLearningAgent:
 
     def handle(self, request: AgentRequest) -> AgentResponse:
         original = request.message.strip()
+        side5_result = None
         quiz_result = grade_quiz(request.user_id, original)
         mode = classify_english_mode(original)
 
@@ -128,9 +129,11 @@ class EnglishLearningAgent:
             )
             mode = "ai_tutor"
         elif mode == "vocabulary":
-            text = run_core_vocabulary(request.user_id, "daily", word_selector=select_daily_words).text
+            side5_result = run_core_vocabulary(request.user_id, "daily", word_selector=select_daily_words)
+            text = side5_result.text
         elif mode == "quiz":
-            text = run_core_vocabulary(request.user_id, "quiz").text
+            side5_result = run_core_vocabulary(request.user_id, "quiz")
+            text = side5_result.text
         elif mode == "grammar":
             if re.search(r"\bi\s+want\s+to\s+\w+", original.lower()):
                 text = (
@@ -158,7 +161,8 @@ class EnglishLearningAgent:
                     "送ってくれた英文を、自然さ・文法・より良い表現の3点で添削します。"
                 )
         elif mode == "review":
-            text = run_core_vocabulary(request.user_id, "review", word_selector=select_daily_words).text
+            side5_result = run_core_vocabulary(request.user_id, "review", word_selector=select_daily_words)
+            text = side5_result.text
         elif _english_sentence(original):
             ai_text = _ai_tutor_reply(original, user_id=request.user_id, mode="correction")
             if ai_text:
@@ -184,10 +188,15 @@ class EnglishLearningAgent:
                 "まずは「単語」と送ると今日の3語から始められます。"
             )
 
-        return AgentResponse(
-            text=text,
-            metadata={"feature": self.name, "status": "online", "mode": mode, **({"side_id": SIDE_ID} if mode in {"vocabulary", "quiz", "review"} else {})},
-        )
+        metadata = {"feature": self.name, "status": "online", "mode": mode}
+        if side5_result is not None:
+            metadata.update({
+                "side_id": side5_result.side_id,
+                "registered_word_count": side5_result.registered_word_count,
+                "independently_verified_word_count": side5_result.independently_verified_word_count,
+                "target_word_count": side5_result.target_word_count,
+            })
+        return AgentResponse(text=text, metadata=metadata)
 
 
 agent = EnglishLearningAgent()
