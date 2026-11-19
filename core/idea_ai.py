@@ -1,14 +1,15 @@
 """Bounded ideation agent contract for the distributed AI loop.
 
-The idea agent is intentionally permissive about creativity: unusual, assumption-
-breaking proposals are preserved for review. Safety is enforced at execution
-boundaries, not by making ideation conservative.
+The idea agent preserves unconventional proposals for review. Safety is enforced
+at execution boundaries, not by making ideation conservative.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from .multi_agent import AgentRole, AgentTask
 from .idea_learning import IdeaOutcome, rank_idea_styles
+from .idea_hypothesis import ExperimentHypothesis
+from .idea_evidence import ExperimentEvidence, build_verified_idea_outcomes
 
 _MAX_IDEAS = 5
 _MAX_CHARS = 4000
@@ -96,6 +97,19 @@ class IdeaAgent:
                 safety_boundary="発想は保存するが、実行時はSafety Gateを必須とする",
             ))
         return tuple(ideas)
+
+    def propose_from_evidence(
+        self,
+        focus: str,
+        hypothesis: ExperimentHypothesis,
+        evidence_records: tuple[ExperimentEvidence, ...],
+        *,
+        context: tuple[str, ...] = (),
+        limit: int = _MAX_IDEAS,
+    ) -> tuple[Idea, ...]:
+        """Use only verified, threshold-classified experiment records for learning."""
+        outcomes = build_verified_idea_outcomes(hypothesis, evidence_records)
+        return self.propose(focus, context=context, limit=limit, outcomes=outcomes)
 
 
 __all__ = ["Idea", "IdeaAgent"]
