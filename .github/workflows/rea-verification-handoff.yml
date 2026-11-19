@@ -72,7 +72,7 @@ jobs:
               with urllib.request.urlopen(req, timeout=20) as response:
                   return response.read() if binary else json.loads(response.read())
 
-          def artifact_json(run_id, expected_name, member):
+          def artifact_text(run_id, expected_name, member):
               data = api(f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/artifacts")
               matches = [
                   item for item in data.get("artifacts", [])
@@ -85,7 +85,10 @@ jobs:
                   names = [n for n in zf.namelist() if n.endswith(member)]
                   if len(names) != 1:
                       raise ValueError("artifact_member_missing_or_ambiguous")
-                  return json.loads(zf.read(names[0]))
+                  return zf.read(names[0]).decode("utf-8")
+
+          def artifact_json(run_id, expected_name, member):
+              return json.loads(artifact_text(run_id, expected_name, member))
 
           try:
               match = re.fullmatch(r"rea-candidate/([1-9][0-9]{0,19})", branch)
@@ -101,13 +104,11 @@ jobs:
                   f"rea-independent-verification-{verify_run_id}",
                   "rea-independent-verification.json",
               )
-              row_artifact = artifact_json(
+              row_artifact = artifact_text(
                   source_run_id,
                   f"rea-candidate-evidence-{source_run_id}",
                   "minimal-autonomous-loop.jsonl",
               )
-              if not isinstance(row_artifact, str):
-                  raise ValueError("candidate_evidence_invalid")
               rows = [json.loads(line) for line in row_artifact.splitlines() if line.strip()]
               if len(rows) != 1 or not isinstance(rows[0], dict):
                   raise ValueError("candidate_evidence_not_single_task")
