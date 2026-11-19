@@ -39,8 +39,9 @@ class IdeaResearchCycle:
         *,
         context: tuple[str, ...] = (),
         limit: int = _MAX_IDEAS,
+        local_client=None,
     ) -> "IdeaResearchCycle":
-        ideas = IdeaAgent().propose(focus, context=context, limit=limit)
+        ideas = IdeaAgent().propose(focus, context=context, limit=limit, local_client=local_client)
         workflow = build_idea_workflow(focus, context=context)
         return cls(
             focus=focus.strip(),
@@ -118,13 +119,14 @@ class IdeaResearchCycle:
         records[index] = updated
         return replace(self, ledger=ExperimentEvidenceLedger(tuple(records)))
 
-    def next_ideas(self, *, limit: int = _MAX_IDEAS) -> tuple[Idea, ...]:
+    def next_ideas(self, *, limit: int = _MAX_IDEAS, local_client=None) -> tuple[Idea, ...]:
         """Generate the next bounded proposal set from verified evidence only."""
         return IdeaAgent().propose(
             self.focus,
             context=self.context,
             limit=limit,
             outcomes=self.ledger.learning_outcomes(),
+            local_client=local_client,
         )
 
     def persist_evidence(
