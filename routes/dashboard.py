@@ -471,6 +471,128 @@ def system_status():
     return jsonify(result)
 
 
+
+def _github_task_discovery():
+    """Read-only GitHub snapshot for candidate, catalog approval, and durable task state."""
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token:
+        return {"status": "unavailable", "reason": "github_token_not_configured"}
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    base = "https://api.github.com/repos/nonkun12/line-bot"
+    result = {
+        "status": "partial",
+        "issues": {"status": "unavailable", "open_candidates": None, "review_backlog": None,
+                   "execution_approved_label_count": None, "sample_limit": 100},
+        "catalog": {"status": "unavailable", "total": None, "execution_approved": None,
+                    "unapproved": None, "eligible_approved": None},
+        "runtime_state": {"status": "unavailable", "completed": None, "held": None,
+                          "resume_review": None},
+    }
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            try:
+                response = client.get(
+                    f"{base}/issues",
+                    headers=headers,
+                    params={"state": "open", "per_page": 100, "labels": "autonomous-task-candidate"},
+                )
+                if response.status_code == 200:
+                    issues = response.json()
+                    if not isinstance(issues, list):
+                        raise ValueError("invalid issues response")
+                    candidates = [item for item in issues if isinstance(item, dict) and "pull_request" not in item]
+                    approved_labels = sum(
+                        1 for item in candidates
+                        if any(isinstance(label, dict) and label.get("name") == "autonomous-task-execution-approved"
+                               for label in item.get("labels", []))
+                    )
+                    result["issues"] = {
+                        "status": "ok" if len(issues) < 100 else "partial",
+                        "open_candidates": len(candidates),
+                        "review_backlog": len(candidates),
+                        "execution_approved_label_count": approved_labels,
+                        "sample_limit": 100,
+                        "truncated": len(issues) >= 100,
+                    }
+                else:
+                    result["issues"]["reason"] = f"github_api_{response.status_code}"
+            except (httpx.HTTPError, ValueError, TypeError):
+                result["issues"]["reason"] = "github_issues_unavailable"
+
+            try:
+                catalog_response = client.get(
+                    f"{base}/contents/.github/autonomous-loop-task-catalog.json",
+                    headers=headers,
+                    params={"ref": "main"},
+                )
+                if catalog_response.status_code == 200:
+                    import base64
+                    encoded = catalog_response.json().get("content", "")
+                    catalog = json.loads(base64.b64decode(encoded).decode("utf-8"))
+                    tasks = catalog.get("tasks") if isinstance(catalog, dict) else None
+                    if not isinstance(tasks, list) or any(not isinstance(task, dict) for task in tasks):
+                        raise ValueError("invalid task catalog")
+                    approved_ids = {
+                        task.get("id") for task in tasks
+                        if task.get("execution_approved") is True and isinstance(task.get("id"), str)
+                    }
+                    approved = len(approved_ids)
+                    result["catalog"] = {
+                        "status": "ok", "total": len(tasks), "execution_approved": approved,
+                        "unapproved": len(tasks) - approved, "eligible_approved": None,
+                    }
+                else:
+                    result["catalog"]["reason"] = f"github_api_{catalog_response.status_code}"
+            except (httpx.HTTPError, ValueError, TypeError, KeyError):
+                result["catalog"]["reason"] = "task_catalog_unavailable"
+
+            try:
+                state_response = client.get(
+                    f"{base}/contents/.autonomous-loop-state.json",
+                    headers=headers,
+                    params={"ref": "autonomous-loop-state"},
+                )
+                if state_response.status_code == 200:
+                    import base64
+                    encoded = state_response.json().get("content", "")
+                    state = json.loads(base64.b64decode(encoded).decode("utf-8"))
+                    completed = state.get("completed", []) if isinstance(state, dict) else None
+                    recovery = state.get("recovery_ai", {}) if isinstance(state, dict) else None
+                    task_states = recovery.get("tasks", {}) if isinstance(recovery, dict) else None
+                    if not isinstance(completed, list) or not isinstance(task_states, dict):
+                        raise ValueError("invalid durable state")
+                    held = sum(1 for item in task_states.values() if isinstance(item, dict) and item.get("held") is True)
+                    resume_review = sum(1 for item in task_states.values() if isinstance(item, dict) and item.get("resume_requires_review") is True)
+                    result["runtime_state"] = {
+                        "status": "ok", "completed": len(set(x for x in completed if isinstance(x, str))),
+                        "held": held, "resume_review": resume_review,
+                    }
+                    if result["catalog"]["status"] == "ok":
+                        completed_ids = set(x for x in completed if isinstance(x, str))
+                        eligible = sum(
+                            1 for task in tasks
+                            if task.get("execution_approved") is True
+                            and task.get("id") not in completed_ids
+                            and not (isinstance(task_states.get(task.get("id")), dict)
+                                     and (task_states[task.get("id")].get("held") is True
+                                          or task_states[task.get("id")].get("resume_requires_review") is True))
+                        )
+                        result["catalog"]["eligible_approved"] = eligible
+                else:
+                    result["runtime_state"]["reason"] = f"github_api_{state_response.status_code}"
+            except (httpx.HTTPError, ValueError, TypeError, KeyError):
+                result["runtime_state"]["reason"] = "durable_task_state_unavailable"
+    except httpx.HTTPError:
+        return {"status": "unavailable", "reason": "github_api_unavailable"}
+    statuses = [result[key]["status"] for key in ("issues", "catalog", "runtime_state")]
+    result["status"] = "ok" if all(value == "ok" for value in statuses) else "partial"
+    return result
+
+
 @dashboard_bp.route("/api/dashboard/loop", methods=["GET"])
 @requires_dashboard_access
 def autonomous_loop_status():
@@ -502,6 +624,7 @@ def autonomous_loop_status():
             "sheets_audit": True,
             "runtime_telemetry": "github_actions",
             "last_run": _github_loop_runs(),
+            "task_discovery": _github_task_discovery(),
             "note": "未取得のGitHub Actions実行を成功・実行済みとは表示しません。",
         },
         "safety": {
