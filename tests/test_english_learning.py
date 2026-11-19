@@ -379,3 +379,14 @@ def test_expanded_core_vocabulary_contains_reviewed_practical_words():
         assert f"🔎 {word}（" in explanation
         assert "コアイメージ：" in explanation
         assert "例文：" in explanation
+
+
+def test_side5_rejects_overlong_user_ids_instead_of_truncating_identity():
+    from agents.english.core_vocabulary import run_core_vocabulary
+
+    shared_prefix = "learner-" + ("x" * 192)
+    assert len(shared_prefix) == 200
+    with pytest.raises(ValueError, match="user_id exceeds maximum length"):
+        run_core_vocabulary(shared_prefix + "-a", "daily")
+    with pytest.raises(ValueError, match="user_id exceeds maximum length"):
+        run_core_vocabulary(shared_prefix + "-b", "daily")
