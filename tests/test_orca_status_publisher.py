@@ -85,8 +85,6 @@ def test_validate_snapshot_accepts_fail_closed_rsi_review_summary():
     assert "raw_feedback" not in clean["rsi_review"]
 
 
-@pytest.mark.parametrize("field", ["allow_continue", "execution_authorized", "patch_authorized",
-    "hold_clear_authorized", "merge_deploy_authorized", "scheduler_started", "model_activated"])
 def test_validate_snapshot_accepts_sha_bound_rea_handoff():
     data = payload()
     data["rsi_review"] = {
@@ -105,6 +103,8 @@ def test_validate_snapshot_accepts_sha_bound_rea_handoff():
     assert clean["rsi_review"]["candidate_evidence_sha256"] == "b" * 64
 
 
+@pytest.mark.parametrize("field", ["allow_continue", "execution_authorized", "patch_authorized",
+    "hold_clear_authorized", "merge_deploy_authorized", "scheduler_started", "model_activated"])
 def test_validate_snapshot_rejects_rsi_authority_escalation(field):
     data = payload()
     data["rsi_review"] = {"status": "PASS", "review_count": 0, "review_evidence_event_ids": [],
