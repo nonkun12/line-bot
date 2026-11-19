@@ -483,6 +483,7 @@ def _github_task_discovery():
         "X-GitHub-Api-Version": "2022-11-28",
     }
     base = "https://api.github.com/repos/nonkun12/line-bot"
+    tasks = []
     result = {
         "status": "partial",
         "issues": {"status": "unavailable", "open_candidates": None, "review_backlog": None,
