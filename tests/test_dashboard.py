@@ -274,6 +274,7 @@ def test_dashboard_github_loop_runs_includes_evidence_fields(monkeypatch):
 
 def test_github_task_discovery_counts_candidates_catalog_and_durable_state(monkeypatch):
     import base64
+    import json
     from routes.dashboard import _github_task_discovery
 
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
