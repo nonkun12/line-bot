@@ -75,10 +75,19 @@ def _open_review_issue_count(issues: object, covered_issue_numbers: set[int] | N
         }
         if "autonomous-task-candidate" not in label_names:
             continue
-        if "autonomous-task-execution-approved" in label_names:
-            continue
         body = issue.get("body")
         if not isinstance(body, str) or body.count(SPEC_MARKER) != 2:
+            continue
+        explicitly_review_only = (
+            "Queue admission: not authorized" in body
+            or "実行承認ではありません" in body
+        )
+        # A contradictory label must not hide an explicitly review-only issue
+        # from the backlog cap. This does not grant runtime execution authority.
+        if (
+            "autonomous-task-execution-approved" in label_names
+            and not explicitly_review_only
+        ):
             continue
         try:
             _, raw, _ = body.split(SPEC_MARKER)
