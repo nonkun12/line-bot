@@ -64,3 +64,52 @@ def test_idea_agent_accepts_only_verified_evidence_ledger_learning_signals():
 
     ideas = IdeaAgent().propose("improve research", outcomes=ledger.learning_outcomes())
     assert ideas[0].style == "recombine"
+
+
+def test_idea_agent_uses_explicit_local_client_and_validates_structured_output():
+    import json
+
+    class Completions:
+        def create(self, **kwargs):
+            assert kwargs["model"] == "test-local"
+            assert kwargs["response_format"]["type"] == "json_schema"
+            payload = {"ideas": [{
+                "style": "novel-path",
+                "title": "新しい探索経路",
+                "rationale": "異なる制約を組み合わせる",
+                "next_step": "小さな比較実験の計画を作る",
+                "novelty": 5,
+                "positive_impact": "探索効率を高める",
+            }]}
+            from types import SimpleNamespace
+            return SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content=json.dumps(payload, ensure_ascii=False))
+            )])
+
+    class Client:
+        model = "test-local"
+        chat = type("Chat", (), {"completions": Completions()})()
+
+    ideas = IdeaAgent().propose("自立開発", limit=1, local_client=Client())
+    assert len(ideas) == 1
+    assert ideas[0].title == "新しい探索経路"
+    assert ideas[0].task.role is AgentRole.IDEA
+    assert "No implementation, execution, merge, deploy" in ideas[0].task.instruction
+
+
+def test_idea_agent_rejects_unsafe_or_malformed_local_model_output():
+    from types import SimpleNamespace
+    import pytest
+
+    class Completions:
+        def create(self, **kwargs):
+            return SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content='{"ideas":[{"style":"../unsafe"}]}')
+            )])
+
+    class Client:
+        model = "test-local"
+        chat = type("Chat", (), {"completions": Completions()})()
+
+    with pytest.raises(ValueError):
+        IdeaAgent().propose("自立開発", limit=1, local_client=Client())
