@@ -69,6 +69,29 @@ def validate_candidate_publication(
     )):
         return _blocked("candidate_rea_authority_violation")
 
+    recovery = row.get("recovery_ai")
+    if (
+        not isinstance(recovery, dict)
+        or recovery.get("recorded") is not True
+        or recovery.get("status") != "BLOCKED"
+        or not isinstance(recovery.get("decision"), dict)
+        or recovery["decision"].get("action") not in {"HOLD", "STOP_FAIL_CLOSED"}
+    ):
+        return _blocked("candidate_recovery_ai_stop_evidence_missing")
+    control_tower = row.get("control_tower")
+    orchestration = control_tower.get("orchestration") if isinstance(control_tower, dict) else None
+    if (
+        not isinstance(control_tower, dict)
+        or control_tower.get("recorded") is not True
+        or not isinstance(orchestration, dict)
+        or orchestration.get("phase") != "STOP"
+        or orchestration.get("next_action") != "REPORT_BLOCKED"
+        or orchestration.get("reason_code") != "execution_not_completed"
+        or orchestration.get("allow_continue") is not False
+        or orchestration.get("repair_executed") is not False
+    ):
+        return _blocked("candidate_control_tower_stop_evidence_missing")
+
     approval = row.get("execution_approval")
     if not isinstance(approval, dict):
         return _blocked("candidate_execution_approval_missing")

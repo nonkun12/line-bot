@@ -22,6 +22,18 @@ def valid_inputs():
             "execution_authorized": False, "patch_authorized": False,
             "hold_clear_authorized": False, "merge_deploy_authorized": False,
         },
+        "recovery_ai": {
+            "recorded": True, "status": "BLOCKED",
+            "decision": {"action": "HOLD"},
+        },
+        "control_tower": {
+            "recorded": True,
+            "orchestration": {
+                "phase": "STOP", "next_action": "REPORT_BLOCKED",
+                "reason_code": "execution_not_completed", "allow_continue": False,
+                "repair_executed": False,
+            },
+        },
         "execution_approval": {
             "gate": "PASS", "execution_authorized": True, "scope": "execution",
             "actor": "nonkun12", "task_id": TASK, "base_sha": BASE,
@@ -92,6 +104,15 @@ def test_catalog_approval_and_exact_sha_are_mandatory():
     assert validate_candidate_publication(
         rows, queue, catalog, expected_base_sha=BASE, observed_head_sha=BASE, changed_paths=PATHS
     )["reason_code"] == "candidate_has_no_commit"
+
+
+def test_candidate_requires_recovery_ai_and_control_tower_to_record_the_stop():
+    rows, _, _ = valid_inputs()
+    rows[0].pop("recovery_ai")
+    assert validate(rows=rows)["reason_code"] == "candidate_recovery_ai_stop_evidence_missing"
+    rows, _, _ = valid_inputs()
+    rows[0]["control_tower"]["orchestration"]["allow_continue"] = True
+    assert validate(rows=rows)["reason_code"] == "candidate_control_tower_stop_evidence_missing"
 
 
 def test_candidate_rejects_mismatched_instruction_or_path_digests():
