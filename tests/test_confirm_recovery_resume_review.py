@@ -141,7 +141,7 @@ def test_main_blocks_unknown_task_with_value_error_without_mutating_file(
     assert state_path.read_bytes() == before
 
 def test_main_passes_cli_paths_and_task_id_to_confirmation(
-    tmp_path: Path, monkeypatch
+    tmp_path, monkeypatch
 ) -> None:
     import sys
 
