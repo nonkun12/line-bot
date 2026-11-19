@@ -139,3 +139,38 @@ def test_main_blocks_unknown_task_with_value_error_without_mutating_file(
     assert result == 1
     assert captured.out.strip() == "Recovery AI resume review blocked: ValueError"
     assert state_path.read_bytes() == before
+
+def test_main_passes_cli_paths_and_task_id_to_confirmation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import sys
+
+    from scripts import confirm_recovery_resume_review
+
+    state_file = tmp_path / "durable-state.json"
+    task_id = "task-cli-review"
+    called = {}
+
+    def capture_confirmation(state_path, received_task_id, recovery_state_path=None):
+        called["state_path"] = state_path
+        called["task_id"] = received_task_id
+        called["recovery_state_path"] = recovery_state_path
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "confirm_recovery_resume_review",
+            "--state-file", str(state_file),
+            "--task-id", task_id,
+        ],
+    )
+    monkeypatch.setattr(
+        confirm_recovery_resume_review,
+        "confirm_in_durable_state",
+        capture_confirmation,
+    )
+
+    assert confirm_recovery_resume_review.main() == 0
+    assert called["state_path"] == str(state_file)
+    assert called["task_id"] == task_id
