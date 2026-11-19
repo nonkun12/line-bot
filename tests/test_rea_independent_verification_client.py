@@ -111,6 +111,7 @@ def test_client_rejects_artifact_digest_mismatch(monkeypatch):
     assert metadata["id"] == RUN_ID
 
 
-def test_client_requires_exact_sha_and_token():
+def test_client_requires_exact_sha_and_token(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     assert client.load_independent_verification_for_sha("not-a-sha", token="x") == (None, None)
     assert client.load_independent_verification_for_sha(SHA, token="") == (None, None)
