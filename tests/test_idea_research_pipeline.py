@@ -6,7 +6,7 @@ import pytest
 
 from core.idea_evidence import ExperimentEvidence, sign_evidence_record
 from core.idea_hypothesis import ExperimentHypothesis
-from core.idea_research_pipeline import build_idea_research_plan
+from core.idea_research_pipeline import build_idea_research_plan, build_idea_research_plan_from_store
 from core.multi_agent import AgentRole
 
 
@@ -117,3 +117,20 @@ def test_cycle_is_plan_only_and_does_not_grant_execution():
     assert all("deploy" in task.instruction.lower() for task in all_tasks)
     assert not hasattr(plan, "execute")
     assert not hasattr(plan, "approval_granted")
+
+
+def test_builds_next_plan_directly_from_persisted_evidence(tmp_path, hypothesis):
+    from core.idea_evidence_store import append_evidence_record
+
+    path = tmp_path / "idea-evidence.jsonl"
+    append_evidence_record(path, evidence())
+    plan = build_idea_research_plan_from_store(
+        "improve self-directed research",
+        hypothesis=hypothesis,
+        evidence_store_path=path,
+        reviewer_keys={"independent-review": REVIEWER_KEY},
+    )
+    assert plan.verified_count == 1
+    assert plan.learning_outcomes[0].result == "success"
+    assert len(plan.workflow_batches) == 3
+    assert len(plan.idea_candidates) == 5
