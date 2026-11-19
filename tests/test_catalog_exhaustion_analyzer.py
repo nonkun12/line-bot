@@ -352,3 +352,30 @@ def test_analyzer_round_robins_targets_before_applying_candidate_cap(tmp_path: P
     assert report["discovery_diagnostics"]["candidate_pool_count_before_global_cap"] == 7
     assert report["discovery_diagnostics"]["global_candidate_cap_reached"] is True
     assert report["safety"]["candidates_executable"] is False
+
+
+def test_main_reports_blocked_on_invalid_catalog_without_writing_output(tmp_path: Path, monkeypatch, capsys):
+    import sys
+
+    from scripts import catalog_exhaustion_analyzer
+
+    invalid_catalog = tmp_path / "catalog.json"
+    invalid_catalog.write_text("{invalid json", encoding="utf-8")
+    output = tmp_path / "report.json"
+    output.write_text("preserve-existing-output\\n", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "catalog_exhaustion_analyzer",
+            "--catalog", str(invalid_catalog),
+            "--queue", str(tmp_path / "queue.json"),
+            "--state", str(tmp_path / "state.json"),
+            "--runtime", str(tmp_path / "runtime.py"),
+            "--output", str(output),
+        ],
+    )
+
+    assert catalog_exhaustion_analyzer.main() == 2
+    assert capsys.readouterr().out.strip() == "CATALOG_EXHAUSTION_ANALYZER_BLOCKED: ValueError"
+    assert output.read_text(encoding="utf-8") == "preserve-existing-output\\n"
