@@ -697,3 +697,13 @@ def test_main_reports_blocked_on_invalid_catalog_without_writing_output(tmp_path
     assert capsys.readouterr().out.strip() == "REFILL_BLOCKED: ValueError"
     assert output.read_bytes() == output_before
 
+
+
+def test_read_json_rejects_non_object_json_root(tmp_path: Path):
+    source = tmp_path / "catalog.json"
+    source.write_text('["not", "an", "object"]', encoding="utf-8")
+
+    from scripts.autonomous_task_refill import read_json
+
+    with pytest.raises(ValueError, match="JSON root must be an object"):
+        read_json(source)
