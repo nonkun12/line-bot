@@ -26,7 +26,10 @@ def validate_candidate_publication(
 
     This gate does not promote to line-dev/main and grants no merge/deploy authority.
     """
-    if not _SHA.fullmatch(expected_base_sha or "") or not _SHA.fullmatch(observed_head_sha or ""):
+    if (
+        not isinstance(expected_base_sha, str) or not _SHA.fullmatch(expected_base_sha)
+        or not isinstance(observed_head_sha, str) or not _SHA.fullmatch(observed_head_sha)
+    ):
         return _blocked("commit_identity_invalid")
     if expected_base_sha == observed_head_sha:
         return _blocked("candidate_has_no_commit")
@@ -50,8 +53,8 @@ def validate_candidate_publication(
     if (
         rea.get("status") != "HOLD"
         or rea.get("reason_code") != "verification_incomplete"
-        or rea.get("tests") not in {"UNKNOWN", "NOT_RUN"}
-        or rea.get("risk") not in {"LOW", "MEDIUM"}
+        or not isinstance(rea.get("tests"), str) or rea.get("tests") not in {"UNKNOWN", "NOT_RUN"}
+        or not isinstance(rea.get("risk"), str) or rea.get("risk") not in {"LOW", "MEDIUM"}
         or rea.get("diff_scan") != "PASS"
         or rea.get("stop_state") != "INACTIVE"
         or rea.get("hold_state") != "CLEAR"

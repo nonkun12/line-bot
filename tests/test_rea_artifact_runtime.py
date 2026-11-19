@@ -138,13 +138,13 @@ def test_runtime_artifact_records_sanitized_rea_history_when_configured(tmp_path
         tmp_path / "recovery-rag.sqlite3",
         namespace="distributed-loop",
         task_id="next-task",
-        instruction="Review tests and unknown risk evidence",
+        instruction="Review verification evidence and regression tests",
     )
     assert "status=HOLD" in context
     assert "verification_incomplete" in context
 
 
-def test_runtime_consumes_trusted_independent_receipt_but_risk_stays_unknown(tmp_path, monkeypatch):
+def test_runtime_consumes_trusted_independent_receipt_with_medium_risk(tmp_path, monkeypatch):
     _scan(monkeypatch)
     receipt, run_metadata = _trusted_receipt_and_run()
     result = rea_artifact_runtime.evaluate_and_record_runtime_artifact(
@@ -157,8 +157,8 @@ def test_runtime_consumes_trusted_independent_receipt_but_risk_stays_unknown(tmp
         independent_run_metadata=run_metadata,
     )
 
-    assert result["status"] == "HOLD"
-    assert result["reason_code"] == "verification_incomplete"
+    assert result["status"] == "PASS"
+    assert result["reason_code"] == "artifact_evidence_verified"
     assert result["tests"] == "PASS"
     assert result["risk"] == "MEDIUM"
     assert result["independent_verification"]["verified_sha"] == HEAD
@@ -188,7 +188,7 @@ def test_runtime_rejects_receipt_without_trusted_run_metadata(tmp_path, monkeypa
     assert result["execution_authorized"] is False
 
 
-def test_runtime_discovers_exact_sha_receipt_automatically(tmp_path, monkeypatch):
+def test_runtime_discovers_exact_sha_receipt_automatically_and_passes_medium_risk(tmp_path, monkeypatch):
     _scan(monkeypatch)
     receipt, run_metadata = _trusted_receipt_and_run()
     observed = {}
@@ -209,5 +209,5 @@ def test_runtime_discovers_exact_sha_receipt_automatically(tmp_path, monkeypatch
     assert observed["expected_sha"] == HEAD
     assert result["tests"] == "PASS"
     assert result["risk"] == "MEDIUM"
-    assert result["status"] == "HOLD"
+    assert result["status"] == "PASS"
     assert result["independent_verification"]["verification_run_id"] == 987
