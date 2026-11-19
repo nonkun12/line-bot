@@ -1608,3 +1608,38 @@ def test_every_deterministic_task_mapping_has_an_executable_plan():
             missing.append(task_id)
     assert missing == []
 
+
+def test_repo_files_enforces_exact_autonomous_allowed_path_manifest(monkeypatch):
+    import pytest
+
+    tracked = "\n".join(
+        [
+            "tests/test_allowed.py",
+            "tests/test_neighbor.py",
+            "README.md",
+            ".github/workflows/secret.yml",
+            "scripts/worker.py",
+        ]
+    )
+
+    def fake_run(command, **_kwargs):
+        assert command == ["git", "ls-files"]
+        return subprocess.CompletedProcess(command, 0, stdout=tracked, stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    monkeypatch.setattr(worker, "_is_shared_policy_autonomous", lambda _path: True)
+
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_allowed.py"]')
+    assert worker.repo_files() == ["tests/test_allowed.py"]
+
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/not-tracked.py"]')
+    with pytest.raises(RuntimeError, match="references untracked files"):
+        worker.repo_files()
+
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '[".github/workflows/secret.yml"]')
+    with pytest.raises(RuntimeError, match="contains a protected file"):
+        worker.repo_files()
+
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["../tests/test_allowed.py"]')
+    with pytest.raises(RuntimeError, match="AUTONOMOUS_ALLOWED_PATHS is invalid"):
+        worker.repo_files()
