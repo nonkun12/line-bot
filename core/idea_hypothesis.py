@@ -64,8 +64,8 @@ class ExperimentHypothesis:
         if self.direction == "increase":
             if not self.failure_threshold < self.baseline < self.success_threshold:
                 raise ValueError("increase requires failure_threshold < baseline < success_threshold")
-        elif not self.success_threshold < self.baseline < self.failure_threshold:
-            raise ValueError("decrease requires success_threshold < baseline < failure_threshold")
+        elif not self.success_threshold < self.failure_threshold < self.baseline:
+            raise ValueError("decrease requires success_threshold < failure_threshold < baseline")
 
         _bounded_text_list(self.evidence_requirements, "evidence_requirements")
         _bounded_text_list(self.reproducibility_steps, "reproducibility_steps")
