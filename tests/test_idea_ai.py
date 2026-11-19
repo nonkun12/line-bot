@@ -13,3 +13,54 @@ def test_idea_agent_rejects_invalid_input():
         IdeaAgent().propose("")
     with pytest.raises(ValueError):
         IdeaAgent().propose("Loop", limit=6)
+
+
+
+def test_idea_agent_accepts_only_verified_evidence_ledger_learning_signals():
+    from core.idea_evidence import (
+        EvidenceVerification,
+        ExperimentEvidence,
+        ExperimentEvidenceLedger,
+    )
+
+    ledger = ExperimentEvidenceLedger()
+    verification = EvidenceVerification(
+        verifier="independent-review",
+        verification_ref="review://benchmark/verified",
+        verified_at="2026-11-19T00:00:00Z",
+        checks=("artifact digest inspected",),
+    )
+    for index in range(10):
+        ledger = ledger.append(ExperimentEvidence(
+            hypothesis_id=f"recombine-{index}",
+            style="recombine",
+            result="success",
+            observed_value=1.0,
+            metric="validated result rate",
+            source_ref=f"artifact://run/recombine/{index}",
+            commit_sha="a" * 40,
+            environment="fixed-test-environment",
+            sample_count=10,
+            measured_at="2026-11-19T00:00:00Z",
+            evidence_sha256=f"{index:064x}",
+            verification=verification,
+        ))
+    for style in ("reframe", "specialize", "architecture-leap", "constraint"):
+        for index in range(10):
+            ledger = ledger.append(ExperimentEvidence(
+                hypothesis_id=f"{style}-{index}",
+                style=style,
+                result="failure",
+                observed_value=0.0,
+                metric="validated result rate",
+                source_ref=f"artifact://run/{style}/{index}",
+                commit_sha="b" * 40,
+                environment="fixed-test-environment",
+                sample_count=10,
+                measured_at="2026-11-19T00:00:00Z",
+                evidence_sha256=f"{index + 100:064x}",
+                verification=verification,
+            ))
+
+    ideas = IdeaAgent().propose("improve research", outcomes=ledger.learning_outcomes())
+    assert ideas[0].style == "recombine"
