@@ -62,7 +62,8 @@ def test_failed_guarded_task_is_held_and_not_retried(tmp_path,monkeypatch):
     args=SimpleNamespace(catalog=catalog,state=state,results=results,stop_file=stop,
                          goal_state_output=goal_output,max_tasks=1)
     assert bridge.run(args)==1
-    assert not goal_output.exists()
+    assert goal_output.exists()
+    assert json.loads(goal_output.read_text())["tasks"][0]["status"] == "HELD"
     assert "goal_autopilot" not in json.loads(state.read_text())
 
 
@@ -97,3 +98,45 @@ def test_resume_cannot_reopen_task_outside_approved_queue(tmp_path):
     store = bridge.GoalStateStore(tmp_path / "resume.db")
     with pytest.raises(ValueError, match="resume_task_not_in_current_approved_queue"):
         bridge._load_goal(store, {"goal_autopilot": held_goal}, [], set(), "approved-test-task")
+
+
+def test_partial_workflow_failure_does_not_durably_complete_unpublished_prior_task(tmp_path, monkeypatch):
+    queue, catalog, state, results, stop = _inputs(tmp_path)
+    queue_data = json.loads(queue.read_text())
+    catalog_data = json.loads(catalog.read_text())
+    second = {
+        "id": "approved-test-task-2",
+        "instruction": "Run a second bounded test-only task",
+        "allowed_paths": ["tests/test_second.py"],
+    }
+    queue_data["tasks"].append(second)
+    catalog_data["tasks"].append({**second, "execution_approved": True})
+    queue.write_text(json.dumps(queue_data))
+    catalog.write_text(json.dumps(catalog_data))
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+    monkeypatch.setattr(bridge, "_valid_success", lambda row, task_id: row.get("status") == "PASS")
+    calls = {"count": 0}
+
+    def fake_run(command, *, cwd, env, check):
+        calls["count"] += 1
+        selected = json.loads(Path(env["AUTONOMOUS_LOOP_TASK_QUEUE"]).read_text())["tasks"][0]
+        if calls["count"] == 1:
+            row = {"task_id": selected["id"], "status": "PASS", "exit_code": 0,
+                   "base_sha": "a" * 40, "produced_sha": "b" * 40, "run_nonce": "nonce-1"}
+            with results.open("a") as stream:
+                stream.write(json.dumps(row) + "\\n")
+            return SimpleNamespace(returncode=0)
+        row = {"task_id": selected["id"], "status": "FAIL", "exit_code": 1}
+        with results.open("a") as stream:
+            stream.write(json.dumps(row) + "\\n")
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(bridge.subprocess, "run", fake_run)
+    goal_output = tmp_path / "goal-pending.json"
+    args = SimpleNamespace(catalog=catalog, state=state, results=results, stop_file=stop,
+                           goal_state_output=goal_output, max_tasks=2)
+    assert bridge.run(args) == 1
+    goal = json.loads(goal_output.read_text())
+    statuses = {task["task_id"]: task["status"] for task in goal["tasks"]}
+    assert statuses == {"approved-test-task": "PENDING", "approved-test-task-2": "HELD"}
