@@ -490,6 +490,7 @@ def _github_task_discovery():
                    "execution_approved_label_count": None, "sample_limit": 100},
         "catalog": {"status": "unavailable", "total": None, "execution_approved": None,
                     "unapproved": None, "eligible_approved": None},
+        "queue": {"status": "unavailable", "queued": None, "exact_approved_matches": None},
         "runtime_state": {"status": "unavailable", "completed": None, "held": None,
                           "resume_review": None},
     }
@@ -552,6 +553,24 @@ def _github_task_discovery():
                 result["catalog"]["reason"] = "task_catalog_unavailable"
 
             try:
+                queue_response = client.get(
+                    f"{base}/contents/.github/autonomous-loop-tasks.json",
+                    headers=headers,
+                    params={"ref": "main"},
+                )
+                if queue_response.status_code == 200:
+                    import base64
+                    encoded = queue_response.json().get("content", "")
+                    queue_data = json.loads(base64.b64decode(encoded).decode("utf-8"))
+                    queued = queue_data.get("tasks") if isinstance(queue_data, dict) else None
+                    if not isinstance(queued, list) or any(not isinstance(task, dict) for task in queued):
+                        raise ValueError("invalid runtime queue")
+                    result["queue"] = {"status": "ok", "queued": len(queued), "exact_approved_matches": None}
+                else:
+                    result["queue"]["reason"] = f"github_api_{queue_response.status_code}"
+            except (httpx.HTTPError, ValueError, TypeError, KeyError):
+                result["queue"]["reason"] = "runtime_queue_unavailable"
+            try:
                 state_response = client.get(
                     f"{base}/contents/.autonomous-loop-state.json",
                     headers=headers,
@@ -572,24 +591,30 @@ def _github_task_discovery():
                         "status": "ok", "completed": len(set(x for x in completed if isinstance(x, str))),
                         "held": held, "resume_review": resume_review,
                     }
-                    if result["catalog"]["status"] == "ok":
+                    if result["catalog"]["status"] == "ok" and result["queue"]["status"] == "ok":
                         completed_ids = set(x for x in completed if isinstance(x, str))
-                        eligible = sum(
-                            1 for task in tasks
-                            if task.get("execution_approved") is True
-                            and task.get("id") not in completed_ids
-                            and not (isinstance(task_states.get(task.get("id")), dict)
-                                     and (task_states[task.get("id")].get("held") is True
-                                          or task_states[task.get("id")].get("resume_requires_review") is True))
-                        )
-                        result["catalog"]["eligible_approved"] = eligible
+                        approved_by_id = {task.get("id"): task for task in tasks if task.get("execution_approved") is True and isinstance(task.get("id"), str) and isinstance(task.get("instruction"), str) and isinstance(task.get("allowed_paths"), list)}
+                        exact_matches = set()
+                        for queued_task in queued:
+                            task_id = queued_task.get("id")
+                            trusted = approved_by_id.get(task_id)
+                            if trusted is None or task_id in completed_ids:
+                                continue
+                            if any(queued_task.get(key) != trusted.get(key) for key in ("id", "instruction", "allowed_paths")):
+                                continue
+                            recovery_task = task_states.get(task_id)
+                            if isinstance(recovery_task, dict) and (recovery_task.get("held") is True or recovery_task.get("resume_requires_review") is True):
+                                continue
+                            exact_matches.add(task_id)
+                        result["queue"]["exact_approved_matches"] = len(exact_matches)
+                        result["catalog"]["eligible_approved"] = len(exact_matches)
                 else:
                     result["runtime_state"]["reason"] = f"github_api_{state_response.status_code}"
             except (httpx.HTTPError, ValueError, TypeError, KeyError):
                 result["runtime_state"]["reason"] = "durable_task_state_unavailable"
     except httpx.HTTPError:
         return {"status": "unavailable", "reason": "github_api_unavailable"}
-    statuses = [result[key]["status"] for key in ("issues", "catalog", "runtime_state")]
+    statuses = [result[key]["status"] for key in ("issues", "catalog", "runtime_state", "queue")]
     result["status"] = "ok" if all(value == "ok" for value in statuses) else "partial"
     return result
 
