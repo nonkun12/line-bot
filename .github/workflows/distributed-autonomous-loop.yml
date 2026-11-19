@@ -646,7 +646,7 @@ jobs:
 
       - name: Publish isolated REA candidate for independent verification
         id: publish_rea_candidate
-        if: ${{ always() && steps.run_task.conclusion != 'skipped' && env.TRIGGER_MODE == 'normal' }}
+        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' && env.TRIGGER_MODE == 'normal' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -718,7 +718,20 @@ jobs:
               check=True, capture_output=True, text=True,
           )
           print("REA_CANDIDATE=PUBLISHED branch=" + branch + " sha=" + head_sha)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("published=true\\n")
+              output.write("branch=" + branch + "\\n")
+              output.write("candidate_sha=" + head_sha + "\\n")
           PY
+
+      - name: Archive isolated candidate evidence
+        if: steps.publish_rea_candidate.outputs.published == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-candidate-evidence-${{ github.run_id }}
+          path: /tmp/minimal-autonomous-loop.jsonl
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Maintenance AI read-only failure triage
         id: maintenance_ai
