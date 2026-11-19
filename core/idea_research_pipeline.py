@@ -1,16 +1,18 @@
 """End-to-end planning adapter for the empirical Idea AI cycle.
 
 Combines role-separated research planning, hypothesis-bound evidence review,
-and evidence-informed idea selection. It only builds plans and candidates:
-it never invokes agents, runs experiments, persists evidence, or executes work.
+evidence persistence, and evidence-informed idea selection. It only builds
+plans and candidates: it never invokes agents or runs experiments.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from os import PathLike
 from typing import Iterable
 
 from core.idea_ai import Idea, IdeaAgent
 from core.idea_evidence import ExperimentEvidence, build_verified_idea_outcomes
+from core.idea_evidence_store import load_evidence_records
 from core.idea_hypothesis import ExperimentHypothesis
 from core.idea_learning import IdeaOutcome
 from core.idea_workflow import build_idea_workflow
@@ -37,12 +39,7 @@ def build_idea_research_plan(
     evidence_records: Iterable[ExperimentEvidence] = (),
     idea_limit: int = 5,
 ) -> IdeaResearchPlan:
-    """Build a complete non-executing cycle plan from evidence to next ideas.
-
-    Evidence without its originating hypothesis is rejected. Only independently
-    verified records can influence ranking; pending/rejected/gray-zone results
-    remain unverified and are ignored by the learning ranker.
-    """
+    """Build a complete non-executing cycle plan from evidence to next ideas."""
     records = tuple(evidence_records)
     if len(records) > _MAX_EVIDENCE_RECORDS:
         raise ValueError(f"evidence_records exceeds {_MAX_EVIDENCE_RECORDS}")
@@ -73,4 +70,33 @@ def build_idea_research_plan(
     )
 
 
-__all__ = ["IdeaResearchPlan", "build_idea_research_plan"]
+def build_idea_research_plan_from_store(
+    focus: str,
+    *,
+    hypothesis: ExperimentHypothesis,
+    evidence_store_path: str | PathLike[str],
+    context: tuple[str, ...] = (),
+    idea_limit: int = 5,
+) -> IdeaResearchPlan:
+    """Load the explicit evidence store and build the next research plan.
+
+    The store must already exist and pass its permission/provenance checks.
+    This function is read-only with respect to the store and never executes work.
+    """
+    if not isinstance(hypothesis, ExperimentHypothesis):
+        raise TypeError("hypothesis must be an ExperimentHypothesis")
+    records = load_evidence_records(evidence_store_path)
+    return build_idea_research_plan(
+        focus,
+        context=context,
+        hypothesis=hypothesis,
+        evidence_records=records,
+        idea_limit=idea_limit,
+    )
+
+
+__all__ = [
+    "IdeaResearchPlan",
+    "build_idea_research_plan",
+    "build_idea_research_plan_from_store",
+]
