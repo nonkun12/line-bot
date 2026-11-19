@@ -52,7 +52,7 @@ class ExperimentHypothesis:
         _required_text(self.baseline_source, "baseline_source", 500)
         _required_text(self.measurement_method, "measurement_method", 500)
 
-        if self.direction not in {"increase", "decrease"}:
+        if not isinstance(self.direction, str) or self.direction not in {"increase", "decrease"}:
             raise ValueError("direction must be increase or decrease")
 
         for field_name in ("baseline", "success_threshold", "failure_threshold"):
