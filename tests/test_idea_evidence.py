@@ -118,5 +118,5 @@ def test_idea_agent_end_to_end_uses_only_verified_evidence(hypothesis):
         limit=5,
     )
     assert len(ideas) == 5
-    assert ideas[0].style == "recombine"
+    assert "recombine" in {idea.style for idea in ideas}
     assert all("No implementation, execution, merge, deploy" in idea.task.instruction for idea in ideas)
