@@ -46,10 +46,14 @@ def discover_roadmap_candidates(readme_path: Path) -> list[dict[str, Any]]:
         title = match.group(1).strip()
         if not title or len(title) > 240:
             continue
-        evidence = f"README.md:{line_number}"
+        normalized_title = " ".join(title.split()).casefold()
         fingerprint = hashlib.sha256(
-            f"roadmap-v1\0{evidence}\0{title}".encode("utf-8")
+            f"roadmap-v1\0{normalized_title}".encode("utf-8")
         ).hexdigest()
+        if fingerprint in seen_fingerprints:
+            continue
+        seen_fingerprints.add(fingerprint)
+        evidence = f"README.md:{line_number}"
         candidates.append({
             "id": f"functional-roadmap-{fingerprint[:12]}",
             "kind": "functional_improvement",
