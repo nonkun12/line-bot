@@ -12,6 +12,7 @@ BASE = "b" * 40
 def receipt(**overrides):
     value = {
         "schema_version": 1,
+        "run_id": 123,
         "verified_sha": SHA,
         "base_sha": BASE,
         "test_outcome": "SUCCESS",
@@ -89,3 +90,12 @@ def test_line_dev_push_run_is_accepted_only_for_exact_sha():
     assert evaluate_independent_verification_receipt(receipt(), push, expected_sha=SHA)["tests"] == "PASS"
     push["head_branch"] = "main"
     assert evaluate_independent_verification_receipt(receipt(), push, expected_sha=SHA)["tests"] == "UNKNOWN"
+
+
+def test_receipt_run_id_and_pr_base_sha_are_bound_to_trusted_run():
+    assert evaluate_independent_verification_receipt(
+        receipt(run_id=999), run(), expected_sha=SHA
+    )["tests"] == "UNKNOWN"
+    assert evaluate_independent_verification_receipt(
+        receipt(base_sha="c" * 40), run(), expected_sha=SHA
+    )["tests"] == "UNKNOWN"
