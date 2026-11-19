@@ -1032,7 +1032,17 @@ jobs:
                   or len(rea_rag_payload['records']) > 200):
               raise SystemExit('REA RAG export is invalid; durable update blocked')
           data['rea_rag'] = rea_rag_payload['records']
-          local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
+          local_state_path = Path('/tmp/autonomous-loop-state.json')
+          local_state = json.loads(local_state_path.read_text(encoding='utf-8'))
+          pending_goal_path = Path('/tmp/goal-autopilot-pending.json')
+          if pending_goal_path.exists():
+              pending_goal = json.loads(pending_goal_path.read_text(encoding='utf-8'))
+              from scripts.goal_autopilot import evaluate_goal
+              if not isinstance(pending_goal, dict) or evaluate_goal(pending_goal).get('decision') == 'INVALID':
+                  raise SystemExit('pending Goal Autopilot state is invalid')
+              data['goal_autopilot'] = pending_goal
+              local_state['goal_autopilot'] = pending_goal
+              local_state_path.write_text(json.dumps(local_state, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           goal_autopilot = local_state.get('goal_autopilot')
           if goal_autopilot is not None:
               from scripts.goal_autopilot import evaluate_goal

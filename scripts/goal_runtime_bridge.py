@@ -143,6 +143,28 @@ def _append_blocked(path: Path, task_id: str, reason: str) -> None:
     with path.open("a", encoding="utf-8") as stream:
         stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
+def _hold_claimed_tasks(store: GoalStateStore, task_ids: set[str], output: Path) -> None:
+    if not task_ids:
+        return
+    loaded = store.read(GOAL_ID)
+    if loaded is None:
+        raise RuntimeError("goal_state_missing_while_holding")
+    revision, goal = loaded
+    for task in goal["tasks"]:
+        if task["task_id"] in task_ids:
+            task["status"] = "HELD"
+            task.pop("completion_evidence", None)
+            task["hold_reason"] = "workflow_run_not_fully_published_or_task_failed"
+    for criterion in goal["acceptance_criteria"]:
+        criterion["verified"] = False
+        criterion.pop("evidence_ref", None)
+    store.compare_and_swap(GOAL_ID, revision, goal)
+    latest = store.read(GOAL_ID)
+    if latest is None:
+        raise RuntimeError("goal_state_missing_after_hold")
+    _write_state(output, latest[1])
+
+
 def run(args: argparse.Namespace) -> int:
     queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", ".github/autonomous-loop-tasks.json"))
     state_path, results_path, stop_file = args.state.resolve(), args.results.resolve(), args.stop_file.resolve()
@@ -158,18 +180,26 @@ def run(args: argparse.Namespace) -> int:
         return 78
     with tempfile.TemporaryDirectory(prefix="goal-autopilot-") as tmp:
         store = GoalStateStore(Path(tmp) / "goal.sqlite3")
+        claimed_this_run: set[str] = set()
         loaded = _load_goal(store, state, authorized, completed, os.environ.get("GOAL_RESUME_TASK_ID", "").strip())
         if loaded is None:
             raise RuntimeError("goal_state_missing")
         _, goal = loaded
         for _ in range(args.max_tasks):
             if stop_file.exists():
+                if claimed_this_run:
+                    _hold_claimed_tasks(store, claimed_this_run, goal_output)
+                    return 80
                 return 79
             claim = store.claim_next(GOAL_ID)
             if claim.get("decision") == "COMPLETE":
                 break
             if claim.get("decision") != "CLAIMED":
+                if claimed_this_run:
+                    _hold_claimed_tasks(store, claimed_this_run, goal_output)
+                    return 80
                 return 79
+            claimed_this_run.add(str(claim["task_id"]))
             loaded = store.read(GOAL_ID)
             if loaded is None:
                 raise RuntimeError("goal_state_disappeared_after_claim")
@@ -200,7 +230,7 @@ def run(args: argparse.Namespace) -> int:
                     continue
             matching = [r for r in rows if r.get("task_id") == selected["task_id"]]
             row = matching[-1] if len(rows) == 1 and len(matching) == 1 else None
-            if row is not None and _valid_success(row, selected["task_id"]):
+            if row is not None and child.returncode == 0 and _valid_success(row, selected["task_id"]):
                 digest = hashlib.sha1(json.dumps(row, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
                 store.record_result(GOAL_ID, selected["task_id"], status="COMPLETED",
                     completion_evidence={"task_id": selected["task_id"], "verified": True,
@@ -225,7 +255,8 @@ def run(args: argparse.Namespace) -> int:
                     _append_blocked(results_path, selected["task_id"], "goal_runtime_result_missing_or_ambiguous")
                 elif child.returncode == 0:
                     _append_blocked(results_path, selected["task_id"], "goal_runtime_independent_evidence_gate_failed")
-                return 80 if child.returncode == 78 else (child.returncode or 80)
+                _hold_claimed_tasks(store, claimed_this_run, goal_output)
+                return 80 if child.returncode in {78, 79} else (child.returncode or 80)
         latest = store.read(GOAL_ID)
         if latest:
             _write_state(goal_output, latest[1])
