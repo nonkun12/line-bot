@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
-from typing import Iterable
-
 from core.idea_hypothesis import ExperimentHypothesis
 from core.idea_learning import IdeaOutcome
 
@@ -51,6 +49,8 @@ class ExperimentEvidence:
             raise ValueError("measured_value must be a finite number")
         if not isinstance(self.verification_status, str) or self.verification_status not in {"pending", "verified", "rejected"}:
             raise ValueError("verification_status must be pending, verified, or rejected")
+        if not isinstance(self.verified_by, str):
+            raise ValueError("verified_by must be a string")
         if self.verification_status == "verified":
             _text(self.verified_by, "verified_by")
         elif self.verified_by:
@@ -85,21 +85,23 @@ def classify_measurement(
 
 def build_verified_idea_outcomes(
     hypothesis: ExperimentHypothesis,
-    records: Iterable[ExperimentEvidence],
+    records: tuple[ExperimentEvidence, ...],
 ) -> tuple[IdeaOutcome, ...]:
     """Convert independently verified records into bounded learning signals.
 
     Pending/rejected records and measurements in the threshold gray zone are
     retained as unverified signals, which rank_idea_styles deliberately ignores.
+    The tuple input is capped at 500 records to keep processing bounded.
     """
     if not isinstance(hypothesis, ExperimentHypothesis):
         raise TypeError("hypothesis must be an ExperimentHypothesis")
-    bounded = tuple(records)
-    if len(bounded) > _MAX_RECORDS:
-        bounded = bounded[-_MAX_RECORDS:]
+    if not isinstance(records, tuple):
+        raise TypeError("records must be a bounded tuple")
+    if len(records) > _MAX_RECORDS:
+        raise ValueError(f"records must contain at most {_MAX_RECORDS} items")
     seen: set[str] = set()
     outcomes: list[IdeaOutcome] = []
-    for record in bounded:
+    for record in records:
         if not isinstance(record, ExperimentEvidence):
             raise TypeError("records must contain ExperimentEvidence values")
         if record.experiment_id in seen:
