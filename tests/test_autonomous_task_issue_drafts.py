@@ -206,3 +206,20 @@ def test_workflow_publishes_candidate_backlog_diagnostics():
     assert "autonomous-loop-task-issue-draft-summary.json" in step
     assert "GITHUB_STEP_SUMMARY" in step
     assert "backlog diagnostics" in step
+
+
+def test_review_only_issue_with_misapplied_execution_label_still_consumes_backlog_capacity():
+    # The label is not sufficient execution authority: the body explicitly
+    # keeps queue admission unauthorized, so this issue remains review work.
+    contradictory = _open_review_issue("review-coverage-gap-9999999999", approved=True)
+    contradictory["number"] = 1155
+    contradictory["body"] = (
+        "このIssueは候補の記録です。実行承認ではありません。\\n"
+        "Queue admission: not authorized\\n"
+        + contradictory["body"]
+    )
+    ordinary = [
+        _open_review_issue(f"review-coverage-gap-{i:010d}")
+        for i in range(3)
+    ]
+    assert build_issue_drafts(_report(), [*ordinary, contradictory]) == []
