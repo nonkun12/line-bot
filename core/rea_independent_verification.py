@@ -61,6 +61,8 @@ def evaluate_independent_verification_receipt(
             return _unknown("verification_pull_request_head_mismatch")
         if not isinstance(base, dict) or base.get("ref") != "main":
             return _unknown("verification_pull_request_base_mismatch")
+        if base.get("sha") != receipt.get("base_sha"):
+            return _unknown("verification_receipt_base_sha_mismatch")
     elif event == "push":
         branch = run_metadata.get("head_branch")
         if not isinstance(branch, str) or not branch.startswith("line-dev/"):
@@ -72,6 +74,8 @@ def evaluate_independent_verification_receipt(
         return _unknown("verification_receipt_missing")
     if receipt.get("schema_version") != 1:
         return _unknown("verification_receipt_schema_mismatch")
+    if receipt.get("run_id") != run_metadata.get("id"):
+        return _unknown("verification_receipt_run_id_mismatch")
     if receipt.get("verified_sha") != expected_sha:
         return _unknown("verification_receipt_sha_mismatch")
     base_sha = receipt.get("base_sha")
