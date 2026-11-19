@@ -9,6 +9,7 @@ from typing import Any
 
 from core.rea_artifact_evaluator import evaluate_runtime_summary
 from core.rea_independent_verification import evaluate_independent_verification_receipt
+from core.rea_independent_verification_client import load_independent_verification_for_sha
 from scripts.rea_readonly_scanner import ScanBlocked, scan_commit_diff
 
 
@@ -47,6 +48,14 @@ def evaluate_and_record_runtime_artifact(
         verification["changed_files"] = scan.get("changed_paths", [])
         verification["diff_scan"] = "PASS" if scan.get("status") == "PASS" else "FAIL"
         verification["diff_sha256"] = scan.get("diff_sha256")
+        # When running in GitHub Actions, discover the newest exact-SHA
+        # verifier run and download only its run-bound artifact. Local runs and
+        # API failures remain fail-closed with no independent test evidence.
+        if independent_receipt is None and independent_run_metadata is None:
+            independent_receipt, independent_run_metadata = (
+                load_independent_verification_for_sha(head_sha)
+            )
+
         # Child-written summary fields are untrusted. Only a receipt paired with
         # trusted GitHub Actions API run metadata can upgrade test evidence.
         independent = evaluate_independent_verification_receipt(
