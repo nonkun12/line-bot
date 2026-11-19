@@ -506,6 +506,14 @@
         "tests/test_catalog_exhaustion_analyzer.py"
       ],
       "execution_approved": true
+    },
+    {
+      "id": "review-coverage-gap-b71c6a2e9f",
+      "instruction": "人手レビュー後に限り、tests/test_autonomous_task_issue_drafts.py のみに新しい固有名の回帰テストを1件追加してください。レビュー専用Issueに autonomous-task-execution-approved ラベルが誤って付いていても、本文の Queue admission: not authorized と execution approval 不在を根拠に、レビュー待ち候補として backlog 上限の件数へ正しく算入するべきかを検証してください。現行仕様との整合性、誤ラベルが実行権限を付与しないこと、既存テストとの重複を先に確認し、期待仕様が曖昧なら NO_CHANGE としてください。変更は指定テストファイル1つだけ。カタログ、Issue、キュー、Recovery AI state、workflow、実装コードは変更しないでください。外部通信、シークレット参照、OS操作、マージ、デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_issue_drafts.py"
+      ],
+      "execution_approved": false
     }
   ]
 }
