@@ -99,6 +99,35 @@ jobs:
                   result["reason_code"] = "independent_verification_run_failed"
                   raise ValueError("verification_run_failed")
 
+              # Do not trust workflow_run payload fields or artifact names alone.
+              # Re-fetch both runs from the GitHub API and bind their identities.
+              verify_run = api(
+                  f"https://api.github.com/repos/{repo}/actions/runs/{verify_run_id}"
+              )
+              if (
+                  verify_run.get("id") != verify_run_id
+                  or verify_run.get("repository", {}).get("full_name") != repo
+                  or verify_run.get("path") != ".github/workflows/rea-independent-verification.yml"
+                  or verify_run.get("event") != "push"
+                  or verify_run.get("head_branch") != branch
+                  or verify_run.get("head_sha") != candidate_sha
+                  or verify_run.get("status") != "completed"
+                  or verify_run.get("conclusion") != "success"
+              ):
+                  raise ValueError("trusted_verification_run_metadata_mismatch")
+
+              source_run = api(
+                  f"https://api.github.com/repos/{repo}/actions/runs/{source_run_id}"
+              )
+              if (
+                  source_run.get("id") != source_run_id
+                  or source_run.get("repository", {}).get("full_name") != repo
+                  or source_run.get("path") != ".github/workflows/distributed-autonomous-loop.yml"
+                  or source_run.get("status") != "completed"
+                  or source_run.get("conclusion") != "success"
+              ):
+                  raise ValueError("trusted_candidate_source_run_metadata_mismatch")
+
               receipt = artifact_json(
                   verify_run_id,
                   f"rea-independent-verification-{verify_run_id}",
