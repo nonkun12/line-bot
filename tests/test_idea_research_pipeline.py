@@ -60,7 +60,7 @@ def test_builds_full_ideation_review_synthesis_cycle(hypothesis):
     assert plan.verified_count == 1
     assert plan.unverified_count == 0
     assert plan.learning_outcomes[0].result == "success"
-    assert plan.idea_candidates[0].style != "recombine"
+    assert "recombine" in {idea.style for idea in plan.idea_candidates}
 
 
 def test_unverified_evidence_never_changes_learning_selection(hypothesis):
