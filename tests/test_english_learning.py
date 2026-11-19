@@ -312,10 +312,11 @@ def test_side5_core_vocabulary_worker_is_bounded_and_reports_verified_count(monk
     assert result.side_id == SIDE_ID == "side_5_english_core_vocabulary"
     assert result.action == "daily"
     assert result.status == "READY"
-    assert result.verified_word_count == len(_ENTRIES)
+    assert result.registered_word_count == len(_ENTRIES)
     assert result.target_word_count == TARGET_WORDS == 1000
-    assert result.verified_word_count < result.target_word_count
-    assert "確認済みローカル辞書" in result.text
+    assert result.independently_verified_word_count == 0
+    assert result.registered_word_count < result.target_word_count
+    assert "ローカル辞書" in result.text
 
 
 def test_side5_core_vocabulary_worker_rejects_anonymous_or_unknown_actions():
