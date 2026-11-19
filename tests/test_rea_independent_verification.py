@@ -36,7 +36,7 @@ def run(**overrides):
         "path": WORKFLOW_PATH,
         "event": "pull_request",
         "head_sha": SHA,
-        "pull_requests": [{"head": {"sha": SHA}, "base": {"ref": "main"}}],
+        "pull_requests": [{"head": {"sha": SHA}, "base": {"ref": "main", "sha": BASE}}],
     }
     value.update(overrides)
     return value
