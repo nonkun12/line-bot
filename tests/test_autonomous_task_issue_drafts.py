@@ -214,8 +214,8 @@ def test_review_only_issue_with_misapplied_execution_label_still_consumes_backlo
     contradictory = _open_review_issue("review-coverage-gap-9999999999", approved=True)
     contradictory["number"] = 1155
     contradictory["body"] = (
-        "このIssueは候補の記録です。実行承認ではありません。\\n"
-        "Queue admission: not authorized\\n"
+        "このIssueは候補の記録です。実行承認ではありません。\n"
+        "Queue admission: not authorized\n"
         + contradictory["body"]
     )
     ordinary = [
