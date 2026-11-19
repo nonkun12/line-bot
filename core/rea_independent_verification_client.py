@@ -13,6 +13,7 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+from urllib.parse import urlsplit
 import zipfile
 from typing import Any
 
@@ -26,13 +27,29 @@ MAX_ARCHIVE_BYTES = 2 * 1024 * 1024
 MAX_RECEIPT_BYTES = 64 * 1024
 
 
+class _SafeHTTPSRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        old_parts = urlsplit(req.full_url)
+        new_parts = urlsplit(newurl)
+        if new_parts.scheme != "https":
+            raise urllib.error.HTTPError(newurl, code, "non_https_redirect", headers, fp)
+        forwarded = dict(req.headers)
+        if old_parts.netloc.lower() != new_parts.netloc.lower():
+            forwarded = {
+                key: value for key, value in forwarded.items()
+                if key.lower() not in {"authorization", "proxy-authorization"}
+            }
+        return urllib.request.Request(newurl, headers=forwarded, method="GET")
+
+
 def _get(url: str, token: str, *, api: bool = True) -> bytes:
     headers = {"Authorization": f"Bearer {token}", "User-Agent": "line-bot-rea-verifier"}
     if api:
         headers["Accept"] = "application/vnd.github+json"
         headers["X-GitHub-Api-Version"] = "2022-11-28"
     request = urllib.request.Request(url, headers=headers, method="GET")
-    with urllib.request.urlopen(request, timeout=15) as response:
+    opener = urllib.request.build_opener(_SafeHTTPSRedirectHandler())
+    with opener.open(request, timeout=15) as response:
         data = response.read(MAX_ARCHIVE_BYTES + 1)
     if len(data) > MAX_ARCHIVE_BYTES:
         raise ValueError("response_size_limit")
