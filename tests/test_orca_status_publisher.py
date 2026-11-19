@@ -174,3 +174,14 @@ def test_validate_snapshot_keeps_work_finder_counts_separate_and_review_only():
     data["work_finder"]["safety"]["execution_approval_granted"] = True
     with pytest.raises(ValueError):
         validate_snapshot(data)
+
+def test_rea_handoff_workflow_publishes_to_orca_without_authority():
+    from pathlib import Path
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/rea-verification-handoff.yml").read_text(encoding="utf-8")
+    assert "Publish SHA-bound REA handoff to Orca" in workflow
+    assert "secrets.ORCA_STATUS_URL" in workflow
+    assert "secrets.ORCA_STATUS_SECRET" in workflow
+    assert "scripts/orca_status_publisher.py" in workflow
+    assert "execution_authorized\": False" in workflow
+    assert "continue-on-error: true" in workflow
+
