@@ -99,17 +99,17 @@ class SQLiteIdeaEvidenceStore:
         namespace: str,
         ledger: ExperimentEvidenceLedger,
         *,
-        expected_revision: int | None = None,
+        expected_revision: int,
     ) -> int:
         self._validate_namespace(namespace)
         if not isinstance(ledger, ExperimentEvidenceLedger):
             raise TypeError("ledger must be an ExperimentEvidenceLedger")
-        if expected_revision is not None and (
+        if (
             isinstance(expected_revision, bool)
             or not isinstance(expected_revision, int)
             or expected_revision < 0
         ):
-            raise ValueError("expected_revision must be a non-negative integer or None")
+            raise ValueError("expected_revision must be a non-negative integer")
         payload = ledger.to_json()
         connection = self._connect()
         try:
@@ -119,7 +119,7 @@ class SQLiteIdeaEvidenceStore:
                 (namespace,),
             ).fetchone()
             current_revision = row[0] if row else 0
-            if expected_revision is not None and expected_revision != current_revision:
+            if expected_revision != current_revision:
                 raise RevisionConflict(
                     f"expected revision {expected_revision}, found {current_revision}"
                 )
