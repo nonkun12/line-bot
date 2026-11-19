@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
-from core.idea_evidence import ExperimentEvidence
+from core.idea_evidence import ExperimentEvidence, sign_evidence_record
 from core.idea_hypothesis import ExperimentHypothesis
 from core.idea_research_pipeline import build_idea_research_plan
 from core.multi_agent import AgentRole
 
 
 SHA = "b" * 40
+REVIEWER_KEY = b"unit-test-reviewer-key-material-32-bytes-minimum"
 
 
 @pytest.fixture
@@ -42,7 +45,10 @@ def evidence(**overrides):
         "verified_by": "independent-review",
     }
     values.update(overrides)
-    return ExperimentEvidence(**values)
+    item = ExperimentEvidence(**values)
+    if item.verification_status == "verified":
+        item = replace(item, verification_signature=sign_evidence_record(item, REVIEWER_KEY))
+    return item
 
 
 def test_builds_full_ideation_review_synthesis_cycle(hypothesis):
@@ -51,6 +57,7 @@ def test_builds_full_ideation_review_synthesis_cycle(hypothesis):
         context=("free/local-first", "fail closed"),
         hypothesis=hypothesis,
         evidence_records=(evidence(),),
+        reviewer_keys={"independent-review": REVIEWER_KEY},
     )
     assert len(plan.idea_candidates) == 5
     assert len(plan.workflow_batches) == 3
@@ -69,6 +76,7 @@ def test_unverified_evidence_never_changes_learning_selection(hypothesis):
         "improve reasoning",
         hypothesis=hypothesis,
         evidence_records=(evidence(verification_status="pending", verified_by=""),),
+        reviewer_keys={},
     )
     assert tuple(i.style for i in plan.idea_candidates) == tuple(
         i.style for i in baseline.idea_candidates
@@ -88,6 +96,7 @@ def test_rejects_excessive_evidence_records(hypothesis):
             "focus",
             hypothesis=hypothesis,
             evidence_records=(evidence(),) * 501,
+            reviewer_keys={"independent-review": REVIEWER_KEY},
         )
 
 
