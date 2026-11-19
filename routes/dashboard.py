@@ -301,6 +301,58 @@ def _sanitize_orca_payload(payload):
             "worker_count": max(0, min(int(item.get("worker_count", 0)), 100)),
             "evidence": "matched_runtime_records" if item.get("evidence") == "matched_runtime_records" else "no_matching_stream_metadata",
         })
+    work_finder = payload.get("work_finder")
+    if work_finder is not None:
+        if not isinstance(work_finder, dict):
+            raise ValueError("invalid Work Finder summary")
+        if work_finder.get("cycle_status") not in {"WORK_FOUND", "NO_SAFE_CANDIDATE", "BLOCKED"}:
+            raise ValueError("invalid Work Finder cycle status")
+        if work_finder.get("execution_eligibility_status") not in {"verified", "not_proven"}:
+            raise ValueError("invalid Work Finder eligibility status")
+        if work_finder.get("candidate_policy") != "review_only_no_execution_approval":
+            raise ValueError("Work Finder must remain review-only")
+        safety = work_finder.get("safety")
+        if not isinstance(safety, dict) or safety.get("read_only") is not True or safety.get("execution_approval_granted") is not False:
+            raise ValueError("Work Finder safety contract violated")
+        allowed_counts = {"discovered_candidate_count", "review_pending_count", "completed_task_count",
+                          "catalog_task_count", "runtime_queue_task_count", "held_task_count",
+                          "resume_review_required_count", "scanned_target_pairs", "execution_eligible_count"}
+        clean_counts = {}
+        for key in allowed_counts:
+            value = work_finder.get(key)
+            if value is None and key == "execution_eligible_count":
+                continue
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 10000:
+                raise ValueError(f"invalid Work Finder count: {key}")
+            clean_counts[key] = value
+        actions = {"human_review_candidates", "review_catalog_runtime_plan_gaps",
+                   "expand_allowlisted_discovery_sources", "investigate_discovery_status"}
+        if work_finder.get("next_action") not in actions:
+            raise ValueError("invalid Work Finder next action")
+        previews = work_finder.get("candidate_preview", [])
+        if not isinstance(previews, list) or len(previews) > 5:
+            raise ValueError("invalid Work Finder candidate preview list")
+        clean_previews = []
+        for item in previews:
+            if not isinstance(item, dict) or item.get("status") != "REVIEW_REQUIRED":
+                raise ValueError("invalid Work Finder candidate preview")
+            clean_item = {}
+            for key, limit in (("id", 100), ("target_test", 200), ("source_function", 120), ("evidence", 250)):
+                value = item.get(key)
+                if not isinstance(value, str) or not value.strip() or len(value) > limit:
+                    raise ValueError(f"invalid Work Finder candidate field: {key}")
+                clean_item[key] = value.strip()
+            clean_item["status"] = "REVIEW_REQUIRED"
+            clean_previews.append(clean_item)
+        clean["work_finder"] = {
+            "cycle_status": work_finder["cycle_status"],
+            "next_action": work_finder["next_action"],
+            "execution_eligibility_status": work_finder["execution_eligibility_status"],
+            "candidate_policy": work_finder["candidate_policy"],
+            "candidate_preview": clean_previews,
+            "safety": {"read_only": True, "execution_approval_granted": False},
+            **clean_counts,
+        }
     review = payload.get("rsi_review")
     if review is not None:
         if not isinstance(review, dict):
@@ -375,7 +427,7 @@ def orca_status():
             row = conn.execute("SELECT payload, received_at FROM orca_status WHERE id=1").fetchone()
         if not row:
             return jsonify({"ok": True, "status": "offline", "age_sec": None,
-                            "tasks": [], "dispatches": [], "workers": [], "streams": [], "rsi_review": None})
+                            "tasks": [], "dispatches": [], "workers": [], "streams": [], "rsi_review": None, "work_finder": None})
         payload = json.loads(row[0])
         captured = _orca_snapshot_timestamp_allow_stale(payload.get("captured_at"))
         age = max(0, now - captured)
@@ -383,7 +435,7 @@ def orca_status():
         return jsonify({"ok": True, "status": status, "age_sec": round(age),
                         "received_at": row[1], "captured_at": payload.get("captured_at"),
                         "tasks": payload.get("tasks", []), "dispatches": payload.get("dispatches", []),
-                        "workers": payload.get("workers", []), "streams": payload.get("streams", []), "rsi_review": payload.get("rsi_review")})
+                        "workers": payload.get("workers", []), "streams": payload.get("streams", []), "rsi_review": payload.get("rsi_review"), "work_finder": payload.get("work_finder")})
     except Exception:
         current_app.logger.exception("DASHBOARD ORCA STATUS READ ERROR")
         return jsonify({"ok": False, "status": "error"}), 500

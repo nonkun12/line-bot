@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import sqlite3
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 import pytest
@@ -145,3 +146,45 @@ def test_orca_dashboard_rejects_rea_artifact_authority_escalation(orca_client):
         "rea_artifact_merge_deploy_authorized": False,
     }
     assert post_snapshot(orca_client, snapshot(tasks=[task])).status_code == 400
+
+
+def test_orca_dashboard_exposes_distinct_work_finder_lifecycle_counts(orca_client):
+    work_finder = {
+        "cycle_status": "WORK_FOUND", "next_action": "human_review_candidates",
+        "execution_eligibility_status": "not_proven",
+        "candidate_policy": "review_only_no_execution_approval",
+        "safety": {"read_only": True, "execution_approval_granted": False},
+        "discovered_candidate_count": 4, "review_pending_count": 4,
+        "completed_task_count": 8, "catalog_task_count": 50,
+        "runtime_queue_task_count": 0, "held_task_count": 6,
+        "resume_review_required_count": 2, "scanned_target_pairs": 10,
+        "candidate_preview": [{"id": "review-coverage-gap-a1b2", "target_test": "tests/test_x.py", "source_function": "do_work", "evidence": "core/x.py:12", "status": "REVIEW_REQUIRED"}],
+    }
+    assert post_snapshot(orca_client, snapshot(work_finder=work_finder)).status_code == 200
+    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
+    body = read.get_json()["work_finder"]
+    assert body["discovered_candidate_count"] == 4
+    assert body["review_pending_count"] == 4
+    assert body["completed_task_count"] == 8
+    assert body["candidate_preview"][0]["source_function"] == "do_work"
+    assert "execution_eligible_count" not in body
+    assert body["execution_eligibility_status"] == "not_proven"
+
+
+def test_orca_dashboard_rejects_work_finder_authority_escalation(orca_client):
+    unsafe = {
+        "cycle_status": "WORK_FOUND", "next_action": "human_review_candidates",
+        "execution_eligibility_status": "verified",
+        "candidate_policy": "review_only_no_execution_approval",
+        "safety": {"read_only": True, "execution_approval_granted": True},
+        "discovered_candidate_count": 1, "review_pending_count": 1,
+        "completed_task_count": 0,
+    }
+    assert post_snapshot(orca_client, snapshot(work_finder=unsafe)).status_code == 400
+
+
+def test_orca_dashboard_declares_candidate_preview_before_work_finder_card():
+    source = (Path(__file__).resolve().parents[1] / "static/js/dashboard.js").read_text(encoding="utf-8")
+    preview_declaration = source.index("const candidatePreview=")
+    card_declaration = source.index("const workFinderCard=wf")
+    assert preview_declaration < card_declaration

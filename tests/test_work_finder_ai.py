@@ -46,6 +46,11 @@ def test_work_finder_discovers_review_only_work_on_every_cycle(tmp_path: Path):
     assert report["work_finder"]["name"] == "Work Finder AI"
     assert report["work_finder"]["cycle_status"] == "WORK_FOUND"
     assert report["work_finder"]["next_action"] == "human_review_candidates"
+    assert report["work_finder"]["discovered_candidate_count"] == report["candidate_count"]
+    assert report["work_finder"]["review_pending_count"] == report["candidate_count"]
+    assert report["work_finder"]["execution_eligible_count"] is None
+    assert report["work_finder"]["execution_eligibility_status"] == "not_proven"
+    assert report["work_finder"]["completed_task_count"] == 0
     assert report["work_finder"]["repeat_policy"] == "run_on_every_normal_distributed_loop_cycle"
     assert report["work_finder"]["safety"]["execution_approval_granted"] is False
     assert report["safety"]["candidates_executable"] is False
