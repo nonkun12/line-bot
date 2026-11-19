@@ -65,7 +65,7 @@ def evaluate_independent_verification_receipt(
         expected_base_sha = base.get("sha")
     elif event == "push":
         branch = run_metadata.get("head_branch")
-        if not isinstance(branch, str) or not branch.startswith("line-dev/"):
+        if not isinstance(branch, str) or not branch.startswith(("line-dev/", "rea-candidate/")):
             return _unknown("verification_push_branch_not_allowed")
     else:
         return _unknown("verification_event_not_allowed")

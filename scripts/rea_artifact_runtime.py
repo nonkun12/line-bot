@@ -11,6 +11,7 @@ from core.rea_artifact_evaluator import evaluate_runtime_summary
 from core.rea_independent_verification import evaluate_independent_verification_receipt
 from core.rea_independent_verification_client import load_independent_verification_for_sha
 from scripts.rea_readonly_scanner import ScanBlocked, scan_commit_diff
+from core.rea_risk_classifier import classify_changed_paths
 
 
 def evaluate_and_record_runtime_artifact(
@@ -48,6 +49,9 @@ def evaluate_and_record_runtime_artifact(
         verification["changed_files"] = scan.get("changed_paths", [])
         verification["diff_scan"] = "PASS" if scan.get("status") == "PASS" else "FAIL"
         verification["diff_sha256"] = scan.get("diff_sha256")
+        risk = classify_changed_paths(verification["changed_files"])
+        verification["risk"] = risk["risk"] if verification["diff_scan"] == "PASS" else "UNKNOWN"
+        verification["risk_reason_code"] = risk["reason_code"]
         # When running in GitHub Actions, discover the newest exact-SHA
         # verifier run and download only its run-bound artifact. Local runs and
         # API failures remain fail-closed with no independent test evidence.
@@ -103,6 +107,9 @@ def evaluate_and_record_runtime_artifact(
         "head_sha": summary.get("produced_sha") if isinstance(summary, dict) else None,
         "tests": verification.get("tests", "UNKNOWN"),
         "risk": verification.get("risk", "UNKNOWN"),
+        "diff_scan": verification.get("diff_scan", "UNKNOWN"),
+        "changed_file_count": len(verification.get("changed_files", [])),
+        "risk_reason_code": verification.get("risk_reason_code", "risk_not_classified"),
         "independent_verification": verification.get("independent_verification", {
             "reason_code": "independent_verification_not_supplied",
             "verified_sha": None,

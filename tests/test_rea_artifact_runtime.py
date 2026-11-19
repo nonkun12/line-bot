@@ -75,9 +75,9 @@ def test_runtime_artifact_defaults_missing_tests_and_risk_to_hold(tmp_path, monk
     )
 
     assert result["status"] == "HOLD"
-    assert result["reason_code"] == "risk_unknown"
+    assert result["reason_code"] == "verification_incomplete"
     assert result["tests"] == "UNKNOWN"
-    assert result["risk"] == "UNKNOWN"
+    assert result["risk"] == "MEDIUM"
     assert result["execution_authorized"] is False
     records = [json.loads(line) for line in output.read_text().splitlines()]
     assert len(records) == 1
@@ -97,8 +97,8 @@ def test_runtime_artifact_ignores_self_reported_test_and_risk_evidence(tmp_path,
 
     assert result["status"] == "HOLD"
     assert result["tests"] == "UNKNOWN"
-    assert result["risk"] == "UNKNOWN"
-    assert result["reason_code"] == "risk_unknown"
+    assert result["risk"] == "MEDIUM"
+    assert result["reason_code"] == "verification_incomplete"
     assert result["merge_deploy_authorized"] is False
 
 
@@ -141,7 +141,7 @@ def test_runtime_artifact_records_sanitized_rea_history_when_configured(tmp_path
         instruction="Review tests and unknown risk evidence",
     )
     assert "status=HOLD" in context
-    assert "risk_unknown" in context
+    assert "verification_incomplete" in context
 
 
 def test_runtime_consumes_trusted_independent_receipt_but_risk_stays_unknown(tmp_path, monkeypatch):
@@ -158,16 +158,16 @@ def test_runtime_consumes_trusted_independent_receipt_but_risk_stays_unknown(tmp
     )
 
     assert result["status"] == "HOLD"
-    assert result["reason_code"] == "risk_unknown"
+    assert result["reason_code"] == "verification_incomplete"
     assert result["tests"] == "PASS"
-    assert result["risk"] == "UNKNOWN"
+    assert result["risk"] == "MEDIUM"
     assert result["independent_verification"]["verified_sha"] == HEAD
     assert result["independent_verification"]["verification_run_id"] == 987
     assert result["execution_authorized"] is False
     assert result["merge_deploy_authorized"] is False
     row = json.loads((tmp_path / "rea.jsonl").read_text().splitlines()[0])
     assert row["tests"] == "PASS"
-    assert row["risk"] == "UNKNOWN"
+    assert row["risk"] == "MEDIUM"
 
 
 def test_runtime_rejects_receipt_without_trusted_run_metadata(tmp_path, monkeypatch):
@@ -208,6 +208,6 @@ def test_runtime_discovers_exact_sha_receipt_automatically(tmp_path, monkeypatch
 
     assert observed["expected_sha"] == HEAD
     assert result["tests"] == "PASS"
-    assert result["risk"] == "UNKNOWN"
+    assert result["risk"] == "MEDIUM"
     assert result["status"] == "HOLD"
     assert result["independent_verification"]["verification_run_id"] == 987

@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - "line-dev/**"
+      - "rea-candidate/**"
   workflow_dispatch:
 
 permissions:

@@ -85,8 +85,10 @@ def test_wrong_pull_request_base_is_rejected():
     assert evaluate_independent_verification_receipt(receipt(), run(pull_requests=[pr]), expected_sha=SHA)["tests"] == "UNKNOWN"
 
 
-def test_line_dev_push_run_is_accepted_only_for_exact_sha():
+def test_line_dev_and_candidate_push_runs_are_accepted_only_for_exact_sha():
     push = run(event="push", head_branch="line-dev/123", pull_requests=[])
+    assert evaluate_independent_verification_receipt(receipt(), push, expected_sha=SHA)["tests"] == "PASS"
+    push["head_branch"] = "rea-candidate/123"
     assert evaluate_independent_verification_receipt(receipt(), push, expected_sha=SHA)["tests"] == "PASS"
     push["head_branch"] = "main"
     assert evaluate_independent_verification_receipt(receipt(), push, expected_sha=SHA)["tests"] == "UNKNOWN"
