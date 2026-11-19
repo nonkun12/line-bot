@@ -21,7 +21,10 @@ def test_builds_separate_ideation_critique_and_synthesis_stages():
     assert synthesize.depends_on == (critique.task_id,)
     assert "unconventional" in ideate.instruction
     assert "counterexamples" in critique.instruction
-    assert "success/failure criteria" in synthesize.instruction
+    assert "success/failure thresholds" in synthesize.instruction
+    assert "baseline source" in synthesize.instruction
+    assert "reproducibility steps" in synthesize.instruction
+    assert "human approval boundary" in synthesize.instruction
 
 
 def test_every_stage_is_explicitly_non_executing():
