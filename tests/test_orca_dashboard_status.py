@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import sqlite3
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 import pytest
@@ -180,3 +181,10 @@ def test_orca_dashboard_rejects_work_finder_authority_escalation(orca_client):
         "completed_task_count": 0,
     }
     assert post_snapshot(orca_client, snapshot(work_finder=unsafe)).status_code == 400
+
+
+def test_orca_dashboard_declares_candidate_preview_before_work_finder_card():
+    source = (Path(__file__).resolve().parents[1] / "static/js/dashboard.js").read_text(encoding="utf-8")
+    preview_declaration = source.index("const candidatePreview=")
+    card_declaration = source.index("const workFinderCard=wf")
+    assert preview_declaration < card_declaration

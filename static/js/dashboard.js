@@ -154,6 +154,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }).join('')).join('');
       const streamLabels={main_star_night:'本線：STAR-NIGHT',side_task_supply:'サイド1：タスク枯渇対策',side_media_ai:'サイド2：映像・音楽AI',side_self_improvement:'サイド3：自己改善AI',side_line_full_control:'サイド4：LINE全指示化',side_core_vocabulary:'サイド5：英単語コア語彙'};
       const wf=data.work_finder;
+      const candidatePreview=Array.isArray(wf?.candidate_preview)&&wf.candidate_preview.length
+        ? '<div class="system-details"><strong>レビュー候補（最大5件）</strong><ul>'+wf.candidate_preview.map(item=>'<li>'+esc(item.source_function)+' — '+esc(item.target_test)+' ('+esc(item.evidence||'証跡なし')+')</li>').join('')+'</ul></div>'
+        : '<div class="system-details">個別候補のプレビューなし</div>';
       const workFinderCard=wf
         ? '<div class="section-subtitle">Work Finder AI — 発見から実行まで</div><div class="system-grid">'
           + [['発見候補',wf.discovered_candidate_count],['レビュー待ち',wf.review_pending_count],
@@ -163,9 +166,6 @@ document.addEventListener('DOMContentLoaded', () => {
           +' ・ HOLD '+esc(wf.held_task_count??'未取得')+' ・ 要レビュー '+esc(wf.resume_review_required_count??'未取得')
           +' ・ 実行承認は候補生成から自動付与しません</div>'+candidatePreview
         : '<div class="section-subtitle">Work Finder AI：今回のスナップショットに診断結果なし</div>';
-      const candidatePreview=Array.isArray(wf?.candidate_preview)&&wf.candidate_preview.length
-        ? '<div class="system-details"><strong>レビュー候補（最大5件）</strong><ul>'+wf.candidate_preview.map(item=>'<li>'+esc(item.source_function)+' — '+esc(item.target_test)+' ('+esc(item.evidence||'証跡なし')+')</li>').join('')+'</ul></div>'
-        : '<div class="system-details">個別候補のプレビューなし</div>';
       const streamRows=(Array.isArray(data.streams)?data.streams:[]).map(item=>{
         const observed=item.status==='observed';
         const counts='Task '+Number(item.task_count||0)+' / Dispatch '+Number(item.dispatch_count||0)+' / Worker '+Number(item.worker_count||0);
