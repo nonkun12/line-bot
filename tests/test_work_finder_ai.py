@@ -100,19 +100,18 @@ def test_work_finder_counts_held_and_review_required_without_resuming_them(tmp_p
     assert report["work_finder"]["safety"]["durable_state_mutated"] is False
 
 
-
 def test_work_finder_separates_functional_roadmap_candidates_from_test_gaps(tmp_path: Path):
     root, catalog, queue, state, runtime = _fixture(tmp_path)
     (root / "core" / "agent_runtime.py").write_text(
-        "def already_tested(value):\\n    return value\\n", encoding="utf-8"
+        "def already_tested(value):\n    return value\n", encoding="utf-8"
     )
     (root / "tests" / "test_agent_runtime.py").write_text(
-        "def test_already_tested():\\n    assert already_tested(1) == 1\\n",
+        "def test_already_tested():\n    assert already_tested(1) == 1\n",
         encoding="utf-8",
     )
     readme = root / "README.md"
     readme.write_text(
-        "## 今後の実装予定\\n- [ ] Add an actual agent capability\\n",
+        "## 今後の実装予定\n- [ ] Add an actual agent capability\n",
         encoding="utf-8",
     )
     before = [p.read_bytes() for p in (catalog, queue, state, runtime, readme)]
