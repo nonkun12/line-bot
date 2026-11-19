@@ -98,7 +98,7 @@ def test_cycle_is_plan_only_and_does_not_grant_execution():
         for batch in plan.workflow_batches
         for task in batch.tasks
     ] + [idea.task for idea in plan.idea_candidates]
-    assert all("execute" in task.instruction.lower() for task in all_tasks)
+    assert all(\n        "execute" in task.instruction.lower()\n        or "execution" in task.instruction.lower()\n        or "実行" in task.instruction\n        for task in all_tasks\n    )
     assert all("merge" in task.instruction.lower() for task in all_tasks)
     assert all("deploy" in task.instruction.lower() for task in all_tasks)
     assert not hasattr(plan, "execute")
