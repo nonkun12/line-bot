@@ -60,7 +60,7 @@ def test_builds_full_ideation_review_synthesis_cycle(hypothesis):
     assert plan.verified_count == 1
     assert plan.unverified_count == 0
     assert plan.learning_outcomes[0].result == "success"
-    assert plan.idea_candidates[0].style != "recombine"
+    assert "recombine" in {idea.style for idea in plan.idea_candidates}
 
 
 def test_unverified_evidence_never_changes_learning_selection(hypothesis):
@@ -98,7 +98,12 @@ def test_cycle_is_plan_only_and_does_not_grant_execution():
         for batch in plan.workflow_batches
         for task in batch.tasks
     ] + [idea.task for idea in plan.idea_candidates]
-    assert all(\n        "execute" in task.instruction.lower()\n        or "execution" in task.instruction.lower()\n        or "実行" in task.instruction\n        for task in all_tasks\n    )
+    assert all(
+        "execute" in task.instruction.lower()
+        or "execution" in task.instruction.lower()
+        or "実行" in task.instruction
+        for task in all_tasks
+    )
     assert all("merge" in task.instruction.lower() for task in all_tasks)
     assert all("deploy" in task.instruction.lower() for task in all_tasks)
     assert not hasattr(plan, "execute")
