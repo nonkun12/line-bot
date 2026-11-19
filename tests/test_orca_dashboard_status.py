@@ -210,3 +210,10 @@ def test_orca_dashboard_declares_candidate_preview_before_work_finder_card():
     preview_declaration = source.index("const candidatePreview=")
     card_declaration = source.index("const workFinderCard=wf")
     assert preview_declaration < card_declaration
+
+def test_orca_dashboard_renders_rea_handoff_fields():
+    source = (Path(__file__).resolve().parents[1] / "static/js/dashboard.js").read_text(encoding="utf-8")
+    assert "REA 独立検証ハンドオフ" in source
+    assert "candidate_evidence_sha256" in source
+    assert "verification_run_id" in source
+
