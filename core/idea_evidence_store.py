@@ -77,6 +77,7 @@ class ExperimentEvidenceStore:
                 "environment": record.environment,
                 "verification_status": record.verification_status,
                 "verified_by": record.verified_by,
+                "verification_signature": record.verification_signature,
             },
             ensure_ascii=False,
             sort_keys=True,
