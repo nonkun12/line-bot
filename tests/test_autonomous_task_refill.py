@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.autonomous_task_refill import build_queue
+from scripts.autonomous_task_refill import build_queue, main
 
 
 def _write(path: Path, data: dict) -> Path:
@@ -674,3 +674,26 @@ def test_refill_selects_exactly_four_new_catalog_tasks_when_older_tasks_are_comp
         strict=True,
     ))
     assert queue.read_text(encoding="utf-8") == queue_before
+
+def test_main_reports_blocked_on_invalid_catalog_without_writing_output(tmp_path: Path, monkeypatch, capsys):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-ready-one")])
+    catalog.write_text("{invalid json", encoding="utf-8")
+    output = tmp_path / "runtime.json"
+    output.write_text("preserve existing output", encoding="utf-8")
+    output_before = output.read_bytes()
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "autonomous_task_refill",
+            "--queue", str(queue),
+            "--catalog", str(catalog),
+            "--completed-state", str(completed),
+            "--output", str(output),
+        ],
+    )
+
+    assert main() == 2
+    assert capsys.readouterr().out.strip() == "REFILL_BLOCKED: ValueError"
+    assert output.read_bytes() == output_before
+
