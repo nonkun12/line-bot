@@ -8,6 +8,11 @@ from __future__ import annotations
 import argparse
 from dataclasses import replace
 from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from core.idea_research_cycle import IdeaResearchCycle
 from core.idea_research_cycle_store import SQLiteIdeaResearchCycleStore
