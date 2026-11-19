@@ -917,9 +917,9 @@ jobs:
           )
           print("REA_CANDIDATE=PUBLISHED branch=" + branch + " sha=" + head_sha)
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write("published=true\\n")
-              output.write("branch=" + branch + "\\n")
-              output.write("candidate_sha=" + head_sha + "\\n")
+              output.write("published=true\n")
+              output.write("branch=" + branch + "\n")
+              output.write("candidate_sha=" + head_sha + "\n")
           PY
 
       - name: Archive isolated candidate evidence
