@@ -228,7 +228,7 @@ def run(args: argparse.Namespace) -> int:
                     _append_blocked(results_path, selected["task_id"], "goal_runtime_result_missing_or_ambiguous")
                 elif child.returncode == 0:
                     _append_blocked(results_path, selected["task_id"], "goal_runtime_independent_evidence_gate_failed")
-                return child.returncode or 80
+                return 80 if child.returncode == 78 else (child.returncode or 80)
         latest = store.read(GOAL_ID)
         if latest:
             state["goal_autopilot"] = latest[1]

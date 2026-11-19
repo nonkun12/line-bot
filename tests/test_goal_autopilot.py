@@ -337,3 +337,11 @@ def test_complete_requires_all_tasks_to_have_valid_completion_evidence():
         }],
     )
     assert evaluate_goal(g)["decision"] == "COMPLETE"
+
+
+def test_approved_code_change_kind_is_selectable_with_scoped_paths():
+    g = goal(tasks=[{
+        "task_id": "scoped-code-change", "status": "PENDING", "kind": "CODE_CHANGE",
+        "execution_authorized": True, "allowed_paths": ["src/module.py"],
+    }])
+    assert evaluate_goal(g)["decision"] == "CONTINUE"

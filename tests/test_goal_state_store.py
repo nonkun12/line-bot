@@ -42,3 +42,14 @@ def test_kill_switch_blocks_claim(tmp_path):
     store=GoalStateStore(tmp_path/"goal.db"); state=goal(); store.create(state)
     state["kill_switch"]=True; store.compare_and_swap("g1",0,state)
     assert store.claim_next("g1")["decision"]=="HOLD"
+
+
+def test_importing_inflight_goal_preserves_hold_for_reconciliation(tmp_path):
+    path = tmp_path / "goal.db"
+    store = GoalStateStore(path)
+    store.create(goal())
+    store.claim_next("g1")
+    revision, inflight = store.read("g1")
+    reopened = GoalStateStore(tmp_path / "reopened.db")
+    reopened.create(inflight)
+    assert reopened.claim_next("g1")["reason"] == "in_flight_task_requires_reconciliation"
