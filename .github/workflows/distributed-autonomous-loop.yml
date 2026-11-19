@@ -737,7 +737,6 @@ jobs:
           # code. Validate every record and require the final evidence SHA to be
           # the exact commit being pushed. Any malformed/failed row blocks push.
           python - <<'PY'
-          import base64
           import json
           import os
           import subprocess
@@ -847,6 +846,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          import base64
           import json
           import os
           import subprocess
