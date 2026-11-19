@@ -47,17 +47,31 @@ jobs:
         id: identity
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_BRANCH: ${{ github.ref_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          PUSH_BEFORE_SHA: ${{ github.event.before || '' }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_SHA"
-          echo "verified_sha=$actual" >> "$GITHUB_OUTPUT"
-          if git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
-            git diff --check "$BASE_SHA...$actual"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base_sha="$PR_BASE_SHA"
+          elif [[ "$HEAD_BRANCH" == rea-candidate/* ]]; then
+            # Candidate publication creates a single isolated commit on top of
+            # the approved base. github.event.before is the all-zero SHA for a
+            # newly created branch, so bind the receipt to the actual parent.
+            base_sha="$(git rev-parse "$actual^")"
           else
-            echo "Base commit unavailable; diff check is NOT_RUN."
+            base_sha="$PUSH_BEFORE_SHA"
           fi
+          if ! [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]] || ! git cat-file -e "$base_sha^{commit}" 2>/dev/null; then
+            echo "::error::Unable to establish a trustworthy base commit."
+            exit 1
+          fi
+          echo "verified_sha=$actual" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+          git diff --check "$base_sha...$actual"
 
       - name: Run repository test suite
         id: tests
@@ -67,7 +81,7 @@ jobs:
         if: always()
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          BASE_SHA: ${{ steps.identity.outputs.base_sha }}
           TEST_OUTCOME: ${{ steps.tests.outcome }}
           IDENTITY_OUTCOME: ${{ steps.identity.outcome }}
           RUN_ID: ${{ github.run_id }}
