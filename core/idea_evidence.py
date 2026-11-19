@@ -8,18 +8,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
+from math import isfinite
 import re
 
 from .idea_learning import IdeaOutcome
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{7,40}$")
-_MAX_REFERENCE = 500
-_MAX_NOTE = 500
 _MAX_RECORDS = 500
 
 
-def _text(value: str, field: str, limit: int = _MAX_REFERENCE) -> None:
+def _text(value: str, field: str, limit: int = 500) -> None:
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
         raise ValueError(f"{field} must be non-empty and <= {limit} characters")
 
@@ -72,11 +71,10 @@ class ExperimentEvidence:
     def __post_init__(self) -> None:
         _text(self.hypothesis_id, "hypothesis_id", 100)
         _text(self.style, "style", 64)
-        if self.result not in {"success", "failure", "unverified"}:
+        if not isinstance(self.result, str) or self.result not in {"success", "failure", "unverified"}:
             raise ValueError("result must be success, failure, or unverified")
         if isinstance(self.observed_value, bool) or not isinstance(self.observed_value, (int, float)):
             raise ValueError("observed_value must be numeric")
-        from math import isfinite
         if not isfinite(self.observed_value):
             raise ValueError("observed_value must be finite")
         _text(self.metric, "metric", 200)
@@ -89,8 +87,10 @@ class ExperimentEvidence:
         _timestamp(self.measured_at, "measured_at")
         if not isinstance(self.evidence_sha256, str) or not _SHA256_RE.fullmatch(self.evidence_sha256):
             raise ValueError("evidence_sha256 must be a lowercase SHA-256 digest")
-        if not isinstance(self.note, str) or len(self.note) > _MAX_NOTE:
+        if not isinstance(self.note, str) or len(self.note) > 500:
             raise ValueError("note must be a string <= 500 characters")
+        if self.verification is not None and not isinstance(self.verification, EvidenceVerification):
+            raise ValueError("verification must be an EvidenceVerification or None")
         if self.result == "unverified" and self.verification is not None:
             raise ValueError("unverified evidence cannot carry a verification attestation")
 
