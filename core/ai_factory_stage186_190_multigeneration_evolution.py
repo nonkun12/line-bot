@@ -154,6 +154,7 @@ class Stage186LongitudinalTrendAnalyzer:
         parent_generation: int,
         verify_parent_readiness: Callable[[str, int, str], bool],
         verify_snapshot: Callable[[str, str], bool],
+        verify_report_signature: Callable[[str, str], bool],
         sign_report: Callable[[str], str],
         minimum_generations: int = 3,
         minimum_safety: float = 0.95,
@@ -270,8 +271,7 @@ class Stage186LongitudinalTrendAnalyzer:
         }
         report_digest = _digest(payload)
         signature = sign_report(report_digest)
-        if not isinstance(signature, str) or not signature.strip():
-            raise LongitudinalEvolutionError("Stage 186 report signing failed")
+        _signed(report_digest, signature, verify_report_signature, "Stage 186 report")
         return LongitudinalTrendReport(
             first.generation, last.generation, candidate_id, first.evaluation_suite_digest,
             parent_readiness_digest, parent_generation, first.executor_id, tuple(snapshot_digests),
@@ -365,6 +365,7 @@ class Stage187GeneralizationAuditor:
         *,
         verify_trend_signature: Callable[[str, str], bool],
         verify_evidence_signature: Callable[[str, str], bool],
+        verify_report_signature: Callable[[str, str], bool],
         sign_report: Callable[[str], str],
         minimum_coverage: float = 0.95,
         hold_active: bool = False,
@@ -412,8 +413,7 @@ class Stage187GeneralizationAuditor:
         }
         digest = _digest(payload)
         signature = sign_report(digest)
-        if not isinstance(signature, str) or not signature.strip():
-            raise LongitudinalEvolutionError("Stage 187 report signing failed")
+        _signed(digest, signature, verify_report_signature, "Stage 187 report")
         return GeneralizationAuditReport(
             trend.report_digest, evidence_digest, passed, evidence.coverage,
             evidence.evaluator_id, digest, signature,
@@ -482,6 +482,7 @@ class Stage188RegressionAttributor:
         verify_trend_signature: Callable[[str, str], bool],
         verify_audit_signature: Callable[[str, str], bool],
         verify_claim_signature: Callable[[str, str], bool],
+        verify_report_signature: Callable[[str, str], bool],
         sign_report: Callable[[str], str],
         hold_active: bool = False,
     ) -> RegressionAttributionReport:
@@ -534,8 +535,7 @@ class Stage188RegressionAttributor:
         }
         digest = _digest(payload)
         signature = sign_report(digest)
-        if not isinstance(signature, str) or not signature.strip():
-            raise LongitudinalEvolutionError("Stage 188 report signing failed")
+        _signed(digest, signature, verify_report_signature, "Stage 188 report")
         return RegressionAttributionReport(
             trend.report_digest, audit.audit_digest, digests, categories,
             evaluator_ids, unsupported, digest, signature,
@@ -576,6 +576,7 @@ class Stage189SurvivalLedger:
         entries: Iterable[SurvivalLedgerEntry],
         verify_previous_ledger: Callable[[str, int], bool],
         verify_entry_signature: Callable[[str, str], bool],
+        verify_report_signature: Callable[[str, str], bool],
         sign_report: Callable[[str], str],
         max_entries: int = 128,
         hold_active: bool = False,
@@ -620,8 +621,7 @@ class Stage189SurvivalLedger:
             "proposal_only": True,
         })
         signature = sign_report(digest)
-        if not isinstance(signature, str) or not signature.strip():
-            raise LongitudinalEvolutionError("Stage 189 ledger signing failed")
+        _signed(digest, signature, verify_report_signature, "Stage 189 ledger")
         return MultiGenerationSurvivalLedger(
             previous_ledger_digest, previous_generation, ordered, digest, signature
         )
@@ -663,6 +663,7 @@ class Stage190LongitudinalCertificatePackager:
         verify_ledger_entry_signature: Callable[[str, str], bool],
         verify_ledger_predecessor: Callable[[str, int], bool],
         sign_certificate: Callable[[str], str],
+        verify_certificate_signature: Callable[[str, str], bool],
         hold_active: bool = False,
     ) -> MultiGenerationEvolutionCertificate:
         if hold_active:
@@ -773,8 +774,7 @@ class Stage190LongitudinalCertificatePackager:
         }
         digest = _digest(payload)
         signature = sign_certificate(digest)
-        if not isinstance(signature, str) or not signature.strip():
-            raise LongitudinalEvolutionError("Stage 190 certificate signing failed")
+        _signed(digest, signature, verify_certificate_signature, "Stage 190 certificate")
         ready = (
             not trend.regressions and audit.passed
             and attribution.unsupported_claim_count == 0
