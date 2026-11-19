@@ -210,13 +210,13 @@ def test_management_gate_result_allowed_is_true_only_for_allow():
 @pytest.mark.parametrize(
     ("now_epoch", "expected"),
     [
-        (99, False),   # before issuance
-        (100, True),   # issuance boundary is inclusive
-        (499, True),   # immediately before expiry
-        (500, False),  # expiry boundary is exclusive
+        (99, False),  # before issuance
+        (100, True),  # issuance instant is valid
+        (499, True),  # immediately before expiry
+        (500, False),  # expiry instant is invalid
     ],
 )
-def test_capability_grant_is_valid_at_issuance_and_expiry_boundaries(
+def test_capability_grant_is_valid_at_enforces_time_boundaries(
     now_epoch: int, expected: bool
 ) -> None:
     grant = CapabilityGrant(
