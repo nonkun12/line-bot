@@ -1,4 +1,4 @@
-"""Bounded Side 5 worker for reviewed English core-vocabulary learning.
+"""Bounded Side 5 worker for registered English core-vocabulary learning.
 
 Reuses the existing local lexicon, per-user rotation, and quiz persistence.
 No network calls, paid providers, dictionary synthesis, or shared anonymous state.
