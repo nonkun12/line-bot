@@ -8,7 +8,9 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 from core.idea_evidence import ExperimentEvidence
 
@@ -32,8 +34,20 @@ class ExperimentEvidenceStore:
         connection.execute("PRAGMA busy_timeout = 5000")
         return connection
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS experiment_evidence (
@@ -80,7 +94,7 @@ class ExperimentEvidenceStore:
         if not isinstance(record, ExperimentEvidence):
             raise TypeError("record must be an ExperimentEvidence")
         try:
-            with self._connect() as connection:
+            with self._connection() as connection:
                 connection.execute(
                     """
                     INSERT INTO experiment_evidence
@@ -95,7 +109,7 @@ class ExperimentEvidenceStore:
     def list_for_hypothesis(self, hypothesis_id: str) -> tuple[ExperimentEvidence, ...]:
         if not isinstance(hypothesis_id, str) or not hypothesis_id.strip():
             raise ValueError("hypothesis_id is required")
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT payload FROM experiment_evidence
