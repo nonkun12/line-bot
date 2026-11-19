@@ -298,7 +298,7 @@ def test_core_image_command_is_classified_as_english_learning_intent():
 
 
 
-def test_side5_core_vocabulary_worker_is_bounded_and_reports_verified_count(monkeypatch, tmp_path):
+def test_side5_core_vocabulary_worker_reports_registered_and_independent_counts(monkeypatch, tmp_path):
     from agents.english import progress, quiz_state
     from agents.english.core_vocabulary import SIDE_ID, TARGET_WORDS, run_core_vocabulary
     from agents.english.core_image import _ENTRIES
