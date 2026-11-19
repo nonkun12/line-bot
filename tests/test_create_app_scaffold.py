@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from scripts.create_app_scaffold import create_app, is_new_app_request, render_index, safe_slug
+from scripts import create_app_scaffold as scaffold
 
 
 @pytest.mark.parametrize("instruction", [
@@ -74,3 +75,19 @@ def test_symlinked_generated_root_cannot_escape_repository(tmp_path):
         create_app("TODO管理Webアプリを作って", root=root, run_id="42")
     assert not list(outside.iterdir())
 
+
+def test_cli_main_reports_create_app_validation_error(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "sys.argv",
+        ["create_app_scaffold.py", "--instruction", "既存アプリの通知機能を改善して"],
+    )
+
+    def reject_instruction(*_args, **_kwargs):
+        raise ValueError("invalid app instruction")
+
+    monkeypatch.setattr(scaffold, "create_app", reject_instruction)
+
+    assert scaffold.main() == 1
+    assert capsys.readouterr().out == (
+        "APP_SCAFFOLD=BLOCKED reason=ValueError: invalid app instruction\n"
+    )
