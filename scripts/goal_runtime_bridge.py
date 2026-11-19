@@ -206,7 +206,7 @@ def run(args: argparse.Namespace) -> int:
                 break
             if claim.get("decision") != "CLAIMED":
                 if claimed_this_run:
-                    _reconcile_claimed_tasks(store, claimed_this_run, goal_output, selected["task_id"])
+                    _reconcile_claimed_tasks(store, claimed_this_run, goal_output)
                     return 80
                 return 79
             claimed_this_run.add(str(claim["task_id"]))
@@ -265,7 +265,7 @@ def run(args: argparse.Namespace) -> int:
                     _append_blocked(results_path, selected["task_id"], "goal_runtime_result_missing_or_ambiguous")
                 elif child.returncode == 0:
                     _append_blocked(results_path, selected["task_id"], "goal_runtime_independent_evidence_gate_failed")
-                _hold_claimed_tasks(store, claimed_this_run, goal_output)
+                _reconcile_claimed_tasks(store, claimed_this_run, goal_output, selected["task_id"])
                 return 80 if child.returncode in {78, 79} else (child.returncode or 80)
         latest = store.read(GOAL_ID)
         if latest:
