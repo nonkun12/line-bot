@@ -98,3 +98,25 @@ def test_rejects_duplicate_or_mismatched_experiment_records(hypothesis):
 def test_rejects_non_finite_measurements():
     with pytest.raises(ValueError):
         record(measured_value=float("nan"))
+
+
+
+def test_idea_agent_end_to_end_uses_only_verified_evidence(hypothesis):
+    from core.idea_ai import IdeaAgent
+
+    verified = record()
+    pending = record(
+        experiment_id="exp-pending",
+        style="reframe",
+        verification_status="pending",
+        verified_by="",
+    )
+    ideas = IdeaAgent().propose_from_evidence(
+        "improve autonomous reasoning",
+        hypothesis,
+        (verified, pending),
+        limit=5,
+    )
+    assert len(ideas) == 5
+    assert ideas[0].style == "recombine"
+    assert all("No implementation, execution, merge, deploy" in idea.task.instruction for idea in ideas)
