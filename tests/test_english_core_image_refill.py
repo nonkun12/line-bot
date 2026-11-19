@@ -53,3 +53,18 @@ def test_refill_plan_reports_gap_without_fabricating_missing_entries():
     assert plan["reviewed_gap"] == 1000
     assert len(plan["tasks"]) == 1
     assert plan["tasks"][0]["runtime_lexicon_mutation_authorized"] is False
+
+
+def test_main_reports_invalid_candidate_json_as_blocked(tmp_path, monkeypatch, capsys):
+    import json
+    import scripts.english_core_image_refill as refill
+
+    candidates_path = tmp_path / "invalid-candidates.json"
+    candidates_path.write_text("{invalid json", encoding="utf-8")
+    monkeypatch.setattr(refill, "DEFAULT_CANDIDATES", candidates_path)
+    monkeypatch.setattr("sys.argv", ["english_core_image_refill"])
+
+    assert refill.main() == 2
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "BLOCKED"
+    assert result["reason_code"] == "catalog_invalid"
