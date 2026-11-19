@@ -594,6 +594,7 @@ jobs:
               --state /tmp/autonomous-loop-state.json \
               --results /tmp/minimal-autonomous-loop.jsonl \
               --stop-file "$STOP_FILE" \
+              --goal-state-output /tmp/goal-autopilot-pending.json \
               --max-tasks "${MAX_TASKS}"
           fi
           loop_rc=$?
@@ -898,6 +899,17 @@ jobs:
           task_ids = json.loads(ids_path.read_text(encoding='utf-8'))
           if not isinstance(task_ids, list) or not task_ids:
               raise SystemExit("invalid completed task IDs")
+          goal_output = Path('/tmp/goal-autopilot-pending.json')
+          if goal_output.exists():
+              goal = json.loads(goal_output.read_text(encoding='utf-8'))
+              from scripts.goal_autopilot import evaluate_goal
+              if not isinstance(goal, dict) or evaluate_goal(goal).get('decision') == 'INVALID':
+                  raise SystemExit('invalid pending Goal Autopilot state')
+              data['goal_autopilot'] = goal
+              local_path = Path('/tmp/autonomous-loop-state.json')
+              local_data = json.loads(local_path.read_text(encoding='utf-8'))
+              local_data['goal_autopilot'] = goal
+              local_path.write_text(json.dumps(local_data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           for task_id in task_ids:
               if not isinstance(task_id, str) or not task_id:
                   raise SystemExit("invalid completed task ID")
