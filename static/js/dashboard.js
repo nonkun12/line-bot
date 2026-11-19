@@ -31,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cards=[
       ['🔎 発見候補',issueSource.status==='ok'?String(issueSource.open_candidates)+'件':'未取得',issueSource.status==='ok'?'GitHubのopen candidate Issue（最大100件）': 'GitHub Issue API '+(issueSource.reason||'未接続')],
       ['🗂️ 承認済みカタログ',catalogSource.status==='ok'?String(catalogSource.execution_approved)+' / '+String(catalogSource.total):'未取得',catalogSource.status==='ok'?'実行承認 true の登録タスク ・ 実行可能 '+catalogSource.eligible_approved+'件':'カタログ '+(catalogSource.reason||'未接続')],
-      ['🧑‍⚖️ レビュー待ち',issueSource.status==='ok'?String(issueSource.review_backlog)+'件':'未取得',issueSource.status==='ok'?'候補Issue '+(issueSource.execution_approved_label_count||0)+'件に承認ラベルあり（ラベル単独は実行許可ではない）':'レビューIssue '+(issueSource.reason||'未接続')],
+      ['🧑‍⚖️ 候補Issue',issueSource.status==='ok'?String(issueSource.open_candidates)+'件':'未取得',issueSource.status==='ok'?'候補Issueの承認ラベル付与 '+(issueSource.execution_approved_label_count||0)+'件（ラベル単独は実行許可ではない）':'候補Issue '+(issueSource.reason||'未接続')],
       ['🧱 HOLD / 再開レビュー',stateSource.status==='ok'?String(stateSource.held)+' / '+String(stateSource.resume_review):'未取得',stateSource.status==='ok'?'durable state：HOLD / 再開時レビュー必須':'状態 '+(stateSource.reason||'未接続')],
       ['📥 キュー / Dispatch',orcaAvailable?String(dispatches.length)+'件':'未取得',orcaAvailable?'Orca受信Dispatch件数'+(orca.status==='stale'?'（データ遅延）':''):'Orca Worker未接続またはデータ期限切れ'],
       ['⚙️ 実行中タスク',orcaAvailable?String(count(tasks,'running')+count(tasks,'in_progress'))+'件':'未取得',orcaAvailable?'Task状態レコード '+tasks.length+'件 ・ Worker '+workers.length+'件':'Orca Worker未接続またはデータ期限切れ'],
