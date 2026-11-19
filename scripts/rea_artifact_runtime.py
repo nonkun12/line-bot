@@ -110,6 +110,8 @@ def evaluate_and_record_runtime_artifact(
         "diff_scan": verification.get("diff_scan", "UNKNOWN"),
         "changed_file_count": len(verification.get("changed_files", [])),
         "risk_reason_code": verification.get("risk_reason_code", "risk_not_classified"),
+        "stop_state": stop_state,
+        "hold_state": hold_state,
         "independent_verification": verification.get("independent_verification", {
             "reason_code": "independent_verification_not_supplied",
             "verified_sha": None,

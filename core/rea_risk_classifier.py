@@ -45,7 +45,7 @@ def classify_changed_paths(paths: object) -> dict[str, Any]:
     ):
         return {"risk": "HIGH", "reason_code": "sensitive_or_operational_path"}
     if all(
-        path.startswith("docs/") or PurePosixPath(path).suffix.lower() in _LOW_DOC_SUFFIXES
+        PurePosixPath(path).suffix.lower() in _LOW_DOC_SUFFIXES
         for path in normalized
     ):
         return {"risk": "LOW", "reason_code": "documentation_only"}
