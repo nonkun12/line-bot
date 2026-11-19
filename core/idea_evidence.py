@@ -12,6 +12,7 @@ from math import isfinite
 import re
 
 from .idea_learning import IdeaOutcome
+from .idea_hypothesis import ExperimentHypothesis, classify_observation
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{7,40}$")
@@ -93,6 +94,41 @@ class ExperimentEvidence:
             raise ValueError("verification must be an EvidenceVerification or None")
         if self.result == "unverified" and self.verification is not None:
             raise ValueError("unverified evidence cannot carry a verification attestation")
+
+    @classmethod
+    def from_observation(
+        cls,
+        hypothesis: ExperimentHypothesis,
+        *,
+        style: str,
+        observed_value: float,
+        source_ref: str,
+        commit_sha: str,
+        environment: str,
+        sample_count: int,
+        measured_at: str,
+        evidence_sha256: str,
+        note: str = "",
+    ) -> "ExperimentEvidence":
+        """Create an unverified record with outcome classified from frozen thresholds."""
+        if not isinstance(hypothesis, ExperimentHypothesis):
+            raise TypeError("hypothesis must be an ExperimentHypothesis")
+        result = classify_observation(hypothesis, observed_value)
+        return cls(
+            hypothesis_id=hypothesis.hypothesis_id,
+            style=style,
+            result=result,
+            observed_value=observed_value,
+            metric=hypothesis.metric,
+            source_ref=source_ref,
+            commit_sha=commit_sha,
+            environment=environment,
+            sample_count=sample_count,
+            measured_at=measured_at,
+            evidence_sha256=evidence_sha256,
+            note=note,
+            verification=None,
+        )
 
     @property
     def is_verified(self) -> bool:
