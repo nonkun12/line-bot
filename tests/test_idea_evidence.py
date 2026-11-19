@@ -46,9 +46,10 @@ def record(**overrides):
         "verification_status": "pending",
     }
     values.update(overrides)
+    if values["verification_status"] == "verified":
+        values.setdefault("verified_by", "independent-review-17")
     item = ExperimentEvidence(**values)
     if item.verification_status == "verified":
-        item = replace(item, verified_by="independent-review-17")
         item = replace(
             item,
             verification_signature=sign_evidence_record(item, REVIEWER_KEY),
