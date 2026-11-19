@@ -6,6 +6,7 @@ at execution boundaries, not by making ideation conservative.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Mapping
 from .multi_agent import AgentRole, AgentTask
 from .idea_learning import IdeaOutcome, rank_idea_styles
 from .idea_hypothesis import ExperimentHypothesis
@@ -106,9 +107,12 @@ class IdeaAgent:
         *,
         context: tuple[str, ...] = (),
         limit: int = _MAX_IDEAS,
+        reviewer_keys: Mapping[str, bytes] | None = None,
     ) -> tuple[Idea, ...]:
-        """Use only verified, threshold-classified experiment records for learning."""
-        outcomes = build_verified_idea_outcomes(hypothesis, evidence_records)
+        """Use only signed, threshold-classified experiment records for learning."""
+        outcomes = build_verified_idea_outcomes(
+            hypothesis, evidence_records, reviewer_keys=reviewer_keys or {}
+        )
         return self.propose(focus, context=context, limit=limit, outcomes=outcomes)
 
 
