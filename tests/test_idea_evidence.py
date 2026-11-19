@@ -152,3 +152,42 @@ def test_observation_factory_rejects_mismatched_hypothesis_type():
             measured_at="2026-11-19T00:00:00Z",
             evidence_sha256="d" * 64,
         )
+
+
+
+def test_ledger_json_round_trip_preserves_provenance_and_learning_gate():
+    ledger = ExperimentEvidenceLedger().append(evidence()).append(
+        evidence(
+            hypothesis_id="unverified-hypothesis",
+            source_ref="artifact://runs/99/latency.json",
+            verification=None,
+        )
+    )
+    encoded = ledger.to_json()
+    restored = ExperimentEvidenceLedger.from_json(encoded)
+    assert restored == ledger
+    assert [outcome.result for outcome in restored.learning_outcomes()] == [
+        "success",
+        "unverified",
+    ]
+    assert restored.to_json() == encoded
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "not-json",
+        '{"schema_version":2,"records":[]}',
+        '{"schema_version":1,"records":[],"extra":true}',
+        '{"schema_version":1,"records":[{}]}',
+        '{"schema_version":1,"records":null}',
+    ],
+)
+def test_ledger_json_loader_rejects_invalid_or_unknown_schemas(payload):
+    with pytest.raises(ValueError):
+        ExperimentEvidenceLedger.from_json(payload)
+
+
+def test_ledger_json_loader_enforces_payload_size():
+    with pytest.raises(ValueError):
+        ExperimentEvidenceLedger.from_json(" " * 1_000_001)
