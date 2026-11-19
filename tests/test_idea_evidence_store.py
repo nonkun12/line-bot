@@ -4,7 +4,9 @@ import os
 
 import pytest
 
-from core.idea_evidence import ExperimentEvidence
+from dataclasses import replace
+
+from core.idea_evidence import ExperimentEvidence, sign_evidence_record
 from core.idea_evidence_store import ExperimentEvidenceStore
 
 
@@ -45,6 +47,11 @@ def test_store_separates_hypotheses_and_preserves_review_state(tmp_path):
         environment="python=3.x",
         verification_status="verified",
         verified_by="review-42",
+    )
+    reviewer_key = b"store-test-reviewer-key-material-32-bytes"
+    verified = replace(
+        verified,
+        verification_signature=sign_evidence_record(verified, reviewer_key),
     )
     store.append(pending)
     store.append(verified)
