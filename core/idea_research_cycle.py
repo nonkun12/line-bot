@@ -5,6 +5,8 @@ and evidence-informed ideation. It does not invoke agents or run experiments.
 """
 from __future__ import annotations
 
+from typing import Mapping
+
 from core.idea_ai import Idea, IdeaAgent
 from core.idea_evidence import ExperimentEvidence
 from core.idea_evidence_store import ExperimentEvidenceStore
@@ -23,11 +25,13 @@ class IdeaResearchCycle:
         evidence_store: ExperimentEvidenceStore,
         *,
         idea_agent: IdeaAgent | None = None,
+        reviewer_keys: Mapping[str, bytes] | None = None,
     ) -> None:
         if not isinstance(evidence_store, ExperimentEvidenceStore):
             raise TypeError("evidence_store must be an ExperimentEvidenceStore")
         self._store = evidence_store
         self._idea_agent = idea_agent or IdeaAgent()
+        self._reviewer_keys = dict(reviewer_keys or {})
 
     def plan(
         self,
@@ -62,6 +66,7 @@ class IdeaResearchCycle:
             records,
             context=context,
             limit=limit,
+            reviewer_keys=self._reviewer_keys,
         )
 
 
