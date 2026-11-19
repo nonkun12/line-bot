@@ -1,14 +1,9 @@
-"""End-to-end planning adapter for the empirical Idea AI cycle.
-
-Combines role-separated research planning, hypothesis-bound evidence review,
-evidence persistence, and evidence-informed idea selection. It only builds
-plans and candidates: it never invokes agents or runs experiments.
-"""
+"""End-to-end planning adapter for the empirical Idea AI cycle."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from os import PathLike
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from core.idea_ai import Idea, IdeaAgent
 from core.idea_evidence import ExperimentEvidence, build_verified_idea_outcomes
@@ -37,9 +32,10 @@ def build_idea_research_plan(
     context: tuple[str, ...] = (),
     hypothesis: ExperimentHypothesis | None = None,
     evidence_records: Iterable[ExperimentEvidence] = (),
+    reviewer_keys: Mapping[str, bytes] | None = None,
     idea_limit: int = 5,
 ) -> IdeaResearchPlan:
-    """Build a complete non-executing cycle plan from evidence to next ideas."""
+    """Build a complete non-executing cycle plan from signed evidence to ideas."""
     records = tuple(evidence_records)
     if len(records) > _MAX_EVIDENCE_RECORDS:
         raise ValueError(f"evidence_records exceeds {_MAX_EVIDENCE_RECORDS}")
@@ -48,7 +44,11 @@ def build_idea_research_plan(
 
     outcomes: tuple[IdeaOutcome, ...] = ()
     if hypothesis is not None:
-        outcomes = build_verified_idea_outcomes(hypothesis, records)
+        outcomes = build_verified_idea_outcomes(
+            hypothesis,
+            records,
+            reviewer_keys=reviewer_keys or {},
+        )
 
     ideas = IdeaAgent().propose(
         focus,
@@ -75,14 +75,11 @@ def build_idea_research_plan_from_store(
     *,
     hypothesis: ExperimentHypothesis,
     evidence_store_path: str | PathLike[str],
+    reviewer_keys: Mapping[str, bytes] | None = None,
     context: tuple[str, ...] = (),
     idea_limit: int = 5,
 ) -> IdeaResearchPlan:
-    """Load the explicit evidence store and build the next research plan.
-
-    The store must already exist and pass its permission/provenance checks.
-    This function is read-only with respect to the store and never executes work.
-    """
+    """Load the explicit evidence store and build the next signed-evidence plan."""
     if not isinstance(hypothesis, ExperimentHypothesis):
         raise TypeError("hypothesis must be an ExperimentHypothesis")
     records = load_evidence_records(evidence_store_path)
@@ -91,6 +88,7 @@ def build_idea_research_plan_from_store(
         context=context,
         hypothesis=hypothesis,
         evidence_records=records,
+        reviewer_keys=reviewer_keys,
         idea_limit=idea_limit,
     )
 
