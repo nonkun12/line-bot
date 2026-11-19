@@ -119,6 +119,7 @@ jobs:
                   or receipt.get("verified_sha") != candidate_sha
                   or receipt.get("run_id") != verify_run_id
                   or receipt.get("identity_outcome") != "SUCCESS"
+                  or receipt.get("base_sha") != row.get("base_sha")
               ):
                   raise ValueError("verification_receipt_identity_invalid")
               if (
@@ -140,6 +141,9 @@ jobs:
                   "verification_run_id": verify_run_id,
                   "test_outcome": receipt.get("test_outcome", "UNKNOWN"),
                   "risk": receipt.get("risk", "UNKNOWN"),
+                  "candidate_evidence_sha256": hashlib.sha256(
+                      row_artifact.encode("utf-8")
+                  ).hexdigest(),
                   "receipt_sha256": hashlib.sha256(
                       json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
                   ).hexdigest(),
