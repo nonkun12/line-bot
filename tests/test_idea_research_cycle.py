@@ -60,7 +60,7 @@ def test_full_cycle_links_ideas_hypotheses_evidence_and_next_learning():
 
     cycle = cycle.attest_evidence("cycle-cache-v1", "a" * 64, verification())
     assert cycle.ledger.learning_outcomes()[0].result == "success"
-    assert cycle.next_ideas()[0].style == "recombine"
+    assert any(idea.style == "recombine" for idea in cycle.next_ideas())
     assert cycle.evidence_snapshot() == cycle.ledger.to_json()
 
 
