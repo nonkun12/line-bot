@@ -49,6 +49,7 @@ def evaluate_independent_verification_receipt(
         return _unknown("verification_run_sha_mismatch")
 
     event = run_metadata.get("event")
+    expected_base_sha = None
     if event == "pull_request":
         pull_requests = run_metadata.get("pull_requests")
         if not isinstance(pull_requests, list) or not pull_requests:
@@ -61,8 +62,7 @@ def evaluate_independent_verification_receipt(
             return _unknown("verification_pull_request_head_mismatch")
         if not isinstance(base, dict) or base.get("ref") != "main":
             return _unknown("verification_pull_request_base_mismatch")
-        if base.get("sha") != receipt.get("base_sha"):
-            return _unknown("verification_receipt_base_sha_mismatch")
+        expected_base_sha = base.get("sha")
     elif event == "push":
         branch = run_metadata.get("head_branch")
         if not isinstance(branch, str) or not branch.startswith("line-dev/"):
@@ -81,6 +81,8 @@ def evaluate_independent_verification_receipt(
     base_sha = receipt.get("base_sha")
     if not isinstance(base_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", base_sha):
         return _unknown("verification_receipt_base_sha_invalid")
+    if expected_base_sha is not None and base_sha != expected_base_sha:
+        return _unknown("verification_receipt_base_sha_mismatch")
     if receipt.get("identity_outcome") != "SUCCESS":
         return _unknown("verification_identity_not_passed")
     if receipt.get("test_outcome") == "FAILURE":
