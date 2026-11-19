@@ -97,13 +97,13 @@ def test_cloud_snapshot_includes_only_sanitized_rea_artifact_metadata():
 def test_cloud_snapshot_carries_distinct_work_finder_lifecycle_counts():
     report = {"work_finder": {
         "cycle_status": "WORK_FOUND", "next_action": "human_review_candidates",
-        "discovered_candidate_count": 3, "review_pending_count": 3,
+        "discovered_candidate_count": 3, "review_pending_count": 3, "functional_improvement_candidate_count": 2,
         "execution_eligible_count": None, "execution_eligibility_status": "not_proven",
         "completed_task_count": 7, "catalog_task_count": 40, "runtime_queue_task_count": 2,
         "held_task_count": 5, "resume_review_required_count": 1, "scanned_target_pairs": 12,
         "candidate_policy": "review_only_no_execution_approval",
         "safety": {"read_only": True, "execution_approval_granted": False},
-    }, "candidates": [{"id": "review-coverage-gap-a1b2", "target_test": "tests/test_x.py", "source_function": "do_work", "evidence": "core/x.py:12"}]}
+    }, "candidates": [{"id": "review-coverage-gap-a1b2", "target_test": "tests/test_x.py", "source_function": "do_work", "evidence": "core/x.py:12"}], "functional_improvement_candidates": [{"id": "functional-roadmap-a1b2", "title": "Improve agent capability", "evidence": "README.md:88", "priority": "medium", "status": "REVIEW_REQUIRED"}]}
     state = build_snapshot([], "999", "NO_CHANGE", "2026-11-05T14:00:00+00:00", report)["work_finder"]
     assert state["discovered_candidate_count"] == 3
     assert state["review_pending_count"] == 3
@@ -111,3 +111,5 @@ def test_cloud_snapshot_carries_distinct_work_finder_lifecycle_counts():
     assert state["execution_eligibility_status"] == "not_proven"
     assert state["completed_task_count"] == 7
     assert state["candidate_preview"][0]["source_function"] == "do_work"
+    assert state["functional_improvement_candidate_count"] == 2
+    assert state["functional_candidate_preview"][0]["title"] == "Improve agent capability"

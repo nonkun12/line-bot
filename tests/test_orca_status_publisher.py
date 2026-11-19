@@ -141,11 +141,12 @@ def test_validate_snapshot_keeps_work_finder_counts_separate_and_review_only():
         "execution_eligibility_status": "not_proven",
         "candidate_policy": "review_only_no_execution_approval",
         "safety": {"read_only": True, "execution_approval_granted": False},
-        "discovered_candidate_count": 2, "review_pending_count": 2,
+        "discovered_candidate_count": 2, "review_pending_count": 2, "functional_improvement_candidate_count": 1,
         "completed_task_count": 5, "catalog_task_count": 30,
         "runtime_queue_task_count": 0, "held_task_count": 4,
         "resume_review_required_count": 1, "scanned_target_pairs": 9,
         "candidate_preview": [{"id": "review-coverage-gap-a1b2", "target_test": "tests/test_x.py", "source_function": "do_work", "evidence": "core/x.py:12", "status": "REVIEW_REQUIRED"}],
+        "functional_candidate_preview": [{"id": "functional-roadmap-a1b2", "title": "Improve agent capability", "evidence": "README.md:88", "priority": "medium", "status": "REVIEW_REQUIRED"}],
     }
     clean = validate_snapshot(data)
     assert clean["work_finder"]["discovered_candidate_count"] == 2
@@ -153,6 +154,8 @@ def test_validate_snapshot_keeps_work_finder_counts_separate_and_review_only():
     assert "execution_eligible_count" not in clean["work_finder"]
     assert clean["work_finder"]["completed_task_count"] == 5
     assert clean["work_finder"]["candidate_preview"][0]["source_function"] == "do_work"
+    assert clean["work_finder"]["functional_improvement_candidate_count"] == 1
+    assert clean["work_finder"]["functional_candidate_preview"][0]["title"] == "Improve agent capability"
     data["work_finder"]["safety"]["execution_approval_granted"] = True
     with pytest.raises(ValueError):
         validate_snapshot(data)

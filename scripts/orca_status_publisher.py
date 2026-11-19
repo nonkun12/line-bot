@@ -89,7 +89,7 @@ def validate_snapshot(payload: object) -> dict:
     if work_finder is not None:
         if not isinstance(work_finder, dict):
             raise ValueError("work_finder must be an object")
-        if work_finder.get("cycle_status") not in {"WORK_FOUND", "NO_SAFE_CANDIDATE", "BLOCKED"}:
+        if work_finder.get("cycle_status") not in {"WORK_FOUND", "FUNCTIONAL_WORK_FOUND", "NO_SAFE_CANDIDATE", "BLOCKED"}:
             raise ValueError("invalid Work Finder cycle status")
         if work_finder.get("execution_eligibility_status") not in {"verified", "not_proven"}:
             raise ValueError("invalid execution eligibility status")
@@ -98,18 +98,18 @@ def validate_snapshot(payload: object) -> dict:
         safety = work_finder.get("safety")
         if not isinstance(safety, dict) or safety.get("read_only") is not True or safety.get("execution_approval_granted") is not False:
             raise ValueError("Work Finder safety contract must remain read-only")
-        allowed_counts = {"discovered_candidate_count", "review_pending_count", "completed_task_count",
+        allowed_counts = {"discovered_candidate_count", "review_pending_count", "functional_improvement_candidate_count", "completed_task_count",
                           "catalog_task_count", "runtime_queue_task_count", "held_task_count",
                           "resume_review_required_count", "scanned_target_pairs", "execution_eligible_count"}
         clean_counts = {}
         for key in allowed_counts:
             value = work_finder.get(key)
-            if value is None and key == "execution_eligible_count":
+            if value is None and key in {"execution_eligible_count", "functional_improvement_candidate_count"}:
                 continue
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 10000:
                 raise ValueError(f"invalid Work Finder count: {key}")
             clean_counts[key] = value
-        next_actions = {"human_review_candidates", "review_catalog_runtime_plan_gaps",
+        next_actions = {"human_review_candidates", "human_review_functional_improvements", "review_catalog_runtime_plan_gaps",
                         "expand_allowlisted_discovery_sources", "investigate_discovery_status"}
         if work_finder.get("next_action") not in next_actions:
             raise ValueError("invalid Work Finder next action")
@@ -128,12 +128,28 @@ def validate_snapshot(payload: object) -> dict:
                 clean_item[key] = value.strip()
             clean_item["status"] = "REVIEW_REQUIRED"
             clean_previews.append(clean_item)
+        functional_previews = work_finder.get("functional_candidate_preview", [])
+        if not isinstance(functional_previews, list) or len(functional_previews) > 5:
+            raise ValueError("invalid Work Finder functional candidate preview list")
+        clean_functional_previews = []
+        for item in functional_previews:
+            if not isinstance(item, dict) or item.get("status") != "REVIEW_REQUIRED":
+                raise ValueError("invalid Work Finder functional candidate preview")
+            clean_item = {}
+            for key, limit in (("id", 100), ("title", 240), ("evidence", 250), ("priority", 20)):
+                value = item.get(key)
+                if not isinstance(value, str) or not value.strip() or len(value) > limit:
+                    raise ValueError(f"invalid Work Finder functional candidate field: {key}")
+                clean_item[key] = value.strip()
+            clean_item["status"] = "REVIEW_REQUIRED"
+            clean_functional_previews.append(clean_item)
         clean["work_finder"] = {
             "cycle_status": work_finder["cycle_status"],
             "next_action": work_finder["next_action"],
             "execution_eligibility_status": work_finder["execution_eligibility_status"],
             "candidate_policy": work_finder["candidate_policy"],
             "candidate_preview": clean_previews,
+            "functional_candidate_preview": clean_functional_previews,
             "safety": {"read_only": True, "execution_approval_granted": False},
             **clean_counts,
         }
