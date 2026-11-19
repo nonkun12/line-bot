@@ -142,7 +142,7 @@ def test_orca_dashboard_exposes_sha_bound_rea_handoff(orca_client):
         "scheduler_started": False, "model_activated": False,
     }
     assert post_snapshot(orca_client, snapshot(rsi_review=review)).status_code == 200
-    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJk"})
+    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJkLXBhc3N3b3Jk"})
     body = read.get_json()["rsi_review"]
     assert body["gate"] == "HOLD" and body["head_sha"] == "a" * 40
     assert body["source_run_id"] == 123 and body["verification_run_id"] == 456
@@ -216,4 +216,3 @@ def test_orca_dashboard_renders_rea_handoff_fields():
     assert "REA 独立検証ハンドオフ" in source
     assert "candidate_evidence_sha256" in source
     assert "verification_run_id" in source
-
