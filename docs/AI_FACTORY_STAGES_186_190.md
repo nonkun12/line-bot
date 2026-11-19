@@ -31,6 +31,9 @@ Stages 186–190 extend the Stage 181–185 inter-generation readiness pipeline.
 - Requires the ledger to start at the trend baseline and cover every subsequent generation through the trend window.
 - Packages a review-only certificate. All weight, generation, activation, and production authorization flags remain false.
 
+## Signature contract
+- Each stage verifies the signature it emits before returning its report, ledger, or certificate.
+
 ## Safety and execution boundary
 HOLD blocks every stage. Invalid signatures, missing evidence, replay, gaps, tampering, evaluator overlap, lineage drift, or resource-bound violations fail closed. No inference execution, tensor/weight mutation, parameter merge, generation-state advancement, model registration/activation, production switch, permission change, merge, or deployment is performed. No paid API or cloud fallback is introduced.
 
