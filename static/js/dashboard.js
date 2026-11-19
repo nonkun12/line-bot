@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tasks=Array.isArray(orca?.tasks)?orca.tasks:[];
     const dispatches=Array.isArray(orca?.dispatches)?orca.dispatches:[];
     const workers=Array.isArray(orca?.workers)?orca.workers:[];
+    const orcaAvailable=Boolean(orca&&['online','stale'].includes(orca.status));
     const rea=tasks.map(t=>String(t.rea_artifact_status||'').toUpperCase()).filter(Boolean);
     const count=(values,key)=>values.filter(x=>String(x.status||x.state||'').toLowerCase()===key).length;
     const reaPass=rea.filter(x=>x==='PASS').length, reaBlocked=rea.filter(x=>['BLOCKED','HOLD','FAIL'].includes(x)).length;
@@ -26,13 +27,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const cards=[
       ['🔎 タスク発見','未接続','発見候補数を返す証跡は未連携'],
       ['🗂️ 候補・人間レビュー','未接続','候補数・レビュー待ち数は未連携'],
-      ['📥 キュー / Dispatch',orca?String(dispatches.length)+'件':'未取得',orca?'Orcaが受信したDispatch件数':'Orca Worker未接続'],
-      ['⚙️ 実行中タスク',orca?String(count(tasks,'running')+count(tasks,'in_progress'))+'件':'未取得',orca?'Task状態レコード '+tasks.length+'件 ・ Worker '+workers.length+'件':'Orca Worker未接続'],
+      ['📥 キュー / Dispatch',orcaAvailable?String(dispatches.length)+'件':'未取得',orcaAvailable?'Orca受信Dispatch件数'+(orca.status==='stale'?'（データ遅延）':''):'Orca Worker未接続またはデータ期限切れ'],
+      ['⚙️ 実行中タスク',orcaAvailable?String(count(tasks,'running')+count(tasks,'in_progress'))+'件':'未取得',orcaAvailable?'Task状態レコード '+tasks.length+'件 ・ Worker '+workers.length+'件:'Orca Worker未接続またはデータ期限切れ'],
       ['🧪 REA / 品質ゲート',rea.length?'PASS '+reaPass+' / BLOCKED等 '+reaBlocked:'未取得',rea.length?'REA成果物ステータス '+rea.length+'件':'REA成果物証跡なし'],
       ['📦 Workflow / 公開証跡',latest?'Run #'+(latest.run_number||'—'):'未取得',latest?'Workflow '+workflowLabel+'（タスク公開完了とは別）':'GitHub Actions履歴なし']
     ];
     grid.innerHTML=cards.map(([title,value,detail])=>'<div class="system-card pipeline-card"><div class="system-card-title">'+title+'</div><div class="pipeline-value">'+value+'</div><div class="system-details">'+esc(detail)+'</div></div>').join('');
-    const next=!orca||orca.status!=='online'?'Orca Workerの最新スナップショット接続・更新を確認':reaBlocked?'REAのBLOCKED/HOLD/FAIL対象を人間レビューへ回す（自動解除しない）':!tasks.length&&!dispatches.length?'発見候補と承認済みキューの証跡を接続し、枯渇理由を確認':!rea.length?'対象タスクのテスト・REA証跡を収集':latest&&latest.conclusion==='failure'?'失敗Runの原因を読み取り調査し、修正候補をレビューへ':'次の実行結果を待ち、証跡と状態の整合性を確認';
+    const next=!orcaAvailable?'Orca Workerの最新スナップショット接続・更新を確認':reaBlocked?'REAのBLOCKED/HOLD/FAIL対象を人間レビューへ回す（自動解除しない）':!tasks.length&&!dispatches.length?'発見候補と承認済みキューの証跡を接続し、枯渇理由を確認':!rea.length?'対象タスクのテスト・REA証跡を収集':latest&&latest.conclusion==='failure'?'失敗Runの原因を読み取り調査し、修正候補をレビューへ':'次の実行結果を待ち、証跡と状態の整合性を確認';
     const action=document.getElementById('pipelineNextAction');
     if(action) action.textContent='次の対応：'+next;
     const updated=document.getElementById('pipelineUpdated');
