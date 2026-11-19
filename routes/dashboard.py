@@ -471,6 +471,164 @@ def system_status():
     return jsonify(result)
 
 
+
+def _github_task_discovery():
+    """Read-only GitHub snapshot for candidate, catalog approval, and durable task state."""
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token:
+        return {"status": "unavailable", "reason": "github_token_not_configured"}
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    base = "https://api.github.com/repos/nonkun12/line-bot"
+    tasks = []
+    result = {
+        "status": "partial",
+        "issues": {"status": "unavailable", "open_candidates": None, "review_backlog": None,
+                   "execution_approved_label_count": None, "sample_limit": 100},
+        "catalog": {"status": "unavailable", "total": None, "execution_approved": None,
+                    "unapproved": None, "eligible_approved": None},
+        "queue": {"status": "unavailable", "queued": None, "exact_approved_matches": None},
+        "runtime_state": {"status": "unavailable", "completed": None, "held": None,
+                          "resume_review": None},
+    }
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            try:
+                response = client.get(
+                    f"{base}/issues",
+                    headers=headers,
+                    params={"state": "open", "per_page": 100, "labels": "autonomous-task-candidate"},
+                )
+                if response.status_code == 200:
+                    issues = response.json()
+                    if not isinstance(issues, list):
+                        raise ValueError("invalid issues response")
+                    candidates = [item for item in issues if isinstance(item, dict) and "pull_request" not in item]
+                    approved_labels = sum(
+                        1 for item in candidates
+                        if any(isinstance(label, dict) and label.get("name") == "autonomous-task-execution-approved"
+                               for label in item.get("labels", []))
+                    )
+                    result["issues"] = {
+                        "status": "ok" if len(issues) < 100 else "partial",
+                        "open_candidates": len(candidates),
+                        "review_backlog": len(candidates),
+                        "execution_approved_label_count": approved_labels,
+                        "sample_limit": 100,
+                        "truncated": len(issues) >= 100,
+                    }
+                else:
+                    result["issues"]["reason"] = f"github_api_{response.status_code}"
+            except (httpx.HTTPError, ValueError, TypeError):
+                result["issues"]["reason"] = "github_issues_unavailable"
+
+            try:
+                catalog_response = client.get(
+                    f"{base}/contents/.github/autonomous-loop-task-catalog.json",
+                    headers=headers,
+                    params={"ref": "main"},
+                )
+                if catalog_response.status_code == 200:
+                    import base64
+                    encoded = catalog_response.json().get("content", "")
+                    catalog = json.loads(base64.b64decode(encoded).decode("utf-8"))
+                    tasks = catalog.get("tasks") if isinstance(catalog, dict) else None
+                    if not isinstance(tasks, list) or any(not isinstance(task, dict) for task in tasks):
+                        raise ValueError("invalid task catalog")
+                    from scripts.autonomous_task_refill import _validate_task
+                    tasks = [_validate_task(task) for task in tasks]
+                    catalog_ids = [task['id'] for task in tasks]
+                    if len(catalog_ids) != len(set(catalog_ids)):
+                        raise ValueError('duplicate task catalog ID')
+                    approved_ids = {
+                        task.get("id") for task in tasks
+                        if task.get("execution_approved") is True and isinstance(task.get("id"), str)
+                    }
+                    approved = len(approved_ids)
+                    result["catalog"] = {
+                        "status": "ok", "total": len(tasks), "execution_approved": approved,
+                        "unapproved": len(tasks) - approved, "eligible_approved": None,
+                    }
+                else:
+                    result["catalog"]["reason"] = f"github_api_{catalog_response.status_code}"
+            except (httpx.HTTPError, ValueError, TypeError, KeyError):
+                result["catalog"]["reason"] = "task_catalog_unavailable"
+
+            try:
+                queue_response = client.get(
+                    f"{base}/contents/.github/autonomous-loop-tasks.json",
+                    headers=headers,
+                    params={"ref": "main"},
+                )
+                if queue_response.status_code == 200:
+                    import base64
+                    encoded = queue_response.json().get("content", "")
+                    queue_data = json.loads(base64.b64decode(encoded).decode("utf-8"))
+                    queued = queue_data.get("tasks") if isinstance(queue_data, dict) else None
+                    if not isinstance(queued, list) or any(not isinstance(task, dict) for task in queued):
+                        raise ValueError("invalid runtime queue")
+                    from scripts.autonomous_task_refill import _validate_task
+                    queued = [_validate_task(task) for task in queued]
+                    queue_ids = [task['id'] for task in queued]
+                    if len(queue_ids) != len(set(queue_ids)):
+                        raise ValueError('duplicate runtime queue task ID')
+                    result["queue"] = {"status": "ok", "queued": len(queued), "exact_approved_matches": None}
+                else:
+                    result["queue"]["reason"] = f"github_api_{queue_response.status_code}"
+            except (httpx.HTTPError, ValueError, TypeError, KeyError):
+                result["queue"]["reason"] = "runtime_queue_unavailable"
+            try:
+                state_response = client.get(
+                    f"{base}/contents/.autonomous-loop-state.json",
+                    headers=headers,
+                    params={"ref": "autonomous-loop-state"},
+                )
+                if state_response.status_code == 200:
+                    import base64
+                    encoded = state_response.json().get("content", "")
+                    state = json.loads(base64.b64decode(encoded).decode("utf-8"))
+                    completed = state.get("completed", []) if isinstance(state, dict) else None
+                    recovery = state.get("recovery_ai", {}) if isinstance(state, dict) else None
+                    task_states = recovery.get("tasks", {}) if isinstance(recovery, dict) else None
+                    if not isinstance(completed, list) or not isinstance(task_states, dict):
+                        raise ValueError("invalid durable state")
+                    held = sum(1 for item in task_states.values() if isinstance(item, dict) and item.get("held") is True)
+                    resume_review = sum(1 for item in task_states.values() if isinstance(item, dict) and item.get("resume_requires_review") is True)
+                    result["runtime_state"] = {
+                        "status": "ok", "completed": len(set(x for x in completed if isinstance(x, str))),
+                        "held": held, "resume_review": resume_review,
+                    }
+                    if result["catalog"]["status"] == "ok" and result["queue"]["status"] == "ok":
+                        completed_ids = set(x for x in completed if isinstance(x, str))
+                        approved_by_id = {task["id"]: task for task in tasks if task["execution_approved"] is True}
+                        exact_matches = set()
+                        for queued_task in queued:
+                            task_id = queued_task["id"]
+                            trusted = approved_by_id.get(task_id)
+                            if trusted is None or task_id in completed_ids:
+                                continue
+                            if any(queued_task.get(key) != trusted.get(key) for key in ("id", "instruction", "allowed_paths")):
+                                continue
+                            recovery_task = task_states.get(task_id)
+                            if isinstance(recovery_task, dict) and (recovery_task.get("held") is True or recovery_task.get("resume_requires_review") is True):
+                                continue
+                            exact_matches.add(task_id)
+                        result["queue"]["exact_approved_matches"] = len(exact_matches)
+                        result["catalog"]["eligible_approved"] = len(exact_matches)
+                else:
+                    result["runtime_state"]["reason"] = f"github_api_{state_response.status_code}"
+            except (httpx.HTTPError, ValueError, TypeError, KeyError):
+                result["runtime_state"]["reason"] = "durable_task_state_unavailable"
+    except httpx.HTTPError:
+        return {"status": "unavailable", "reason": "github_api_unavailable"}
+    statuses = [result[key]["status"] for key in ("issues", "catalog", "runtime_state", "queue")]
+    result["status"] = "ok" if all(value == "ok" for value in statuses) else "partial"
+    return result
+
+
 @dashboard_bp.route("/api/dashboard/loop", methods=["GET"])
 @requires_dashboard_access
 def autonomous_loop_status():
@@ -502,6 +660,7 @@ def autonomous_loop_status():
             "sheets_audit": True,
             "runtime_telemetry": "github_actions",
             "last_run": _github_loop_runs(),
+            "task_discovery": _github_task_discovery(),
             "note": "未取得のGitHub Actions実行を成功・実行済みとは表示しません。",
         },
         "safety": {

@@ -202,7 +202,17 @@ def test_dashboard_loop_api_matches_current_workflow_limits(auth_headers):
             "html_url": "https://github.com/nonkun12/line-bot/actions/runs/42",
         }],
     }
-    with patch("routes.dashboard._github_loop_runs", return_value=runs):
+    discovery = {
+        "status": "ok",
+        "issues": {"status": "ok", "open_candidates": 3, "review_backlog": 3,
+                   "execution_approved_label_count": 1},
+        "catalog": {"status": "ok", "total": 10, "execution_approved": 2,
+                    "unapproved": 8, "eligible_approved": 1},
+        "runtime_state": {"status": "ok", "completed": 5, "held": 2, "resume_review": 1},
+    }
+    with patch("routes.dashboard._github_loop_runs", return_value=runs), patch(
+        "routes.dashboard._github_task_discovery", return_value=discovery
+    ):
         response = client.get("/api/dashboard/loop", headers=auth_headers)
     assert response.status_code == 200
     data = response.get_json()
@@ -212,6 +222,7 @@ def test_dashboard_loop_api_matches_current_workflow_limits(auth_headers):
     assert data["loop"]["target_cadence_verified"] is False
     assert data["loop"]["max_tasks_per_run"] == 4
     assert data["loop"]["last_run"] == runs
+    assert data["loop"]["task_discovery"] == discovery
     assert data["safety"]["auto_merge"] is False
     assert data["safety"]["auto_deploy"] is False
 
@@ -259,3 +270,84 @@ def test_dashboard_github_loop_runs_includes_evidence_fields(monkeypatch):
     assert run["display_title"] == "bounded task run"
     assert run["run_attempt"] == 2
     assert run["workflow_id"] == 99
+
+
+def test_github_task_discovery_counts_candidates_catalog_and_durable_state(monkeypatch):
+    import base64
+    import json
+    from routes.dashboard import _github_task_discovery
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    catalog = {
+        "tasks": [
+            {"id": "approved-held", "instruction": "held", "allowed_paths": ["tests/test_a.py"], "execution_approved": True},
+            {"id": "approved-review", "instruction": "review", "allowed_paths": ["tests/test_b.py"], "execution_approved": True},
+            {"id": "approved-ready", "instruction": "ready", "allowed_paths": ["tests/test_c.py"], "execution_approved": True},
+            {"id": "not-approved", "instruction": "no", "allowed_paths": ["tests/test_d.py"], "execution_approved": False},
+        ]
+    }
+    state = {
+        "completed": ["already-done"],
+        "recovery_ai": {"tasks": {
+            "approved-held": {"held": True},
+            "approved-review": {"resume_requires_review": True},
+            "approved-ready": {"held": False, "resume_requires_review": False},
+        }},
+    }
+    queue = {"tasks": [{"id": "approved-held", "instruction": "held", "allowed_paths": ["tests/test_a.py"]}, {"id": "approved-review", "instruction": "review", "allowed_paths": ["tests/test_b.py"]}, {"id": "approved-ready", "instruction": "ready", "allowed_paths": ["tests/test_c.py"]}, {"id": "not-approved", "instruction": "no", "allowed_paths": ["tests/test_d.py"]}]}
+    def content_response(value):
+        encoded = base64.b64encode(json.dumps(value).encode()).decode()
+        return FakeResponse(200, {"content": encoded})
+
+    class FakeResponse:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def get(self, url, headers, params=None):
+            if url.endswith("/issues"):
+                return FakeResponse(200, [
+                    {"number": 1, "labels": [{"name": "autonomous-task-candidate"}]},
+                    {"number": 2, "labels": [{"name": "autonomous-task-candidate"},
+                                               {"name": "autonomous-task-execution-approved"}]},
+                    {"number": 3, "pull_request": {}, "labels": [{"name": "autonomous-task-candidate"}]},
+                ])
+            if url.endswith("/contents/.github/autonomous-loop-task-catalog.json"):
+                return content_response(catalog)
+            if url.endswith("/contents/.github/autonomous-loop-tasks.json"):
+                return content_response(queue)
+            if url.endswith("/contents/.autonomous-loop-state.json"):
+                return content_response(state)
+            raise AssertionError("unexpected GitHub API URL")
+
+    monkeypatch.setattr("routes.dashboard.httpx.Client", FakeClient)
+    result = _github_task_discovery()
+    assert result["status"] == "ok"
+    assert result["issues"]["open_candidates"] == 2
+    assert result["issues"]["review_backlog"] == 2
+    assert result["issues"]["execution_approved_label_count"] == 1
+    assert result["catalog"]["total"] == 4
+    assert result["catalog"]["execution_approved"] == 3
+    assert result["catalog"]["eligible_approved"] == 1
+    assert result["queue"] == {"status": "ok", "queued": 4, "exact_approved_matches": 1}
+    assert result["runtime_state"] == {
+        "status": "ok", "completed": 1, "held": 1, "resume_review": 1
+    }
+
+
+def test_github_task_discovery_fails_closed_without_token(monkeypatch):
+    from routes.dashboard import _github_task_discovery
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    assert _github_task_discovery() == {
+        "status": "unavailable", "reason": "github_token_not_configured"
+    }
