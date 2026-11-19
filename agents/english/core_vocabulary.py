@@ -30,7 +30,9 @@ def _user_key(user_id: str) -> str:
     value = str(user_id or "").strip()
     if not value:
         raise ValueError("Side 5 requires a non-empty user_id")
-    return value[:_MAX_USER_ID_CHARS]
+    if len(value) > _MAX_USER_ID_CHARS:
+        raise ValueError("Side 5 user_id exceeds maximum length")
+    return value
 
 
 def run_core_vocabulary(user_id: str, action: str, answer: str = "", word_selector=None) -> CoreVocabularyResult:
