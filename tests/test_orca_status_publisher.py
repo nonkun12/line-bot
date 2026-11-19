@@ -184,4 +184,3 @@ def test_rea_handoff_workflow_publishes_to_orca_without_authority():
     assert "scripts/orca_status_publisher.py" in workflow
     assert "execution_authorized\": False" in workflow
     assert "continue-on-error: true" in workflow
-
