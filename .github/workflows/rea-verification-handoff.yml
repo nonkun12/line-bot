@@ -108,7 +108,7 @@ jobs:
                   verify_run.get("id") != verify_run_id
                   or verify_run.get("repository", {}).get("full_name") != repo
                   or verify_run.get("path") != ".github/workflows/rea-independent-verification.yml"
-                  or verify_run.get("event") != "push"
+                  or verify_run.get("event") != "workflow_dispatch"
                   or verify_run.get("head_branch") != branch
                   or verify_run.get("head_sha") != candidate_sha
                   or verify_run.get("status") != "completed"
