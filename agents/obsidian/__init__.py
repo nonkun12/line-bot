@@ -1,1 +1,0 @@
-"""Guarded Obsidian agent package."""

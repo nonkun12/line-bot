@@ -1,9 +1,0 @@
-# Real sensor traces are never committed.
-traces/positive/
-traces/negative/
-*.wav
-*.mp4
-*.mov
-*.jpg
-*.jpeg
-*.png
