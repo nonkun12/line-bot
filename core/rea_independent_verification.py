@@ -10,7 +10,7 @@ import re
 from typing import Any
 
 WORKFLOW_PATH = ".github/workflows/rea-independent-verification.yml"
-WORKFLOW_ID = 361040620
+WORKFLOW_ID = 424216566
 REPOSITORY = "nonkun12/line-bot"
 
 
@@ -48,23 +48,28 @@ def evaluate_independent_verification_receipt(
         return _unknown("verification_workflow_mismatch")
     if run_metadata.get("path") != WORKFLOW_PATH:
         return _unknown("verification_workflow_path_mismatch")
-    if run_metadata.get("event") != "pull_request":
-        return _unknown("verification_event_not_allowed")
+    event = run_metadata.get("event")
     if run_metadata.get("head_sha") != expected_sha:
         return _unknown("verification_run_sha_mismatch")
-
-    pull_requests = run_metadata.get("pull_requests")
-    if not isinstance(pull_requests, list) or not pull_requests:
-        return _unknown("verification_pull_request_binding_missing")
-    pr = pull_requests[0]
-    if not isinstance(pr, dict):
-        return _unknown("verification_pull_request_binding_invalid")
-    head = pr.get("head")
-    base = pr.get("base")
-    if not isinstance(head, dict) or head.get("sha") != expected_sha:
-        return _unknown("verification_pull_request_head_mismatch")
-    if not isinstance(base, dict) or base.get("ref") != "main":
-        return _unknown("verification_pull_request_base_mismatch")
+    if event == "pull_request":
+        pull_requests = run_metadata.get("pull_requests")
+        if not isinstance(pull_requests, list) or not pull_requests:
+            return _unknown("verification_pull_request_binding_missing")
+        pr = pull_requests[0]
+        if not isinstance(pr, dict):
+            return _unknown("verification_pull_request_binding_invalid")
+        head = pr.get("head")
+        base = pr.get("base")
+        if not isinstance(head, dict) or head.get("sha") != expected_sha:
+            return _unknown("verification_pull_request_head_mismatch")
+        if not isinstance(base, dict) or base.get("ref") != "main":
+            return _unknown("verification_pull_request_base_mismatch")
+    elif event == "push":
+        branch = run_metadata.get("head_branch")
+        if not isinstance(branch, str) or not branch.startswith("line-dev/"):
+            return _unknown("verification_push_branch_not_allowed")
+    else:
+        return _unknown("verification_event_not_allowed")
 
     if not isinstance(receipt, dict):
         return _unknown("verification_receipt_missing")
