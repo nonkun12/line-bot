@@ -104,19 +104,31 @@ def test_rejects_non_finite_measurements():
 def test_idea_agent_end_to_end_uses_only_verified_evidence(hypothesis):
     from core.idea_ai import IdeaAgent
 
-    verified = record()
-    pending = record(
-        experiment_id="exp-pending",
-        style="reframe",
-        verification_status="pending",
-        verified_by="",
+    records = tuple(
+        record(experiment_id=f"success-{i}", style="recombine")
+        for i in range(20)
+    ) + tuple(
+        record(
+            experiment_id=f"failure-{i}",
+            style="reframe",
+            measured_value=99.0,
+        )
+        for i in range(20)
+    ) + (
+        record(
+            experiment_id="pending-001",
+            style="specialize",
+            verification_status="pending",
+            verified_by="",
+        ),
     )
     ideas = IdeaAgent().propose_from_evidence(
         "improve autonomous reasoning",
         hypothesis,
-        (verified, pending),
+        records,
         limit=5,
     )
     assert len(ideas) == 5
-    assert ideas[0].style == "recombine"
+    styles = [idea.style for idea in ideas]
+    assert styles.index("recombine") < styles.index("reframe")
     assert all("No implementation, execution, merge, deploy" in idea.task.instruction for idea in ideas)
