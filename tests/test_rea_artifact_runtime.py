@@ -39,6 +39,7 @@ def _trusted_receipt_and_run():
 
     receipt = {
         "schema_version": 1,
+        "run_id": 987,
         "verified_sha": HEAD,
         "base_sha": BASE,
         "test_outcome": "SUCCESS",
