@@ -66,7 +66,10 @@ def build_idea_workflow(
         instruction=(
             "Synthesize the hypotheses and critique into a ranked research brief. "
             "Preserve useful disagreement; specify the smallest reversible "
-            "experiment, success/failure criteria, required evidence, and human "
+            "experiment hypothesis with a unique id, falsifiable statement, prediction, " 
+            "\"metric, direction, numeric baseline, separate success/failure thresholds, " 
+            "\"baseline source, measurement method, evidence requirements, and reproducibility steps. " 
+            "\"Also state the human approval boundary. "
             "approval boundary. Do not implement, execute, merge, or deploy."
         ),
         resources=frozenset({"idea-workflow:synthesis"}),
