@@ -112,3 +112,30 @@ def test_main_blocks_corrupt_durable_state_without_mutating_file(
     assert result == 1
     assert captured.out.strip() == "Recovery AI resume review blocked: RecoveryStateError"
     assert state_path.read_bytes() == before
+
+
+def test_main_blocks_unknown_task_with_value_error_without_mutating_file(
+    tmp_path, monkeypatch, capsys
+):
+    state_path = tmp_path / ".autonomous-loop-state.json"
+    _state_with_pending_review(state_path)
+    before = state_path.read_bytes()
+
+    module_globals = confirm_in_durable_state.__globals__
+    namespace = module_globals["argparse"].Namespace(
+        state_file=str(state_path),
+        task_id="missing-task",
+        recovery_state_file=None,
+    )
+    monkeypatch.setattr(
+        module_globals["argparse"].ArgumentParser,
+        "parse_args",
+        lambda _self: namespace,
+    )
+
+    result = module_globals["main"]()
+    captured = capsys.readouterr()
+
+    assert result == 1
+    assert captured.out.strip() == "Recovery AI resume review blocked: ValueError"
+    assert state_path.read_bytes() == before
