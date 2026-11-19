@@ -2,7 +2,7 @@ name: Distributed Loop 30-Minute Scheduler
 
 on:
   schedule:
-    - cron: "17,47 * * * *"
+    - cron: "19,49 * * * *"
   workflow_dispatch:
 
 permissions:
