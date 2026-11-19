@@ -37,10 +37,13 @@ def test_bridge_runs_one_guarded_task_and_persists_verified_goal(tmp_path,monkey
                 "base_sha":"a"*40,"produced_sha":produced,"run_nonce":"nonce-1"})+"\n")
         return SimpleNamespace(returncode=0)
     monkeypatch.setattr(bridge.subprocess,"run",fake_run)
-    args=SimpleNamespace(catalog=catalog,state=state,results=results,stop_file=stop,max_tasks=1)
+    goal_output=tmp_path/"goal-pending.json"
+    args=SimpleNamespace(catalog=catalog,state=state,results=results,stop_file=stop,
+                         goal_state_output=goal_output,max_tasks=1)
     assert bridge.run(args)==0
-    saved=json.loads(state.read_text()); goal=saved["goal_autopilot"]
+    saved=json.loads(state.read_text()); goal=json.loads(goal_output.read_text())
     assert saved["completed"]==["approved-test-task"]
+    assert "goal_autopilot" not in saved
     assert goal["tasks"][0]["status"]=="COMPLETED"
     assert goal["tasks"][0]["completion_evidence"]["task_id"]=="approved-test-task"
     assert goal["acceptance_criteria"][0]["verified"] is True
@@ -55,6 +58,9 @@ def test_failed_guarded_task_is_held_and_not_retried(tmp_path,monkeypatch):
         results.write_text(json.dumps({"task_id":"approved-test-task","status":"FAIL","exit_code":1})+"\n")
         return SimpleNamespace(returncode=1)
     monkeypatch.setattr(bridge.subprocess,"run",fake_run)
-    args=SimpleNamespace(catalog=catalog,state=state,results=results,stop_file=stop,max_tasks=1)
+    goal_output=tmp_path/"goal-pending.json"
+    args=SimpleNamespace(catalog=catalog,state=state,results=results,stop_file=stop,
+                         goal_state_output=goal_output,max_tasks=1)
     assert bridge.run(args)==1
-    assert json.loads(state.read_text())["goal_autopilot"]["tasks"][0]["status"]=="HELD"
+    assert not goal_output.exists()
+    assert "goal_autopilot" not in json.loads(state.read_text())

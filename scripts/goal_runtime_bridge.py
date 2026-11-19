@@ -136,6 +136,8 @@ def _append_blocked(path: Path, task_id: str, reason: str) -> None:
 def run(args: argparse.Namespace) -> int:
     queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", ".github/autonomous-loop-tasks.json"))
     state_path, results_path, stop_file = args.state.resolve(), args.results.resolve(), args.stop_file.resolve()
+    goal_output = args.goal_state_output.resolve()
+    goal_output.unlink(missing_ok=True)
     state = read_json(state_path)
     done = state.get("completed", [])
     if not isinstance(done, list) or not all(isinstance(x, str) for x in done):
@@ -150,8 +152,6 @@ def run(args: argparse.Namespace) -> int:
         if loaded is None:
             raise RuntimeError("goal_state_missing")
         _, goal = loaded
-        state["goal_autopilot"] = goal
-        _write_state(state_path, state)
         for _ in range(args.max_tasks):
             if stop_file.exists():
                 return 79
@@ -159,17 +159,11 @@ def run(args: argparse.Namespace) -> int:
             if claim.get("decision") == "COMPLETE":
                 break
             if claim.get("decision") != "CLAIMED":
-                latest = store.read(GOAL_ID)
-                if latest:
-                    state["goal_autopilot"] = latest[1]
-                    _write_state(state_path, state)
                 return 79
             loaded = store.read(GOAL_ID)
             if loaded is None:
                 raise RuntimeError("goal_state_disappeared_after_claim")
             _, claimed_goal = loaded
-            state["goal_autopilot"] = claimed_goal
-            _write_state(state_path, state)
             selected = next(t for t in authorized if t["task_id"] == claim["task_id"])
             one_queue = {"version": 1, "max_tasks_per_run": 1, "tasks": [{
                 "id": selected["task_id"], "instruction": selected["instruction"],
@@ -212,18 +206,11 @@ def run(args: argparse.Namespace) -> int:
                     criterion["verified"] = True
                     criterion["evidence_ref"] = "commit:" + row["produced_sha"]
                     store.compare_and_swap(GOAL_ID, rev, updated)
-                latest = store.read(GOAL_ID)
-                assert latest is not None
-                state["goal_autopilot"] = latest[1]
                 _write_state(state_path, state)
                 if child.returncode != 0:
                     return child.returncode
             else:
                 store.record_result(GOAL_ID, selected["task_id"], status="HELD")
-                latest = store.read(GOAL_ID)
-                if latest:
-                    state["goal_autopilot"] = latest[1]
-                    _write_state(state_path, state)
                 if row is None:
                     _append_blocked(results_path, selected["task_id"], "goal_runtime_result_missing_or_ambiguous")
                 elif child.returncode == 0:
@@ -231,8 +218,7 @@ def run(args: argparse.Namespace) -> int:
                 return 80 if child.returncode == 78 else (child.returncode or 80)
         latest = store.read(GOAL_ID)
         if latest:
-            state["goal_autopilot"] = latest[1]
-            _write_state(state_path, state)
+            _write_state(goal_output, latest[1])
     return 0
 
 def main() -> int:
@@ -241,6 +227,7 @@ def main() -> int:
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--stop-file", type=Path, required=True)
+    parser.add_argument("--goal-state-output", type=Path, required=True)
     parser.add_argument("--max-tasks", type=int, default=1)
     args = parser.parse_args()
     if not 1 <= args.max_tasks <= 4:
