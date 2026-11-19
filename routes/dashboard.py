@@ -538,6 +538,11 @@ def _github_task_discovery():
                     tasks = catalog.get("tasks") if isinstance(catalog, dict) else None
                     if not isinstance(tasks, list) or any(not isinstance(task, dict) for task in tasks):
                         raise ValueError("invalid task catalog")
+                    from scripts.autonomous_task_refill import _validate_task
+                    tasks = [_validate_task(task) for task in tasks]
+                    catalog_ids = [task['id'] for task in tasks]
+                    if len(catalog_ids) != len(set(catalog_ids)):
+                        raise ValueError('duplicate task catalog ID')
                     approved_ids = {
                         task.get("id") for task in tasks
                         if task.get("execution_approved") is True and isinstance(task.get("id"), str)
@@ -565,6 +570,11 @@ def _github_task_discovery():
                     queued = queue_data.get("tasks") if isinstance(queue_data, dict) else None
                     if not isinstance(queued, list) or any(not isinstance(task, dict) for task in queued):
                         raise ValueError("invalid runtime queue")
+                    from scripts.autonomous_task_refill import _validate_task
+                    queued = [_validate_task(task) for task in queued]
+                    queue_ids = [task['id'] for task in queued]
+                    if len(queue_ids) != len(set(queue_ids)):
+                        raise ValueError('duplicate runtime queue task ID')
                     result["queue"] = {"status": "ok", "queued": len(queued), "exact_approved_matches": None}
                 else:
                     result["queue"]["reason"] = f"github_api_{queue_response.status_code}"
@@ -593,10 +603,10 @@ def _github_task_discovery():
                     }
                     if result["catalog"]["status"] == "ok" and result["queue"]["status"] == "ok":
                         completed_ids = set(x for x in completed if isinstance(x, str))
-                        approved_by_id = {task.get("id"): task for task in tasks if task.get("execution_approved") is True and isinstance(task.get("id"), str) and isinstance(task.get("instruction"), str) and isinstance(task.get("allowed_paths"), list)}
+                        approved_by_id = {task["id"]: task for task in tasks if task["execution_approved"] is True}
                         exact_matches = set()
                         for queued_task in queued:
-                            task_id = queued_task.get("id")
+                            task_id = queued_task["id"]
                             trusted = approved_by_id.get(task_id)
                             if trusted is None or task_id in completed_ids:
                                 continue
