@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from core.rea_artifact_evaluator import evaluate_runtime_summary
+from core.rea_independent_verification import evaluate_independent_verification_receipt
 from scripts.rea_readonly_scanner import ScanBlocked, scan_commit_diff
 
 
@@ -18,6 +19,8 @@ def evaluate_and_record_runtime_artifact(
     output_path: str | Path,
     stop_state: str,
     hold_state: str,
+    independent_receipt: object = None,
+    independent_run_metadata: object = None,
 ) -> dict[str, Any]:
     """Evaluate immutable runtime output and append a metadata-only JSONL record.
 
@@ -44,9 +47,20 @@ def evaluate_and_record_runtime_artifact(
         verification["changed_files"] = scan.get("changed_paths", [])
         verification["diff_scan"] = "PASS" if scan.get("status") == "PASS" else "FAIL"
         verification["diff_sha256"] = scan.get("diff_sha256")
-        # Deliberately ignore summary["tests"] and summary["risk"]: the runtime
-        # child can write its own summary, so those fields are self-reported.
-        # Independent test/risk evidence is not wired yet; remain fail-closed.
+        # Child-written summary fields are untrusted. Only a receipt paired with
+        # trusted GitHub Actions API run metadata can upgrade test evidence.
+        independent = evaluate_independent_verification_receipt(
+            independent_receipt,
+            independent_run_metadata,
+            expected_sha=head_sha,
+        )
+        verification["tests"] = independent["tests"]
+        verification["independent_verification"] = {
+            "reason_code": independent["reason_code"],
+            "verified_sha": independent.get("verified_sha"),
+            "verification_workflow_id": independent.get("verification_workflow_id"),
+            "verification_run_id": independent.get("verification_run_id"),
+        }
 
         adapted_summary = dict(summary)
         if head_sha == base_sha and not isinstance(adapted_summary.get("post_generation_rea"), dict):
