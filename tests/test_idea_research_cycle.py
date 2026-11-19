@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
-from core.idea_evidence import ExperimentEvidence
+from core.idea_evidence import ExperimentEvidence, sign_evidence_record
 from core.idea_evidence_store import ExperimentEvidenceStore
 from core.idea_hypothesis import ExperimentHypothesis
 from core.idea_research_cycle import IdeaResearchCycle
+
+REVIEWER_KEY = b"cycle-test-reviewer-key-material-32-bytes"
 
 
 @pytest.fixture
@@ -27,7 +31,7 @@ def hypothesis():
 
 
 def evidence(experiment_id, style, measured_value, status="verified", reviewer="review-1"):
-    return ExperimentEvidence(
+    record = ExperimentEvidence(
         experiment_id=experiment_id,
         hypothesis_id="cycle-hypothesis",
         style=style,
@@ -35,14 +39,20 @@ def evidence(experiment_id, style, measured_value, status="verified", reviewer="
         evidence_refs=(f"artifact:{experiment_id}",),
         code_revision="a" * 40,
         environment="linux; python=3.x",
-        verification_status=status,
+        verification_status="verified" if status == "verified" else status,
         verified_by=reviewer if status == "verified" else "",
     )
+    if status == "verified":
+        record = replace(
+            record,
+            verification_signature=sign_evidence_record(record, REVIEWER_KEY),
+        )
+    return record
 
 
 def test_cycle_connects_plan_persistence_and_next_ideation(tmp_path, hypothesis):
     store = ExperimentEvidenceStore(tmp_path / "cycle.sqlite3")
-    cycle = IdeaResearchCycle(store)
+    cycle = IdeaResearchCycle(store, reviewer_keys={"review-1": REVIEWER_KEY})
 
     batches = cycle.plan("improve autonomous reasoning")
     assert len(batches) == 3
