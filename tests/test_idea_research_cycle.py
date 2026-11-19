@@ -66,7 +66,7 @@ def test_cycle_keeps_pending_results_out_of_learning(tmp_path, hypothesis):
 
 def test_cycle_rejects_invalid_context_and_hypothesis(tmp_path):
     cycle = IdeaResearchCycle(ExperimentEvidenceStore(tmp_path / "cycle.sqlite3"))
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         cycle.propose_next("focus", None)  # type: ignore[arg-type]
     with pytest.raises(ValueError):
         cycle.propose_next(
