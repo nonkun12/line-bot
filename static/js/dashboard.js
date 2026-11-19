@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ['🔎 タスク発見','未接続','発見候補数を返す証跡は未連携'],
       ['🗂️ 候補・人間レビュー','未接続','候補数・レビュー待ち数は未連携'],
       ['📥 キュー / Dispatch',orcaAvailable?String(dispatches.length)+'件':'未取得',orcaAvailable?'Orca受信Dispatch件数'+(orca.status==='stale'?'（データ遅延）':''):'Orca Worker未接続またはデータ期限切れ'],
-      ['⚙️ 実行中タスク',orcaAvailable?String(count(tasks,'running')+count(tasks,'in_progress'))+'件':'未取得',orcaAvailable?'Task状態レコード '+tasks.length+'件 ・ Worker '+workers.length+'件:'Orca Worker未接続またはデータ期限切れ'],
+      ['⚙️ 実行中タスク',orcaAvailable?String(count(tasks,'running')+count(tasks,'in_progress'))+'件':'未取得',orcaAvailable?'Task状態レコード '+tasks.length+'件 ・ Worker '+workers.length+'件':'Orca Worker未接続またはデータ期限切れ'],
       ['🧪 REA / 品質ゲート',rea.length?'PASS '+reaPass+' / BLOCKED等 '+reaBlocked:'未取得',rea.length?'REA成果物ステータス '+rea.length+'件':'REA成果物証跡なし'],
       ['📦 Workflow / 公開証跡',latest?'Run #'+(latest.run_number||'—'):'未取得',latest?'Workflow '+workflowLabel+'（タスク公開完了とは別）':'GitHub Actions履歴なし']
     ];
