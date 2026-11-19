@@ -220,3 +220,97 @@ def test_runtime_rejects_untrusted_receipt_without_run_metadata(tmp_path, monkey
     assert result["tests"] == "UNKNOWN"
     assert result["reason_code"] == "risk_unknown"
     assert result["independent_verification"]["reason_code"] == "trusted_run_metadata_missing"
+
+
+
+def test_runtime_uses_only_sha_bound_independent_receipt_for_test_status(tmp_path, monkeypatch):
+    from core.rea_independent_verification import WORKFLOW_PATH
+
+    monkeypatch.setattr(
+        rea_artifact_runtime,
+        "scan_commit_diff",
+        lambda *args, **kwargs: {
+            "status": "PASS",
+            "changed_paths": ["core/example.py"],
+            "diff_sha256": "d" * 64,
+        },
+    )
+    trusted_run = {
+        "id": 987,
+        "status": "completed",
+        "conclusion": "success",
+        "repository": {"full_name": "nonkun12/line-bot"},
+        "path": WORKFLOW_PATH,
+        "event": "pull_request",
+        "head_sha": HEAD,
+        "pull_requests": [{
+            "head": {"sha": HEAD},
+            "base": {"ref": "main"},
+        }],
+    }
+    receipt = {
+        "schema_version": 1,
+        "verified_sha": HEAD,
+        "base_sha": BASE,
+        "test_outcome": "SUCCESS",
+        "identity_outcome": "SUCCESS",
+        "risk": "UNKNOWN",
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    result = rea_artifact_runtime.evaluate_and_record_runtime_artifact(
+        _summary(),
+        repo_root=tmp_path,
+        output_path=tmp_path / "rea.jsonl",
+        stop_state="INACTIVE",
+        hold_state="CLEAR",
+        independent_verification_receipt=receipt,
+        verification_run_metadata=trusted_run,
+    )
+    # Independent tests can be recorded, but unknown risk must still HOLD.
+    assert result["status"] == "HOLD"
+    assert result["reason_code"] == "risk_unknown"
+    record = json.loads((tmp_path / "rea.jsonl").read_text().splitlines()[0])
+    assert record["tests"] == "PASS"
+    assert record["verified_sha"] == HEAD
+    assert record["verification_run_id"] == 987
+    assert record["risk"] == "UNKNOWN"
+    assert record["execution_authorized"] is False
+    assert record["merge_deploy_authorized"] is False
+
+
+def test_runtime_rejects_receipt_without_trusted_run_metadata(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        rea_artifact_runtime,
+        "scan_commit_diff",
+        lambda *args, **kwargs: {
+            "status": "PASS",
+            "changed_paths": ["core/example.py"],
+            "diff_sha256": "e" * 64,
+        },
+    )
+    receipt = {
+        "schema_version": 1,
+        "verified_sha": HEAD,
+        "base_sha": BASE,
+        "test_outcome": "SUCCESS",
+        "identity_outcome": "SUCCESS",
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    result = rea_artifact_runtime.evaluate_and_record_runtime_artifact(
+        _summary(),
+        repo_root=tmp_path,
+        output_path=tmp_path / "rea.jsonl",
+        stop_state="INACTIVE",
+        hold_state="CLEAR",
+        independent_verification_receipt=receipt,
+    )
+    assert result["status"] == "HOLD"
+    record = json.loads((tmp_path / "rea.jsonl").read_text().splitlines()[0])
+    assert record["tests"] == "UNKNOWN"
+    assert record["independent_verification_reason"] == "trusted_run_metadata_missing"
