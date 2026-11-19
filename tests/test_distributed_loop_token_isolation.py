@@ -30,7 +30,8 @@ def test_isolated_candidate_publisher_never_embeds_token_in_git_remote_url():
     start = workflow.index("      - name: Publish isolated REA candidate for independent verification\n")
     end = workflow.index("      - name: Archive isolated candidate evidence\n", start)
     candidate_step = workflow[start:end]
-    assert "x-access-token:" not in candidate_step
+    assert "https://x-access-token:" not in candidate_step
+    assert "auth_url" not in candidate_step
     assert "GIT_CONFIG_VALUE_0" in candidate_step
     assert "base64.b64encode" in candidate_step
     assert "GITHUB_TOKEN: ${{ github.token }}" in candidate_step
