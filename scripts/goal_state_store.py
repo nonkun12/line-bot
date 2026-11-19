@@ -19,7 +19,7 @@ class GoalStateStore:
         return conn
     def create(self, goal: dict[str, Any]) -> int:
         decision = evaluate_goal(goal)
-        if decision["decision"] not in {"CONTINUE", "COMPLETE"}: raise ValueError("goal is not eligible for durable registration")
+        if decision["decision"] == "INVALID": raise ValueError("goal is not eligible for durable registration")
         payload = json.dumps(goal, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")

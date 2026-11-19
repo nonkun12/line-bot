@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any
 
 TASK_STATES = frozenset({"PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "HELD"})
-SAFE_KINDS = frozenset({"READ_ONLY", "TEST", "DRAFT_PR"})
+SAFE_KINDS = frozenset({"READ_ONLY", "TEST", "CODE_CHANGE", "DRAFT_PR"})
 BLOCKED_KINDS = frozenset({"MERGE", "DEPLOY", "PERMISSION_CHANGE", "SECRET_CHANGE", "PRODUCTION_WRITE"})
 
 MAX_TASKS = 500

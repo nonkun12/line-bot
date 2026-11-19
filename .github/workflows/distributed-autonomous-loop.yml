@@ -586,7 +586,16 @@ jobs:
           fi
           rm -f /tmp/autonomous-loop-not-run /tmp/autonomous-loop-held-tasks
           set +e
-          python scripts/run_minimal_autonomous_loop.py "${loop_args[@]}"
+          if [ "$TRIGGER_MODE" = "obsidian_incident" ]; then
+            python scripts/run_minimal_autonomous_loop.py "${loop_args[@]}"
+          else
+            python scripts/goal_runtime_bridge.py \
+              --catalog .github/autonomous-loop-task-catalog.json \
+              --state /tmp/autonomous-loop-state.json \
+              --results /tmp/minimal-autonomous-loop.jsonl \
+              --stop-file "$STOP_FILE" \
+              --max-tasks "${MAX_TASKS}"
+          fi
           loop_rc=$?
           set -e
           if [ "$loop_rc" -eq 78 ]; then
@@ -1010,6 +1019,12 @@ jobs:
               raise SystemExit('REA RAG export is invalid; durable update blocked')
           data['rea_rag'] = rea_rag_payload['records']
           local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
+          goal_autopilot = local_state.get('goal_autopilot')
+          if goal_autopilot is not None:
+              from scripts.goal_autopilot import evaluate_goal
+              if not isinstance(goal_autopilot, dict) or evaluate_goal(goal_autopilot).get('decision') == 'INVALID':
+                  raise SystemExit('Goal Autopilot durable state is invalid')
+              data['goal_autopilot'] = goal_autopilot
           from scripts.self_improvement_state import validate_durable_history
           try:
               self_improvement = validate_durable_history(
@@ -1048,7 +1063,9 @@ jobs:
           local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
           if durable.get('self_improvement_history') != local_state.get('self_improvement_history'):
               raise SystemExit('self-improvement durable read-back mismatch')
-          print('Recovery AI, RAG, and sanitized self-improvement durable state read-back verified.')
+          if durable.get('goal_autopilot') != local_state.get('goal_autopilot'):
+              raise SystemExit('Goal Autopilot durable read-back mismatch')
+          print('Recovery AI, RAG, self-improvement, and Goal Autopilot durable state read-back verified.')
           PY
 
       - name: Advisory Creator-Critic review for failed or repaired tasks
