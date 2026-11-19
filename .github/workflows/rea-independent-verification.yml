@@ -1,0 +1,102 @@
+name: REA Independent Verification
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - "line-dev/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rea-independent-verification-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify exact commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install project and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          fi
+          python -m pip install pytest
+
+      - name: Verify commit identity and whitespace
+        id: identity
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "verified_sha=$actual" >> "$GITHUB_OUTPUT"
+          if git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git diff --check "$BASE_SHA...$actual"
+          else
+            echo "Base commit unavailable; diff check is NOT_RUN."
+          fi
+
+      - name: Run repository test suite
+        id: tests
+        run: python -m pytest -q
+
+      - name: Write SHA-bound verification receipt
+        if: always()
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          IDENTITY_OUTCOME: ${{ steps.identity.outcome }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          receipt = {
+              "schema_version": 1,
+              "verified_sha": os.environ["EXPECTED_SHA"],
+              "base_sha": os.environ["BASE_SHA"],
+              "test_outcome": os.environ.get("TEST_OUTCOME", "unknown").upper(),
+              "identity_outcome": os.environ.get("IDENTITY_OUTCOME", "unknown").upper(),
+              "risk": "UNKNOWN",
+              "execution_authorized": False,
+              "patch_authorized": False,
+              "hold_clear_authorized": False,
+              "merge_deploy_authorized": False,
+          }
+          Path("rea-independent-verification.json").write_text(
+              json.dumps(receipt, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(receipt, sort_keys=True))
+          PY
+
+      - name: Upload verification receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-independent-verification-${{ github.run_id }}
+          path: rea-independent-verification.json
+          if-no-files-found: error
+          retention-days: 30
