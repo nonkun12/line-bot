@@ -82,3 +82,10 @@ def test_new_database_is_private_and_schema_is_sqlite(tmp_path):
         "SELECT name FROM sqlite_master WHERE type='table' AND name='idea_evidence_snapshots'"
     ).fetchone() is not None
     assert path.stat().st_mode & 0o077 == 0
+
+
+
+def test_store_requires_expected_revision_for_every_write(tmp_path):
+    store = SQLiteIdeaEvidenceStore(tmp_path / "ideas.sqlite3")
+    with pytest.raises(TypeError):
+        store.save("idea-ai", ledger())
