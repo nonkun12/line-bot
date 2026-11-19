@@ -14,6 +14,8 @@ from agents.english.quiz_state import select_daily_words
 SIDE_ID = "side_5_english_core_vocabulary"
 TARGET_WORDS = 1000
 _MAX_USER_ID_CHARS = 200
+# No machine-readable independent-review attestations are present on main yet.
+INDEPENDENTLY_VERIFIED_WORDS: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -22,7 +24,8 @@ class CoreVocabularyResult:
     action: str
     status: str
     text: str
-    verified_word_count: int
+    registered_word_count: int
+    independently_verified_word_count: int
     target_word_count: int
 
 
@@ -61,7 +64,7 @@ def run_core_vocabulary(user_id: str, action: str, answer: str = "", word_select
         )
     else:
         selected = selector(key, 3)
-        lines = ["📘 今日の英単語コアイメージ（確認済みローカル辞書）", ""]
+        lines = ["📘 今日の英単語コアイメージ（ローカル辞書）", ""]
         for word, core_image, example in selected:
             lines.extend((f"• {word}", f"  コアイメージ: {core_image}", f"  例: {example}"))
         lines.extend(("", "クイズを始めるには「クイズ」と送ってください。"))
@@ -72,6 +75,7 @@ def run_core_vocabulary(user_id: str, action: str, answer: str = "", word_select
         action=selected_action,
         status="READY" if _ENTRIES else "BLOCKED",
         text=text,
-        verified_word_count=len(_ENTRIES),
+        registered_word_count=len(_ENTRIES),
+        independently_verified_word_count=len(set(_ENTRIES) & INDEPENDENTLY_VERIFIED_WORDS),
         target_word_count=TARGET_WORDS,
     )
