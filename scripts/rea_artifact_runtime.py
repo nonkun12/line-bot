@@ -92,6 +92,14 @@ def evaluate_and_record_runtime_artifact(
         "task_id": summary.get("task_id") if isinstance(summary, dict) else None,
         "base_sha": summary.get("base_sha") if isinstance(summary, dict) else None,
         "head_sha": summary.get("produced_sha") if isinstance(summary, dict) else None,
+        "tests": verification.get("tests", "UNKNOWN"),
+        "risk": verification.get("risk", "UNKNOWN"),
+        "independent_verification": verification.get("independent_verification", {
+            "reason_code": "independent_verification_not_supplied",
+            "verified_sha": None,
+            "verification_workflow_id": None,
+            "verification_run_id": None,
+        }),
     }
     # Optional RAG memory stores only the evaluator's sanitized metadata.
     # A cache failure must never change the REA decision or block evidence output.
