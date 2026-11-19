@@ -209,3 +209,14 @@ def test_render_omits_empty_note_and_repr_quotes_nonempty_note():
     with_note = builder.render(entry)
     assert with_note.endswith(f"note={entry['note']!r}),")
 
+
+
+def test_validate_entry_rejects_related_with_fewer_than_two_items():
+    import pytest
+
+    builder = _load_builder()
+    entry = _candidate("boundary")
+    entry["related"] = ["only one"]
+
+    with pytest.raises(ValueError, match="related must contain at least two non-empty strings"):
+        builder.validate_entry(entry)
