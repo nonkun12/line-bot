@@ -132,7 +132,7 @@ class IdeaResearchCycle:
         store: SQLiteIdeaEvidenceStore,
         namespace: str,
         *,
-        expected_revision: int | None = None,
+        expected_revision: int,
     ) -> int:
         """Persist this cycle's evidence ledger using caller-managed local storage."""
         if not isinstance(store, SQLiteIdeaEvidenceStore):
