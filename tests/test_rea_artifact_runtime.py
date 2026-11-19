@@ -186,3 +186,28 @@ def test_runtime_rejects_receipt_without_trusted_run_metadata(tmp_path, monkeypa
     assert result["tests"] == "UNKNOWN"
     assert result["independent_verification"]["reason_code"] == "trusted_run_metadata_missing"
     assert result["execution_authorized"] is False
+
+
+def test_runtime_discovers_exact_sha_receipt_automatically(tmp_path, monkeypatch):
+    _scan(monkeypatch)
+    receipt, run_metadata = _trusted_receipt_and_run()
+    observed = {}
+
+    def load(expected_sha):
+        observed["expected_sha"] = expected_sha
+        return receipt, run_metadata
+
+    monkeypatch.setattr(rea_artifact_runtime, "load_independent_verification_for_sha", load)
+    result = rea_artifact_runtime.evaluate_and_record_runtime_artifact(
+        _summary(),
+        repo_root=tmp_path,
+        output_path=tmp_path / "rea.jsonl",
+        stop_state="INACTIVE",
+        hold_state="CLEAR",
+    )
+
+    assert observed["expected_sha"] == HEAD
+    assert result["tests"] == "PASS"
+    assert result["risk"] == "UNKNOWN"
+    assert result["status"] == "HOLD"
+    assert result["independent_verification"]["verification_run_id"] == 987
