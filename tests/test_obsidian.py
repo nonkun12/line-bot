@@ -54,3 +54,29 @@ def test_obsidian_vault_from_env_is_optional_and_uses_configured_path(monkeypatc
     vault = ObsidianVault.from_env()
     assert vault is not None
     assert vault.root == tmp_path
+
+@pytest.mark.parametrize(
+    ("limit", "expected_error"),
+    [
+        (0, True),
+        (1, False),
+        (20, False),
+        (21, True),
+        (True, True),
+    ],
+)
+def test_search_notes_enforces_limit_boundaries_and_sorted_casefold_matches(
+    tmp_path: Path, limit: int, expected_error: bool
+) -> None:
+    vault = ObsidianVault(tmp_path)
+    for index in range(21):
+        vault.write_note(f"notes/{20 - index:02}.md", "Needle appears here")
+
+    if expected_error:
+        with pytest.raises(ObsidianError):
+            vault.search_notes("needle", limit=limit)
+        return
+
+    matches = vault.search_notes("NEEDLE", limit=limit)
+    assert len(matches) == limit
+    assert matches == sorted(matches)
