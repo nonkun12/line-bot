@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+
 from core.rea_candidate_gate import validate_candidate_publication
 
 BASE = "a" * 40
@@ -31,6 +34,11 @@ def valid_inputs():
         },
     }
     task = {"id": TASK, "instruction": "Add a bounded test", "allowed_paths": PATHS}
+    allowed_digest = hashlib.sha256(json.dumps(sorted(PATHS), ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+    row["instruction_sha256"] = "f" * 64
+    row["allowed_paths_sha256"] = allowed_digest
+    row["execution_approval"]["allowed_paths_sha256"] = allowed_digest
+    row["execution_approval"]["instruction_sha256"] = "f" * 64
     catalog_task = {**task, "execution_approved": True}
     return [row], {"tasks": [task]}, {"tasks": [catalog_task]}
 
@@ -84,6 +92,15 @@ def test_catalog_approval_and_exact_sha_are_mandatory():
     assert validate_candidate_publication(
         rows, queue, catalog, expected_base_sha=BASE, observed_head_sha=BASE, changed_paths=PATHS
     )["reason_code"] == "candidate_has_no_commit"
+
+
+def test_candidate_rejects_mismatched_instruction_or_path_digests():
+    rows, _, _ = valid_inputs()
+    rows[0]["instruction_sha256"] = "9" * 64
+    assert validate(rows=rows)["reason_code"] == "candidate_execution_approval_invalid"
+    rows, _, _ = valid_inputs()
+    rows[0]["execution_approval"]["allowed_paths_sha256"] = "8" * 64
+    assert validate(rows=rows)["reason_code"] == "candidate_execution_approval_invalid"
 
 
 def test_multiple_task_rows_are_not_combined_into_one_candidate():

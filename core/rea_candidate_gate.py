@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import re
+import hashlib
+import json
 from typing import Any
 
 _SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -82,6 +84,8 @@ def validate_candidate_publication(
         or not _HEX64.fullmatch(approval["instruction_sha256"])
         or not isinstance(approval.get("allowed_paths_sha256"), str)
         or not _HEX64.fullmatch(approval["allowed_paths_sha256"])
+        or row.get("instruction_sha256") != approval.get("instruction_sha256")
+        or row.get("allowed_paths_sha256") != approval.get("allowed_paths_sha256")
         or not isinstance(consumption, dict)
         or consumption.get("gate") != "PASS"
         or consumption.get("reason_code") != "approval_consumed_once"
@@ -113,6 +117,9 @@ def validate_candidate_publication(
             for path in allowed
         )
         or len(set(allowed)) != len(allowed)
+        or hashlib.sha256(
+            json.dumps(sorted(allowed), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest() != approval.get("allowed_paths_sha256")
     ):
         return _blocked("candidate_task_definition_not_approved")
 

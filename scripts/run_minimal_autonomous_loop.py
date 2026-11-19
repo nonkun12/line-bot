@@ -918,6 +918,10 @@ def run_task(
         "exit_code": exit_code,
         "base_sha": base_sha,
         "produced_sha": produced_sha,
+        "instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
+        "allowed_paths_sha256": hashlib.sha256(
+            json.dumps(sorted(task["allowed_paths"]), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest(),
         "failure_reason": (str(payload.get("failure_reason", "")) if status == "BLOCKED" else failure_reason),
         **({"failure_code": safe_failure_code} if safe_failure_code is not None else {}),
         **({"execution_approval": _sanitized_execution_approval(payload.get("execution_approval"))} if _sanitized_execution_approval(payload.get("execution_approval")) is not None else {}),
