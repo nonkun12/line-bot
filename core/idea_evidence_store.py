@@ -24,10 +24,7 @@ def _open_store(path: str | os.PathLike[str], flags: int) -> int:
         raise ValueError("store path must name a file")
     if not hasattr(os, "O_NOFOLLOW"):
         raise RuntimeError("safe no-follow file access is unavailable")
-    try:
-        fd = os.open(target, flags | os.O_NOFOLLOW, 0o600)
-    except FileNotFoundError:
-        raise
+    fd = os.open(target, flags | os.O_NOFOLLOW, 0o600)
     info = os.fstat(fd)
     if not stat.S_ISREG(info.st_mode):
         os.close(fd)
@@ -52,6 +49,8 @@ def _decode_records(raw: bytes) -> tuple[ExperimentEvidence, ...]:
             payload = json.loads(line)
             if not isinstance(payload, dict):
                 raise ValueError("record must be a JSON object")
+            if isinstance(payload.get("evidence_refs"), list):
+                payload["evidence_refs"] = tuple(payload["evidence_refs"])
             records.append(ExperimentEvidence(**payload))
         except (json.JSONDecodeError, TypeError) as exc:
             raise ValueError(f"invalid evidence record line {line_number}") from exc
@@ -63,15 +62,27 @@ def _decode_records(raw: bytes) -> tuple[ExperimentEvidence, ...]:
     return tuple(records)
 
 
+def _read_all(fd: int) -> bytes:
+    chunks: list[bytes] = []
+    remaining = _MAX_STORE_BYTES + 1
+    while remaining:
+        chunk = os.read(fd, min(65_536, remaining))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    raw = b"".join(chunks)
+    if len(raw) > _MAX_STORE_BYTES:
+        raise ValueError("evidence store exceeds size limit")
+    return raw
+
+
 def load_evidence_records(path: str | os.PathLike[str]) -> tuple[ExperimentEvidence, ...]:
     """Load and validate a private, regular JSONL evidence file."""
     fd = _open_store(path, os.O_RDONLY)
     try:
         fcntl.flock(fd, fcntl.LOCK_SH)
-        raw = os.read(fd, _MAX_STORE_BYTES + 1)
-        if len(raw) > _MAX_STORE_BYTES:
-            raise ValueError("evidence store exceeds size limit")
-        return _decode_records(raw)
+        return _decode_records(_read_all(fd))
     finally:
         os.close(fd)
 
@@ -91,9 +102,7 @@ def append_evidence_record(
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         os.lseek(fd, 0, os.SEEK_SET)
-        raw = os.read(fd, _MAX_STORE_BYTES + 1)
-        if len(raw) > _MAX_STORE_BYTES:
-            raise ValueError("evidence store exceeds size limit")
+        raw = _read_all(fd)
         existing = _decode_records(raw)
         if len(existing) >= _MAX_RECORDS:
             raise ValueError("evidence store record limit reached")
