@@ -8,6 +8,37 @@ document.addEventListener('DOMContentLoaded', () => {
   const label = s => ({online:'🟢 正常',ok:'🟢 正常',stale:'🟡 遅延',offline:'🔴 オフライン',error:'🔴 エラー',planned:'🔵 開発予定',unknown:'⚪ 未確認'})[s] || '⚪ 未確認';
   const setStatus = (id, s) => { const el=document.getElementById(id); if(el) el.innerHTML=`<span class="status-dot ${cls(s)}"></span>${label(s)}`; };
 
+  let latestOrcaSnapshot = null;
+  let latestLoopData = null;
+  function renderPipeline(){
+    const grid=document.getElementById('pipelineGrid');
+    if(!grid) return;
+    const orca=latestOrcaSnapshot, loop=latestLoopData||{};
+    const tasks=Array.isArray(orca?.tasks)?orca.tasks:[];
+    const dispatches=Array.isArray(orca?.dispatches)?orca.dispatches:[];
+    const workers=Array.isArray(orca?.workers)?orca.workers:[];
+    const orcaAvailable=Boolean(orca&&['online','stale'].includes(orca.status));
+    const rea=tasks.map(t=>String(t.rea_artifact_status||'').toUpperCase()).filter(Boolean);
+    const count=(values,key)=>values.filter(x=>String(x.status||x.state||'').toLowerCase()===key).length;
+    const reaPass=rea.filter(x=>x==='PASS').length, reaBlocked=rea.filter(x=>['BLOCKED','HOLD','FAIL'].includes(x)).length;
+    const runs=loop.last_run?.status==='ok'&&Array.isArray(loop.last_run.runs)?loop.last_run.runs:[];
+    const latest=runs[0]||null;
+    const workflowLabel=latest?(latest.status==='completed'?(latest.conclusion||'完了状態不明'):'実行中・待機中'):'証跡未取得';
+    const cards=[
+      ['🔎 タスク発見','未接続','発見候補数を返す証跡は未連携'],
+      ['🗂️ 候補・人間レビュー','未接続','候補数・レビュー待ち数は未連携'],
+      ['📥 キュー / Dispatch',orcaAvailable?String(dispatches.length)+'件':'未取得',orcaAvailable?'Orca受信Dispatch件数'+(orca.status==='stale'?'（データ遅延）':''):'Orca Worker未接続またはデータ期限切れ'],
+      ['⚙️ 実行中タスク',orcaAvailable?String(count(tasks,'running')+count(tasks,'in_progress'))+'件':'未取得',orcaAvailable?'Task状態レコード '+tasks.length+'件 ・ Worker '+workers.length+'件':'Orca Worker未接続またはデータ期限切れ'],
+      ['🧪 REA / 品質ゲート',rea.length?'PASS '+reaPass+' / BLOCKED等 '+reaBlocked:'未取得',rea.length?'REA成果物ステータス '+rea.length+'件':'REA成果物証跡なし'],
+      ['📦 Workflow / 公開証跡',latest?'Run #'+(latest.run_number||'—'):'未取得',latest?'Workflow '+workflowLabel+'（タスク公開完了とは別）':'GitHub Actions履歴なし']
+    ];
+    grid.innerHTML=cards.map(([title,value,detail])=>'<div class="system-card pipeline-card"><div class="system-card-title">'+title+'</div><div class="pipeline-value">'+value+'</div><div class="system-details">'+esc(detail)+'</div></div>').join('');
+    const next=!orcaAvailable?'Orca Workerの最新スナップショット接続・更新を確認':reaBlocked?'REAのBLOCKED/HOLD/FAIL対象を人間レビューへ回す（自動解除しない）':!tasks.length&&!dispatches.length?'発見候補と承認済みキューの証跡を接続し、枯渇理由を確認':!rea.length?'対象タスクのテスト・REA証跡を収集':latest&&latest.conclusion==='failure'?'失敗Runの原因を読み取り調査し、修正候補をレビューへ':'次の実行結果を待ち、証跡と状態の整合性を確認';
+    const action=document.getElementById('pipelineNextAction');
+    if(action) action.textContent='次の対応：'+next;
+    const updated=document.getElementById('pipelineUpdated');
+    if(updated) updated.textContent='Orca '+(orca?.status||'未接続')+' ・ GitHub Run '+(latest?'取得済み':'未取得');
+  }
   async function fetchSystem() {
     const err=document.getElementById('systemError'); err.classList.add('hidden');
     try {
@@ -39,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const lr=await fetch(api('/api/dashboard/loop')); const ld=await lr.json();
         const l=ld.loop||{}, s=ld.safety||{}, h=ld.hand_sign||{};
+        latestLoopData=l;
         loopLastRun = l.last_run || {};
         const streams = Array.isArray(l.streams) ? l.streams : [];
         const streamStatus = status => ({
@@ -56,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }).join('') || '<div class="system-details">系統情報は未取得です</div>';
         }
         const cards=[
-          ['🔄 Loop','🟢 自動運転設定済み',`1日 ${l.frequency_per_day||4}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
+          ['🔄 Loop',l.target_cadence_verified?'🟢 実行頻度を検証済み':'🔵 スケジュール設定・実績確認中',`目標 ${l.target_cadence||'未設定'} ・ 1日 ${l.frequency_per_day||'—'}回 ・ ${(l.schedule_jst||[]).join(' / ')} JST`],
           ['🛡️ Safety Gate',s.fail_closed||l.fail_closed?'🟢 FAIL_CLOSED 有効':'⚪ 未確認',`Auto Merge: ${s.auto_merge?'有':'無'} ・ Auto Deploy: ${s.auto_deploy?'有':'無'}`],
           ['📋 Sheets監査',l.sheets_audit?'🟢 有効':'⚪ 未確認',`Runtime telemetry: ${esc(l.runtime_telemetry||'unknown')}`],
           ['🧭 Hermes Adviser',s.hermes_role==='adviser'?'🟢 Adviser':'⚪ 未確認',s.hermes_is_auxiliary?'補助系統・Loop本体とは分離':'状態確認要'],
@@ -68,7 +100,8 @@ document.addEventListener('DOMContentLoaded', () => {
               : '未取得のRunを成功扱いしません'],
         ];
         document.getElementById('loopGrid').innerHTML=cards.map(x=>'<div class="system-card"><div class="system-card-title">'+x[0]+'</div><div class="system-status">'+x[1]+'</div><div class="system-details">'+esc(x[2])+'</div></div>').join('');
-        document.getElementById('loopSummary').textContent=`自動Loop ${l.frequency_per_day||4}回/日 ・ 安全設定確認済み`;
+        document.getElementById('loopSummary').textContent=`設定目標 ${l.target_cadence||'未設定'} ・ 実行頻度の検証 ${l.target_cadence_verified?'済み':'未完了'}`;
+        renderPipeline();
       } catch(e) {
         document.getElementById('loopSummary').textContent='状態取得失敗';
         document.getElementById('loopGrid').innerHTML='<div class="system-details">Loop状態を取得できません。未確認の稼働を断定しません。</div>';
@@ -140,6 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const response=await fetch(api('/api/dashboard/orca'));
       const data=await response.json();
       if(!response.ok||!data.ok) throw new Error(data.error||'HTTP '+response.status);
+      latestOrcaSnapshot=data; renderPipeline();
       const statusLabel={online:'🟢 接続中',stale:'🟡 データ遅延',offline:'⚪ 未接続',error:'🔴 エラー'}[data.status]||'⚪ 未確認';
       const age=data.age_sec==null?'送信元未接続':(data.age_sec+'秒前に受信');
       const groups=[['Tasks',data.tasks],['Dispatches',data.dispatches],['Workers',data.workers]];
@@ -160,6 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }).join('');
       panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">'+statusLabel+'</div><div class="system-details">'+esc(age)+'</div></div>'+summary+'<div class="section-subtitle">6系統の実データ照合</div>'+(streamRows||'<div class="system-details">系統データ未取得</div>')+(rows||'<div class="system-details">Task / Dispatch / Workerの明細は未受信です。</div>');
     }catch(error){
+      latestOrcaSnapshot=null; renderPipeline();
       panel.innerHTML='<div class="system-card"><div class="system-card-title">Orca接続状態</div><div class="system-status">⚪ 未確認</div><div class="system-details">'+esc(error.message)+'</div></div>';
     }
   }

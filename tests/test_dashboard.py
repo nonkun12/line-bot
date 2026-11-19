@@ -34,6 +34,8 @@ def test_dashboard_page_status_code_and_content(auth_headers):
     assert "分散Loop 実行履歴".encode("utf-8") in response.data
     assert b"loopHistoryBody" in response.data
     assert "個別タスクのPASS".encode("utf-8") in response.data
+    assert "自立開発パイプライン".encode("utf-8") in response.data
+    assert b"pipelineGrid" in response.data
 
 
 def test_dashboard_notes_api_success(auth_headers):
@@ -204,8 +206,10 @@ def test_dashboard_loop_api_matches_current_workflow_limits(auth_headers):
         response = client.get("/api/dashboard/loop", headers=auth_headers)
     assert response.status_code == 200
     data = response.get_json()
-    assert data["loop"]["schedule_jst"] == ["04:30", "10:30", "16:30", "22:30"]
-    assert data["loop"]["frequency_per_day"] == 4
+    assert data["loop"]["schedule_jst"] == ["毎時19分", "毎時49分"]
+    assert data["loop"]["frequency_per_day"] == 48
+    assert data["loop"]["target_cadence"] == "30m"
+    assert data["loop"]["target_cadence_verified"] is False
     assert data["loop"]["max_tasks_per_run"] == 4
     assert data["loop"]["last_run"] == runs
     assert data["safety"]["auto_merge"] is False

@@ -620,3 +620,10 @@ body {
   .operations-history { padding: 1rem; }
   .loop-history-table { min-width: 680px; }
 }
+
+
+/* Autonomous development pipeline */
+.pipeline-card { min-height: 132px; }
+.pipeline-value { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; margin: 0.35rem 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.pipeline-next-action { border: 1px solid rgba(245, 158, 11, 0.28); background: rgba(245, 158, 11, 0.07); color: var(--text-primary); border-radius: 12px; padding: 0.9rem 1rem; font-weight: 600; }
+@media (max-width: 640px) { .pipeline-card { min-height: 112px; } .pipeline-value { font-size: 1.15rem; } }

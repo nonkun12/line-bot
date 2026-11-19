@@ -45,6 +45,13 @@
     <div id="orcaLiveBoard" class="system-grid" aria-live="polite"><div class="system-details">Orcaの送信元は未接続です</div></div>
   </section>
 
+  <section class="section-card">
+    <div class="section-header"><div class="title-group"><span class="section-icon">🧩</span><h2 class="section-title">自立開発パイプライン</h2></div><span id="pipelineUpdated" class="status-note">証跡読み込み待ち</span></div>
+    <p class="dashboard-evidence-note">発見・候補・承認・実行・検証・公開を分けて表示します。取得できない段階は未接続とし、Workflow成功をタスク成功や公開完了とは扱いません。</p>
+    <div id="pipelineGrid" class="system-grid" aria-live="polite"><div class="system-details">パイプライン証跡を取得中...</div></div>
+    <div id="pipelineNextAction" class="pipeline-next-action">次の対応：証跡を取得しています。</div>
+  </section>
+
   <section class="section-card operations-history">
     <div class="section-header">
       <div class="title-group"><span class="section-icon">🧾</span><h2 class="section-title">分散Loop 実行履歴</h2></div>

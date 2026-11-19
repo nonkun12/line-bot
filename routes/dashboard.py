@@ -479,9 +479,10 @@ def autonomous_loop_status():
         "ok": True,
         "loop": {
             "status": "configured",
-            "schedule_jst": ["04:30", "10:30", "16:30", "22:30"],
-            "frequency_per_day": 4,
-            "target_cadence": "hourly",
+            "schedule_jst": ["毎時19分", "毎時49分"],
+            "frequency_per_day": 48,
+            "target_cadence": "30m",
+            "scheduler_timezone": "UTC cron 19,49 = JST :19,:49",
             "target_cadence_verified": False,
             "streams": [
                 {"key": "main_star_night", "kind": "main", "label": "本線：STAR-NIGHT", "status": "in_development", "cadence": "hourly_target", "detail": "物語・シナリオ・音楽・映像の継続制作。毎時実行は未検証。", "related_prs": [1285]},
