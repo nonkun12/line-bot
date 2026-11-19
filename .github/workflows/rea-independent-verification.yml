@@ -69,12 +69,14 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
           TEST_OUTCOME: ${{ steps.tests.outcome }}
           IDENTITY_OUTCOME: ${{ steps.identity.outcome }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
           receipt = {
               "schema_version": 1,
+              "run_id": int(os.environ["RUN_ID"]),
               "verified_sha": os.environ["EXPECTED_SHA"],
               "base_sha": os.environ["BASE_SHA"],
               "test_outcome": os.environ.get("TEST_OUTCOME", "unknown").upper(),
