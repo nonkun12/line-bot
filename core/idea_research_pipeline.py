@@ -1,16 +1,13 @@
-"""End-to-end planning adapter for the empirical Idea AI cycle.
-
-Combines role-separated research planning, hypothesis-bound evidence review,
-and evidence-informed idea selection. It only builds plans and candidates:
-it never invokes agents, runs experiments, persists evidence, or executes work.
-"""
+"""End-to-end planning adapter for the empirical Idea AI cycle."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from os import PathLike
+from typing import Iterable, Mapping
 
 from core.idea_ai import Idea, IdeaAgent
 from core.idea_evidence import ExperimentEvidence, build_verified_idea_outcomes
+from core.idea_evidence_store import load_evidence_records
 from core.idea_hypothesis import ExperimentHypothesis
 from core.idea_learning import IdeaOutcome
 from core.idea_workflow import build_idea_workflow
@@ -35,14 +32,10 @@ def build_idea_research_plan(
     context: tuple[str, ...] = (),
     hypothesis: ExperimentHypothesis | None = None,
     evidence_records: Iterable[ExperimentEvidence] = (),
+    reviewer_keys: Mapping[str, bytes] | None = None,
     idea_limit: int = 5,
 ) -> IdeaResearchPlan:
-    """Build a complete non-executing cycle plan from evidence to next ideas.
-
-    Evidence without its originating hypothesis is rejected. Only independently
-    verified records can influence ranking; pending/rejected/gray-zone results
-    remain unverified and are ignored by the learning ranker.
-    """
+    """Build a complete non-executing cycle plan from signed evidence to ideas."""
     records = tuple(evidence_records)
     if len(records) > _MAX_EVIDENCE_RECORDS:
         raise ValueError(f"evidence_records exceeds {_MAX_EVIDENCE_RECORDS}")
@@ -51,7 +44,11 @@ def build_idea_research_plan(
 
     outcomes: tuple[IdeaOutcome, ...] = ()
     if hypothesis is not None:
-        outcomes = build_verified_idea_outcomes(hypothesis, records)
+        outcomes = build_verified_idea_outcomes(
+            hypothesis,
+            records,
+            reviewer_keys=reviewer_keys or {},
+        )
 
     ideas = IdeaAgent().propose(
         focus,
@@ -73,4 +70,31 @@ def build_idea_research_plan(
     )
 
 
-__all__ = ["IdeaResearchPlan", "build_idea_research_plan"]
+def build_idea_research_plan_from_store(
+    focus: str,
+    *,
+    hypothesis: ExperimentHypothesis,
+    evidence_store_path: str | PathLike[str],
+    reviewer_keys: Mapping[str, bytes] | None = None,
+    context: tuple[str, ...] = (),
+    idea_limit: int = 5,
+) -> IdeaResearchPlan:
+    """Load the explicit evidence store and build the next signed-evidence plan."""
+    if not isinstance(hypothesis, ExperimentHypothesis):
+        raise TypeError("hypothesis must be an ExperimentHypothesis")
+    records = load_evidence_records(evidence_store_path)
+    return build_idea_research_plan(
+        focus,
+        context=context,
+        hypothesis=hypothesis,
+        evidence_records=records,
+        reviewer_keys=reviewer_keys,
+        idea_limit=idea_limit,
+    )
+
+
+__all__ = [
+    "IdeaResearchPlan",
+    "build_idea_research_plan",
+    "build_idea_research_plan_from_store",
+]
