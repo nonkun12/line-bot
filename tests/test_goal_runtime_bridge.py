@@ -125,11 +125,11 @@ def test_partial_workflow_failure_does_not_durably_complete_unpublished_prior_ta
             row = {"task_id": selected["id"], "status": "PASS", "exit_code": 0,
                    "base_sha": "a" * 40, "produced_sha": "b" * 40, "run_nonce": "nonce-1"}
             with results.open("a") as stream:
-                stream.write(json.dumps(row) + "\\n")
+                stream.write(json.dumps(row) + "\n")
             return SimpleNamespace(returncode=0)
         row = {"task_id": selected["id"], "status": "FAIL", "exit_code": 1}
         with results.open("a") as stream:
-            stream.write(json.dumps(row) + "\\n")
+            stream.write(json.dumps(row) + "\n")
         return SimpleNamespace(returncode=1)
 
     monkeypatch.setattr(bridge.subprocess, "run", fake_run)
