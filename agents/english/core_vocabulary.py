@@ -68,7 +68,7 @@ def run_core_vocabulary(user_id: str, action: str, answer: str = "", word_select
         for word, core_image, example in selected:
             lines.extend((f"• {word}", f"  コアイメージ: {core_image}", f"  例: {example}"))
         lines.extend(("", "クイズを始めるには「クイズ」と送ってください。"))
-        text = "\n".join(lines) if selected else "現在、確認済みの出題可能な単語がありません。"
+        text = "\n".join(lines) if selected else "現在、登録済みの出題可能な単語がありません。"
 
     return CoreVocabularyResult(
         side_id=SIDE_ID,
