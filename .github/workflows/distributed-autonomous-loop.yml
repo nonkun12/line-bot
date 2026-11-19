@@ -836,6 +836,139 @@ jobs:
           echo "PUBLISHED_BRANCH=$branch"
           echo "PUBLISHED_SHA=$head"
 
+      - name: Publish isolated REA candidate for independent verification
+        id: publish_rea_candidate
+        if: ${{ !cancelled() && steps.run_task.conclusion != 'skipped' && env.TRIGGER_MODE == 'normal' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+          from core.rea_candidate_gate import validate_candidate_publication
+          from core.emergency_stop import get_status
+
+          results_path = Path("/tmp/minimal-autonomous-loop.jsonl")
+          if not results_path.is_file():
+              print("REA_CANDIDATE=NOT_ELIGIBLE reason=task_evidence_missing")
+              raise SystemExit(0)
+          rows = []
+          for line in results_path.read_text(encoding="utf-8").splitlines():
+              if line.strip():
+                  value = json.loads(line)
+                  if not isinstance(value, dict):
+                      raise SystemExit("candidate evidence row invalid")
+                  rows.append(value)
+          if len(rows) != 1:
+              print("REA_CANDIDATE=NOT_ELIGIBLE reason=single_task_required")
+              raise SystemExit(0)
+
+          token = os.environ.get("GITHUB_TOKEN", "")
+          if not token or get_status(os.environ.get("GITHUB_REPOSITORY", ""), token):
+              print("REA_CANDIDATE=NOT_ELIGIBLE reason=emergency_stop_active_or_unverifiable")
+              raise SystemExit(0)
+          queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", "/tmp/autonomous-loop-runtime-queue.json"))
+          queue_data = json.loads(queue_path.read_text(encoding="utf-8"))
+          catalog_data = json.loads(Path(".github/autonomous-loop-task-catalog.json").read_text(encoding="utf-8"))
+          base_sha = os.environ["GITHUB_SHA"]
+          head_sha = subprocess.run(
+              ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+          ).stdout.strip()
+          subprocess.run(["git", "merge-base", "--is-ancestor", base_sha, head_sha], check=True)
+          subprocess.run(["git", "diff", "--check", f"{base_sha}...{head_sha}"], check=True)
+          changed_paths = subprocess.run(
+              ["git", "diff", "--no-renames", "--name-only", f"{base_sha}...{head_sha}"],
+              check=True, capture_output=True, text=True,
+          ).stdout.splitlines()
+          decision = validate_candidate_publication(
+              rows, queue_data, catalog_data,
+              expected_base_sha=base_sha,
+              observed_head_sha=head_sha,
+              changed_paths=changed_paths,
+          )
+          if decision.get("allowed") is not True:
+              print("REA_CANDIDATE=NOT_ELIGIBLE reason=" + str(decision.get("reason_code", "unknown")))
+              raise SystemExit(0)
+
+          branch = "rea-candidate/" + os.environ["GITHUB_RUN_ID"]
+          existing = subprocess.run(
+              ["git", "ls-remote", "--heads", "origin", f"refs/heads/{branch}"],
+              check=True, capture_output=True, text=True,
+          ).stdout.strip()
+          if existing:
+              print("REA_CANDIDATE=NOT_ELIGIBLE reason=candidate_ref_already_exists")
+              raise SystemExit(0)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          push_env = os.environ.copy()
+          push_env["GIT_CONFIG_COUNT"] = "1"
+          push_env["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader"
+          push_env["GIT_CONFIG_VALUE_0"] = "AUTHORIZATION: basic " + base64.b64encode(
+              ("x-access-token:" + token).encode("utf-8")
+          ).decode("ascii")
+          subprocess.run(
+              ["git", "push", f"https://github.com/{repo}.git", f"HEAD:refs/heads/{branch}"],
+              env=push_env, check=True, capture_output=True, text=True,
+          )
+          print("REA_CANDIDATE=PUBLISHED branch=" + branch + " sha=" + head_sha)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("published=true\n")
+              output.write("branch=" + branch + "\n")
+              output.write("candidate_sha=" + head_sha + "\n")
+          PY
+
+      - name: Archive isolated candidate evidence
+        if: steps.publish_rea_candidate.outputs.published == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-candidate-evidence-${{ github.run_id }}
+          path: /tmp/minimal-autonomous-loop.jsonl
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Dispatch independent verification for isolated candidate
+        if: steps.publish_rea_candidate.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          CANDIDATE_BRANCH: ${{ steps.publish_rea_candidate.outputs.branch }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          repo = os.environ["REPOSITORY"]
+          branch = os.environ["CANDIDATE_BRANCH"]
+          if not branch.startswith("rea-candidate/"):
+              raise SystemExit("candidate branch rejected")
+          request = urllib.request.Request(
+              f"https://api.github.com/repos/{repo}/actions/workflows/rea-independent-verification.yml/dispatches",
+              data=json.dumps({"ref": branch}).encode("utf-8"),
+              headers={
+                  "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  if response.status != 204:
+                      raise SystemExit("independent verification dispatch not accepted")
+          except urllib.error.HTTPError as exc:
+              raise SystemExit(f"independent verification dispatch failed: HTTP {exc.code}")
+          print("REA_INDEPENDENT_VERIFICATION=DISPATCHED")
+          PY
+
       - name: Persist completed task state
         id: persist_state
         if: success()

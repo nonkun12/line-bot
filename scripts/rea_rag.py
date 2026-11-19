@@ -88,6 +88,7 @@ def build_rea_context(
     lowered = instruction.casefold()
     for markers, reason in (
         (("test", "pytest", "regression", "テスト", "試験", "回帰"), "test"),
+        (("verification", "検証"), "verification"),
         (("evidence", "証拠", "エビデンス"), "evidence"),
         (("diff", "差分", "変更ファイル"), "diff"),
         (("risk", "リスク", "危険度"), "risk"),

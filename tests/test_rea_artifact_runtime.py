@@ -22,7 +22,7 @@ def _summary():
     }
 
 
-def test_runtime_artifact_defaults_missing_tests_and_risk_to_hold(tmp_path, monkeypatch):
+def _scan(monkeypatch):
     monkeypatch.setattr(
         rea_artifact_runtime,
         "scan_commit_diff",
@@ -32,7 +32,40 @@ def test_runtime_artifact_defaults_missing_tests_and_risk_to_hold(tmp_path, monk
             "diff_sha256": "c" * 64,
         },
     )
-    output = tmp_path / "rea-artifact-evaluations.jsonl"
+
+
+def _trusted_receipt_and_run():
+    from core.rea_independent_verification import WORKFLOW_PATH
+
+    receipt = {
+        "schema_version": 1,
+        "run_id": 987,
+        "verified_sha": HEAD,
+        "base_sha": BASE,
+        "test_outcome": "SUCCESS",
+        "identity_outcome": "SUCCESS",
+        "risk": "UNKNOWN",
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    run_metadata = {
+        "id": 987,
+        "status": "completed",
+        "conclusion": "success",
+        "repository": {"full_name": "nonkun12/line-bot"},
+        "path": WORKFLOW_PATH,
+        "event": "push",
+        "head_branch": "line-dev/987",
+        "head_sha": HEAD,
+    }
+    return receipt, run_metadata
+
+
+def test_runtime_artifact_defaults_missing_tests_and_risk_to_hold(tmp_path, monkeypatch):
+    _scan(monkeypatch)
+    output = tmp_path / "rea.jsonl"
     result = rea_artifact_runtime.evaluate_and_record_runtime_artifact(
         _summary(),
         repo_root=tmp_path,
@@ -42,7 +75,9 @@ def test_runtime_artifact_defaults_missing_tests_and_risk_to_hold(tmp_path, monk
     )
 
     assert result["status"] == "HOLD"
-    assert result["reason_code"] == "risk_unknown"
+    assert result["reason_code"] == "verification_incomplete"
+    assert result["tests"] == "UNKNOWN"
+    assert result["risk"] == "MEDIUM"
     assert result["execution_authorized"] is False
     records = [json.loads(line) for line in output.read_text().splitlines()]
     assert len(records) == 1
@@ -50,17 +85,7 @@ def test_runtime_artifact_defaults_missing_tests_and_risk_to_hold(tmp_path, monk
 
 
 def test_runtime_artifact_ignores_self_reported_test_and_risk_evidence(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        rea_artifact_runtime,
-        "scan_commit_diff",
-        lambda *args, **kwargs: {
-            "status": "PASS",
-            "changed_paths": ["core/example.py"],
-            "diff_sha256": "c" * 64,
-        },
-    )
-    # Even forged-looking PASS/LOW fields in the child-written summary are not
-    # accepted as independent verification evidence.
+    _scan(monkeypatch)
     summary = {**_summary(), "tests": "PASS", "risk": "LOW"}
     result = rea_artifact_runtime.evaluate_and_record_runtime_artifact(
         summary,
@@ -71,7 +96,9 @@ def test_runtime_artifact_ignores_self_reported_test_and_risk_evidence(tmp_path,
     )
 
     assert result["status"] == "HOLD"
-    assert result["reason_code"] == "risk_unknown"
+    assert result["tests"] == "UNKNOWN"
+    assert result["risk"] == "MEDIUM"
+    assert result["reason_code"] == "verification_incomplete"
     assert result["merge_deploy_authorized"] is False
 
 
@@ -93,19 +120,10 @@ def test_runtime_artifact_scan_failure_is_persisted_as_hold(tmp_path, monkeypatc
     assert result["patch_authorized"] is False
 
 
-
 def test_runtime_artifact_records_sanitized_rea_history_when_configured(tmp_path, monkeypatch):
     monkeypatch.setenv("RECOVERY_RAG_DB_PATH", str(tmp_path / "recovery-rag.sqlite3"))
     monkeypatch.setenv("RECOVERY_RAG_NAMESPACE", "distributed-loop")
-    monkeypatch.setattr(
-        rea_artifact_runtime,
-        "scan_commit_diff",
-        lambda *args, **kwargs: {
-            "status": "PASS",
-            "changed_paths": ["core/example.py", "tests/test_example.py"],
-            "diff_sha256": "c" * 64,
-        },
-    )
+    _scan(monkeypatch)
     result = rea_artifact_runtime.evaluate_and_record_runtime_artifact(
         _summary(),
         repo_root=tmp_path,
@@ -120,7 +138,76 @@ def test_runtime_artifact_records_sanitized_rea_history_when_configured(tmp_path
         tmp_path / "recovery-rag.sqlite3",
         namespace="distributed-loop",
         task_id="next-task",
-        instruction="Review tests and unknown risk evidence",
+        instruction="Review verification evidence and regression tests",
     )
     assert "status=HOLD" in context
-    assert "risk_unknown" in context
+    assert "verification_incomplete" in context
+
+
+def test_runtime_consumes_trusted_independent_receipt_with_medium_risk(tmp_path, monkeypatch):
+    _scan(monkeypatch)
+    receipt, run_metadata = _trusted_receipt_and_run()
+    result = rea_artifact_runtime.evaluate_and_record_runtime_artifact(
+        _summary(),
+        repo_root=tmp_path,
+        output_path=tmp_path / "rea.jsonl",
+        stop_state="INACTIVE",
+        hold_state="CLEAR",
+        independent_receipt=receipt,
+        independent_run_metadata=run_metadata,
+    )
+
+    assert result["status"] == "PASS"
+    assert result["reason_code"] == "artifact_evidence_verified"
+    assert result["tests"] == "PASS"
+    assert result["risk"] == "MEDIUM"
+    assert result["independent_verification"]["verified_sha"] == HEAD
+    assert result["independent_verification"]["verification_run_id"] == 987
+    assert result["execution_authorized"] is False
+    assert result["merge_deploy_authorized"] is False
+    row = json.loads((tmp_path / "rea.jsonl").read_text().splitlines()[0])
+    assert row["tests"] == "PASS"
+    assert row["risk"] == "MEDIUM"
+
+
+def test_runtime_rejects_receipt_without_trusted_run_metadata(tmp_path, monkeypatch):
+    _scan(monkeypatch)
+    receipt, _ = _trusted_receipt_and_run()
+    result = rea_artifact_runtime.evaluate_and_record_runtime_artifact(
+        _summary(),
+        repo_root=tmp_path,
+        output_path=tmp_path / "rea.jsonl",
+        stop_state="INACTIVE",
+        hold_state="CLEAR",
+        independent_receipt=receipt,
+    )
+
+    assert result["status"] == "HOLD"
+    assert result["tests"] == "UNKNOWN"
+    assert result["independent_verification"]["reason_code"] == "trusted_run_metadata_missing"
+    assert result["execution_authorized"] is False
+
+
+def test_runtime_discovers_exact_sha_receipt_automatically_and_passes_medium_risk(tmp_path, monkeypatch):
+    _scan(monkeypatch)
+    receipt, run_metadata = _trusted_receipt_and_run()
+    observed = {}
+
+    def load(expected_sha):
+        observed["expected_sha"] = expected_sha
+        return receipt, run_metadata
+
+    monkeypatch.setattr(rea_artifact_runtime, "load_independent_verification_for_sha", load)
+    result = rea_artifact_runtime.evaluate_and_record_runtime_artifact(
+        _summary(),
+        repo_root=tmp_path,
+        output_path=tmp_path / "rea.jsonl",
+        stop_state="INACTIVE",
+        hold_state="CLEAR",
+    )
+
+    assert observed["expected_sha"] == HEAD
+    assert result["tests"] == "PASS"
+    assert result["risk"] == "MEDIUM"
+    assert result["status"] == "PASS"
+    assert result["independent_verification"]["verification_run_id"] == 987

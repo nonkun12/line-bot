@@ -603,6 +603,25 @@ def _is_review_coverage_gap_model_task(task: dict[str, object]) -> bool:
     )
 
 
+def _sanitized_execution_approval(value: object) -> dict[str, object] | None:
+    """Keep only task-bound approval metadata needed by downstream audit gates."""
+    if not isinstance(value, dict):
+        return None
+    allowed = (
+        "gate", "reason_code", "execution_authorized", "scope", "actor",
+        "task_id", "instruction_sha256", "allowed_paths_sha256", "base_sha",
+    )
+    result = {key: value[key] for key in allowed if key in value}
+    consumption = value.get("consumption")
+    if isinstance(consumption, dict):
+        result["consumption"] = {
+            key: consumption[key]
+            for key in ("gate", "reason_code", "marker_ref", "marker_sha")
+            if key in consumption
+        }
+    return result
+
+
 def run_task(
     task: dict[str, object],
     run_index: int,
@@ -899,8 +918,13 @@ def run_task(
         "exit_code": exit_code,
         "base_sha": base_sha,
         "produced_sha": produced_sha,
+        "instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
+        "allowed_paths_sha256": hashlib.sha256(
+            json.dumps(sorted(task["allowed_paths"]), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest(),
         "failure_reason": (str(payload.get("failure_reason", "")) if status == "BLOCKED" else failure_reason),
         **({"failure_code": safe_failure_code} if safe_failure_code is not None else {}),
+        **({"execution_approval": _sanitized_execution_approval(payload.get("execution_approval"))} if _sanitized_execution_approval(payload.get("execution_approval")) is not None else {}),
         **({"rea": payload["rea"]} if status == "BLOCKED" and isinstance(payload.get("rea"), dict) else {}),
         **({"post_generation_rea": post_generation_rea} if isinstance(post_generation_rea, dict) else {}),
     }
