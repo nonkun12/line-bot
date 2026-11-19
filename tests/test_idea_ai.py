@@ -68,9 +68,12 @@ def test_idea_agent_accepts_only_verified_evidence_ledger_learning_signals():
 
 def test_idea_agent_uses_explicit_local_client_and_validates_structured_output():
     import json
+    from core.idea_learning import IdeaOutcome
+    captured = {}
 
     class Completions:
         def create(self, **kwargs):
+            captured["prompt"] = kwargs["messages"][1]["content"]
             assert kwargs["model"] == "test-local"
             assert kwargs["response_format"]["type"] == "json_schema"
             payload = {"ideas": [{
@@ -90,7 +93,17 @@ def test_idea_agent_uses_explicit_local_client_and_validates_structured_output()
         model = "test-local"
         chat = type("Chat", (), {"completions": Completions()})()
 
-    ideas = IdeaAgent().propose("自立開発", limit=1, local_client=Client())
+    outcomes = (
+        IdeaOutcome("verified-style", "success", "verified benchmark improved"),
+        IdeaOutcome("failed-style", "failure", "verified benchmark regressed"),
+        IdeaOutcome("unverified-style", "unverified", "not independently checked"),
+    )
+    ideas = IdeaAgent().propose(
+        "自立開発", limit=1, local_client=Client(), outcomes=outcomes
+    )
+    assert "verified-style" in captured["prompt"]
+    assert "failed-style" in captured["prompt"]
+    assert "unverified-style" not in captured["prompt"]
     assert len(ideas) == 1
     assert ideas[0].title == "新しい探索経路"
     assert ideas[0].task.role is AgentRole.IDEA
