@@ -546,6 +546,8 @@ jobs:
           INCIDENT_CATEGORY: ${{ env.INCIDENT_CATEGORY }}
           INCIDENT_DETAIL: ${{ env.INCIDENT_DETAIL }}
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
+          # Populated only after cause-fixed and post-resume-review confirmations pass.
+          GOAL_RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id || '' }}
         run: |
           set -euo pipefail
           : > /tmp/minimal-autonomous-loop.jsonl

@@ -51,7 +51,7 @@ def _authorized_queue(queue_path: Path, catalog_path: Path, completed: set[str])
         })
     return result
 
-def _load_goal(store: GoalStateStore, state: dict[str, Any], tasks: list[dict[str, Any]], completed: set[str]):
+def _load_goal(store: GoalStateStore, state: dict[str, Any], tasks: list[dict[str, Any]], completed: set[str], resume_task_id: str = ""):
     existing = state.get("goal_autopilot")
     if existing is None:
         if not tasks:
@@ -94,6 +94,16 @@ def _load_goal(store: GoalStateStore, state: dict[str, Any], tasks: list[dict[st
                 old["status"] = "HELD"
                 old["hold_reason"] = "registered_task_definition_changed"
                 changed = True
+    if resume_task_id:
+        if resume_task_id not in current_ids:
+            raise ValueError("resume_task_not_in_current_approved_queue")
+        resume_target = next((t for t in goal["tasks"] if t["task_id"] == resume_task_id), None)
+        if resume_target is None:
+            raise ValueError("resume_task_missing_from_goal")
+        if resume_target["status"] in {"HELD", "FAILED"}:
+            resume_target["status"] = "PENDING"
+            resume_target.pop("hold_reason", None)
+            changed = True
     if changed:
         for criterion in goal["acceptance_criteria"]:
             criterion["verified"] = False
@@ -148,7 +158,7 @@ def run(args: argparse.Namespace) -> int:
         return 78
     with tempfile.TemporaryDirectory(prefix="goal-autopilot-") as tmp:
         store = GoalStateStore(Path(tmp) / "goal.sqlite3")
-        loaded = _load_goal(store, state, authorized, completed)
+        loaded = _load_goal(store, state, authorized, completed, os.environ.get("GOAL_RESUME_TASK_ID", "").strip())
         if loaded is None:
             raise RuntimeError("goal_state_missing")
         _, goal = loaded

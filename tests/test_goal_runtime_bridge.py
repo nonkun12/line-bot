@@ -64,3 +64,36 @@ def test_failed_guarded_task_is_held_and_not_retried(tmp_path,monkeypatch):
     assert bridge.run(args)==1
     assert not goal_output.exists()
     assert "goal_autopilot" not in json.loads(state.read_text())
+
+
+def test_explicit_resume_reopens_only_approved_held_task(tmp_path):
+    queue, catalog, state_path, results, stop = _inputs(tmp_path)
+    approved = bridge._authorized_queue(queue, catalog, set())
+    held_goal = {
+        "goal_id": bridge.GOAL_ID,
+        "objective": "bounded",
+        "acceptance_criteria": [{"id": "complete", "verified": False}],
+        "safety_gate": True,
+        "kill_switch": False,
+        "tasks": [{**approved[0], "status": "HELD", "hold_reason": "review"}],
+    }
+    store = bridge.GoalStateStore(tmp_path / "resume.db")
+    loaded = bridge._load_goal(store, {"goal_autopilot": held_goal}, approved, set(), "approved-test-task")
+    assert loaded is not None
+    assert loaded[1]["tasks"][0]["status"] == "PENDING"
+
+
+def test_resume_cannot_reopen_task_outside_approved_queue(tmp_path):
+    queue, catalog, state_path, results, stop = _inputs(tmp_path)
+    approved = bridge._authorized_queue(queue, catalog, set())
+    held_goal = {
+        "goal_id": bridge.GOAL_ID,
+        "objective": "bounded",
+        "acceptance_criteria": [{"id": "complete", "verified": False}],
+        "safety_gate": True,
+        "kill_switch": False,
+        "tasks": [{**approved[0], "status": "HELD"}],
+    }
+    store = bridge.GoalStateStore(tmp_path / "resume.db")
+    with pytest.raises(ValueError, match="resume_task_not_in_current_approved_queue"):
+        bridge._load_goal(store, {"goal_autopilot": held_goal}, [], set(), "approved-test-task")
