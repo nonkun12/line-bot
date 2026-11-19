@@ -129,6 +129,28 @@ def test_orca_dashboard_exposes_sanitized_rsi_review_summary(orca_client):
     assert "raw_feedback" not in body["rsi_review"]
 
 
+def test_orca_dashboard_exposes_sha_bound_rea_handoff(orca_client):
+    review = {
+        "phase": "REA_VERIFICATION_HANDOFF", "status": "HOLD", "gate": "HOLD",
+        "reason_code": "risk_unknown_no_promotion", "next_action": "REQUEST_HUMAN_REVIEW",
+        "repository": "nonkun12/line-bot", "head_sha": "a" * 40, "review_count": 1,
+        "review_evidence_event_ids": ["orchestra-rea:source-run-123", "orchestra-rea:verification-run-456"],
+        "source_run_id": 123, "verification_run_id": 456,
+        "candidate_evidence_sha256": "b" * 64, "receipt_sha256": "c" * 64,
+        "allow_continue": False, "proposal_only": True, "execution_authorized": False,
+        "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False,
+        "scheduler_started": False, "model_activated": False,
+    }
+    assert post_snapshot(orca_client, snapshot(rsi_review=review)).status_code == 200
+    read = orca_client.get("/api/dashboard/orca", headers={"Authorization": "Basic ZGFzaGJvYXJkLXRlc3Q6ZGFzaGJvYXJk"})
+    body = read.get_json()["rsi_review"]
+    assert body["gate"] == "HOLD" and body["head_sha"] == "a" * 40
+    assert body["source_run_id"] == 123 and body["verification_run_id"] == 456
+    assert body["candidate_evidence_sha256"] == "b" * 64
+    assert body["receipt_sha256"] == "c" * 64
+    assert body["execution_authorized"] is False
+
+
 def test_orca_dashboard_rejects_rsi_review_authority_escalation(orca_client):
     review = {"status": "PASS", "review_count": 0, "review_evidence_event_ids": [],
         "proposal_only": True, "allow_continue": True, "execution_authorized": False,
