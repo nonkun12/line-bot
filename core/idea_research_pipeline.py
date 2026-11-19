@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from os import PathLike
 from typing import Iterable, Mapping
 
 from core.idea_ai import Idea, IdeaAgent
 from core.idea_evidence import ExperimentEvidence, build_verified_idea_outcomes
-from core.idea_evidence_store import load_evidence_records
 from core.idea_hypothesis import ExperimentHypothesis
 from core.idea_learning import IdeaOutcome
 from core.idea_workflow import build_idea_workflow
@@ -70,31 +68,4 @@ def build_idea_research_plan(
     )
 
 
-def build_idea_research_plan_from_store(
-    focus: str,
-    *,
-    hypothesis: ExperimentHypothesis,
-    evidence_store_path: str | PathLike[str],
-    reviewer_keys: Mapping[str, bytes] | None = None,
-    context: tuple[str, ...] = (),
-    idea_limit: int = 5,
-) -> IdeaResearchPlan:
-    """Load the explicit evidence store and build the next signed-evidence plan."""
-    if not isinstance(hypothesis, ExperimentHypothesis):
-        raise TypeError("hypothesis must be an ExperimentHypothesis")
-    records = load_evidence_records(evidence_store_path)
-    return build_idea_research_plan(
-        focus,
-        context=context,
-        hypothesis=hypothesis,
-        evidence_records=records,
-        reviewer_keys=reviewer_keys,
-        idea_limit=idea_limit,
-    )
-
-
-__all__ = [
-    "IdeaResearchPlan",
-    "build_idea_research_plan",
-    "build_idea_research_plan_from_store",
-]
+__all__ = ["IdeaResearchPlan", "build_idea_research_plan"]
