@@ -87,6 +87,24 @@ def test_validate_snapshot_accepts_fail_closed_rsi_review_summary():
 
 @pytest.mark.parametrize("field", ["allow_continue", "execution_authorized", "patch_authorized",
     "hold_clear_authorized", "merge_deploy_authorized", "scheduler_started", "model_activated"])
+def test_validate_snapshot_accepts_sha_bound_rea_handoff():
+    data = payload()
+    data["rsi_review"] = {
+        "phase": "REA_VERIFICATION_HANDOFF", "status": "HOLD", "gate": "HOLD",
+        "reason_code": "risk_unknown_no_promotion", "next_action": "REQUEST_HUMAN_REVIEW",
+        "repository": "nonkun12/line-bot", "head_sha": "a" * 40, "review_count": 1,
+        "review_evidence_event_ids": ["orchestra-rea:source-run-123", "orchestra-rea:verification-run-456"],
+        "source_run_id": 123, "verification_run_id": 456,
+        "candidate_evidence_sha256": "b" * 64, "receipt_sha256": "c" * 64,
+        "allow_continue": False, "proposal_only": True, "execution_authorized": False,
+        "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False,
+        "scheduler_started": False, "model_activated": False,
+    }
+    clean = validate_snapshot(data)
+    assert clean["rsi_review"]["gate"] == "HOLD"
+    assert clean["rsi_review"]["candidate_evidence_sha256"] == "b" * 64
+
+
 def test_validate_snapshot_rejects_rsi_authority_escalation(field):
     data = payload()
     data["rsi_review"] = {"status": "PASS", "review_count": 0, "review_evidence_event_ids": [],
