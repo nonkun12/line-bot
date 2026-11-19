@@ -280,10 +280,10 @@ def test_github_task_discovery_counts_candidates_catalog_and_durable_state(monke
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
     catalog = {
         "tasks": [
-            {"id": "approved-held", "execution_approved": True},
-            {"id": "approved-review", "execution_approved": True},
-            {"id": "approved-ready", "execution_approved": True},
-            {"id": "not-approved", "execution_approved": False},
+            {"id": "approved-held", "instruction": "held", "allowed_paths": ["tests/test_a.py"], "execution_approved": True},
+            {"id": "approved-review", "instruction": "review", "allowed_paths": ["tests/test_b.py"], "execution_approved": True},
+            {"id": "approved-ready", "instruction": "ready", "allowed_paths": ["tests/test_c.py"], "execution_approved": True},
+            {"id": "not-approved", "instruction": "no", "allowed_paths": ["tests/test_d.py"], "execution_approved": False},
         ]
     }
     state = {
@@ -294,6 +294,7 @@ def test_github_task_discovery_counts_candidates_catalog_and_durable_state(monke
             "approved-ready": {"held": False, "resume_requires_review": False},
         }},
     }
+    queue = {"tasks": [{"id": "approved-held", "instruction": "held", "allowed_paths": ["tests/test_a.py"]}, {"id": "approved-review", "instruction": "review", "allowed_paths": ["tests/test_b.py"]}, {"id": "approved-ready", "instruction": "ready", "allowed_paths": ["tests/test_c.py"]}, {"id": "not-approved", "instruction": "no", "allowed_paths": ["tests/test_d.py"]}]}
     def content_response(value):
         encoded = base64.b64encode(json.dumps(value).encode()).decode()
         return FakeResponse(200, {"content": encoded})
@@ -322,6 +323,8 @@ def test_github_task_discovery_counts_candidates_catalog_and_durable_state(monke
                 ])
             if url.endswith("/contents/.github/autonomous-loop-task-catalog.json"):
                 return content_response(catalog)
+            if url.endswith("/contents/.github/autonomous-loop-tasks.json"):
+                return content_response(queue)
             if url.endswith("/contents/.autonomous-loop-state.json"):
                 return content_response(state)
             raise AssertionError("unexpected GitHub API URL")
@@ -335,6 +338,7 @@ def test_github_task_discovery_counts_candidates_catalog_and_durable_state(monke
     assert result["catalog"]["total"] == 4
     assert result["catalog"]["execution_approved"] == 3
     assert result["catalog"]["eligible_approved"] == 1
+    assert result["queue"] == {"status": "ok", "queued": 4, "exact_approved_matches": 1}
     assert result["runtime_state"] == {
         "status": "ok", "completed": 1, "held": 1, "resume_review": 1
     }
