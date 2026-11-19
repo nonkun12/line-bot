@@ -1,0 +1,1482 @@
+from core import line_development_runtime as runtime
+from core.multi_agent import AgentResult, AgentRole, AgentTask
+from scripts import line_development_worker_v2 as worker
+
+
+def test_explicit_comment_plan_is_deterministic(tmp_path, monkeypatch):
+    target = tmp_path / "line_development.py"
+    target.write_text("_WORKFLOW_FILE = \".github/workflows/line-development.yml\"\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan = runtime._explicit_comment_plan(
+        'line_development.py に「LINE自動開発E2E」というコメントを1行追加して、pytestを実行してください',
+        'line_development.py',
+    )
+    assert plan is not None
+    assert plan["no_change"] is False
+    assert plan["source"] == "deterministic_self_test"
+    change = plan["changes"][0]
+    assert change["file"] == "line_development.py"
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    assert change["new"].endswith("# LINE自動開発E2E\n")
+    assert worker.validate_plan(plan, "line_development.py") == (
+        True,
+        "line_development.py",
+    )
+
+
+def test_explicit_comment_plan_is_idempotent(tmp_path, monkeypatch):
+    target = tmp_path / "line_development.py"
+    target.write_text("_WORKFLOW_FILE = \".github/workflows/line-development.yml\"\n# LINE自動開発E2E\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan = runtime._explicit_comment_plan(
+        'line_development.py に「LINE自動開発E2E」というコメントを1行追加して',
+        "line_development.py",
+    )
+
+    assert plan == {"no_change": True, "source": "deterministic_self_test"}
+
+
+def test_validate_plan_rejects_oversized_change():
+    plan = {
+        "no_change": False,
+        "changes": [
+            {
+                "file": "tests/test_line_development.py",
+                "old": "x" * 1201,
+                "new": "y",
+            }
+        ],
+    }
+
+    assert worker.validate_plan(plan, "tests/test_line_development.py") == (
+        False,
+        "change_too_large",
+    )
+
+
+
+def test_review_coverage_gap_task_skips_idea_handoff_but_is_not_deterministic(monkeypatch):
+    task_id = "review-coverage-gap-703fa3c06b"
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
+    assert runtime._is_review_coverage_gap_task_id(task_id)
+    assert task_id in runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+    assert not runtime._is_provider_free_autonomous_task(task_id)
+    assert runtime._is_provider_free_autonomous_task("uhip-confidence-out-of-range-rejection")
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "manual")
+    assert not runtime._is_review_coverage_gap_task_id(task_id)
+
+
+def test_review_coverage_gap_task_requires_exact_single_test_path(monkeypatch):
+    task_id = "review-coverage-gap-4f1b715515"
+    chosen = "tests/test_stocks.py"
+    instruction = (
+        "人手レビュー後に限り、tests/test_stocks.py に safe_stock_quote の境界条件を検証する"
+        "新しい回帰テストを1件追加してください。変更は指定テストファイル1つだけ。"
+    )
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction=instruction,
+        autonomous_task_id=task_id,
+        chosen=chosen,
+    )
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_stocks.py"]')
+
+    assert runtime._is_review_coverage_gap_task(state, task_id)
+
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_stocks.py", "core/stocks.py"]')
+    assert not runtime._is_review_coverage_gap_task(state, task_id)
+
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_voice_contract.py"]')
+    assert not runtime._is_review_coverage_gap_task(state, task_id)
+
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_stocks.py"]')
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "manual")
+    assert not runtime._is_review_coverage_gap_task(state, task_id)
+
+
+def test_review_coverage_gap_implementer_uses_append_only_plan(monkeypatch):
+    task_id = "review-coverage-gap-4f1b715515"
+    chosen = "tests/test_stocks.py"
+    instruction = (
+        "人手レビュー後に限り、tests/test_stocks.py に safe_stock_quote の境界条件を検証する"
+        "新しい回帰テストを1件追加してください。変更は指定テストファイル1つだけ。"
+    )
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction=instruction,
+        autonomous_task_id=task_id,
+        chosen=chosen,
+    )
+    plan = {
+        "no_change": False,
+        "source": "append_only_review_task",
+        "changes": [{
+            "file": chosen,
+            "old": "def test_existing():\n    pass\n",
+            "new": "def test_existing():\n    pass\n\ndef test_new():\n    assert True\n",
+        }],
+    }
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_stocks.py"]')
+    monkeypatch.setattr(worker, "context_for", lambda path: "current test file")
+    monkeypatch.setattr(worker, "build_append_only_test_plan", lambda *args: (plan, ""))
+    monkeypatch.setattr(worker, "validate_plan", lambda *args: (True, chosen))
+    monkeypatch.setattr(worker, "apply_plan", lambda value: (True, "applied", [chosen]))
+
+    def forbidden_generic_plan(*args, **kwargs):
+        raise AssertionError("review-gap tasks must not use generic search/replace generation")
+
+    monkeypatch.setattr(worker, "build_plan", forbidden_generic_plan)
+
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask("implementer", AgentRole.IMPLEMENTER, "Implement one reviewed regression test.")
+    )
+
+    assert result.success is True
+    assert result.summary == "guarded append-only regression test applied"
+    assert result.changed_resources == frozenset({chosen})
+
+
+
+def test_fallback_safe_target_fails_closed_instead_of_guessing():
+    files = [
+        "tests/test_management_router.py",
+        "core/management_router.py",
+    ]
+
+    assert runtime._fallback_safe_target(files) is None
+
+
+def test_fallback_safe_target_returns_none_when_only_tests_are_available():
+    assert runtime._fallback_safe_target([
+        "tests/test_management_router.py",
+        "uhip/tests/test_schema_contracts.py",
+    ]) is None
+
+
+def test_deterministic_manager_uses_declared_target_without_llm(monkeypatch):
+    task_id = "uhip-confidence-out-of-range-rejection"
+    chosen = "uhip/tests/test_schema_contracts.py"
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)
+    monkeypatch.setattr(runtime.worker, "repo_files", lambda: [chosen])
+
+    def forbidden_model_selection(*args, **kwargs):
+        raise AssertionError("deterministic task must not call model-backed file selection")
+
+    monkeypatch.setattr(runtime.worker, "choose_file", forbidden_model_selection)
+    state = runtime.DevelopmentState(
+        client=None,
+        instruction="Add the confidence out-of-range schema contract test.",
+        autonomous_task_id=task_id,
+    )
+
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask(
+            "manager",
+            AgentRole.MANAGER,
+            "Select one safe implementation target.",
+            resources=frozenset({"target-selection"}),
+        )
+    )
+
+    assert result.success is True
+    assert result.summary == f"selected {chosen}"
+    assert state.chosen == chosen
+
+
+def test_self_improvement_observation_records_locally_without_external_ai(monkeypatch, tmp_path):
+    monkeypatch.setenv("SELF_IMPROVEMENT_HISTORY_PATH", str(tmp_path / "history.jsonl"))
+    monkeypatch.setenv("SELF_IMPROVEMENT_CREATOR_CRITIC", "true")
+    calls = []
+
+    def fake_cycle(report, history_path, *, target_paths, control_tower):
+        calls.append((report, history_path, target_paths, control_tower))
+        return type("Result", (), {
+            "new_signals": (),
+            "analysis": type("Analysis", (), {"recurring_patterns": ()})(),
+            "proposals": (),
+            "approved_proposals": (),
+        })()
+
+    def forbidden_provider_initialization(*args, **kwargs):
+        raise AssertionError("local-only observation must not initialize external providers")
+
+    monkeypatch.setattr(runtime, "build_creator_critic_loop", forbidden_provider_initialization)
+    monkeypatch.setattr(runtime, "run_self_improvement_cycle", fake_cycle)
+    monkeypatch.setattr(runtime, "ControlTower", lambda **kwargs: kwargs)
+
+    result = runtime.observe_self_improvement(
+        object(),
+        "uhip/tests/test_schema_contracts.py",
+        allow_external_ai=False,
+    )
+
+    assert result is not None
+    assert len(calls) == 1
+    assert calls[0][1] == tmp_path / "history.jsonl"
+    assert calls[0][2] == ("uhip/tests/test_schema_contracts.py",)
+    assert calls[0][3]["creator_critic"] is None
+
+
+def test_deterministic_task_id_does_not_disable_unrelated_self_improvement_calls(monkeypatch, tmp_path):
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "uhip-confidence-out-of-range-rejection")
+    monkeypatch.setenv("SELF_IMPROVEMENT_CREATOR_CRITIC", "false")
+    monkeypatch.setenv("SELF_IMPROVEMENT_HISTORY_PATH", str(tmp_path / "history.jsonl"))
+
+    def fake_cycle(report, history_path, *, target_paths, control_tower):
+        return type("Result", (), {
+            "new_signals": (),
+            "analysis": type("Analysis", (), {"recurring_patterns": ()})(),
+            "proposals": (),
+            "approved_proposals": (),
+        })()
+
+    monkeypatch.setattr(runtime, "ControlTower", lambda **kwargs: object())
+    monkeypatch.setattr(runtime, "run_self_improvement_cycle", fake_cycle)
+
+    result = runtime.observe_self_improvement(object(), "tests/test_agent_runtime.py")
+
+    assert result is not None
+
+
+def test_debugger_restores_before_building_real_worker_plan(monkeypatch):
+    state = runtime.DevelopmentState(client=object(), instruction="fix the failing implementation")
+    state.chosen = "core/example.py"
+    state.touched = ["core/example.py"]
+    events = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def restore(paths):
+        events.append(("restore", tuple(paths)))
+        state_restored[0] = True
+
+    state_restored = [False]
+
+    def context_for(path):
+        assert state_restored[0], "context_for must run after restore"
+        events.append(("context", path))
+        return "clean baseline context"
+
+    def build_plan(client, instruction, chosen, context, test_output):
+        assert state_restored[0], "build_plan must run after restore"
+        assert context == "clean baseline context"
+        events.append(("build_plan", test_output))
+        return {
+            "no_change": False,
+            "changes": [{"file": chosen, "old": "clean", "new": "fixed"}],
+        }
+
+    def validate_plan_with_bounded_repairs(client, instruction, chosen, plan, context):
+        events.append(("validate", chosen))
+        return plan, True, chosen
+
+    def apply_plan(plan):
+        events.append(("apply", plan["changes"][0]["file"]))
+        return True, "ok", [plan["changes"][0]["file"]]
+
+    monkeypatch.setattr(worker, "restore", restore)
+    monkeypatch.setattr(worker, "context_for", context_for)
+    monkeypatch.setattr(worker, "build_plan", build_plan)
+    monkeypatch.setattr(worker, "apply_plan", apply_plan)
+
+    executor = runtime.DevelopmentExecutor(state)
+    result = executor.execute(
+        AgentTask(
+            "debug:1:tester",
+            AgentRole.DEBUGGER,
+            "Analyze and fix the test failure: anchor mismatch",
+            frozenset({"working-tree"}),
+        )
+    )
+
+    assert result.success
+    assert [name for name, _ in events] == ["restore", "context", "build_plan", "apply"]
+    assert state.touched == ["core/example.py"]
+
+
+def test_implementer_routes_plan_validation_through_bounded_repair(monkeypatch):
+    chosen = "core/structured_output.py"
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "old", "new": "x" * 2000}],
+    }
+    repaired = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "def target():\n    old\n", "new": "def target():\n    new\n"}],
+    }
+    calls = []
+
+    monkeypatch.setattr(
+        runtime.worker,
+        "build_plan",
+        lambda *args, **kwargs: rejected,
+    )
+
+    def repair(*args, **kwargs):
+        calls.append("repair")
+        return repaired
+
+    monkeypatch.setattr(runtime.worker, "repair_size_plan", repair)
+    monkeypatch.setattr(
+        runtime.worker,
+        "apply_plan",
+        lambda plan: (True, "applied", [chosen]),
+    )
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="tests/test_management_router.py を最小修正",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+    task = AgentTask(
+        "implementer",
+        AgentRole.IMPLEMENTER,
+        "Implement the requested test change.",
+        resources=frozenset({"working-tree"}),
+    )
+
+    result = executor.execute(task)
+
+    assert result.success
+    assert result.summary == "guarded change applied"
+    assert calls == ["repair"]
+    assert state.plan == repaired
+    assert state.touched == [chosen]
+
+
+def test_implementer_routes_apply_failure_through_bounded_anchor_repair(monkeypatch):
+    chosen = "core/structured_output.py"
+    plan = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "missing", "new": "replacement"}],
+    }
+    repaired = {
+        "no_change": False,
+        "changes": [{"file": chosen, "old": "exact", "new": "replacement"}],
+    }
+    calls = []
+
+    monkeypatch.setattr(
+        runtime.worker,
+        "build_plan",
+        lambda *args, **kwargs: plan,
+    )
+
+    def apply_with_repair(client, instruction, selected, current_plan, context):
+        calls.append(("apply", selected, current_plan))
+        return repaired, True, "applied", [selected]
+
+    monkeypatch.setattr(runtime.worker, "apply_plan_with_bounded_anchor_repair", apply_with_repair)
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="tests/test_management_router.py を最小修正",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+    task = AgentTask(
+        "implementer",
+        AgentRole.IMPLEMENTER,
+        "Implement the requested test change.",
+        resources=frozenset({"working-tree"}),
+    )
+
+    result = executor.execute(task)
+
+    assert result.success
+    assert calls and calls[0][0] == "apply"
+    assert state.plan == repaired
+    assert state.touched == [chosen]
+
+
+
+
+def test_deterministic_autonomous_test_plan_hand_sign_within_size_bounds(monkeypatch, tmp_path):
+    target = tmp_path / "uhip" / "tests" / "test_schema_contracts.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    real_file = runtime.worker.ROOT / "uhip" / "tests" / "test_schema_contracts.py"
+    target.write_text(real_file.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
+
+    plan, err = runtime._deterministic_autonomous_test_plan("uhip/tests/test_schema_contracts.py", "hand-sign-uhip-contract-test")
+
+    assert err is None
+    assert plan is not None
+    assert plan["no_change"] is False
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == "uhip/tests/test_schema_contracts.py"
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    # Must pass worker.validate_plan cleanly without size/marker repairs
+    ok, detail = runtime.worker.validate_plan(plan, "uhip/tests/test_schema_contracts.py")
+    assert ok is True
+    assert detail == "uhip/tests/test_schema_contracts.py"
+
+
+def test_negative_confidence_plan_rejects_decorated_anchor(monkeypatch, tmp_path):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "from pytest import mark\n\n@mark.xfail\n"
+        "def test_adapter_schema_rejects_unknown_risk():\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-negative-confidence")
+
+    plan, err = runtime._deterministic_autonomous_test_plan(chosen, "hand-sign-uhip-contract-negative-confidence")
+
+    assert plan is None
+    assert err == "deterministic_plan_invalid:anchor_not_standalone_def"
+
+
+def test_negative_confidence_plan_rejects_commented_anchor(monkeypatch, tmp_path):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "# preserve this test\n\n"
+        "def test_adapter_schema_rejects_unknown_risk():\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-negative-confidence")
+
+    plan, err = runtime._deterministic_autonomous_test_plan(chosen, "hand-sign-uhip-contract-negative-confidence")
+
+    assert plan is None
+    assert err == "deterministic_plan_invalid:anchor_not_standalone_def"
+
+
+def test_negative_confidence_plan_preserves_existing_test_body_and_is_syntax_safe(monkeypatch, tmp_path):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    show = runtime.worker.run(["git", "show", f"HEAD:{chosen}"])
+    assert show.returncode == 0
+    original = show.stdout
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-negative-confidence")
+
+    plan, err = runtime._deterministic_autonomous_test_plan(chosen, "hand-sign-uhip-contract-negative-confidence")
+
+    assert err is None
+    assert plan is not None
+    change = plan["changes"][0]
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert candidate.count("def test_universal_event_accepts_zero_confidence_hand_event():") == 1
+    assert candidate.count("def test_adapter_schema_rejects_unknown_risk():") == 1
+    assert "    adapter = {" in candidate
+    assert "    with pytest.raises(jsonschema.ValidationError):" in candidate
+    assert candidate.index(
+        "def test_universal_event_accepts_zero_confidence_hand_event():"
+    ) < candidate.index("def test_adapter_schema_rejects_unknown_risk():")
+
+
+def test_queue_progress_empty_queue_plan_is_deterministic(monkeypatch, tmp_path):
+    target = "tests/test_distributed_loop_queue_progress.py"
+    path = tmp_path / target
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        chr(10).join([
+            "from pathlib import Path",
+            "import json",
+            "from scripts.distributed_loop_queue_progress import calculate_progress",
+            "",
+            "def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):",
+            "    pass",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        target, "distributed-loop-queue-progress-empty-queue-regression-v2"
+    )
+    assert err is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert "test_empty_runtime_queue_reports_zero_progress_for_not_run_v2" in plan["changes"][0]["new"]
+
+
+def test_deterministic_autonomous_test_plan_no_change_when_test_present(monkeypatch, tmp_path):
+    target = tmp_path / "uhip" / "tests" / "test_schema_contracts.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("def test_universal_event_accepts_hand_event_with_recognition_failure(): pass\n", encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
+
+    plan, err = runtime._deterministic_autonomous_test_plan("uhip/tests/test_schema_contracts.py", "hand-sign-uhip-contract-test")
+
+    assert err is None
+    assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
+
+
+def test_deterministic_autonomous_test_plan_fails_closed_on_anchor_mismatch(monkeypatch, tmp_path):
+    target = tmp_path / "uhip" / "tests" / "test_schema_contracts.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# anchor missing completely\n", encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
+
+    plan, err = runtime._deterministic_autonomous_test_plan("uhip/tests/test_schema_contracts.py", "hand-sign-uhip-contract-test")
+
+    assert plan is None
+    assert "anchor_count" in err
+
+
+def test_implementer_applies_deterministic_task_plan_without_llm_repair(monkeypatch, tmp_path):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    real_file = runtime.worker.ROOT / chosen
+    target.write_text(real_file.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="ハンドサイン契約テストを追加して",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+    task = AgentTask(
+        "implementer",
+        AgentRole.IMPLEMENTER,
+        "Implement the hand-sign test.",
+        resources=frozenset({"working-tree"}),
+    )
+
+    result = executor.execute(task)
+
+    assert result.success is True
+    assert result.summary == "guarded change applied"
+    assert state.touched == [chosen]
+    updated_text = target.read_text(encoding="utf-8")
+    assert "def test_universal_event_accepts_hand_event_with_recognition_failure():" in updated_text
+
+
+def test_debugger_rejects_llm_mutation_for_deterministic_task(monkeypatch):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "hand-sign-uhip-contract-test")
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="ハンドサイン契約テストを追加して",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+    task = AgentTask(
+        "debugger",
+        AgentRole.DEBUGGER,
+        "Retry the failed test.",
+        resources=frozenset({"working-tree"}),
+    )
+
+    result = executor.execute(task)
+
+    assert result.success is False
+    assert "must not be mutated by LLM" in result.summary
+
+
+def test_phase_start_deterministic_task_plan_is_syntax_safe(monkeypatch, tmp_path):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    original = (
+        "def test_existing_event():\n"
+        "    event = {}\n"
+        "    validate(event, EVENT_SCHEMA)\n\n\n"
+        "def test_universal_event_rejects_application_specific_command():\n"
+        "    pass\n"
+    )
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen,
+        "hand-sign-uhip-contract-phase-start",
+    )
+
+    assert err is None
+    assert plan is not None
+    assert plan["no_change"] is False
+    assert plan["source"] == "deterministic_autonomous_task"
+    change = plan["changes"][0]
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert candidate.count("def test_universal_event_accepts_hand_event_with_phase_start():") == 1
+    assert '"phase": "start"' in candidate
+
+
+def test_new_distributed_queue_tasks_have_deterministic_plans(monkeypatch, tmp_path):
+    cases = [
+        (
+            "hand-sign-uhip-contract-left-hand",
+            "uhip/tests/test_schema_contracts.py",
+            "def test_universal_event_rejects_application_specific_command():\n    pass\n",
+            '"label": "left"',
+            '"mirrored": False',
+        ),
+        (
+            "router-regression-jobs-market-metadata",
+            "tests/test_management_router.py",
+            "def test_preserves_multi_specialist_candidates_and_priority() -> None:\n    pass\n",
+            'decision = route(ManagementRequest("u", "JobsとNYダウの情報を一緒に教えて"))',
+            '["market", "jobs"]',
+        ),
+        (
+            "router-regression-english-casefold",
+            "tests/test_management_router.py",
+            "def test_preserves_multi_specialist_candidates_and_priority() -> None:\n    pass\n",
+            'eNgLiShで会話したい',
+            "Specialist.ENGLISH",
+        ),
+        (
+            "uhip-confidence-out-of-range-rejection",
+            "uhip/tests/test_schema_contracts.py",
+            "def test_universal_event_rejects_application_specific_command():\n    pass\n",
+            '"calibrated": 1.01',
+            "confidence-range-session-20261009",
+        ),
+        (
+            "router-regression-stock-jobs-priority",
+            "tests/test_management_router.py",
+            "def test_preserves_market_priority_over_jobs_for_mixed_request() -> None:\n    pass\n",
+            "test_router_regression_stock_jobs_priority_distributed_loop",
+            '["stocks", "jobs"]',
+        ),
+        (
+            "router-regression-market-channel-metadata",
+            "tests/test_management_router.py",
+            "def test_normalizes_full_width_input_and_preserves_channel_metadata() -> None:\n    pass\n",
+            "test_router_regression_market_channel_metadata_distributed_loop",
+            "distributed-loop-regression",
+        ),
+        (
+            "macos-readiness-audit-no-secret-leak",
+            "tests/test_macos_kanban_obsidian_readiness.py",
+            "def test_load_env_file_ignores_comments_and_strips_quotes(tmp_path: Path):\n    pass\n",
+            "secret-canary-never-logged",
+            'report["project_writes"] == 0',
+        ),
+    ]
+
+    for task_id, chosen, original, expected_one, expected_two in cases:
+        target = tmp_path / chosen
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(original, encoding="utf-8")
+        monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+        plan, err = runtime._deterministic_autonomous_test_plan(chosen, task_id)
+
+        assert err is None
+        assert plan is not None
+        assert plan["no_change"] is False
+        change = plan["changes"][0]
+        candidate = original.replace(change["old"], change["new"], 1)
+        compile(candidate, chosen, "exec")
+        assert expected_one in candidate
+        assert expected_two in candidate
+
+
+def test_confidence_rejection_plan_is_idempotent_when_test_exists(monkeypatch, tmp_path):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "def test_universal_event_rejects_out_of_range_calibrated_confidence():\n    pass\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen,
+        "uhip-confidence-out-of-range-rejection",
+    )
+
+    assert err is None
+    assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
+
+
+def test_repairer_fails_closed_for_deterministic_task_without_llm(monkeypatch):
+    chosen = "uhip/tests/test_schema_contracts.py"
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "uhip-confidence-out-of-range-rejection")
+
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Add the confidence out-of-range schema test.",
+        chosen=chosen,
+    )
+    executor = runtime.DevelopmentExecutor(state)
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("LLM plan generation must not run for deterministic tasks")
+
+    monkeypatch.setattr(runtime.worker, "build_plan", fail_if_called)
+    task = AgentTask(
+        "repairer",
+        AgentRole.REPAIRER,
+        "Retry the failed deterministic test.",
+        resources=frozenset({"working-tree"}),
+    )
+
+    result = executor.execute(task)
+
+    assert result.success is False
+    assert result.summary == "deterministic test failure; no LLM repair"
+
+
+def test_router_regression_plans_are_idempotent_when_tests_exist(monkeypatch, tmp_path):
+    chosen = "tests/test_management_router.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "def test_router_regression_stock_jobs_priority_distributed_loop():\n    pass\n\n"
+        "def test_router_regression_market_channel_metadata_distributed_loop():\n    pass\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    for task_id in (
+        "router-regression-stock-jobs-priority",
+        "router-regression-market-channel-metadata",
+    ):
+        plan, err = runtime._deterministic_autonomous_test_plan(chosen, task_id)
+        assert err is None
+        assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
+
+def test_refactorer_receives_current_repair_task_context(monkeypatch):
+    chosen = "core/example.py"
+    task_context = "Reviewer failure: stale assertion remains in test_example"
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Fix the example implementation",
+    )
+    state.chosen = chosen
+    state.touched = [chosen]
+    state.test_output = "Old test output unrelated to reviewer failure"
+    calls = {}
+
+    def build_plan(client, instruction, path, context, test_output):
+        calls["instruction"] = instruction
+        calls["test_output"] = test_output
+        return {
+            "no_change": False,
+            "changes": [{"file": path, "old": "before", "new": "after"}],
+        }
+
+    monkeypatch.setattr(worker, "build_plan", build_plan)
+    monkeypatch.setattr(worker, "context_for", lambda path: "current source context")
+    monkeypatch.setattr(
+        worker,
+        "validate_plan_with_bounded_repairs",
+        lambda client, instruction, path, plan, context: (plan, True, "validated"),
+    )
+    monkeypatch.setattr(
+        worker,
+        "apply_plan_with_bounded_anchor_repair",
+        lambda client, instruction, path, plan, context: (
+            plan,
+            True,
+            "applied",
+            [path],
+        ),
+    )
+
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask(
+            "refactor:reviewer-failure",
+            AgentRole.REFACTORER,
+            task_context,
+            frozenset({"working-tree"}),
+        )
+    )
+
+    assert result.success
+    assert task_context in calls["instruction"]
+    assert "Fix the example implementation" in calls["instruction"]
+    assert task_context in calls["test_output"]
+    assert "Old test output unrelated to reviewer failure" in calls["test_output"]
+
+
+
+def test_ai_speaker_empty_transcript_plan_handles_existing_unannotated_test(monkeypatch, tmp_path):
+    chosen = "tests/test_ai_speaker.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    original = (
+        "class FakeBrain:\n"
+        "    def __init__(self): self.requests = []\n"
+        "def test_ai_speaker_rejects_empty_transcript():\n"
+        "    brain = FakeBrain()\n"
+        "    try:\n"
+        '        raise ValueError("speech transcript must not be empty")\n'
+        "    except ValueError as exc:\n"
+        '        assert str(exc) == "speech transcript must not be empty"\n'
+        "    else:\n"
+        '        raise AssertionError("empty transcript must fail closed")\n'
+    )
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen, "ai-speaker-empty-transcript-no-brain-call"
+    )
+
+    assert err is None
+    assert plan is not None
+    assert plan["no_change"] is False
+    change = plan["changes"][0]
+    assert change["old"] == '        raise AssertionError("empty transcript must fail closed")\n'
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert candidate.count("def test_ai_speaker_rejects_empty_transcript()") == 1
+    assert "    assert brain.requests == []\n" in candidate
+
+
+def test_ai_speaker_empty_transcript_plan_is_idempotent_after_assertion(monkeypatch, tmp_path):
+    chosen = "tests/test_ai_speaker.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "def test_ai_speaker_rejects_empty_transcript():\n"
+        "    brain = FakeBrain()\n"
+        '    assert brain.requests == []\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen, "ai-speaker-empty-transcript-no-brain-call"
+    )
+
+    assert err is None
+    assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
+
+
+def test_refill_malformed_completed_state_plan_is_syntax_safe_and_bounded(monkeypatch, tmp_path):
+    chosen = "tests/test_autonomous_task_refill.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    anchor = "def test_refill_fails_closed_when_recovery_ai_state_is_missing(tmp_path: Path):\n    pass\n"
+    target.write_text(anchor, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen, "refill-rejects-malformed-completed-state"
+    )
+
+    assert err is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = anchor.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_refill_fails_closed_on_non_string_completed_state" in candidate
+    assert "completed state must be a string list" in candidate
+    assert worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+def test_self_improvement_history_plan_is_syntax_safe_and_bounded(monkeypatch, tmp_path):
+    chosen = "tests/test_self_improvement_state.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    anchor = "def test_sanitizer_discards_raw_error_text_and_unknown_fields():\n    pass\n"
+    target.write_text(anchor, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen, "self-improvement-history-malformed-jsonl-regression"
+    )
+
+    assert err is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = anchor.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_read_jsonl_skips_malformed_rows_and_preserves_valid_order" in candidate
+    assert "\\n" in candidate
+    assert worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+
+
+def test_three_new_refill_seed_plans_are_syntax_safe_and_bounded(tmp_path, monkeypatch):
+    chosen = "tests/test_autonomous_task_refill.py"
+    cases = [
+        (
+            "refill-rejects-nonobject-recovery-task-map",
+            "def test_refill_fails_closed_on_invalid_recovery_ai_schema(tmp_path: Path):",
+            "test_refill_fails_closed_on_nonobject_recovery_task_map",
+        ),
+        (
+            "refill-rejects-boolean-catalog-addition-cap",
+            "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):",
+            "test_refill_rejects_boolean_catalog_addition_cap",
+        ),
+        (
+            "refill-rejects-non-ascii-task-id",
+            "def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):",
+            "test_refill_rejects_non_ascii_task_id",
+        ),
+        (
+            "refill-preserves-catalog-order-within-addition-cap",
+            "def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):",
+            "test_refill_preserves_catalog_order_within_addition_cap",
+        ),
+    ]
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    for task_id, anchor, expected_name in cases:
+        original = anchor + "\n    pass\n"
+        target.write_text(original, encoding="utf-8")
+        plan, err = runtime._deterministic_autonomous_test_plan(chosen, task_id)
+
+        assert err is None, task_id
+        assert plan is not None, task_id
+        assert plan["no_change"] is False, task_id
+        change = plan["changes"][0]
+        assert change["file"] == chosen
+        assert len(change["old"]) <= 1200
+        assert len(change["new"]) <= 1800
+        candidate = original.replace(change["old"], change["new"], 1)
+        compile(candidate, chosen, "exec")
+        assert expected_name in candidate
+        assert worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+def test_duplicate_approved_task_builds_one_bounded_deterministic_change(monkeypatch, tmp_path):
+    chosen = "tests/test_autonomous_task_proposals.py"
+    anchor = "def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):\n"
+    original = anchor + "    pass\n"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_autonomous_test_plan(
+        chosen, "proposal-generator-deduplicates-approved-task-ids-20261027"
+    )
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_duplicate_approved_issues_with_same_registered_task_id_are_queued_once" in candidate
+    assert worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+def test_four_reviewed_refill_tasks_have_deterministic_bounded_plans(tmp_path, monkeypatch):
+    cases = [
+        (
+            "distributed-loop-dispatch-duplicate-active-run-guard-regression",
+            "tests/test_distributed_loop_trigger.py",
+            "def test_dispatch_acknowledges_only_after_run_is_visible(monkeypatch):",
+            "test_dispatch_does_not_post_when_run_is_already_active_distributed_loop",
+        ),
+        (
+            "proposal-generator-resume-review-exclusion-regression",
+            "tests/test_autonomous_task_proposals.py",
+            "def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):",
+            "test_approved_registered_task_is_not_queued_when_resume_requires_review",
+        ),
+        (
+            "queue-progress-ignores-unrelated-pass-results-regression",
+            "tests/test_distributed_loop_queue_progress.py",
+            "def test_progress_rejects_duplicate_queue_ids(tmp_path: Path):",
+            "test_progress_ignores_pass_and_no_change_results_outside_runtime_queue",
+        ),
+        (
+            "proposal-generator-conflicting-catalog-definitions-regression",
+            "tests/test_autonomous_task_proposals.py",
+            "def test_fails_closed_on_missing_recovery_state(tmp_path):",
+            "test_conflicting_duplicate_catalog_definitions_fail_closed",
+        ),
+    ]
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    for task_id, chosen, anchor_line, expected_name in cases:
+        target = tmp_path / chosen
+        target.parent.mkdir(parents=True, exist_ok=True)
+        anchor = anchor_line + "\n"
+        original = anchor + "    pass\n"
+        target.write_text(original, encoding="utf-8")
+
+        plan, err = runtime._deterministic_autonomous_test_plan(chosen, task_id)
+
+        assert err is None, task_id
+        assert plan is not None, task_id
+        assert plan["no_change"] is False, task_id
+        change = plan["changes"][0]
+        assert change["file"] == chosen
+        assert change["old"] == anchor
+        assert len(change["old"]) <= 1200
+        assert len(change["new"]) <= 1800
+        candidate = original.replace(change["old"], change["new"], 1)
+        compile(candidate, chosen, "exec")
+        assert expected_name in candidate
+        assert worker.validate_plan(plan, chosen) == (True, chosen)
+        if task_id == "queue-progress-ignores-unrelated-pass-results-regression":
+            assert r'+ "\n" +' in change["new"]
+            assert r'+ "\n", encoding="utf-8")' in change["new"]
+
+
+def test_refill_regression_task_builds_one_bounded_deterministic_change(monkeypatch, tmp_path):
+    chosen = "tests/test_autonomous_task_refill.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        chr(10).join([
+            "def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):",
+            "    pass",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen, "loop-refill-empty-catalog-next-safe-test-20261023"
+    )
+
+    assert err is None
+    assert plan is not None
+    assert plan["no_change"] is False
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    compile(target.read_text(encoding="utf-8").replace(change["old"], change["new"], 1), chosen, "exec")
+
+
+def test_priority_boundary_task_uses_deterministic_registered_target(monkeypatch, tmp_path):
+    chosen = "tests/test_control_tower_decision.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "def test_priority_rejects_bool_float_and_out_of_range_values():\\n    pass\\n\\n"
+        "def test_priority_accepts_integer_boundaries():\\n    pass\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    assert runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[
+        "control-tower-decision-priority-type-boundaries"
+    ] == chosen
+    plan, error = runtime._deterministic_autonomous_test_plan(
+        chosen, "control-tower-decision-priority-type-boundaries"
+    )
+
+    assert error is None
+    assert plan == {"no_change": True, "source": "deterministic_autonomous_task"}
+
+
+def test_priority_boundary_task_fails_closed_when_regression_tests_missing(monkeypatch, tmp_path):
+    chosen = "tests/test_control_tower_decision.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("def test_existing_case():\\n    pass\\n", encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_autonomous_test_plan(
+        chosen, "control-tower-decision-priority-type-boundaries"
+    )
+
+    assert plan is None
+    assert error == "required_regression_test_missing:priority_boundaries"
+
+def test_safe_continuation_depth_four_task_has_deterministic_bounded_plan(tmp_path, monkeypatch):
+    chosen = "tests/test_continuous_distributed_loop_workflow.py"
+    anchor = "def test_continuation_depth_missing_fails_closed(tmp_path):\n"
+    original = anchor + "    pass\n\n"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_autonomous_test_plan(
+        chosen, "safe-continuation-depth-four-regression-20261026"
+    )
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_safe_continuation_depth_guard_accepts_depth_four" in candidate
+    assert worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+
+def test_development_repair_planner_preserves_task_contract():
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Fix the failing development task",
+    )
+    planner = runtime.DevelopmentRepairPlanner(state)
+    failed_task = AgentTask(
+        "implementation:sample",
+        AgentRole.IMPLEMENTER,
+        "Implement the requested change",
+        resources=frozenset({"working-tree", "tests"}),
+    )
+    result = AgentResult(
+        failed_task.task_id,
+        False,
+        "AssertionError: expected value",
+    )
+
+    repair = planner.repair_task(failed_task, result, 2)
+
+    assert repair.task_id == "repair:2:implementation:sample"
+    assert repair.role is AgentRole.REPAIRER
+    assert repair.resources == failed_task.resources
+    assert "Use the normal guarded repair planner." in repair.instruction
+    assert "AssertionError: expected value" in repair.instruction
+
+
+def test_development_repair_planner_uses_deterministic_retry_for_comment_task():
+    state = runtime.DevelopmentState(
+        client=None,
+        instruction="line_development.py にコメントを1行追加する",
+        chosen="line_development.py",
+    )
+    planner = runtime.DevelopmentRepairPlanner(state)
+    failed_task = AgentTask(
+        "comment:self-test",
+        AgentRole.TESTER,
+        "Run the deterministic self-test",
+        resources=frozenset({"working-tree"}),
+    )
+    result = AgentResult(failed_task.task_id, False, "test failed")
+
+    repair = planner.repair_task(failed_task, result, 1)
+
+    assert "Use deterministic retry; do not call an LLM or parse JSON." in repair.instruction
+    assert "Use the normal guarded repair planner." not in repair.instruction
+
+
+def test_development_repair_planner_bounds_failure_summary():
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Fix the failing development task",
+    )
+    planner = runtime.DevelopmentRepairPlanner(state)
+    failed_task = AgentTask(
+        "implementation:large-error",
+        AgentRole.IMPLEMENTER,
+        "Implement the requested change",
+    )
+    long_summary = "x" * 1600
+
+    repair = planner.repair_task(
+        failed_task,
+        AgentResult(failed_task.task_id, False, long_summary),
+        3,
+    )
+
+    assert len(repair.instruction) <= len(
+        "Use the normal guarded repair planner. Repair after IMPLEMENTER failure: "
+    ) + 1500
+    assert repair.instruction.endswith("x" * 1500)
+
+
+def test_refactorer_skips_only_bounded_malformed_plan_failures(monkeypatch):
+    chosen = "core/example.py"
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Fix the example implementation",
+    )
+    state.chosen = chosen
+    state.touched = [chosen]
+    state.test_output = "The focused tests passed"
+
+    monkeypatch.setattr(
+        worker,
+        "build_plan",
+        lambda *args, **kwargs: {"no_change": False, "changes": []},
+    )
+    monkeypatch.setattr(worker, "context_for", lambda path: "current source context")
+    monkeypatch.setattr(
+        worker,
+        "validate_plan_with_bounded_repairs",
+        lambda *args, **kwargs: (
+            {"no_change": False, "changes": []},
+            False,
+            "invalid_change_count_repair_failed",
+        ),
+    )
+    monkeypatch.setattr(
+        worker,
+        "apply_plan_with_bounded_anchor_repair",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("rejected refactor plan must never be applied")
+        ),
+    )
+
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask(
+            "refactor:bounded-plan-failure",
+            AgentRole.REFACTORER,
+            "Optional cleanup after the implementation fix",
+            frozenset({"working-tree"}),
+        )
+    )
+
+    assert result.success is True
+    assert result.summary == (
+        "refactor skipped after bounded plan repair: invalid_change_count_repair_failed"
+    )
+    assert result.changed_resources == frozenset()
+
+
+def test_refactorer_keeps_protected_file_violations_fail_closed(monkeypatch):
+    chosen = "core/example.py"
+    state = runtime.DevelopmentState(
+        client=object(),
+        instruction="Fix the example implementation",
+    )
+    state.chosen = chosen
+    state.touched = [chosen]
+
+    monkeypatch.setattr(
+        worker,
+        "build_plan",
+        lambda *args, **kwargs: {"no_change": False, "changes": []},
+    )
+    monkeypatch.setattr(worker, "context_for", lambda path: "current source context")
+    monkeypatch.setattr(
+        worker,
+        "validate_plan_with_bounded_repairs",
+        lambda *args, **kwargs: (
+            {"no_change": False, "changes": []},
+            False,
+            "protected_file:.github/workflows/deploy.yml",
+        ),
+    )
+
+    result = runtime.DevelopmentExecutor(state).execute(
+        AgentTask(
+            "refactor:protected-file",
+            AgentRole.REFACTORER,
+            "Optional cleanup after the implementation fix",
+            frozenset({"working-tree"}),
+        )
+    )
+
+    assert result.success is False
+    assert result.summary == (
+        "refactor plan rejected: protected_file:.github/workflows/deploy.yml"
+    )
+
+
+def test_project_registry_list_projects_task_plan_is_deterministic(monkeypatch, tmp_path):
+    chosen = "tests/test_project_registry.py"
+    anchor = (
+        '    assert serialized["supported_agents"] == ["implementer", "tester"]\n'
+        '    assert isinstance(serialized["supported_agents"], list)\n'
+    )
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "from core.project_registry import DEFAULT_PROJECT, ProjectRecord, ProjectRegistry\n\n"
+        "def test_existing():\n"
+        "    pass\n\n"
+        "def test_project_record_to_dict_serializes_supported_agents_as_list():\n"
+        "    serialized = {\"supported_agents\": [\"implementer\", \"tester\"]}\n"
+        + anchor,
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen, "review-coverage-gap-703fa3c06b"
+    )
+
+    assert err is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert change["old"] == anchor
+    assert "def test_list_projects_returns_ordered_snapshot_without_exposing_registry()" in change["new"]
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+
+
+def test_catalog_exhaustion_dedup_task_plan_is_deterministic(monkeypatch, tmp_path):
+    chosen = "tests/test_catalog_exhaustion_candidate_adapter.py"
+    anchor = "def test_distributed_workflow_wires_analyzer_adapter_before_review_pool(tmp_path):\n"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(anchor + "    pass\n", encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    plan, err = runtime._deterministic_autonomous_test_plan(
+        chosen,
+        "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261031",
+    )
+
+    assert err is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert change["old"] == anchor
+    assert "def test_duplicate_catalog_candidates_are_deduplicated_within_report()" in change["new"]
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+
+
+
+def test_operational_validation_plan_adds_only_a_new_e2e_test(monkeypatch, tmp_path):
+    chosen = "tests/test_line_development.py"
+    anchor = "def test_shared_read_only_guard_blocks_app_style_constraints_too():\n"
+    original = (
+        "from line_development import extract_development_instruction\n\n"
+        "def test_existing_case():\n"
+        "    assert True\n\n"
+        + anchor
+        + "    pass\n"
+    )
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_operational_validation_plan(
+        "LINE AI Secretaryの自動開発基盤を実運用テストしてください。",
+        chosen,
+    )
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_operational_validation"
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert change["old"] == anchor
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert runtime.worker._test_definitions_unchanged(chosen, change["old"], change["new"])
+    assert "test_operational_validation_phrase_is_classified_as_development_command" in candidate
+    assert runtime.worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+def test_operational_validation_plan_is_idempotent(monkeypatch, tmp_path):
+    chosen = "tests/test_line_development.py"
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "def test_operational_validation_phrase_is_classified_as_development_command():\n    pass\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_operational_validation_plan(
+        "実運用検証してください。",
+        chosen,
+    )
+
+    assert error is None
+    assert plan == {"no_change": True, "source": "deterministic_operational_validation"}
+
+
+
+def test_new_refill_cli_tasks_use_bounded_deterministic_plans(monkeypatch, tmp_path):
+    cases = [
+        (
+            "task-refill-cli-test-20261102",
+            "test_refill_main_cli_adds_one_approved_task",
+            'report["added_ids"] == ["task-cli-new"]',
+        ),
+        (
+            "task-refill-read-json-test-20261102",
+            "test_read_json_rejects_non_object_root",
+            "JSON root must be an object",
+        ),
+    ]
+    chosen = "tests/test_autonomous_task_refill.py"
+    anchor = '    assert queue.read_text(encoding="utf-8") == queue_before'
+    target = tmp_path / chosen
+    target.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    for task_id, expected_name, expected_marker in cases:
+        original = "def existing_test():\n" + anchor + "\n"
+        target.write_text(original, encoding="utf-8")
+        plan, error = runtime._deterministic_autonomous_test_plan(chosen, task_id)
+
+        assert error is None, task_id
+        assert plan is not None, task_id
+        assert plan["source"] == "deterministic_autonomous_task"
+        assert plan["no_change"] is False
+        assert runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[task_id] == chosen
+        assert len(plan["changes"]) == 1
+        change = plan["changes"][0]
+        assert change["old"] == anchor
+        assert change["file"] == chosen
+        assert len(change["old"]) <= 1200
+        assert len(change["new"]) <= 1800
+        candidate = original.replace(change["old"], change["new"], 1)
+        compile(candidate, chosen, "exec")
+        assert expected_name in candidate
+        assert expected_marker in candidate
+        assert runtime.worker.validate_plan(plan, chosen) == (True, chosen)
+
+
+def test_provider_block_reason_rejects_external_model_for_manual_rsi(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "manual")
+    assert runtime._provider_block_reason("") == "external_model_provider_disabled_local_adapter_unavailable"
+
+
+def test_provider_block_reason_allows_only_declared_provider_free_task(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
+    task_id = "uhip-confidence-out-of-range-rejection"
+    assert runtime._provider_block_reason(task_id) is None
+    assert runtime._provider_block_reason("review-coverage-gap-703fa3c06b") == "external_model_provider_disabled_local_adapter_unavailable"

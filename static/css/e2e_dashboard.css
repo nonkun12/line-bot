@@ -1,0 +1,141 @@
+.overall-badge {
+    padding: 0.4rem 1rem;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    letter-spacing: 0.05em;
+}
+.overall-ok { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid var(--success); }
+.overall-error { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid var(--danger); }
+.overall-unknown { background: rgba(156, 163, 175, 0.15); color: var(--text-secondary); border: 1px solid var(--text-secondary); }
+
+.e2e-chain {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 1rem 0;
+}
+
+.e2e-step {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+}
+
+.e2e-step .dot {
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+.e2e-step .step-label {
+    font-weight: 600;
+    min-width: 140px;
+}
+
+.e2e-step .step-state {
+    font-size: 0.8rem;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    font-weight: 600;
+}
+
+.state-ok { color: var(--success); background: rgba(16, 185, 129, 0.12); }
+.state-error { color: var(--danger); background: rgba(239, 68, 68, 0.12); }
+.state-not_reached, .state-unknown { color: var(--text-secondary); background: rgba(156, 163, 175, 0.12); }
+
+.e2e-step .step-meta {
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    text-align: right;
+}
+
+.e2e-arrow {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    padding: 0.1rem 0;
+}
+
+.services-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.9rem;
+}
+
+.service-tile {
+    padding: 0.9rem 1rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.service-tile .service-name {
+    font-weight: 600;
+    font-size: 0.92rem;
+}
+
+.service-tile .service-state {
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+@media (max-width: 720px) {
+    .two-col { grid-template-columns: 1fr; }
+}
+
+.info-box {
+    padding: 1rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.7;
+}
+
+.error-log-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.error-log-item {
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.06);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    font-size: 0.85rem;
+}
+
+.error-log-item .error-log-header {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 600;
+    color: var(--danger);
+    margin-bottom: 0.25rem;
+}
+
+.error-log-item .error-log-message {
+    color: var(--text-secondary);
+    word-break: break-word;
+}
+
+.empty-note {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    padding: 1rem;
+}

@@ -1,0 +1,513 @@
+from unittest.mock import MagicMock, patch
+
+from agents.sheets.handlers import handle_sheets_message
+
+
+def test_handle_sheets_message_search():
+    client = MagicMock()
+    client.search.return_value = [["Amazon打合せ"]]
+
+    result = handle_sheets_message(
+        "シートから検索 Amazon",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["rows"] == [["Amazon打合せ"]]
+    client.search.assert_called_once_with("A:Z", "Amazon")
+
+
+def test_handle_sheets_message_read():
+    client = MagicMock()
+    client.read_rows.return_value = [["テスト"]]
+
+    result = handle_sheets_message(
+        "シートを見て",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["rows"] == [["テスト"]]
+    client.read_rows.assert_called_once_with("A:Z")
+
+
+def test_handle_sheets_message_append():
+    client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["テストデータ"]]
+
+    result = handle_sheets_message(
+        "シートに記録 テストデータ",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["テストデータ"],
+    )
+
+
+def test_handle_sheets_message_append_legacy_prefix_still_works():
+    """
+    従来の「シートに記録 ○○」形式(キーワードが先頭・本文が後ろ)が
+    引き続き正常に動作すること。
+    """
+    client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["テストデータ"]]
+
+    result = handle_sheets_message(
+        "シートに記録 テストデータ",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == "Google Sheetsに記録しました（書き込み確認済み）：テストデータ"
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["テストデータ"],
+    )
+
+
+def test_handle_sheets_message_append_natural_phrase_record():
+    """
+    「シートに<本文>を記録」のような自然な語順から、
+    本文だけを抽出して保存すること(今回の回帰テスト)。
+    """
+    client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["テスト1"]]
+
+    result = handle_sheets_message(
+        "シートにテスト1を記録",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == "Google Sheetsに記録しました（書き込み確認済み）：テスト1"
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["テスト1"],
+    )
+
+
+def test_handle_sheets_message_append_natural_phrase_record_te_form():
+    """
+    実際にLINEで報告された「シートにテスト2を記録して」のケース。
+    テ形が付いても本文だけを抽出して保存すること。
+    """
+    client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["テスト2"]]
+
+    result = handle_sheets_message(
+        "シートにテスト2を記録して",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == "Google Sheetsに記録しました（書き込み確認済み）：テスト2"
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["テスト2"],
+    )
+
+
+def test_handle_sheets_message_append_natural_phrase_add():
+    """「シートに<本文>を追加」のような自然な語順にも対応すること。"""
+    client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["テスト3"]]
+
+    result = handle_sheets_message(
+        "シートにテスト3を追加",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["テスト3"],
+    )
+
+
+def test_handle_sheets_message_append_natural_phrase_name_te_form():
+    """「シートに名前を記録して」のような一般的な自然文にも対応すること。"""
+    client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["名前"]]
+
+    result = handle_sheets_message(
+        "シートに名前を記録して",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["名前"],
+    )
+
+
+def test_handle_sheets_message_append_natural_phrase_shopping_list():
+    """「シートに買い物リストを追加」のような自然文にも対応すること。"""
+    client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["買い物リスト"]]
+
+    result = handle_sheets_message(
+        "シートに買い物リストを追加",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["買い物リスト"],
+    )
+
+
+def test_handle_sheets_message_append_natural_phrase_google_sheets():
+    """「Google Sheetsに」始まりの自然文でも本文だけを抽出すること。"""
+    client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["会議メモ"]]
+
+    result = handle_sheets_message(
+        "Google Sheetsに会議メモを記録して",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["会議メモ"],
+    )
+
+
+def test_handle_sheets_message_append_empty_content_returns_error():
+    """
+    抽出結果が空文字になる場合(本文を伴わない「シートに記録」)は、
+    Sheetsへ書き込まず、安全にエラーメッセージを返すこと。
+    """
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "シートに記録",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is False
+    assert result["text"] == "記録する内容を指定してください。"
+    client.append_row.assert_not_called()
+
+
+def test_handle_sheets_message_append_content_containing_keyword_is_known_limitation():
+    """
+    既知の限界: 本文自体に「記録」という語が含まれる場合、
+    最初に出現した位置で本文が区切られてしまう。
+    完全な自然言語解析ではないことをテストで明示しておく。
+    """
+    client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["来週の"]]
+
+    result = handle_sheets_message(
+        "シートに来週の記録を追加して",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["来週の"],
+    )
+
+
+def test_handle_sheets_message_delete():
+    client = MagicMock()
+    client.search.return_value = [
+        ["Amazon打合せ"],
+    ]
+
+    result = handle_sheets_message(
+        "シートから Amazon打合せ を削除して",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    client.search.assert_called_once_with(
+        "A:Z",
+        "Amazon打合せ",
+    )
+    client.delete_row.assert_called_once_with(
+        "Amazon打合せ",
+    )
+    client.delete_row.assert_called_once()
+
+
+def _mock_ai_response(text):
+    """generate_chat_completionのレスポンス形状を模したMagicMockを作る。"""
+    response = MagicMock()
+    response.choices[0].message.content = text
+    return response
+
+
+@patch("agents.sheets.handlers.generate_chat_completion")
+def test_handle_sheets_message_ai_analysis_uses_sheet_context(mock_generate):
+    """
+    「シートの内容を分析して」のような自然文の質問では、
+    Google Sheetsから取得した現在のデータをAIへコンテキストとして渡し、
+    AIが生成した自然文の回答をそのまま返すこと。
+    外部AI APIには依存せず、generate_chat_completionをモックして検証する。
+    """
+    client = MagicMock()
+    client.read_rows.return_value = [
+        ["テスト1"],
+        ["Amazon打合せ"],
+        ["明日の予定"],
+    ]
+    mock_generate.return_value = _mock_ai_response(
+        "重要な予定はAmazon打合せです。"
+    )
+
+    result = handle_sheets_message(
+        "シートの内容を見て、重要な予定を教えて",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == "重要な予定はAmazon打合せです。"
+    assert result["rows"] == [
+        ["テスト1"],
+        ["Amazon打合せ"],
+        ["明日の予定"],
+    ]
+
+    client.read_rows.assert_called_once_with("A:Z")
+    mock_generate.assert_called_once()
+
+    call_kwargs = mock_generate.call_args.kwargs
+    messages = call_kwargs["messages"]
+
+    assert messages[0]["role"] == "system"
+    assert "Amazon打合せ" in messages[0]["content"]
+    assert messages[1] == {
+        "role": "user",
+        "content": "シートの内容を見て、重要な予定を教えて",
+    }
+
+
+@patch("agents.sheets.handlers.generate_chat_completion")
+def test_handle_sheets_message_ai_analysis_about_specific_topic(mock_generate):
+    client = MagicMock()
+    client.read_rows.return_value = [["Amazon打合せ", "14時から"]]
+    mock_generate.return_value = _mock_ai_response(
+        "Amazon打合せは14時からと書かれています。"
+    )
+
+    result = handle_sheets_message(
+        "Amazon打合せについてシートに何が書いてある？",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == "Amazon打合せは14時からと書かれています。"
+    client.read_rows.assert_called_once_with("A:Z")
+
+
+@patch("agents.sheets.handlers.generate_chat_completion")
+def test_handle_sheets_message_ai_analysis_empty_sheet(mock_generate):
+    """シートが空でもエラーにならず、AIにその旨を伝えて呼び出すこと。"""
+    client = MagicMock()
+    client.read_rows.return_value = []
+    mock_generate.return_value = _mock_ai_response(
+        "シートにはまだ何も記録されていないようです。"
+    )
+
+    result = handle_sheets_message(
+        "シートの内容を簡単にまとめて",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert "記録されていない" in result["text"]
+
+    call_kwargs = mock_generate.call_args.kwargs
+    system_content = call_kwargs["messages"][0]["content"]
+    assert "シートにはまだデータがありません" in system_content
+
+
+@patch("agents.sheets.handlers.generate_chat_completion")
+def test_handle_sheets_message_ai_analysis_falls_back_on_api_error(mock_generate):
+    """AI呼び出しが失敗しても例外を送出せず、エラー用の返信を返すこと。"""
+    client = MagicMock()
+    client.read_rows.return_value = [["テスト1"]]
+    mock_generate.side_effect = Exception("groq api error")
+
+    result = handle_sheets_message(
+        "シートの内容を分析して",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert "エラー" in result["text"]
+
+
+def test_handle_sheets_message_natural_language_read_variants_route_to_existing_read():
+    """
+    「シートの内容は？」「シートを確認して」のような自然な言い方でも、
+    既存のRead処理(生データの一覧表示、AI分析には渡さない)へ
+    ルーティングされること。
+
+    LINEで実際に報告された回帰:
+    「シートを読んで」は動作するが「シートの内容は？」は
+    「Google Sheetsの操作を理解できませんでした。」になっていた。
+    """
+    natural_read_phrases = [
+        "シートの内容は？",
+        "シートの中身を見せて",
+        "シートを確認して",
+        "シートのデータを見せて",
+        "Google Sheetsを確認して",
+    ]
+
+    for phrase in natural_read_phrases:
+        client = MagicMock()
+        client.read_rows.return_value = [["テスト"]]
+
+        with patch(
+            "agents.sheets.handlers.generate_chat_completion"
+        ) as mock_generate:
+            result = handle_sheets_message(
+                phrase,
+                "user123",
+                client,
+            )
+            mock_generate.assert_not_called()
+
+        assert result is not None, f"{phrase!r} was not handled"
+        assert result["success"] is True
+        assert result["text"].startswith("Google Sheetsの内容：")
+        client.read_rows.assert_called_once_with("A:Z")
+
+
+def test_handle_sheets_message_read_question_mark_variant():
+    """
+    実際にLINEで報告された「シートの内容は？」のケース単体での回帰テスト。
+    """
+    client = MagicMock()
+    client.read_rows.return_value = [["テスト1"], ["テスト2"]]
+
+    result = handle_sheets_message(
+        "シートの内容は？",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == (
+        "Google Sheetsの内容：\n1. テスト1\n2. テスト2"
+    )
+    client.read_rows.assert_called_once_with("A:Z")
+
+
+def test_handle_sheets_message_natural_read_still_yields_none_only_when_unmatched():
+    """
+    今回のRead判定拡張が、既存のNone(未対応)フォールバックの動作自体を
+    壊していないことを確認する回帰テスト。
+    Sheetsに一切関係のない操作要求は引き続きNoneを返し、
+    node.py側で「Google Sheetsの操作を理解できませんでした。」に
+    変換される。
+    """
+    client = MagicMock()
+
+    result = handle_sheets_message(
+        "シート",
+        "user123",
+        client,
+    )
+
+    assert result is None
+    client.read_rows.assert_not_called()
+    client.append_row.assert_not_called()
+
+
+def test_handle_sheets_message_append_still_works_after_read_expansion():
+    """
+    Read判定を拡張した後も、既存の書き込み(Append)処理が
+    引き続き正常に動作することを確認する回帰テスト。
+    """
+    client = MagicMock()
+    client.append_row.return_value = {"updates": {"updatedRange": "Sheet1!A5:A5"}}
+    client.read_rows.return_value = [["テスト1"]]
+
+    result = handle_sheets_message(
+        "シートにテスト1を記録",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == "Google Sheetsに記録しました（書き込み確認済み）：テスト1"
+    client.append_row.assert_called_once_with(
+        "A:A",
+        ["テスト1"],
+    )
+
+
+def test_handle_sheets_message_read_still_works_after_read_expansion():
+    """
+    Read判定を拡張した後も、既存の「シートを読んで」が
+    引き続き正常に動作することを確認する回帰テスト。
+    """
+    client = MagicMock()
+    client.read_rows.return_value = [["テスト1"]]
+
+    result = handle_sheets_message(
+        "シートを読んで",
+        "user123",
+        client,
+    )
+
+    assert result["success"] is True
+    assert result["text"] == "Google Sheetsの内容：\n1. テスト1"
+    client.read_rows.assert_called_once_with("A:Z")
+
+
+def test_handle_sheets_message_plain_read_does_not_call_ai():
+    """
+    分析トリガーワードを含まない単純な「シートを見て」は、
+    従来通りAIを呼ばず生データの一覧表示のままであること。
+    """
+    client = MagicMock()
+    client.read_rows.return_value = [["テスト"]]
+
+    with patch("agents.sheets.handlers.generate_chat_completion") as mock_generate:
+        result = handle_sheets_message(
+            "シートを見て",
+            "user123",
+            client,
+        )
+        mock_generate.assert_not_called()
+
+    assert result["success"] is True
+    assert result["text"].startswith("Google Sheetsの内容：")

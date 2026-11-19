@@ -1,0 +1,175 @@
+from flask import jsonify, request
+import hashlib
+import hmac
+import os
+import time
+from urllib.parse import urlencode
+
+import httpx
+
+from config import configuration
+from linebot.v3.messaging import ApiClient, MessagingApi, PushMessageRequest
+from e2e_status import StepTimer
+
+
+def _make_dashboard_url(user_id: str) -> str:
+    timestamp = int(time.time())
+    secret = os.environ.get("DASHBOARD_LINK_SECRET") or os.environ.get("DASHBOARD_PASSWORD") or ""
+    payload = f"{user_id}:{timestamp}"
+    token = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    query = urlencode({"user_id": user_id, "ts": timestamp, "token": token})
+    return f"https://line-bot-yvea.onrender.com/dashboard?{query}"
+
+
+_MINIMUM_FREE_MONTHLY_MESSAGES = 200
+_LINE_PUSH_SAFETY_RESERVE = 20
+
+
+def _line_push_direct(user_id: str, message: str) -> dict[str, object]:
+    """Send only when quota can be verified and a conservative free buffer remains.
+
+    Japan's lowest free tier includes 200 messages. Keep 20 messages in reserve
+    and fail closed if the quota API is unavailable, unbounded, or malformed.
+    """
+    from app import _build_line_messages
+
+    with ApiClient(configuration) as api:
+        line_api = MessagingApi(api)
+        try:
+            quota = line_api.get_message_quota()
+            consumption = line_api.get_message_quota_consumption()
+            quota_type = getattr(getattr(quota, "type", None), "value", getattr(quota, "type", None))
+            raw_limit = getattr(quota, "value", None)
+            raw_usage = getattr(consumption, "total_usage", None)
+            if quota_type != "limited" or type(raw_limit) is not int or type(raw_usage) is not int:
+                return {"sent": False, "reason": "quota_unavailable_or_unbounded"}
+            if raw_limit < 1 or raw_usage < 0:
+                return {"sent": False, "reason": "quota_response_invalid"}
+
+            safe_limit = min(raw_limit, _MINIMUM_FREE_MONTHLY_MESSAGES)
+            if raw_usage + _LINE_PUSH_SAFETY_RESERVE >= safe_limit:
+                return {
+                    "sent": False,
+                    "reason": "free_quota_safety_reserve",
+                    "usage": raw_usage,
+                    "safe_limit": safe_limit,
+                    "reserve": _LINE_PUSH_SAFETY_RESERVE,
+                }
+        except Exception as exc:
+            # Do not push blindly if quota state cannot be verified.
+            return {"sent": False, "reason": f"quota_check_failed:{type(exc).__name__}"}
+
+        line_api.push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=_build_line_messages(message),
+            )
+        )
+        return {
+            "sent": True,
+            "usage_before_send": raw_usage,
+            "safe_limit": safe_limit,
+            "reserve": _LINE_PUSH_SAFETY_RESERVE,
+        }
+
+
+def register_internal_ask_route(app, internal_push_key, generate_reply_func):
+    @app.route("/internal/ask", methods=["POST"])
+    def internal_ask():
+        provided_key = request.headers.get("x-internal-key")
+        if not internal_push_key or not provided_key or not hmac.compare_digest(str(provided_key), str(internal_push_key)):
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+        data = request.get_json(silent=True) or {}
+        user_id = data.get("user_id")
+        message = data.get("message")
+        if not isinstance(user_id, str) or not user_id.strip() or not isinstance(message, str) or not message.strip():
+            return jsonify({"ok": False, "error": "user_id and message are required"}), 400
+        user_id = user_id.strip()
+        message = message.strip()
+        if message == "ダッシュボード":
+            dashboard_url = _make_dashboard_url(user_id)
+            return jsonify({"ok": True, "reply": f"ダッシュボードはこちらです。\n{dashboard_url}"})
+        with StepTimer("internal_ask") as ask_timer, StepTimer("ai_mcp") as ai_timer:
+            try:
+                reply = generate_reply_func(user_id, message)
+            except Exception:
+                app.logger.exception("INTERNAL ASK ERROR")
+                ai_timer.fail(error="internal server error", error_location="generate_reply")
+                ask_timer.fail(http_status=500, error="internal server error", error_location="internal_ask")
+                return jsonify({"ok": False, "error": "internal server error"}), 500
+            ai_timer.ok(); ask_timer.ok(http_status=200)
+        return jsonify({"ok": True, "reply": str(reply or "")})
+
+    @app.route("/internal/push", methods=["POST"])
+    def internal_push():
+        provided_key = request.headers.get("x-internal-key")
+        if not internal_push_key or not provided_key or not hmac.compare_digest(str(provided_key), str(internal_push_key)):
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+        data = request.get_json(silent=True) or {}
+        user_id = data.get("user_id")
+        message = data.get("message")
+        if not isinstance(user_id, str) or not user_id.strip() or not isinstance(message, str) or not message.strip():
+            return jsonify({"ok": False, "error": "user_id and message are required"}), 400
+        try:
+            result = _line_push_direct(user_id.strip(), message.strip())
+            if not result.get("sent"):
+                app.logger.warning(
+                    "INTERNAL PUSH SKIPPED by free-quota guard: reason=%s usage=%s safe_limit=%s",
+                    result.get("reason", "unknown"),
+                    result.get("usage", "unknown"),
+                    result.get("safe_limit", "unknown"),
+                )
+                return jsonify({"ok": True, **result}), 200
+            return jsonify({"ok": True, **result}), 200
+        except Exception as exc:
+            app.logger.exception("INTERNAL PUSH ERROR")
+            error = "internal server error"
+            if "401" in str(exc):
+                error = "line channel access token rejected"
+            return jsonify({"ok": False, "error": error}), 502
+
+    @app.route("/internal/create-pr", methods=["POST"])
+    def internal_create_pr():
+        provided_key = request.headers.get("x-internal-key")
+        if not internal_push_key or not provided_key or not hmac.compare_digest(str(provided_key), str(internal_push_key)):
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+        data = request.get_json(silent=True) or {}
+        head = str(data.get("head") or "").strip()
+        title = str(data.get("title") or "feat: LINE development request").strip()
+        body = str(data.get("body") or "").strip()
+        repository = str(data.get("repository") or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")).strip()
+        token = (os.environ.get("GH_PR_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
+        if not head:
+            return jsonify({"ok": False, "error": "head is required"}), 400
+        if not token:
+            return jsonify({"ok": False, "error": "GITHUB_TOKEN/ GH_PR_TOKEN is not configured"}), 500
+        if not repository or repository.count("/") != 1 or any(part.strip() == "" for part in repository.split("/")):
+            return jsonify({"ok": False, "error": "invalid repository"}), 400
+
+        url = f"https://api.github.com/repos/{repository}/pulls"
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        payload = {"title": title, "head": head, "base": "main", "body": body}
+        try:
+            response = httpx.post(url, json=payload, headers=headers, timeout=15.0)
+        except Exception:
+            app.logger.exception("INTERNAL CREATE PR REQUEST ERROR")
+            return jsonify({"ok": False, "error": "GitHub request failed"}), 502
+
+        if response.status_code in (200, 201):
+            try:
+                result = response.json()
+            except Exception:
+                app.logger.exception("INTERNAL CREATE PR INVALID JSON")
+                return jsonify({"ok": False, "error": "invalid GitHub response"}), 502
+            return jsonify({"ok": True, "number": result.get("number"), "url": result.get("html_url")}), 201
+        if response.status_code == 422:
+            return jsonify({"ok": False, "error": "GitHub rejected PR creation"}), 422
+        app.logger.warning("GitHub PR creation failed: status=%s", response.status_code)
+        return jsonify({"ok": False, "error": "GitHub request failed"}), 502
+
+    return internal_ask

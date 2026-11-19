@@ -1,0 +1,29 @@
+name: Render Deploy Check
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Wait Render Health
+        run: |
+          for i in {1..60}; do
+            echo "Health check attempt $i"
+
+            if curl -f https://line-bot-yvea.onrender.com/health; then
+              echo "Render is ready"
+              exit 0
+            fi
+
+            sleep 5
+          done
+
+          echo "Render health check failed"
+          exit 1

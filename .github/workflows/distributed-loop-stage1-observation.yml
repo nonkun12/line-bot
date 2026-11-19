@@ -1,0 +1,89 @@
+name: Distributed Loop Stage 1 - Observation Only
+run-name: Stage 1 observation (read-only)
+
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: distributed-loop-stage1-observation
+  cancel-in-progress: false
+
+jobs:
+  observe-only:
+    name: Read-only health and budget observation
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Observe repository Actions activity and report unknown controls
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_API_URL: ${{ github.api_url }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+          from datetime import datetime, timezone
+
+          repository = os.environ["GH_REPOSITORY"]
+          api = os.environ["GH_API_URL"].rstrip("/")
+          request = urllib.request.Request(
+              f"{api}/repos/{repository}/actions/runs?per_page=100",
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          observed_at = datetime.now(timezone.utc).isoformat()
+          queue_state = "UNKNOWN"
+          running = queued = None
+          api_error = None
+          try:
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  payload = json.load(response)
+              runs = payload.get("workflow_runs")
+              if not isinstance(runs, list):
+                  raise ValueError("workflow_runs_missing")
+              running = sum(1 for row in runs if row.get("status") == "in_progress")
+              queued = sum(1 for row in runs if row.get("status") == "queued")
+              queue_state = "OBSERVED"
+          except Exception as exc:
+              api_error = type(exc).__name__
+
+          # No trusted account-wide budget collector or Global HOLD reader is
+          # wired into Stage 1. Never infer CLEAR from missing evidence.
+          budget_state = "UNKNOWN_BLOCKED"
+          global_hold_state = "UNKNOWN_BLOCKED"
+          execution_authorized = False
+
+          summary = [
+              "# Distributed Loop — Stage 1 observation",
+              "",
+              f"- Observed at (UTC): {observed_at}",
+              f"- Repository Actions queue: {queue_state}",
+              f"- In-progress runs (last 100): {running if running is not None else 'UNKNOWN'}",
+              f"- Queued runs (last 100): {queued if queued is not None else 'UNKNOWN'}",
+              f"- Actions API error class: {api_error or 'none'}",
+              f"- Budget Guardian: {budget_state}",
+              f"- Global HOLD: {global_hold_state}",
+              "- Task queue read: NOT PERFORMED",
+              "- Task execution: DISABLED",
+              "- Code/PR mutation: DISABLED",
+              "- Deploy/migration/secret changes: DISABLED",
+              f"- Execution authorized: {str(execution_authorized).lower()}",
+              "",
+              "Stage 1 is observation-only. Unknown or unavailable evidence remains BLOCKED; "
+              "this workflow cannot authorize or start the autonomous loop.",
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+              stream.write("\n".join(summary) + "\n")
+          print(f"stage1=OBSERVATION_ONLY queue={queue_state} budget={budget_state} hold={global_hold_state} execution=false")
+          PY

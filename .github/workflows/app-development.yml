@@ -1,0 +1,159 @@
+name: AI App Development
+
+on:
+  workflow_dispatch:
+    inputs:
+      requirement:
+        description: "App requirement from LINE"
+        required: true
+        type: string
+      user_id:
+        description: "LINE user ID"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: ai-app-development-${{ github.event.inputs.user_id }}
+  cancel-in-progress: false
+
+jobs:
+  develop-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Secretary repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          token: ${{ github.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install groq pytest Flask
+
+      - name: Forward legacy E2E requests to LINE Development Dispatch
+        id: forward_e2e
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_REQUIREMENT: ${{ github.event.inputs.requirement }}
+          APP_USER_ID: ${{ github.event.inputs.user_id }}
+        run: |
+          set -euo pipefail
+          if [[ "${APP_REQUIREMENT}" == *E2E* && "${APP_REQUIREMENT}" == *テスト* ]] || [[ "${APP_REQUIREMENT}" == *本線E2E* ]]; then
+            echo "Legacy E2E request detected; forwarding to LINE Development Dispatch."
+            gh workflow run line-development-dispatch.yml \\
+              --repo "${GITHUB_REPOSITORY}" \\
+              --ref main \\
+              -f instruction="${APP_REQUIREMENT}" \\
+              -f user_id="${APP_USER_ID}"
+            echo "forwarded=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "forwarded=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Run independent-repository app builder
+        id: app_development
+        if: ${{ steps.forward_e2e.outputs.forwarded != 'true' }}
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          APP_GITHUB_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
+          APP_GITHUB_OWNER: nonkun12
+          APP_REQUIREMENT: ${{ github.event.inputs.requirement }}
+          APP_USER_ID: ${{ github.event.inputs.user_id }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          DEV_AI_MODEL: openai/gpt-oss-20b
+        run: |
+          set +e
+          for attempt in 1 2 3; do
+            python scripts/empty_repo_app_builder.py 2>&1 | tee ai-app-builder-${attempt}.log
+            status=${PIPESTATUS[0]}
+            if [ "$status" -eq 0 ]; then
+              exit 0
+            fi
+            if grep -q "AI planning failed: ValueError: AI response is empty" "ai-app-builder-${attempt}.log" && [ "$attempt" -lt 3 ]; then
+              echo "Initial AI planning returned an empty response; retrying (attempt $((attempt + 1))/3)."
+              continue
+            fi
+            exit "$status"
+          done
+          exit 1
+
+      - name: Notify LINE of app development result
+        if: always()
+        env:
+          INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          APP_USER_ID: ${{ github.event.inputs.user_id }}
+          APP_REQUIREMENT: ${{ github.event.inputs.requirement }}
+          FORWARDED_E2E: ${{ steps.forward_e2e.outputs.forwarded }}
+          APP_OUTCOME: ${{ steps.app_development.outcome }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          key = os.environ.get("INTERNAL_PUSH_KEY", "")
+          user_id = os.environ.get("APP_USER_ID", "")
+          requirement = os.environ.get("APP_REQUIREMENT", "")
+          outcome = os.environ.get("APP_OUTCOME", "unknown")
+          run_url = os.environ.get("RUN_URL", "")
+
+          if not key or not user_id:
+              print("LINE notification skipped: required environment missing")
+              raise SystemExit(0)
+
+          if os.environ.get("FORWARDED_E2E") == "true":
+              message = (
+                  "✅ 本線E2Eテストを本線開発ワークフローへ転送しました。\n"
+                  f"指示: {requirement}\n"
+                  "GitHub Actionsで本線E2Eを継続実行しています。\n"
+                  f"実行結果: {run_url}"
+              )
+          elif outcome == "success":
+              message = (
+                  "✅ AIアプリ開発が完了しました。\n"
+                  f"要件: {requirement}\n"
+                  "独立GitHubリポジトリ作成・実装・テスト・PR作成まで完了しました。\n"
+                  f"実行結果: {run_url}"
+              )
+          else:
+              message = (
+                  "❌ AIアプリ開発が失敗しました。\n"
+                  f"要件: {requirement}\n"
+                  f"失敗地点: GitHub Actions（{outcome}）\n"
+                  f"詳細: {run_url}"
+              )
+
+          payload = json.dumps({"user_id": user_id, "message": message}).encode("utf-8")
+          request = urllib.request.Request(
+              "https://line-bot-yvea.onrender.com/internal/push",
+              data=payload,
+              headers={"Content-Type": "application/json", "x-internal-key": key},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  print(f"LINE notification HTTP {response.status}")
+          except Exception as exc:
+              print(f"LINE notification failed: {type(exc).__name__}")
+
+      - name: Upload app development log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-development-log-${{ github.run_id }}
+          path: |
+            *.log
+            pytest*.txt
+          if-no-files-found: ignore

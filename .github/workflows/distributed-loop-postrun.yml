@@ -1,0 +1,307 @@
+name: Distributed Loop Post-Run Verification
+
+on:
+  workflow_run:
+    workflows: ["Distributed Autonomous Development Loop"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: distributed-loop-postrun-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  verify-and-follow-up:
+    # GitHub emits completed workflow_run events even when the source workflow's
+    # jobs were skipped by an intentional trigger guard (for example, an ordinary
+    # issue comment). Such runs have no task/Sheets artifacts by design and must
+    # not generate a false failure report or follow-up issue.
+    if: github.event.workflow_run.conclusion != 'skipped'
+    # Never execute code from the completed run's branch; this workflow is trusted
+    # default-branch code and only reads the completed run's artifacts.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Download evidence from completed loop run
+        id: evidence
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          gh run download "$RUN_ID" --repo "$REPOSITORY" \
+            --name "minimal-autonomous-loop-$RUN_ID" --dir evidence
+          find evidence -maxdepth 3 -type f -print
+          echo "downloaded=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify task and Sheets evidence
+        id: verify
+        env:
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from pathlib import Path
+
+          files = list(Path("evidence").rglob("*"))
+          files = [p for p in files if p.is_file()]
+          result_files = [p for p in files if p.name == "minimal-autonomous-loop.jsonl"]
+          sheets_files = [p for p in files if p.name == "distributed-sheets-log-result.json"]
+          report_files = [p for p in files if p.name == "distributed-final-report.txt"]
+          tasks = []
+          for path in result_files:
+              for line in path.read_text(encoding="utf-8").splitlines():
+                  if line.strip():
+                      try:
+                          item = json.loads(line)
+                          if isinstance(item, dict):
+                              tasks.append(item)
+                      except json.JSONDecodeError:
+                          pass
+          sheets = {}
+          if sheets_files:
+              try:
+                  sheets = json.loads(sheets_files[0].read_text(encoding="utf-8"))
+              except Exception:
+                  sheets = {}
+          statuses = [str(x.get("status", "UNKNOWN")) for x in tasks]
+          # Independently validate the per-task post-generation REA attestation.
+          # A changed PASS without exact SHA/diff-bound pre-publish evidence is
+          # not accepted as a successful distributed-loop result.
+          import re
+          rea_states = []
+          issues = []
+          for index, item in enumerate(tasks, start=1):
+              task_status = str(item.get("status", "UNKNOWN"))
+              base_sha = str(item.get("base_sha", ""))
+              produced_sha = str(item.get("produced_sha", ""))
+              attestation = item.get("post_generation_rea")
+              sha_identity_valid = (
+                  re.fullmatch(r"[0-9a-f]{40}", base_sha) is not None
+                  and re.fullmatch(r"[0-9a-f]{40}", produced_sha) is not None
+              )
+              if task_status == "NO_CHANGE":
+                  if not sha_identity_valid or base_sha != produced_sha:
+                      issues.append(f"Task {index} NO_CHANGE is missing valid matching base/produced SHA identity.")
+                      rea_states.append("INVALID")
+                  else:
+                      rea_states.append("NO_CHANGE")
+                  continue
+              if task_status == "PASS" and sha_identity_valid and base_sha != produced_sha:
+                  valid = (
+                      isinstance(attestation, dict)
+                      and attestation.get("status") == "PASS"
+                      and attestation.get("base_sha") == base_sha
+                      and attestation.get("target_sha") == produced_sha
+                      and isinstance(attestation.get("diff_sha256"), str)
+                      and re.fullmatch(r"[0-9a-f]{64}", attestation["diff_sha256"]) is not None
+                      and attestation.get("diagnostic_only") is False
+                      and attestation.get("gate_stage") == "pre_publish"
+                      and attestation.get("publish_gate_passed") is True
+                  )
+                  if not valid:
+                      issues.append(
+                          f"Task {index} changed files but its post-generation REA attestation is missing or invalid."
+                      )
+                      rea_states.append("INVALID")
+                  else:
+                      rea_states.append("PASS")
+              elif task_status == "PASS":
+                  # Legacy/malformed PASS rows without immutable SHA identity
+                  # cannot establish whether post-generation scanning was needed.
+                  issues.append(f"Task {index} PASS is missing base/produced SHA identity.")
+                  rea_states.append("MISSING")
+              else:
+                  rea_states.append("NOT_PASS")
+          sheets_result = str(sheets.get("result", "MISSING"))
+          conclusion = os.environ.get("RUN_CONCLUSION", "unknown")
+          original_report = (
+              report_files[0].read_text(encoding="utf-8")[:12000]
+              if report_files else ""
+          )
+          # No executable queue because every catalog item is held/review-gated is
+          # an expected safety BLOCKED state, not malformed progress evidence.
+          report_lines = original_report.splitlines()
+          result_reason = next(
+              (line.split(":", 1)[1].strip() for line in report_lines if line.startswith("- 結果理由:")),
+              "",
+          )
+          queue_empty = any(
+              line.strip() in {
+                  "- 結果理由: queue_empty",
+                  "- 結果理由: queue_exhausted_no_tasks",  # Backward compatibility.
+              }
+              for line in report_lines
+          )
+          source_blocked = "- 結果: **BLOCKED**" in original_report
+          catalog_blocked = source_blocked and result_reason.startswith((
+              "catalog_exhausted_held:",
+              "catalog_exhausted_review_pending:",
+              "catalog_exhausted_mixed:",
+          ))
+          expected_no_task = queue_empty or catalog_blocked
+          # Other BLOCKED outcomes still require investigation; catalog exhaustion
+          # is an explicit human-review gate and must retain its exact reason.
+          if source_blocked and not catalog_blocked:
+              issues.append(f"Source workflow final report is BLOCKED: {result_reason or 'reason_missing'}.")
+          if conclusion != "success":
+              issues.append(f"Loop workflow conclusion is {conclusion}.")
+          if expected_no_task and tasks:
+              # Synthetic NOT_RUN rows are audit markers, not executed tasks.
+              synthetic_no_task = all(
+                  str(item.get("status", "")) == "NOT_RUN"
+                  and not str(item.get("task_id", "")).strip()
+                  and int(item.get("task_count", 0) or 0) == 0
+                  for item in tasks
+              )
+              if synthetic_no_task:
+                  tasks = []
+                  statuses = []
+              else:
+                  issues.append("No-task report conflicts with task result evidence.")
+          if not tasks and not expected_no_task:
+              issues.append("Task result evidence is missing or empty.")
+          if not catalog_blocked and any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
+              issues.append("One or more task results are not PASS/NO_CHANGE: " + ", ".join(statuses))
+          if sheets_result not in {"RECORDED", "ALREADY_RECORDED"}:
+              issues.append("Google Sheets evidence is not confirmed: " + sheets_result)
+          report = [
+              "# Distributed Loop Post-Run Verification",
+              "",
+              f"- Run: {os.environ.get('RUN_URL', '')}",
+              f"- Run ID: {os.environ.get('RUN_ID', '')}",
+              f"- Workflow conclusion: {conclusion}",
+              f"- Head SHA: {os.environ.get('HEAD_SHA', '')}",
+              f"- Task count in evidence: {len(tasks)}",
+              f"- Task statuses: {', '.join(statuses) if statuses else 'NO EVIDENCE'}",
+              f"- Post-generation REA: {', '.join(rea_states) if rea_states else 'NO TASK REA EVIDENCE'}",
+              f"- Queue state: {'CATALOG_BLOCKED (human review required; no task executed)' if catalog_blocked else ('QUEUE_EMPTY (no task executed)' if queue_empty else ('TASK_RESULTS_PRESENT' if tasks else 'UNKNOWN'))}",
+              f"- Google Sheets artifact result: {sheets_result}",
+              f"- Sheets artifact task ID: {sheets.get('task_id', 'unknown')}",
+              "",
+          ]
+          if report_files:
+              report += ["## Original run report", "", report_files[0].read_text(encoding="utf-8")[:12000], ""]
+          report += ["## Follow-up findings", ""]
+          report += ["- " + x for x in issues] if issues else ["- No post-run evidence discrepancy detected."]
+          Path("postrun-report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text("\n".join(report) + "\n", encoding="utf-8")
+          Path("postrun-findings.json").write_text(json.dumps(issues, ensure_ascii=False) + "\n", encoding="utf-8")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"issues={len(issues)}\n")
+              out.write(f"queue_empty={'true' if queue_empty else 'false'}\n")
+              out.write(f"catalog_blocked={'true' if catalog_blocked else 'false'}\n")
+          print("\n".join(report))
+          PY
+
+      - name: Open a deduplicated follow-up issue when evidence is incomplete or failed
+        if: steps.verify.outputs.issues != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          title="Distributed Loop follow-up: run $RUN_ID"
+          if gh issue list --repo "$REPOSITORY" --state open --search "$title in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then
+            echo "An open follow-up issue already exists for this run."
+            exit 0
+          fi
+          body="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
+          print("Automated post-run verification found an issue requiring investigation.\n")
+          print(f"- Run: {os.environ.get('RUN_URL', '')}")
+          print(f"- Run ID: {os.environ.get('RUN_ID', '')}")
+          print("\n## Findings")
+          for item in findings:
+              print(f"- {item}")
+          print("\n## Required follow-up")
+          print("- Inspect the original run logs and uploaded evidence.")
+          print("- Verify the Google Sheets row directly; an artifact alone is not proof of a live row.")
+          print("- Make only a reviewed, bounded fix. Do not auto-deploy, bypass safety gates, or loop-retry.")
+          PY
+          )"
+          gh issue create --repo "$REPOSITORY" --title "$title" --body "$body" || {
+            echo "::warning::Could not create issue (label may be unavailable or token lacks permission)."
+            exit 0
+          }
+
+      # The source loop sends the canonical one-per-run LINE report.
+      # Post-run verification records discrepancies as GitHub issues; it must
+      # not send a second success/queue/blocked message for the same Run ID.
+      - name: LINE duplicate notification disabled (source loop is authoritative)
+        if: github.event.workflow_run.run_attempt < 0
+        env:
+          LINE_INTERNAL_PUSH_KEY: ${{ secrets.INTERNAL_PUSH_KEY }}
+          DISTRIBUTED_LOOP_LINE_USER_ID: ${{ secrets.DISTRIBUTED_LOOP_LINE_USER_ID }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          QUEUE_EMPTY: ${{ steps.verify.outputs.queue_empty }}
+          CATALOG_BLOCKED: ${{ steps.verify.outputs.catalog_blocked }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          set -euo pipefail
+          if [ -z "${LINE_INTERNAL_PUSH_KEY:-}" ] || [ -z "${DISTRIBUTED_LOOP_LINE_USER_ID:-}" ]; then
+            echo "LINE follow-up skipped: required secrets are not configured."
+            exit 0
+          fi
+          export MESSAGE="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
+          queue_empty = os.environ.get("QUEUE_EMPTY", "false").lower() == "true"
+          catalog_blocked = os.environ.get("CATALOG_BLOCKED", "false").lower() == "true"
+          if findings:
+              text = "⚠️ 分散Loop終了後レポート：要確認事項あり\n"
+          elif catalog_blocked:
+              text = "ℹ️ 分散Loop終了後レポート：BLOCKED（保留・レビュー待ち。人の確認が必要）\n"
+          elif queue_empty:
+              text = "ℹ️ 分散Loop終了後レポート：キュー空（今回の開発タスク実行なし）\n"
+          else:
+              text = "✅ 分散Loop終了後レポート：成果物検証で不一致は検出されませんでした\n"
+          text += f"Workflow: {os.environ.get('RUN_CONCLUSION', 'unknown')}\n"
+          text += f"Run ID: {os.environ.get('RUN_ID', '')}\n"
+          text += f"Run: {os.environ.get('RUN_URL', '')}\n"
+          if findings:
+              text += "\n".join("- " + x for x in findings)
+          elif catalog_blocked:
+              text += "実行可能タスクはありません。保留・レビュー待ちの解除は行っていません。候補Issueを人が確認し、承認されたものだけ登録してください。"
+          elif queue_empty:
+              text += "未完了タスクがないため、今回はタスクを実行していません。新しいレビュー済みタスクが追加されるまで、実行結果はありません。"
+          else:
+              text += "タスク成果物の検証で問題は検出されませんでした。Google Sheetsの実シート行を独立確認した結果ではありません。"
+          print(text[:4500])
+          PY
+          )"
+          payload="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          print(json.dumps({"user_id": os.environ["DISTRIBUTED_LOOP_LINE_USER_ID"], "message": os.environ["MESSAGE"]}, ensure_ascii=False))
+          PY
+          )"
+          curl --fail-with-body --silent --show-error --max-time 30 \
+            -X POST "https://line-bot-yvea.onrender.com/internal/push" \
+            -H "Content-Type: application/json" \
+            -H "x-internal-key: ${LINE_INTERNAL_PUSH_KEY}" \
+            --data "$payload"

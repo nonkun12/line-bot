@@ -1,0 +1,44 @@
+name: Orca status focused tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'routes/dashboard.py'
+      - 'scripts/orca_status_*.py'
+      - 'tests/test_orca_*.py'
+      - '.github/workflows/orca-status-tests.yml'
+  pull_request:
+    paths:
+      - 'routes/dashboard.py'
+      - 'scripts/orca_status_*.py'
+      - 'tests/test_orca_*.py'
+      - '.github/workflows/orca-status-tests.yml'
+
+jobs:
+  orca-status-tests:
+    runs-on: ubuntu-latest
+    env:
+      CHANNEL_ACCESS_TOKEN: test-channel-token
+      CHANNEL_SECRET: test-channel-secret
+      GROQ_API_KEY: test-groq-key
+      MCP_SERVER_URL: http://127.0.0.1:8000
+      MCP_API_KEY: test-mcp-key
+      INTERNAL_PUSH_KEY: test-internal-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install project dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run focused Orca status tests
+        run: |
+          pytest -q \
+            tests/test_orca_dashboard_status.py \
+            tests/test_orca_status_collector.py \
+            tests/test_orca_status_publisher.py

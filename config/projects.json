@@ -1,0 +1,22 @@
+[
+  {
+    "name": "line-bot",
+    "repository": "nonkun12/line-bot",
+    "project_type": "ai-secretary",
+    "runtime_target": "render",
+    "owner_scope": "primary",
+    "active_branch": "main",
+    "status": "active",
+    "last_successful_commit": "37fa306e9fbabd76d4cddeb85b13f4c464f179f3",
+    "supported_agents": [
+      "management",
+      "architect",
+      "implementer",
+      "tester",
+      "reviewer",
+      "repairer",
+      "github",
+      "deployment"
+    ]
+  }
+]

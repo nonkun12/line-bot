@@ -1,0 +1,388 @@
+name: Autonomous Development Loop (legacy manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      execution_approval:
+        description: 'Explicitly approve one task-bound execution'
+        required: false
+        default: 'DENY'
+        type: choice
+        options:
+          - 'DENY'
+          - 'APPROVE_EXECUTION'
+      approval_task_id:
+        description: 'Exact task ID shown by the prior BLOCKED run'
+        required: false
+        type: string
+      approval_allowed_paths_sha256:
+        description: 'SHA-256 of the canonical sorted allowed_paths list'
+        required: false
+        type: string
+      approval_instruction_sha256:
+        description: 'SHA-256 of the exact development instruction'
+        required: false
+        type: string
+      approval_base_sha:
+        description: 'Exact base commit SHA shown by the prior BLOCKED run'
+        required: false
+        type: string
+  schedule:
+    - cron: '0 4 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '0 16 * * *'
+      timezone: 'Asia/Tokyo'
+    - cron: '0 22 * * *'
+      timezone: 'Asia/Tokyo'
+
+# Scheduled runs are intentionally on the default branch.
+# Autonomous changes are pushed to a dedicated branch and reviewed via PR.
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: autonomous-development-loop
+  cancel-in-progress: false
+
+jobs:
+  autonomous-development:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NIGHTLY_AUTOFIX: 'true'
+      AUTO_APPLY_PATCH: 'false'
+      AUTO_DEPLOY: 'false'
+      DEV_INSTRUCTION: 'コントロールタワーAIの完成度を1段階上げてください。既存のAIGateway、AgentRegistry、Supervisor、Routerの責務分離を維持し、ユーザー要求をより安定して適切なAgentへ振り分けるための最小限の改善を実装してください。特に優先順位、未解決要求の安全なfallback、channel-independentなrequest metadataの活用を検討してください。既存のLINE/Voice機能を壊さず、新規依存関係や外部APIを追加しないでください。変更は最小限、テスト可能にしてください。'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "nightly-autonomous-worker"
+          git config user.email "nightly-worker@users.noreply.github.com"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Record autonomous starting commit
+        run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Run common guarded distributed development runtime
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DEV_INSTRUCTION: ${{ env.DEV_INSTRUCTION }}
+          DEV_USER_ID: autonomous
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          AUTONOMOUS_SUMMARY_PATH: ${{ runner.temp }}/autonomous_run_summary.json
+          AUTONOMOUS_TASK_ID: scheduled-distributed-development
+        run: |
+          set -uo pipefail
+          STOP_FILE=/tmp/line-bot-autonomous-loop.stop
+          rm -f "$STOP_FILE"
+          # Check before launching any task; unknown remote state is a hard stop.
+          python -c 'from core.emergency_stop import get_status; import os; raise SystemExit(1 if get_status(os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"), os.environ["GITHUB_TOKEN"]) else 0)' || {
+            touch "$STOP_FILE"
+            echo "EMERGENCY_STOP=ACTIVE_OR_UNVERIFIABLE; refusing to start guarded runtime."
+            exit 1
+          }
+          (
+            while sleep 5; do
+              python -c 'from core.emergency_stop import get_status; import os; raise SystemExit(1 if get_status(os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"), os.environ["GITHUB_TOKEN"]) else 0)' || {
+                touch "$STOP_FILE"
+                echo "EMERGENCY_STOP=ACTIVE_OR_UNVERIFIABLE"
+                exit 0
+              }
+            done
+          ) &
+          POLLER_PID=$!
+          trap 'kill "$POLLER_PID" 2>/dev/null || true' EXIT
+          python scripts/run_guarded_runtime.py &
+          RUNTIME_PID=$!
+          while kill -0 "$RUNTIME_PID" 2>/dev/null; do
+            if [ -f "$STOP_FILE" ]; then
+              echo "Emergency STOP detected; terminating guarded runtime."
+              kill -TERM "$RUNTIME_PID" 2>/dev/null || true
+              break
+            fi
+            sleep 1
+          done
+          set +e
+          wait "$RUNTIME_PID"
+          runtime_rc=$?
+          set -e
+          if [ -f "$STOP_FILE" ]; then
+            echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+            echo "Emergency STOP active; refusing to publish."
+            exit 1
+          fi
+          if [ "$runtime_rc" -ne 0 ]; then exit "$runtime_rc"; fi
+          echo "AUTONOMOUS_SUMMARY_PATH=${RUNNER_TEMP}/autonomous_run_summary.json" >> "$GITHUB_ENV"
+
+      - name: Validate autonomous result and Safety Gate
+        if: success()
+        run: |
+          set -euo pipefail
+          PRODUCED_SHA="$(git rev-parse HEAD)"
+          TRACKED_CHANGED="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$PRODUCED_SHA")"
+          UNTRACKED_CHANGED="$(git status --porcelain=v1 --untracked-files=all | sed -n 's/^?? //p')"
+          CHANGED_FILES="$(printf '%s\n%s\n' "$TRACKED_CHANGED" "$UNTRACKED_CHANGED" | sed '/^$/d' | sort -u)"
+          FILE_COUNT="$(printf '%s\n' "$CHANGED_FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [ "$FILE_COUNT" -gt 4 ]; then
+            echo "Safety Gate blocked: too many changed files ($FILE_COUNT)."
+            echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+            echo "AUTONOMOUS_BLOCKED_FAILED_REASON=too_many_changed_files" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          while IFS= read -r path; do
+            [ -z "$path" ] && continue
+            case "$path" in
+              .github/*|.env*|config.py|secrets/*|security/*)
+                echo "Safety Gate blocked forbidden path: $path"
+                echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+                echo "AUTONOMOUS_BLOCKED_FAILED_REASON=forbidden_changed_file:$path" >> "$GITHUB_ENV"
+                exit 1 ;;
+              *.py|*.md|*.json|*.txt) ;;
+              *)
+                echo "Safety Gate blocked unsupported path: $path"
+                echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+                echo "AUTONOMOUS_BLOCKED_FAILED_REASON=unsupported_changed_file:$path" >> "$GITHUB_ENV"
+                exit 1 ;;
+            esac
+          done <<< "$CHANGED_FILES"
+          git diff --check "$AUTONOMOUS_START_SHA" "$PRODUCED_SHA"
+          SUMMARY_PATH="${AUTONOMOUS_SUMMARY_PATH:-${{ runner.temp }}/autonomous_run_summary.json}"
+          if [ ! -f "$SUMMARY_PATH" ]; then
+            echo "Safety Gate blocked: missing autonomous runtime summary."
+            echo "AUTONOMOUS_SAFETY_GATE_RESULT=BLOCKED" >> "$GITHUB_ENV"
+            echo "AUTONOMOUS_BLOCKED_FAILED_REASON=missing_runtime_summary" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          python - "$SUMMARY_PATH" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if summary.get("status") != "PASS":
+              raise SystemExit(
+                  f"Safety Gate blocked: runtime status={summary.get('status')!r}"
+              )
+          print(
+              f"runtime summary: {summary.get('base_sha')} -> "
+              f"{summary.get('produced_sha')}"
+          )
+          PY
+          echo "AUTONOMOUS_SAFETY_GATE_RESULT=PASS" >> "$GITHUB_ENV"
+      - name: Publish final autonomous branch and PR
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AUTONOMOUS_BRANCH: line-dev/${{ github.run_id }}
+        run: |
+          if [ "$(git rev-parse HEAD)" = "$AUTONOMOUS_START_SHA" ]; then
+            echo 'No autonomous changes to publish.'
+            echo "AUTONOMOUS_RESULT=no-changes" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if git ls-remote --exit-code origin "refs/heads/${AUTONOMOUS_BRANCH}" >/dev/null 2>&1; then
+            echo "Autonomous branch already exists: ${AUTONOMOUS_BRANCH}"
+            exit 1
+          fi
+          PR_URL="$(gh pr create \
+            --base main \
+            --head "${AUTONOMOUS_BRANCH}" \
+            --title "chore: autonomous development loop ${{ github.run_id }}" \
+            --body "Autonomous development result. Review, safety gates, and current-HEAD CI are required before merge. This workflow does not merge automatically.")"
+          echo "AUTONOMOUS_RESULT=pr-created" >> "$GITHUB_ENV"
+          echo "AUTONOMOUS_PR_URL=${PR_URL}" >> "$GITHUB_ENV"
+
+      - name: Record autonomous development result to Google Sheets
+        if: always()
+        continue-on-error: true
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+          AUTONOMOUS_DEV_LEDGER_RANGE: ${{ secrets.AUTONOMOUS_DEV_LEDGER_RANGE }}
+          GOOGLE_SHEETS_AUDIT_RANGE: ${{ secrets.GOOGLE_SHEETS_AUDIT_RANGE }}
+        run: |
+          set +e
+          export AUTONOMOUS_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
+          export AUTONOMOUS_TASK_ID="scheduled-distributed-development"
+          export AUTONOMOUS_VERIFICATION_RESULT="NOT_RUN"
+          export AUTONOMOUS_SAFETY_GATE_RESULT="${AUTONOMOUS_SAFETY_GATE_RESULT:-BLOCKED}"
+          export AUTONOMOUS_START_SHA="${AUTONOMOUS_START_SHA:-unknown}"
+          export AUTONOMOUS_PRODUCED_SHA="unknown"
+          export AUTONOMOUS_CHANGED_FILES="unknown"
+          export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
+
+          # Metadata collection is best-effort and must never prevent the audit call.
+          if git rev-parse HEAD >/dev/null 2>&1; then
+            export AUTONOMOUS_PRODUCED_SHA="$(git rev-parse HEAD)"
+          fi
+          if [ "${AUTONOMOUS_START_SHA}" != "unknown" ] && \
+             git rev-parse "${AUTONOMOUS_START_SHA}^{commit}" >/dev/null 2>&1 && \
+             git rev-parse "${AUTONOMOUS_PRODUCED_SHA}^{commit}" >/dev/null 2>&1; then
+            AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "${AUTONOMOUS_START_SHA}" "${AUTONOMOUS_PRODUCED_SHA}" 2>/dev/null | paste -sd, -)"
+            export AUTONOMOUS_CHANGED_FILES="${AUTONOMOUS_CHANGED_FILES:-none}"
+          fi
+
+          if [ -n "${AUTONOMOUS_SUMMARY_PATH:-}" ] && [ -f "${AUTONOMOUS_SUMMARY_PATH}" ]; then
+            AUTONOMOUS_TESTS_RESULT="$(python - "${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          try:
+              summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          except Exception:
+              print("NOT_RUN")
+          else:
+              print("PASS" if summary.get("status") == "PASS" else "FAIL")
+          PY
+            )"
+            export AUTONOMOUS_TESTS_RESULT
+            AUTONOMOUS_RUNTIME_DETAIL="$(python - "${AUTONOMOUS_SUMMARY_PATH}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          try:
+              summary = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+              print(str(summary.get("detail", "")).replace("\n", " ")[:1000])
+          except Exception:
+              print("")
+          PY
+            )"
+            export AUTONOMOUS_RUNTIME_DETAIL
+            if [ -z "${AUTONOMOUS_BLOCKED_FAILED_REASON:-}" ] && [ -n "${AUTONOMOUS_RUNTIME_DETAIL:-}" ]; then
+              export AUTONOMOUS_BLOCKED_FAILED_REASON="runtime:${AUTONOMOUS_RUNTIME_DETAIL}"
+            fi
+          fi
+
+          if [ "${AUTONOMOUS_RESULT:-}" = "pr-created" ] && [ "${AUTONOMOUS_SAFETY_GATE_RESULT}" = "PASS" ]; then
+            export AUTONOMOUS_NEXT_ACTION="review_pr"
+          elif [ "${AUTONOMOUS_RESULT:-}" = "no-changes" ]; then
+            export AUTONOMOUS_NEXT_ACTION="next_scheduled_run"
+          else
+            export AUTONOMOUS_BLOCKED_FAILED_REASON="${AUTONOMOUS_BLOCKED_FAILED_REASON:-workflow_or_autonomous_task_failed}"
+            export AUTONOMOUS_NEXT_ACTION="review_failure"
+          fi
+
+          python - <<'PY'
+          import os
+          from agents.sheets.autonomous_ledger import record_autonomous_run
+
+          try:
+              recorded = record_autonomous_run()
+              result = "ALREADY_RECORDED" if not recorded else "RECORDED"
+          except Exception as exc:
+              result = f"FAILED:{type(exc).__name__}"
+              print(f"Google Sheets logging failed: {exc}", flush=True)
+              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+                  fh.write(f"AUTONOMOUS_LOGGING_RESULT={result}\n")
+              raise
+          else:
+              print(f"Google Sheets logging: {result}", flush=True)
+              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+                  fh.write(f"AUTONOMOUS_LOGGING_RESULT={result}\n")
+          PY
+
+          # Sheets is audit/observability only. Its outage must not change the Safety Gate.
+
+      - name: Notify Slack and LINE
+        if: always()
+        continue-on-error: true
+        env:
+          CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          LINE_NOTIFY_USER_ID: ${{ secrets.LINE_NOTIFY_USER_ID }}
+          RUN_STATUS: ${{ job.status }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set +e
+          MESSAGE="🤖 自律開発ループ完了\n結果: ${RUN_STATUS}\n実行: ${RUN_URL}"
+          if [ -n "${AUTONOMOUS_PR_URL:-}" ]; then
+            MESSAGE="${MESSAGE}\nPR: ${AUTONOMOUS_PR_URL}"
+          elif [ "${AUTONOMOUS_RESULT:-}" = "no-changes" ]; then
+            MESSAGE="${MESSAGE}\n変更なし"
+          fi
+          MESSAGE="${MESSAGE}\nSheets履歴: ${AUTONOMOUS_LOGGING_RESULT:-UNKNOWN}"
+          export MESSAGE
+
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          def send_slack():
+              webhook = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
+              if not webhook:
+                  print("SLACK_NOTIFICATION=SKIPPED (webhook not configured)")
+                  return
+              request = urllib.request.Request(
+                  webhook,
+                  data=json.dumps({"text": os.environ["MESSAGE"]}).encode("utf-8"),
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=15) as response:
+                      print(f"SLACK_NOTIFICATION=HTTP_{response.status}")
+              except urllib.error.HTTPError as exc:
+                  print(f"SLACK_NOTIFICATION=HTTP_{exc.code}")
+              except Exception as exc:
+                  print(f"SLACK_NOTIFICATION=ERROR_{type(exc).__name__}")
+
+          def send_line():
+              token = os.environ.get("CHANNEL_ACCESS_TOKEN", "").strip()
+              user_id = os.environ.get("LINE_NOTIFY_USER_ID", "").strip()
+              if not token or not user_id:
+                  print("LINE_NOTIFICATION=SKIPPED (credentials not configured)")
+                  return
+              payload = {
+                  "to": user_id,
+                  "messages": [{"type": "text", "text": os.environ["MESSAGE"]}],
+              }
+              request = urllib.request.Request(
+                  "https://api.line.me/v2/bot/message/push",
+                  data=json.dumps(payload).encode("utf-8"),
+                  headers={
+                      "Authorization": "Bearer " + token,
+                      "Content-Type": "application/json",
+                  },
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=15) as response:
+                      print(f"LINE_NOTIFICATION=HTTP_{response.status}")
+              except urllib.error.HTTPError as exc:
+                  print(f"LINE_NOTIFICATION=HTTP_{exc.code}")
+              except Exception as exc:
+                  print(f"LINE_NOTIFICATION=ERROR_{type(exc).__name__}")
+
+          send_slack()
+          send_line()
+          PY
+
+      - name: Upload worker summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-worker-summary-${{ github.run_id }}
+          path: ${{ runner.temp }}/autonomous_run_summary.json
+          if-no-files-found: ignore
+
+# Integration note: the live worker Safety Gate also re-checks the actual worktree before commit.

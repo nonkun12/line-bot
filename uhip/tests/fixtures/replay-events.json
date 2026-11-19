@@ -1,0 +1,44 @@
+[
+  {
+    "case": "valid_thumb_up",
+    "expected": "accept",
+    "event": {
+      "schema_version": "0.3",
+      "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f12",
+      "session_id": "session-1",
+      "device_id": "device-1",
+      "seq": 1,
+      "t_mono_ns": 100,
+      "source": {"device_kind":"mac","sensor":"camera","engine":"mediapipe","engine_version":"0.1","model_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+      "modality": "hand",
+      "payload": {"gesture":"thumb_up","phase":"end","value":null,"hand":{"label":"right","track_id":3,"mirrored":true},"confidence":{"raw":0.99,"calibrated":0.97},"stability":{"frames":8,"duration_ms":160}},
+      "gate": {"recognition_passed":true,"rule_version":"phase0-1"},
+      "ttl_ms": 500
+    }
+  },
+  {
+    "case": "low_confidence",
+    "expected": "reject",
+    "event": {"event_id":"0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f13","seq":2,"confidence":{"calibrated":0.20}}
+  },
+  {
+    "case": "multiple_hands",
+    "expected": "reject",
+    "event": {"event_id":"0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f14","seq":3,"hand_count":2}
+  },
+  {
+    "case": "multiple_people",
+    "expected": "reject",
+    "event": {"event_id":"0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f15","seq":4,"person_count":2}
+  },
+  {
+    "case": "out_of_frame",
+    "expected": "reject",
+    "event": {"event_id":"0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f16","seq":5,"out_of_frame":true}
+  },
+  {
+    "case": "expired_ttl",
+    "expected": "reject",
+    "event": {"event_id":"0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f17","seq":6,"ttl_ms":0}
+  }
+]

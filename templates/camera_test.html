@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <title>Camera Test | LINE AI Secretary</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin:0; padding:20px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#111827; color:#f9fafb; }
+    main { max-width:760px; margin:auto; }
+    h1 { font-size:1.5rem; margin:0 0 8px; }
+    .note { color:#d1d5db; font-size:.95rem; }
+    .panel { margin-top:18px; padding:16px; border:1px solid #374151; border-radius:14px; background:#1f2937; }
+    video { width:100%; max-height:60vh; background:#000; border-radius:12px; display:block; object-fit:cover; }
+    .controls { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
+    button, select { font:inherit; padding:10px 12px; border-radius:10px; border:1px solid #4b5563; background:#111827; color:#fff; }
+    button:disabled, select:disabled { opacity:.5; }
+    #status { margin:0; font-weight:600; }
+    #checks { margin:12px 0 0; padding-left:20px; }
+    .ok { color:#86efac; } .warn { color:#fde68a; } .error { color:#fca5a5; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>📷 カメラ実機テスト</h1>
+  <p class="note">映像取得だけを確認します。映像・画像はサーバーへ送信・保存しません。</p>
+
+  <section class="panel">
+    <video id="preview" autoplay playsinline muted></video>
+    <div class="controls">
+      <button id="start" type="button">カメラ開始</button>
+      <button id="stop" type="button" disabled>カメラ停止</button>
+      <select id="camera" aria-label="カメラ選択" disabled>
+        <option value="">カメラを選択</option>
+      </select>
+    </div>
+  </section>
+
+  <section class="panel">
+    <p id="status">準備完了。カメラ開始を押してください。</p>
+    <ul id="checks">
+      <li id="secure">安全な接続: 確認中</li>
+      <li id="api">カメラAPI: 確認中</li>
+      <li id="stream">映像ストリーム: 未確認</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+(() => {
+  const video = document.getElementById("preview");
+  const start = document.getElementById("start");
+  const stop = document.getElementById("stop");
+  const camera = document.getElementById("camera");
+  const status = document.getElementById("status");
+  const secure = document.getElementById("secure");
+  const api = document.getElementById("api");
+  const stream = document.getElementById("stream");
+  let currentStream = null;
+
+  secure.textContent = "安全な接続: " + (window.isSecureContext ? "OK" : "NG（HTTPSが必要）");
+  secure.className = window.isSecureContext ? "ok" : "error";
+  const hasCameraApi = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  api.textContent = "カメラAPI: " + (hasCameraApi ? "利用可能" : "利用不可");
+  api.className = hasCameraApi ? "ok" : "error";
+
+  function stopCamera() {
+    if (currentStream) {
+      currentStream.getTracks().forEach(track => track.stop());
+      currentStream = null;
+    }
+    video.srcObject = null;
+    stop.disabled = true;
+    start.disabled = false;
+    camera.disabled = true;
+    stream.textContent = "映像ストリーム: 停止";
+    stream.className = "warn";
+  }
+
+  async function listCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter(device => device.kind === "videoinput");
+    camera.innerHTML = '<option value="">カメラを選択</option>';
+    cameras.forEach((device, index) => {
+      const option = document.createElement("option");
+      option.value = device.deviceId;
+      option.textContent = device.label || ("カメラ " + (index + 1));
+      camera.appendChild(option);
+    });
+    camera.disabled = cameras.length === 0;
+  }
+
+  async function startCamera() {
+    if (!hasCameraApi || !window.isSecureContext) {
+      status.textContent = "このブラウザ/接続ではカメラを開始できません。HTTPSとカメラ対応ブラウザを確認してください。";
+      status.className = "error";
+      return;
+    }
+    stopCamera();
+    try {
+      const constraints = camera.value
+        ? { video: { deviceId: { exact: camera.value } }, audio: false }
+        : { video: { facingMode: { ideal: "environment" } }, audio: false };
+      currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = currentStream;
+      await video.play();
+      await listCameras();
+      stop.disabled = false;
+      start.disabled = false;
+      stream.textContent = "映像ストリーム: OK";
+      stream.className = "ok";
+      status.textContent = "カメラ映像を取得できました。手を画面に映して確認できます。";
+      status.className = "ok";
+    } catch (error) {
+      stopCamera();
+      status.textContent = "カメラ開始失敗: " + (error.name || "UnknownError");
+      status.className = "error";
+    }
+  }
+
+  start.addEventListener("click", startCamera);
+  stop.addEventListener("click", () => {
+    stopCamera();
+    status.textContent = "カメラを停止しました。";
+    status.className = "";
+  });
+  camera.addEventListener("change", startCamera);
+  window.addEventListener("pagehide", stopCamera);
+})();
+</script>
+</body>
+</html>

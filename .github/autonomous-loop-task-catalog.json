@@ -1,0 +1,511 @@
+{
+  "version": 1,
+  "max_additions_per_run": 4,
+  "tasks": [
+    {
+      "id": "ai-speaker-empty-transcript-no-brain-call",
+      "instruction": "tests/test_ai_speaker.py のみに新しい固有名の回帰テストを1件追加してください。空白だけの文字起こしを渡すと AISpeaker.handle_transcript が ValueError('speech transcript must not be empty') を返し、FakeBrain.requests が空のままであることを確認してください。既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_ai_speaker.py"
+      ]
+    },
+    {
+      "id": "recovery-ai-state-isolation",
+      "instruction": "tests/test_recovery_ai.py のみに、新しい固有名の回帰テストを1件追加してください。RecoveryStore に異なる task_id の timeout 失敗を同じ state file へ記録し、fingerprint と failure state が task_id ごとに分離され、両方の初回判断が REPAIR_ONCE になることを検証してください。既存テストを変更せず、外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_recovery_ai.py"
+      ]
+    },
+    {
+      "id": "router-regression-general-request-metadata",
+      "instruction": "tests/test_management_router.py に、曖昧な一般依頼を GENERAL に振り分けたとき、routing=deterministic・matched_specialists=[]・routing_priority=null を保ち、channel='line' と metadata.source を失わない回帰テストを1件追加してください。新しい固有のテスト名を使い、既存テストと重複させず、テストファイルのみ変更してください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_management_router.py"
+      ]
+    },
+    {
+      "id": "recovery-ai-loop-adapter-durable-state-readback",
+      "instruction": "tests/test_recovery_ai_loop_adapter.py のみに、新しい固有名の回帰テストを1件追加してください。ダミーの task_id と失敗結果 (status=FAIL, exit_code=1, failure_reason=task_timeout) を record_loop_outcome() に渡し、決定が REPAIR_ONCE であること、同じ state path を使った新しい RecoveryStore インスタンスで状態を読み直せること、consecutive_failures=1・last_category=timeout・same_fingerprint_attempts=1 が保存されていることを確認してください。生の例外文やシークレットは使わず、既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_recovery_ai_loop_adapter.py"
+      ]
+    },
+    {
+      "id": "english-core-image-rotation-user-isolation",
+      "instruction": "tests/test_english_learning.py のみに、新しい固有名の回帰テストを1件追加してください。テンポラリSQLite DBを使い、同じユーザーの「単語」2回目は1回目の3語と重複しないこと、別ユーザーの初回履歴は独立しており最初のユーザーの履歴に影響されないことを検証してください。外部API、実データベースへの書き込み、既存テスト変更は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_english_learning.py"
+      ]
+    },
+    {
+      "id": "control-tower-recovery-evidence-identity-mismatch",
+      "instruction": "tests/test_control_tower_orchestrator.py のみに、新しい固有名の回帰テストを1件追加してください。成功結果の recovery_ai.evidence の task_id または base_sha または produced_sha がトップレベルの実行証跡と一致しない場合、coordinate_outcome() が allow_continue=false と reason_code=recovery_run_evidence_mismatch を返すことを、パラメータ化して検証してください。既存テストを変更せず、外部通信・シークレット・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_orchestrator.py"
+      ]
+    },
+    {
+      "id": "control-tower-run-identity-invalid-sha-regression",
+      "instruction": "tests/test_control_tower_orchestrator.py のみに、新しい固有名の回帰テストを1件追加してください。status=PASS の結果に不正な base_sha または produced_sha（短いSHA、大文字SHA、非文字列）がある場合、coordinate_outcome() が fail-closed で reason_code=run_identity_invalid と allow_continue=false を返すことをパラメータ化して検証してください。既存テストを変更せず、外部通信・シークレット・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_orchestrator.py"
+      ]
+    },
+    {
+      "id": "control-tower-run-identity-invalid-sha-regression-v2",
+      "instruction": "tests/test_control_tower_orchestrator.py のみに、新しい固有名の回帰テストを1件追加してください。status=PASS の verified_success() を使い、base_sha と produced_sha の不正値をパラメータ化して fail-closed を検証してください。現行の検証順序では、base_sha が不正な場合は REA の同一SHA検証が先に働くため reason_code=rea_evidence_missing_or_invalid、base_sha が正常で produced_sha が短いSHAまたは大文字SHAの場合は reason_code=run_identity_invalid を期待してください。すべて allow_continue=false を確認してください。既存テストの変更禁止。外部通信・シークレット・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_orchestrator.py"
+      ]
+    },
+    {
+      "id": "english-core-image-rotation-user-isolation-v2",
+      "instruction": "tests/test_english_learning.py のみに、新しい固有名の回帰テストを1件追加してください。テンポラリSQLite DBを使い、user-A の初回「単語」3語、user-B の初回3語、user-A の2回目3語、user-B の2回目3語を取得してください。各ユーザーの初回は履歴が独立しているため同じ3語になってよい（むしろ両ユーザーの初回セットが等しいことを確認）。各ユーザー内では2回目が自身の初回3語と重複せず、両ユーザーの2回目も等しいことを確認してください。別ユーザー間の初回セットを互いにdisjointとする誤った条件は禁止。_request が user_id を固定する場合は AgentRequest を直接構築してユーザーIDを指定してください。外部API・実DB書き込み・既存テスト変更は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_english_learning.py"
+      ]
+    },
+    {
+      "id": "distributed-loop-queue-progress-empty-queue-regression",
+      "instruction": "tests/test_distributed_loop_queue_progress.py のみに、新しい固有名の回帰テストを1件追加してください。空の runtime queue（tasks=[]）、completed が空ではない有効な durable state、status=NOT_RUN の結果行を与え、calculate_progress が queue_total=0・queue_completed=0 を返すことを確認してください。これはキュー空の正当な NOT_RUN 証跡であり、状態ファイルの欠落・破損を許容する変更は禁止です。既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
+    },
+    {
+      "id": "distributed-loop-queue-progress-empty-queue-regression-v2",
+      "instruction": "tests/test_distributed_loop_queue_progress.py のみに、新しい固有名の回帰テストを1件追加してください。空の runtime queue（tasks=[]）、completed が空ではない有効な durable state、status=NOT_RUN の結果行を与え、calculate_progress が queue_total=0・queue_completed=0 を返すことを確認してください。これはキュー空の正当な NOT_RUN 証跡であり、状態ファイルの欠落・破損を許容する変更は禁止です。既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
+    },
+    {
+      "id": "refill-all-catalog-candidates-ineligible-regression",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queue に既存タスクがあり、その task_id は completed に含まれ、catalog の候補も completed・held・resume_requires_review のいずれかで全件不適格なケースを作ってください。build_queue() が不適格タスクを1件も出力せず total=0・added=0 を返し、該当する skipped_completed_ids / skipped_held_ids / skipped_review_ids を正しく報告することを確認してください。Recovery AI state は有効な schema_version=1 にし、欠落・破損を許容するテストにしないでください。既存テスト変更禁止。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "english-core-image-unknown-word-safe-fallback",
+      "instruction": "tests/test_english_learning.py のみに、新しい固有名の回帰テストを1件追加してください。ローカル辞書に存在しない架空語 'florpt' を「コアイメージ」コマンドで要求した場合、未確認の意味・語源・語根を捏造せず、確かな無料ローカル辞書説明がない旨を返し、一般的な雑談応答（例: vibing / brainstorm / pixels など）へフォールスルーしないことを確認してください。既存の great・improve・schedule・recommend のテストと重複させず、新しい固有名のテスト関数を使ってください。既存テスト変更禁止。外部API・実DB書き込み・シークレット参照は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_english_learning.py"
+      ]
+    },
+    {
+      "id": "self-improvement-history-malformed-jsonl-regression",
+      "instruction": "tests/test_self_improvement_state.py のみに、新しい固有名の回帰テストを1件追加してください。JSONLの履歴に有効行・不正JSON行・有効行が混在しても、不正行だけをスキップし、有効行の順序を維持して read_jsonl() が返すことを確認してください。既存テストと重複する場合は NO_CHANGE。テストファイルのみ変更。外部通信、シークレット、OS操作、マージ、デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_self_improvement_state.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-malformed-completed-state",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。completed state に文字列以外の値が混在する場合、build_queue() が ValueError で fail-closed になり、runtime queue 出力ファイルを作成しないことを確認してください。Recovery AI state は有効な schema_version=1 とし、既存テスト変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-malformed-recovery-task-entry",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。Recovery AI state の schema_version は有効な整数 1 とし、tasks の要素値がオブジェクトではなく文字列の場合、build_queue() が ValueError(\"invalid Recovery AI task state\") で fail-closed になり、runtime queue 出力ファイルを作成しないことを検証してください。既存テストを変更せず、変更は指定テストファイル1つだけ。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-nonobject-recovery-task-map",
+      "instruction": "tests/test_autonomous_task_refill.py のみに新しい固有名の回帰テストを1件追加してください。Recovery AI state の schema_version は整数1で有効だが、tasks が辞書ではなくリストの場合に build_queue() が ValueError('Recovery AI state is invalid') で fail-closed になり、runtime queue を作成しないことを検証。既存テスト変更禁止、外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-boolean-catalog-addition-cap",
+      "instruction": "tests/test_autonomous_task_refill.py のみに新しい固有名の回帰テストを1件追加してください。catalog の max_additions_per_run が bool True の場合、整数との等価性で受理せず ValueError('catalog cap must be between 1 and 4') で fail-closed になり、runtime queue を作成しないことを検証。既存テスト変更禁止、外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-non-ascii-task-id",
+      "instruction": "tests/test_autonomous_task_refill.py のみに新しい固有名の回帰テストを1件追加してください。カタログ候補IDに日本語や非ASCII文字を含む値を指定した場合、allowlist 検証で ValueError('invalid task ID') となり、runtime queue を作成しないことを検証。既存テスト変更禁止、外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "loop-refill-empty-catalog-next-safe-test-20261023",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、カタログに未完了かつHOLD/再レビュー対象外の有効なテスト専用タスクがある場合に補充される回帰テストを1件追加してください。既存テストと重複しないテスト名を使い、build_queueの実際の契約に沿って検証してください。変更は指定ファイル1つだけ。外部通信・秘密情報・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-preserves-catalog-order-within-addition-cap",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。catalog に task-zeta・task-alpha・task-middle の順で未完了候補がある場合、追加上限2件を守りつつ runtime queue の追加順は catalog 順を維持し、診断用 eligible_catalog_ids はソートされた一覧を返すことを確認してください。既存テスト変更禁止。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-rejects-boolean-runtime-limit",
+      "instruction": "Add a focused regression test in tests/test_autonomous_task_proposals.py proving build_proposals rejects a boolean max_tasks_per_run value (true/false) with ValueError instead of treating bool as an integer. Reuse existing test helpers where practical. Do not change production code. Run the focused test and report its result.",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
+    },
+    {
+      "id": "distributed-loop-dispatch-duplicate-active-run-guard-regression",
+      "instruction": "tests/test_distributed_loop_trigger.py のみに、新しい固有名の回帰テストを1件追加してください。許可済みユーザー・テスト用GitHubトークンを設定し、GitHub Actions の workflow runs 取得が status=in_progress（または queued）の既存実行を1件返すようにモックしてください。request_distributed_loop() が「すでに実行中」を返し、dispatch の POST を呼ばないことを確認してください。実ネットワークを使わず、既存テストと重複させず、このテストファイルだけ変更してください。外部通信、シークレット参照、OS操作、マージ、デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_trigger.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-resume-review-exclusion-regression",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい固有名の回帰テストを1件追加してください。autonomous-task-approved ラベル付きIssueのID・instruction・allowed_pathsが登録済みカタログと完全一致していても、Recovery AI state で同じ task_id の held=false・resume_requires_review=true の場合は approved_count=0 でruntime queueに入らないことを確認してください。既存の completed/held テストを変更せず、durable stateのレビュー要求も変更しないでください。外部通信、シークレット参照、OS操作、マージ、デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
+    },
+    {
+      "id": "queue-progress-ignores-unrelated-pass-results-regression",
+      "instruction": "tests/test_distributed_loop_queue_progress.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queueに task-in-queue のみがあり、durable completed が空で、results JSONL に task-outside-queue の status=PASS と task-in-queue とは異なるNO_CHANGE行がある場合、キュー進捗は queue_total=1・queue_completed=0 のままであることを確認してください。queue外のPASS/NO_CHANGE証跡が進捗を水増ししないことが目的です。既存テスト変更禁止。外部通信、シークレット参照、OS操作、マージ、デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-conflicting-catalog-definitions-regression",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい固有名の回帰テストを1件追加してください。登録済みカタログ内に同じtask IDで異なるinstructionまたはallowed_pathsを持つ定義が重複した場合、build_proposals() が ValueError('conflicting registered task definitions') で fail-closed になり、runtime queueが変更されないことを確認してください。既存テストを変更せず、このテストファイルだけ変更してください。外部通信、シークレット参照、OS操作、マージ、デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
+    },
+    {
+      "id": "recovery-rag-context-never-echoes-raw-instruction",
+      "instruction": "tests/test_recovery_rag.py のみに、新しい固有名の回帰テストを1件追加してください。テンポラリSQLite DBに allowlist 済みの過去結果を記録し、build_task_context() の instruction に一意なマーカー 'RAW-INSTRUCTION-MUST-NOT-LEAK-7f2c' を含めた場合、返却された履歴コンテキストにそのマーカーや生の instruction 全文が含まれず、コンテキスト長が1600文字以下であることを確認してください。既存テストを変更せず、外部通信・実DB書き込み・シークレット参照・OS操作は禁止。変更は指定されたテストファイル1つだけ。マージ・デプロイは禁止。 既存テストや既存fixtureは変更しないでください。fingerprintを新規作成する場合はSHA-256の小文字16進64文字（[0-9a-f]{64}）のみを使い、g-zなどの無効文字を含めないこと。変更後は対象テストを単独実行し、続けて関連テスト全体を実行し、失敗した場合は修復関数の例外も含めて原因を報告し、無理に再試行・成功扱いしないこと。",
+      "allowed_paths": [
+        "tests/test_recovery_rag.py"
+      ]
+    },
+    {
+      "id": "continuous-loop-not-run-does-not-continue-regression",
+      "instruction": "tests/test_continuous_distributed_loop_workflow.py のみに、新しい固有名の回帰テストを1件追加してください。runtime result が status=NOT_RUN・exit_code=78・failure_reason=queue_empty の場合、continuation gate が CONTINUATION_STOP=task_status_not_successful として停止し、continue=true を出力しないことを検証してください。既存テストやworkflow本体を変更せず、テストファイル1つだけ変更してください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_continuous_distributed_loop_workflow.py"
+      ]
+    },
+    {
+      "id": "queue-progress-excludes-not-run-results-regression",
+      "instruction": "tests/test_distributed_loop_queue_progress.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queue に task-1 があり、durable completed state は空で、results JSONL に task_id=task-1/status=NOT_RUN/failure_reason=queue_empty の行がある場合、calculate_progress() が queue_total=1, queue_completed=0 を返すことを検証してください。既存テストを変更せず、テストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
+    },
+    {
+      "id": "queue-progress-excludes-not-run-results-regression-v2",
+      "instruction": "tests/test_distributed_loop_queue_progress.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queue に task-1 があり、durable completed state は空で、results JSONL に task_id=task-1/status=NOT_RUN/failure_reason=queue_empty の行がある場合、calculate_progress() が queue_total=1, queue_completed=0 を返すことを検証してください。既存テストを変更せず、テストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
+    },
+    {
+      "id": "control-tower-decision-malformed-evidence-sha",
+      "instruction": "tests/test_control_tower_decision.py のみに、新しい固有名の回帰テストを1件追加してください。ControlTowerDecisionRecord の evidence_sha に短いSHA・40文字の大文字SHA・非文字列を与えると ValueError で拒否されることをパラメータ化して検証してください。通常の OBSERVE_ONLY / PASS の他のフィールドは有効値を使い、既存テストを変更せずテストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_decision.py"
+      ]
+    },
+    {
+      "id": "control-tower-decision-priority-type-boundaries",
+      "instruction": "tests/test_control_tower_decision.py のみに、新しい固有名の回帰テストを1件追加してください。ControlTowerDecisionRecord の priority が bool・float・負数・100超の場合に ValueError となり、整数0と100は受理されることを検証してください。無効値ごとに pytest.raises(ValueError) で例外を明示的に捕捉し、無効値をそのまま生成関数へ渡して未捕捉例外でテストを失敗させないでください。整数0と100は例外なしで構築できることを確認してください。新しい固有名のテスト関数を使い、既存テストを変更せずテストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_decision.py"
+      ]
+    },
+    {
+      "id": "task-refill-feedback-history-skips-malformed-lines",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。履歴JSONLに不正JSON行・登録済み候補タスクの有効な failure 行・未知タスクIDの failure 行を混在させ、build_queue() が不正行と未知IDを無視し、登録済み候補だけに failure feedback score 3 を付けることを検証してください。テスト用 catalog の max_additions_per_run は 3 に明示設定し、追加上限で正当な候補が落ちないようにしてください。追加ID・feedback score・signal countsを検証し、未知IDは追加IDやscoreに現れないことも確認してください。既存テスト変更禁止。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-fails-closed-on-malformed-issue-record",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい固有名の回帰テストを1件追加してください。issues JSON配列に null または文字列の issue record が含まれる場合、build_proposals() が ValueError('issue record is invalid') で fail-closed になり、queue JSONが変更されないことを検証してください。既存テストを変更せずテストファイルのみ変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
+    },
+    {
+      "id": "refill-exhaustion-input-immutability-20261025",
+      "instruction": "Add one focused regression test to tests/test_autonomous_task_refill.py proving that build_queue does not mutate the source queue JSON or completed-state JSON when the catalog is fully exhausted. Use a temporary directory and exact before/after text comparisons. Keep the test deterministic and self-contained. Modify only this test file; do not change production code.",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "distributed-loop-progress-invalid-task-id-20261025",
+      "instruction": "tests/test_distributed_loop_queue_progress.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queue の task entry が id 欠落・空文字・文字列以外の場合、calculate_progress() が ValueError('invalid runtime queue task ID') で fail-closed になることを一つの parameterized test で検証してください。既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
+    },
+    {
+      "id": "distributed-loop-progress-ignores-foreign-results-20261025",
+      "instruction": "tests/test_distributed_loop_queue_progress.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queue に task-1 だけがある状態で、run results に queue に存在しない task-foreign の PASS と NO_CHANGE を記録しても、calculate_progress() が queue_completed=0 を返すことを検証してください。state は completed=[] とし、tmp_path でファイルを作成してください。既存テストを変更せず、変更は指定されたテストファイル1つだけにしてください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-approved-queue-capacity-diagnostic-20261025",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに新しい固有名の回帰テストを1件追加してください。queue の max_tasks_per_run と既存 tasks により queue_capacity=0 で、登録済みカタログと完全一致する autonomous-task-approved Issue が存在する場合、build_proposals() がその Issue を「信頼できる候補なし」と誤診断しないことを確認してください。現行契約を確認して、妥当な status/reason/diagnostics を明示的に検証し、既存テストを変更せずこのファイルだけ変更してください。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
+    },
+    {
+      "id": "continuous-loop-empty-queue-report-reason-regression-20261025",
+      "instruction": "tests/test_continuous_distributed_loop_workflow.py のみに新しい固有名の回帰テストを1件追加してください。queue_empty の実行結果が workflow process success と混同されず、最終レポートで status=NOT_RUN・task_count=0 として記録されることを検証してください。既存テストと重複しないテスト名を使い、現行関数・fixtureの契約に沿ってください。変更は指定テストファイル1つだけ。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_continuous_distributed_loop_workflow.py"
+      ]
+    },
+    {
+      "id": "recovery-rag-invalid-history-record-sanitization-regression-20261025",
+      "instruction": "tests/test_recovery_rag.py のみに新しい固有名の回帰テストを1件追加してください。テンポラリSQLite DBを使い、履歴の不正な型・不正な fingerprint を持つレコードが検索コンテキストに混入せず、build_task_context() が秘密や生のinstructionを返さないことを検証してください。現行スキーマと既存fixtureに合わせ、既存テストを変更せずこのファイルだけ変更してください。外部通信・実DB書き込み・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_recovery_rag.py"
+      ]
+    },
+    {
+      "id": "control-tower-blocks-missing-task-result-evidence-20261025",
+      "instruction": "tests/test_control_tower_orchestrator.py のみに新しい固有名の回帰テストを1件追加してください。実行結果が成功扱いでも、task_id が欠落または空でトップレベル実行証跡と照合できない場合、coordinate_outcome() が fail-closed で allow_continue=false を返すことを検証してください。現行の reason_code 契約を読み、既存テストと重複させず、変更はこのテストファイルだけにしてください。外部通信・シークレット・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower_orchestrator.py"
+      ]
+    },
+    {
+      "id": "safe-continuation-depth-four-regression-20261026",
+      "instruction": "tests/test_continuous_distributed_loop_workflow.py のみに、新しい固有名の回帰テストを1件追加してください。`.github/workflows/continuous-distributed-loop.yml` の continuation depth guard について、depth=0・1・2 は次の depth 1・2・3 を許可し、depth=3 は停止し、depth 欠落・非数字・負数は fail-closed になることを検証してください。現行の起動深度0を拒否する誤った条件は追加しないでください。既存テストを変更せず、外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_continuous_distributed_loop_workflow.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-duplicate-catalog-task-ids-20261026",
+      "instruction": "tests/test_autonomous_task_refill.py のみに新しい固有名の回帰テストを1件追加してください。カタログに同じ task ID の定義を2件含めた場合、build_queue() が ValueError('duplicate catalog task ID') で fail-closed になり、runtime queue 出力ファイルを作成しないことを確認してください。既存テスト変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-deduplicates-approved-task-ids-20261027",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい固有名の回帰テストを1件追加してください。同じ登録済み task ID・instruction・allowed_paths を持つ autonomous-task-approved Issue が2件ある場合、build_proposals() が runtime queue に1件だけ追加し、approved_count=1・approved_task_ids がそのID1件のみ・queue内のtask IDが重複しないことを検証してください。既存テストを変更せず、変更は指定ファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-non-list-runtime-queue-tasks-20261028",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。runtime queue JSON の tasks が list ではなく null・文字列・オブジェクトの場合、build_queue() が ValueError(\"queue and catalog tasks must be lists\") で fail-closed になり、出力ファイルを作成しないことをパラメータ化して検証してください。既存テストを変更せず、このテストファイルだけ変更してください。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-non-list-catalog-tasks-20261028",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。catalog JSON の tasks が list ではなく null・文字列・オブジェクトの場合、build_queue() が ValueError(\"queue and catalog tasks must be lists\") で fail-closed になり、出力ファイルを作成しないことをパラメータ化して検証してください。既存テストを変更せず、このテストファイルだけ変更してください。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-empty-task-instruction-20261028",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。catalog task の instruction が空文字または空白だけの場合、build_queue() が ValueError(\"invalid task instruction\") で fail-closed になり、runtime queue 出力ファイルを作成しないことをパラメータ化して検証してください。既存テストを変更せず、このテストファイルだけ変更してください。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "refill-rejects-overlong-task-instruction-20261028",
+      "instruction": "tests/test_autonomous_task_refill.py のみに、新しい固有名の回帰テストを1件追加してください。catalog task の instruction が5001文字の場合、build_queue() が ValueError(\"invalid task instruction\") で fail-closed になり、runtime queue 出力ファイルを作成しないことを確認してください。既存テストを変更せず、このテストファイルだけ変更してください。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ]
+    },
+    {
+      "id": "rea-scanner-blocks-untracked-file-evidence-20261028",
+      "instruction": "`tests/test_rea_readonly_scanner.py` に回帰テストを1件追加し、Git管理下のファイルを変更せず untracked file だけが存在する作業ツリーでも `scan_repository` が SHA-bound evidence 用のスキャンを `ScanBlocked` で拒否することを確認してください。既存の dirty worktree テストと重複しないよう、変更ではなく untracked file のケースに限定してください。実装コード・workflow・状態ファイルは変更禁止。実際の外部通信、秘密情報、OS操作は使わず、このテストファイルだけを変更してください。失敗した場合は実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_rea_readonly_scanner.py"
+      ]
+    },
+    {
+      "id": "creator-critic-zero-rounds-safe-behavior-20261028",
+      "instruction": "`tests/test_creator_critic_runtime_evidence.py` に回帰テストを1件追加し、`run_discussion` に `rounds=0` を渡すと `ValueError(\"rounds must be between 1 and 3\")` が送出され、`generate` が一度も呼ばれないことを `pytest.raises` で確認してください。既存の通常1ラウンドの計測テストとは異なる境界値ケースにしてください。実装コード・workflow・状態ファイルは変更禁止。外部APIを呼ばず、テストファイルだけを変更してください。失敗した場合は実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_creator_critic_runtime_evidence.py"
+      ]
+    },
+    {
+      "id": "control-tower-recovery-evidence-nonce-type-boundary-20261028",
+      "instruction": "`tests/test_control_tower_orchestrator.py` に回帰テストを1件追加し、Recovery AI の `evidence.run_nonce` が真偽値や数値など文字列以外の場合に、Control Tower が継続を許可せず fail-closed になることを確認してください。既存の nonce 不一致テストとは異なり、型境界に限定してください。実装コード・workflow・状態ファイルは変更禁止。このテストファイルだけを変更し、失敗時は実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_control_tower_orchestrator.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-rejects-malformed-label-entry-20261028",
+      "instruction": "`tests/test_autonomous_task_proposals.py` に回帰テストを1件追加し、GitHub issue の `labels` 配列に dict 以外の要素が混在してもそれらが無視され、承認ラベル付き dict が存在しない場合は未承認タスクが実行キューに入らないことを確認してください。既存の不正 issue record テストと重複しないよう、issue全体ではなく labels 要素の境界ケースに限定してください。実装コード・workflow・状態ファイルは変更禁止。このテストファイルだけを変更し、失敗時は実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
+    },
+    {
+      "id": "rea-scanner-blocks-untracked-file-evidence-v2-20261028",
+      "instruction": "`tests/test_rea_readonly_scanner.py` だけを変更して、untracked file がある場合に `scan_repository` が `ScanBlocked` を送出する回帰テストを1件追加してください。必ず既存の次の関数ブロック全体（4行）を old アンカーとして正確に使い、その直後に新しいテスト関数を追加してください。old アンカーは次のとおりです:\n    def test_dirty_worktree_blocks_sha_bound_evidence(self) -> None:\n        self._write(\"scripts/good.py\", \"VALUE = 2\\n\")\n        with self.assertRaises(ScanBlocked):\n            scan_repository(self.root)\n新しい関数名は `test_untracked_file_blocks_sha_bound_evidence` とし、本文は次の4行としてください:\n    def test_untracked_file_blocks_sha_bound_evidence(self) -> None:\n        self._write(\"tests/untracked.txt\", \"UNTRACKED = 1\\n\")\n        with self.assertRaises(ScanBlocked):\n            scan_repository(self.root)\n追加位置はクラス `ReadonlyScannerTests` 内で、既存のメソッドの後です。デコレータや既存関数の本文の途中には挿入しないでください。変更はこのテストファイルだけ、外部通信・シークレット・OS UI・実装コード変更は禁止。既存テストが失敗したら修正せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_rea_readonly_scanner.py"
+      ]
+    },
+    {
+      "id": "queue-progress-rejects-boolean-completed-task-id-20261028",
+      "instruction": "`tests/test_distributed_loop_queue_progress.py` だけを変更して、completed state に boolean の task ID が含まれた場合に `calculate_progress` が `ValueError(\"invalid completed task ID\")` を送出する回帰テストを1件追加してください。既存テストやデコレータを変更せず、ファイル末尾に追加してください。必ず old アンカーとしてファイル末尾の次の4行をそのまま正確に使い、同じ4行の後に新しい関数を追加してください:\n    assert main() == 2\n    output = capsys.readouterr().out\n    assert output.strip() == \"QUEUE_PROGRESS_BLOCKED: RuntimeError\"\n    assert \"private details\" not in output\nnew は上記4行をそのまま含めたうえで、次のテスト関数をモジュールレベルで追加してください:\n\ndef test_progress_rejects_boolean_completed_task_id(tmp_path: Path):\n    queue = tmp_path / \"queue.json\"\n    state = tmp_path / \"state.json\"\n    results = tmp_path / \"results.jsonl\"\n    queue.write_text(json.dumps({\"tasks\": [{\"id\": \"task-1\"}]}), encoding=\"utf-8\")\n    state.write_text(json.dumps({\"completed\": [True]}), encoding=\"utf-8\")\n    with pytest.raises(ValueError, match=\"invalid completed task ID\"):\n        calculate_progress(queue, state, results)\nこのテストは既存の `pytest.mark.parametrize` や他のデコレータの下に挿入しないでください。変更対象はこのテストファイルだけです。実装コード、workflow、catalog/state/approval ロジックは変更禁止。既存テストが失敗したら修正せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_queue_progress.py"
+      ]
+    },
+    {
+      "id": "watchdog-pending-grace-boundary-regression-20261029",
+      "instruction": "tests/test_autonomous_loop_watchdog.py のみに、新しい固有名の回帰テストを1件追加してください。run_is_pending_within_grace() が status='queued' または 'in_progress' の場合でも、now が slot より1分前なら False、slot からちょうど90分後なら True を返す境界を確認してください。既存テストを変更せず、指定されたテストファイルだけを変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。既存テストが失敗したら実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_autonomous_loop_watchdog.py"
+      ]
+    },
+    {
+      "id": "proposal-generator-rejects-boolean-issue-number-20261029",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい回帰テストを1件追加してください。候補Issueの number が true または false の場合、Pythonでは bool が int の派生型であっても build_proposals() が有効なIssue番号として扱わず、invalid_issue_number_count=1 となり、approved task をruntime queueへ追加しないことを確認してください。実装コード・workflow・状態ファイルは変更禁止。既存テストを変更せず、指定テストファイル1つだけを変更してください。外部通信・シークレット参照・OS操作は禁止。マージ・デプロイは禁止。既存テストが失敗したら実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ]
+    },
+    {
+      "id": "loop-artifact-expired-evidence-fail-closed-regression-20261030",
+      "instruction": "tests/test_distributed_loop_trigger.py のみに新しい固有名の回帰テストを1件追加してください。completed workflow run に対し、Artifact API が期待名 minimal-autonomous-loop-{run_id} の artifact を expired=true で返すケースを作り、統括AIの状況照会が「実行Artifactを取得できず、タスク結果・保留件数は未確認です。」を返し、Artifact内の結果・Task ID集計・保留件数を表示しないことを確認してください。期限切れArtifactのZIPダウンロードが発生しないことも確認してください。既存テストを変更せず、変更は指定テストファイル1つだけ。実ネットワーク、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_distributed_loop_trigger.py"
+      ]
+    },
+    {
+      "id": "review-agent-runtime-handoff-accessors-20261030",
+      "instruction": "Add focused regression tests only in tests/test_agent_runtime.py for MultiAgentRuntime.last_self_improvement_handoffs and persisted_self_improvement_handoffs. Verify the default accessor returns an empty immutable tuple when no handoff exists and no store is configured; verify the persisted accessor returns an empty tuple without a configured store; and, with a temporary handoff store configured, verify persisted handoffs are loaded through the store validation boundary and the public property returns the approved handoff tuple produced by the runtime. Reuse existing constructors and fixtures where possible; avoid duplicate coverage if equivalent tests already exist. Do not change production code, other files, external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_agent_runtime.py"
+      ]
+    },
+    {
+      "id": "review-development-repair-planner-contract-20261030",
+      "instruction": "Add one or more focused regression tests only in tests/test_line_development_runtime.py for DevelopmentRepairPlanner.repair_task. Verify the returned task uses a deterministic repair task_id containing the attempt and failed task ID, role REPAIRER, preserves failed_task.resources, includes the failed role and bounded failure summary in its instruction, and selects the deterministic-retry wording only when the request/path predicate is satisfied. Reuse existing state/task fixtures and avoid duplicate coverage if equivalent tests already exist. Do not change production code, other files, external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_line_development_runtime.py"
+      ]
+    },
+    {
+      "id": "creator-critic-history-missing-file-empty-state-regression",
+      "instruction": "Add one focused regression test only in tests/test_creator_critic_state.py proving read_state() returns an empty list when the target history file does not exist. Use tmp_path and a valid registered task ID set; do not create the file before the read. Assert the returned value is exactly []. Do not change production code or any other file; do not use external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_creator_critic_state.py"
+      ]
+    },
+    {
+      "id": "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261031",
+      "instruction": "tests/test_catalog_exhaustion_candidate_adapter.py のみに、新しい固有名の回帰テスト test_duplicate_catalog_candidates_are_deduplicated_within_report を1件追加してください。_report() が返す候補を2件（同じ候補の複製）にして candidate_count=2 とし、merge_candidates([], report) の結果が1件だけで source_id が catalog-exhaustion:review-coverage-gap-0123456789 であることを検証してください。既存テストを変更せず、指定テストファイルだけを変更してください。外部通信・シークレット参照・OS操作は禁止。実装コード・workflow・catalog/state/approval ロジックの変更は禁止。マージ・デプロイは禁止。既存テストが失敗したら実装を変更せず失敗として報告してください。",
+      "allowed_paths": [
+        "tests/test_catalog_exhaustion_candidate_adapter.py"
+      ]
+    },
+    {
+      "id": "review-coverage-gap-52488722b5",
+      "instruction": "人手レビュー後に限り、tests/test_control_tower.py に task_hash (core/control_tower.py:194) の境界条件を検証する新しい回帰テストを1件追加してください。まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_control_tower.py"
+      ]
+    },
+    {
+      "id": "review-coverage-gap-8bd35ce404",
+      "instruction": "人手レビュー後に限り、tests/test_management_safety.py に CapabilityGrant.is_valid_at (core/management_safety.py:86) の境界条件を検証する新しい回帰テストを1件追加してください。まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_management_safety.py"
+      ],
+      "execution_approved": false
+    },
+    {
+      "id": "review-coverage-gap-703fa3c06b",
+      "instruction": "人手レビュー後に限り、tests/test_project_registry.py に ProjectRegistry.list_projects (core/project_registry.py:119) の境界条件を検証する新しい回帰テストを1件追加してください。まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_project_registry.py"
+      ],
+      "execution_approved": false
+    },
+    {
+      "id": "review-coverage-gap-4d4b38db3b",
+      "instruction": "人手レビュー後に限り、tests/test_obsidian.py に ObsidianVault.search_notes (core/obsidian.py:73) の境界条件を検証する新しい回帰テストを1件追加してください。まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_obsidian.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "recovery-resume-review-cli-test-20261102",
+      "instruction": "Add exactly one new pytest test function only to tests/test_confirm_recovery_resume_review.py. Exercise scripts.confirm_recovery_resume_review.main as a CLI boundary: provide --state-file and --task-id through monkeypatched sys.argv, monkeypatch confirm_in_durable_state to capture calls, and assert main returns 0, called['state_path'] == str(state_file), and called['task_id'] == task_id. The CLI normalizes state_path to str, so do not compare it to a Path object. Append the new test at the end of the file. Do not edit, rename, delete, reorder, reformat, or weaken any existing test, assertion, fixture, or class. Do not change production code or any other file. If an equivalent test already exists or safe append-only editing is not possible, make no change and report why. No external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_confirm_recovery_resume_review.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "catalog-exhaustion-analyzer-cli-test-20261102",
+      "instruction": "Add exactly one new pytest test function only to tests/test_catalog_exhaustion_analyzer.py. Exercise scripts.catalog_exhaustion_analyzer.main on its successful CLI path using the existing _fixture(tmp_path) helper. Monkeypatch sys.argv with --repo-root, --catalog, --queue, --state, --runtime, and --output using the paths returned by _fixture; assert main returns 0, the output JSON status is REVIEW_REQUIRED, candidate_count is 1, and catalog_ids_without_runtime_plan is an empty list. Append the new test at the end of the file. Do not edit, rename, delete, reorder, reformat, or weaken any existing test, assertion, fixture, or class. Do not change production code or any other file. If equivalent CLI coverage already exists or safe append-only editing is not possible, make no change and report why. No external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_catalog_exhaustion_analyzer.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "task-refill-cli-test-20261102",
+      "instruction": "Add exactly one new pytest test function only to tests/test_autonomous_task_refill.py. Exercise scripts.autonomous_task_refill.main on its successful CLI path using the existing _inputs(tmp_path) helper with candidates=[{**_task('task-cli-new'), 'execution_approved': True}]. Monkeypatch sys.argv with --queue, --catalog, --completed-state, and --output using the returned paths; assert main returns 0, parse its single stdout JSON line with capsys, assert added_ids == ['task-cli-new'] and added == 1, and assert the output runtime queue contains task-cli-new. Append the new test at the end of the file. Do not edit, rename, delete, reorder, reformat, or weaken any existing test, assertion, fixture, or class. Do not change production code or any other file. If equivalent CLI coverage already exists or safe append-only editing is not possible, make no change and report why. No external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "task-refill-read-json-test-20261102",
+      "instruction": "Add exactly one new pytest test function only to tests/test_autonomous_task_refill.py for scripts.autonomous_task_refill.read_json. Import read_json from scripts.autonomous_task_refill. Use tmp_path to write a JSON array such as [] (not an object), call read_json, and assert it raises ValueError with message 'JSON root must be an object'. Append the new test at the end of the file. Do not edit, rename, delete, reorder, reformat, or weaken any existing test, assertion, fixture, or class. Do not change production code or any other file. If equivalent direct read_json coverage already exists or safe append-only editing is not possible, make no change and report why. No external services, secrets, OS state, merge, or deploy.",
+      "allowed_paths": [
+        "tests/test_autonomous_task_refill.py"
+      ],
+      "execution_approved": true
+    },
+    {
+      "id": "review-coverage-gap-e0739f9841",
+      "instruction": "人手レビュー後に限り、tests/test_confirm_recovery_resume_review.py に main (scripts/confirm_recovery_resume_review.py:106) の境界条件を検証する新しい回帰テストを1件追加してください。まず既存テストと間接カバレッジを確認し、重複する場合は変更せず理由を報告してください。変更は指定テストファイル1つだけ。実装コード・workflow・catalog・stateは変更禁止。外部通信・シークレット参照・OS操作・マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_confirm_recovery_resume_review.py"
+      ]
+    },
+    {
+      "id": "catalog-exhaustion-analyzer-main-fail-closed-20261105",
+      "instruction": "tests/test_catalog_exhaustion_analyzer.py のみに、新しい固有名の回帰テストを1件追加してください。scripts.catalog_exhaustion_analyzer.main() の失敗経路を検証します。既存の _fixture() を使い、Recovery AI state の schema_version を不正値にして main() を呼び、戻り値が 2、標準出力が CATALOG_EXHAUSTION_ANALYZER_BLOCKED: ValueError、出力レポートが作成されないことを確認してください。argparse の parse_args はテスト内で Namespace(repo_root, catalog, queue, state, runtime, existing_issues=None, output) を返すように monkeypatch してください。既存テストとの重複がないことを確認し、既存テストは変更しないでください。外部通信、シークレット参照、OS操作は禁止。変更は指定テストファイル1つだけ。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_catalog_exhaustion_analyzer.py"
+      ],
+      "execution_approved": true
+    }
+  ]
+}
