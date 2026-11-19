@@ -20,12 +20,26 @@ CREATE TABLE IF NOT EXISTS idea_evidence_snapshots (
     revision INTEGER NOT NULL CHECK (revision >= 1),
     payload TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE TABLE IF NOT EXISTS idea_cycle_snapshots (
+    namespace TEXT PRIMARY KEY,
+    revision INTEGER NOT NULL CHECK (revision >= 1),
+    payload TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 )
 """
 
 
 class RevisionConflict(RuntimeError):
     """Raised when a snapshot changed since the caller last loaded it."""
+
+
+@dataclass(frozen=True)
+class StoredCycleSnapshot:
+    namespace: str
+    revision: int
+    cycle: object
+    updated_at: str
 
 
 @dataclass(frozen=True)
@@ -59,7 +73,7 @@ class SQLiteIdeaEvidenceStore:
         )
         connection.execute("PRAGMA busy_timeout = 5000")
         connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute(_SCHEMA)
+        connection.executescript(_SCHEMA)
         if not existed:
             try:
                 os.chmod(self.database_path, 0o600)
@@ -145,6 +159,48 @@ class SQLiteIdeaEvidenceStore:
         finally:
             connection.close()
 
+    def save_cycle(self, namespace: str, cycle, *, expected_revision: int) -> int:
+        """Persist a complete validated research cycle using optimistic revisions."""
+        from .idea_research_cycle import IdeaResearchCycle
+
+        self._validate_namespace(namespace)
+        if not isinstance(cycle, IdeaResearchCycle):
+            raise TypeError("cycle must be an IdeaResearchCycle")
+        if isinstance(expected_revision, bool) or not isinstance(expected_revision, int) or expected_revision < 0:
+            raise ValueError("expected_revision must be a non-negative integer")
+        payload = cycle.to_json()
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute("SELECT revision FROM idea_cycle_snapshots WHERE namespace = ?", (namespace,)).fetchone()
+            current_revision = row[0] if row else 0
+            if expected_revision != current_revision:
+                raise RevisionConflict(f"expected revision {expected_revision}, found {current_revision}")
+            next_revision = current_revision + 1
+            connection.execute("INSERT INTO idea_cycle_snapshots (namespace, revision, payload, updated_at) VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) ON CONFLICT(namespace) DO UPDATE SET revision = excluded.revision, payload = excluded.payload, updated_at = excluded.updated_at", (namespace, next_revision, payload))
+            connection.execute("COMMIT")
+            return next_revision
+        except Exception:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+
+    def load_cycle(self, namespace: str):
+        """Load and validate a complete cycle snapshot; return None when absent."""
+        from .idea_research_cycle import IdeaResearchCycle
+        self._validate_namespace(namespace)
+        connection = self._connect()
+        try:
+            row = connection.execute("SELECT revision, payload, updated_at FROM idea_cycle_snapshots WHERE namespace = ?", (namespace,)).fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            return None
+        revision, payload, updated_at = row
+        return StoredCycleSnapshot(namespace, revision, IdeaResearchCycle.from_json(payload), updated_at)
+
     def delete(self, namespace: str, *, expected_revision: int) -> bool:
         """Delete only the exact revision a caller reviewed; never wildcard-delete."""
         self._validate_namespace(namespace)
@@ -184,4 +240,5 @@ __all__ = [
     "RevisionConflict",
     "SQLiteIdeaEvidenceStore",
     "StoredEvidenceSnapshot",
+    "StoredCycleSnapshot",
 ]
