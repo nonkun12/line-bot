@@ -75,12 +75,15 @@ class SQLiteIdeaEvidenceStore:
 
     def load(self, namespace: str) -> Optional[StoredEvidenceSnapshot]:
         self._validate_namespace(namespace)
-        with self._connect() as connection:
+        connection = self._connect()
+        try:
             row = connection.execute(
                 "SELECT revision, payload, updated_at "
                 "FROM idea_evidence_snapshots WHERE namespace = ?",
                 (namespace,),
             ).fetchone()
+        finally:
+            connection.close()
         if row is None:
             return None
         revision, payload, updated_at = row
