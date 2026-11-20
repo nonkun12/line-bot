@@ -18,7 +18,7 @@ Stages 186–190 extend the Stage 181–185 inter-generation readiness pipeline.
 - Re-verifies the Stage 186 and Stage 187 reports.
 - Accepts at most 64 signed claims with candidate and generation lineage.
 - The diagnostician must be independent of the executor, trend evaluators, and holdout evaluator.
-- Unknown or unsupported causes remain explicitly unsupported. The report digest binds every signed claim, including unsupported claims; duplicate/replayed claims are rejected before classification.
+- Unknown or unsupported causes remain explicitly unsupported. The report digest binds every signed claim, including unsupported claims; duplicate/replayed claims are rejected before classification, and Stage 190 requires canonical sorted claim-digest ordering.
 
 ## Stage 189 — Append-only survival ledger
 - Requires a trusted current predecessor digest/generation checkpoint and individually signed entries.
