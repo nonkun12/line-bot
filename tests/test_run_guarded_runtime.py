@@ -507,6 +507,45 @@ def test_execution_approval_consumption_blocks_duplicate_ref(monkeypatch):
     assert result["reason_code"] == "approval_already_consumed"
 
 
+
+def test_new_signed_approval_nonce_creates_distinct_single_use_marker(monkeypatch):
+    import io
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    refs = []
+
+    class Response:
+        status = 201
+        def __init__(self, ref, sha):
+            self.payload = json.dumps({"ref": ref, "object": {"sha": sha}}).encode()
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self):
+            return self.payload
+
+    def create_ref(request, timeout):
+        payload = json.loads(request.data.decode())
+        refs.append(payload["ref"])
+        return Response(payload["ref"], payload["sha"])
+
+    monkeypatch.setattr(guarded_runtime.urllib.request, "urlopen", create_ref)
+    base = {
+        "execution_authorized": True,
+        "actor": "nonkun12",
+        "task_id": "task-1",
+        "instruction_sha256": "a" * 64,
+        "allowed_paths_sha256": "c" * 64,
+        "line_approver_user_id": "U-line-user",
+        "expires_at": "1790000000",
+    }
+    first = guarded_runtime._consume_execution_approval({**base, "approval_nonce": "d" * 32}, "b" * 40)
+    second = guarded_runtime._consume_execution_approval({**base, "approval_nonce": "e" * 32}, "b" * 40)
+    assert first["gate"] == "PASS"
+    assert second["gate"] == "PASS"
+    assert refs[0] != refs[1]
+
 def test_write_summary_marks_post_generation_rea_as_pre_publish_gate(tmp_path, monkeypatch):
     monkeypatch.setattr(guarded_runtime, "_git", lambda *args: "b" * 40 if args == ("rev-parse", "HEAD") else "line-dev/test")
     monkeypatch.setenv("AUTONOMOUS_POSTGEN_REA_STATUS", "PASS")
