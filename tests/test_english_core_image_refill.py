@@ -68,3 +68,27 @@ def test_main_reports_invalid_candidate_json_as_blocked(tmp_path, monkeypatch, c
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "BLOCKED"
     assert result["reason_code"] == "catalog_invalid"
+
+
+def test_main_returns_nonzero_when_candidate_catalog_contains_invalid_entry(
+    tmp_path, monkeypatch, capsys
+):
+    import json
+    import scripts.english_core_image_refill as refill
+
+    candidates_path = tmp_path / "invalid-entry-candidates.json"
+    invalid = candidate("apple")
+    invalid["related"] = "not-a-list"
+    candidates_path.write_text(json.dumps([invalid], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(refill, "DEFAULT_CANDIDATES", candidates_path)
+    monkeypatch.setattr("sys.argv", ["english_core_image_refill"])
+
+    assert refill.main() == 2
+    result = json.loads(capsys.readouterr().out)
+    assert result["invalid_candidates"] == 1
+    assert result["duplicate_candidates"] == 0
+    assert result["pending_review_candidates"] == 0
+    assert result["tasks"] == []
+    assert result["auto_approval"] is False
+    assert result["runtime_lexicon_mutation_authorized"] is False
+
