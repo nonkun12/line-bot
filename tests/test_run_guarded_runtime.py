@@ -307,7 +307,7 @@ class Response:
     def __enter__(self): return self
     def __exit__(self, *args): return False
     def read(self):
-        body = json.loads(request.data.decode("utf-8"))
+        body = json.loads(self.request.data.decode("utf-8"))
         return json.dumps({"ref": body["ref"], "object":{"sha":body["sha"]}}).encode()
 def fake_urlopen(request, timeout):
     global_response = Response()
