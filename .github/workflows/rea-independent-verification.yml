@@ -81,7 +81,7 @@ jobs:
           TARGET_SHA: ${{ steps.identity.outputs.verified_sha }}
         run: |
           set -euo pipefail
-          PYTHONDONTWRITEBYTECODE=1 python scripts/rea_independent_verifier.py \
+          PYTHONDONTWRITEBYTECODE=1 python -m scripts.rea_independent_verifier \
             --base-sha "$BASE_SHA" \
             --target-sha "$TARGET_SHA" \
             > "$RUNNER_TEMP/rea-independent-worker.json"
