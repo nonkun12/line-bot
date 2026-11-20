@@ -194,6 +194,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         or not task_id
         or str(inputs.get("execution_approval", "")) != "APPROVE_EXECUTION"
         or str(inputs.get("approval_task_id", "")) != task_id
+        or not str(inputs.get("approval_line_user_id", "")).strip()
         or str(inputs.get("approval_instruction_sha256", "")).lower() != instruction_digest
         or not allowed_paths_digest
         or str(inputs.get("approval_allowed_paths_sha256", "")).lower() != allowed_paths_digest
