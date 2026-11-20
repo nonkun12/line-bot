@@ -36,6 +36,10 @@ on:
         description: 'Unix expiry for the task-bound LINE approval (maximum ten minutes)'
         required: false
         type: string
+      approval_line_user_id:
+        description: 'LINE user ID recorded as the explicit task approver'
+        required: false
+        type: string
       max_tasks:
         description: 'Manual run task limit (1–4 tasks; all safety gates still apply)'
         required: false
