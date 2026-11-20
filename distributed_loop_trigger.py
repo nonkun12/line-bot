@@ -507,7 +507,6 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
 
     command = _normalize_command(message)
     status_kind = None
-    status_kind = None
     if command in {
         "統括AIの状況",
         "統括AI状況",
