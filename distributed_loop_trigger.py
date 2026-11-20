@@ -503,6 +503,7 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
 def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
     approval_handled, approval_reply = _handle_line_task_approval(user_id, message)
     if approval_handled:
+    command = _normalize_command(message)
         return approval_handled, approval_reply
 
     status_kind = None
