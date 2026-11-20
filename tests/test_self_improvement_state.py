@@ -410,3 +410,25 @@ def test_workflow_durable_validator_rejects_malformed_cycle_memory_and_signal_ro
     with pytest.raises(ValueError, match="cycle memory ID"):
         validate_durable_history([{**valid_memory, "cycle_id": "not-a-run-id"}])
 
+
+
+def test_rea_gate_block_is_not_duplicated_as_generic_cycle_memory(tmp_path):
+    from core.self_improvement_history import SelfImprovementHistory
+    from scripts.self_improvement_state import append_cycle_memory
+
+    history = tmp_path / "history.jsonl"
+    results = tmp_path / "results.jsonl"
+    catalog = tmp_path / "catalog.json"
+    catalog.write_text(json.dumps({"tasks": [{"id": "catalog-task-1"}]}), encoding="utf-8")
+    results.write_text(json.dumps({
+        "status": "BLOCKED", "task_id": "catalog-task-1",
+        "failure_reason": "control_tower_rea:rea_high_or_critical_finding",
+    }) + "\n", encoding="utf-8")
+    history.write_text("", encoding="utf-8")
+
+    assert append_cycle_memory(
+        history, results, catalog, publish_outcome="failure", state_outcome="failure",
+        cycle_id="94001",
+    ) == 0
+    assert SelfImprovementHistory(history).load_memory(limit=5) == ()
+    assert history.read_text(encoding="utf-8") == ""

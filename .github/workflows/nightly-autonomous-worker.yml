@@ -2,51 +2,24 @@ name: Autonomous Development Loop (legacy manual)
 
 on:
   workflow_dispatch:
-    inputs:
-      execution_approval:
-        description: 'Explicitly approve one task-bound execution'
-        required: false
-        default: 'DENY'
-        type: choice
-        options:
-          - 'DENY'
-          - 'APPROVE_EXECUTION'
-      approval_task_id:
-        description: 'Exact task ID shown by the prior BLOCKED run'
-        required: false
-        type: string
-      approval_allowed_paths_sha256:
-        description: 'SHA-256 of the canonical sorted allowed_paths list'
-        required: false
-        type: string
-      approval_instruction_sha256:
-        description: 'SHA-256 of the exact development instruction'
-        required: false
-        type: string
-      approval_base_sha:
-        description: 'Exact base commit SHA shown by the prior BLOCKED run'
-        required: false
-        type: string
-  schedule:
-    - cron: '0 4 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '0 16 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '0 22 * * *'
-      timezone: 'Asia/Tokyo'
-
-# Scheduled runs are intentionally on the default branch.
-# Autonomous changes are pushed to a dedicated branch and reviewed via PR.
+# Legacy worker is manual-only. Scheduled observation is handled by the
+# dedicated read-only observation workflow.
 permissions:
-  contents: write
-  pull-requests: write
+  actions: read
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: autonomous-development-loop
   cancel-in-progress: false
 
 jobs:
+  # Disabled until this legacy entry point uses the same task-bound approval
+  # verifier and one-shot ledger as distributed-autonomous-loop.yml.
   autonomous-development:
+    # Keep this legacy worker unconditionally disabled; the dynamic event guard
+    # avoids actionlint's constant-condition warning without opening an enable path.
+    if: ${{ github.event_name == 'workflow_dispatch' && false }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:

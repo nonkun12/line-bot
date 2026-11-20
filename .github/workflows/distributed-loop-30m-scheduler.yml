@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           active="$(gh api \
-            "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=100" \
+            "repos/$REPOSITORY/actions/workflows/distributed-autonomous-observation.yml/runs?per_page=100" \
             --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
           if [ "$active" -gt 0 ]; then
             echo "dispatch=false" >> "$GITHUB_OUTPUT"
@@ -70,13 +70,13 @@ jobs:
             echo "dispatch=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Dispatch one-task distributed development cycle
+      - name: Dispatch read-only observation cycle
         if: steps.kill.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true' && steps.active.outputs.dispatch == 'true'
         run: |
           set -euo pipefail
-          gh workflow run distributed-autonomous-loop.yml \
-            --repo "$REPOSITORY" --ref main -f max_tasks=1
-          echo "Dispatched exactly one bounded cycle; queue approval, HOLD, evidence, and publish gates remain in the target workflow." >> "$GITHUB_STEP_SUMMARY"
+          gh workflow run distributed-autonomous-observation.yml \
+            --repo "$REPOSITORY" --ref main
+          echo "Dispatched read-only observation only; no development execution was requested." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report scheduler decision
         if: always()
@@ -86,6 +86,6 @@ jobs:
             echo "- Trigger: ${GITHUB_EVENT_NAME}"
             echo "- Kill switch: ${CONTROL_TOWER_KILL_SWITCH}"
             echo "- Billing gate: public repository + standard ubuntu-latest runner required"
-            echo "- Target task limit: 1"
+            echo "- Target: read-only observation; task execution: disabled"
             echo "- Merge/deploy: not performed by scheduler"
           } >> "$GITHUB_STEP_SUMMARY"

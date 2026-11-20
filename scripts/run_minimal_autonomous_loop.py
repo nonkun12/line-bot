@@ -663,6 +663,7 @@ def run_task(
         ):
             env.pop(key, None)
     instruction = str(task["instruction"])
+    approved_instruction = instruction  # Preserve the exact catalog text used by the human approval digest.
     rag_db_path = os.environ.get("RECOVERY_RAG_DB_PATH", "").strip()
     rag_namespace = os.environ.get("RECOVERY_RAG_NAMESPACE", "distributed-loop").strip()
     if rag_db_path and rag_namespace:
@@ -724,7 +725,11 @@ def run_task(
             print("REA_RAG_CONTEXT attached=true", flush=True)
         else:
             print("REA_RAG_CONTEXT attached=false", flush=True)
-    env["DEV_INSTRUCTION"] = instruction
+    env["AUTONOMOUS_APPROVED_INSTRUCTION"] = approved_instruction
+    # RAG/REA retrieval above is advisory metadata only. Never append it to the
+    # human-approved instruction that the model is allowed to execute.
+    env["AUTONOMOUS_ADVISORY_CONTEXT"] = instruction[len(approved_instruction):]
+    env["DEV_INSTRUCTION"] = approved_instruction
     env["AUTONOMOUS_SUMMARY_PATH"] = str(summary)
     env["AUTONOMOUS_RUN_SOURCE"] = "minimal-mvp-loop"
     env["AUTONOMOUS_TASK_ID"] = task["id"]

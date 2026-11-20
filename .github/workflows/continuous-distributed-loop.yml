@@ -4,7 +4,9 @@ name: Continuous Distributed Loop
 # and durable completion evidence. Empty queues, NO_CHANGE, HOLD/FAIL, missing
 # evidence, kill switch, and the depth limit all stop the chain.
 on:
-  workflow_dispatch:
+  workflow_run:
+    workflows: ["Distributed Autonomous Development Loop"]
+    types: [completed]
 
 permissions:
   actions: write
@@ -16,7 +18,7 @@ concurrency:
 
 jobs:
   continue-after-verified-pass:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Distributed Autonomous Development Loop' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -73,9 +75,11 @@ jobs:
             echo "Continuation depth missing or invalid; fail closed." >&2
             exit 1
           fi
-          active="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=20" \
+          active_loop="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=20" \
             --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
-          if [ "$active" -gt 0 ]; then
+          active_observation="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-observation.yml/runs?per_page=20" \
+            --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
+          if [ "$active_loop" -gt 0 ] || [ "$active_observation" -gt 0 ]; then
             echo "dispatch=false" >> "$GITHUB_OUTPUT"
             echo "CONTINUATION_STOP=another_loop_is_active"
           else
@@ -90,11 +94,11 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh workflow run distributed-autonomous-loop.yml \
-            --repo "$REPOSITORY" --ref main \
-            -f max_tasks=1 \
-            -f continuation_depth="${{ steps.active.outputs.next_depth }}"
-          echo "CONTINUATION_DISPATCHED max_tasks=1"
+          # Chain continuation may schedule observation only. A new development
+          # cycle must be separately approved through the task-bound dispatch gate.
+          gh workflow run distributed-autonomous-observation.yml \
+            --repo "$REPOSITORY" --ref main
+          echo "OBSERVATION_DISPATCHED=read_only"
 
       - name: Explain why continuation stopped
         if: always() && steps.gate.outputs.continue != 'true'

@@ -1,5 +1,6 @@
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -226,13 +227,16 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
         "scripts.rea_control_tower_adapter.prepare_rea_evidence",
         lambda root, expected_sha: rea,
     )
-    monkeypatch.setattr(guarded_runtime, "_augment_instruction_with_history", lambda instruction, path: instruction)
-    monkeypatch.setattr(guarded_runtime, "_augment_with_hermes_advice", lambda instruction, path: instruction)
+    monkeypatch.setattr(guarded_runtime, "_augment_instruction_with_history", lambda *args: (_ for _ in ()).throw(AssertionError("history must not alter approved instruction")))
+    monkeypatch.setattr(guarded_runtime, "_augment_with_hermes_advice", lambda *args: (_ for _ in ()).throw(AssertionError("Hermes advice must not alter approved instruction")))
     monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: False)
-    monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: 0)
+    executed_instructions = []
+    monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda value: executed_instructions.append(value) or 0)
     monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
     instruction = "safe test instruction"
-    monkeypatch.setenv("DEV_INSTRUCTION", instruction)
+    augmented_instruction = instruction + "\\n\\n--- Advisory historical context ---\\nnon-authoritative note"
+    monkeypatch.setenv("AUTONOMOUS_APPROVED_INSTRUCTION", instruction)
+    monkeypatch.setenv("DEV_INSTRUCTION", augmented_instruction)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-test-task")
     monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
@@ -255,8 +259,89 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     assert summary["rea"] == rea
     assert summary["execution_approval"]["gate"] == "PASS"
     assert summary["execution_approval"]["scope"] == "execution"
+    assert executed_instructions == [instruction]
 
 
+
+
+def test_guarded_runtime_child_process_executes_only_approved_text_and_consumes_ledger(tmp_path):
+    import hashlib
+    import json
+    import os
+    import subprocess
+    import sys
+
+    approved = "  approved task instruction  "
+    normalized = approved.strip()[:2000]
+    base_sha = "e" * 40
+    allowed_paths = ["tests/test_run_guarded_runtime.py"]
+    event = {
+        "sender": {"login": "nonkun12"},
+        "repository": {"full_name": "nonkun12/line-bot"},
+        "inputs": {
+            "execution_approval": "APPROVE_EXECUTION",
+            "approval_task_id": "child-integration-task",
+            "approval_instruction_sha256": hashlib.sha256(normalized.encode()).hexdigest(),
+            "approval_allowed_paths_sha256": hashlib.sha256(
+                json.dumps(allowed_paths, ensure_ascii=False, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "approval_base_sha": base_sha,
+        },
+    }
+    event_path = tmp_path / "event.json"
+    event_path.write_text(json.dumps(event), encoding="utf-8")
+    capture_path = tmp_path / "executed.txt"
+    script = r'''
+import json, os
+from pathlib import Path
+import scripts.run_guarded_runtime as guarded
+import scripts.rea_control_tower_adapter as rea
+import core.emergency_stop as emergency
+base = os.environ["TEST_BASE_SHA"]
+rea.prepare_rea_evidence = lambda root, expected_sha: {"gate":"PASS","target_sha":base,"scanner_status":"PASS","finding_count":0,"critical_count":0,"blocking_count":0,"findings":[],"execution_authorized":False,"patch_authorized":False,"hold_clear_authorized":False,"merge_deploy_authorized":False}
+rea.rea_evidence_is_valid_pass = lambda evidence, expected_sha: evidence.get("target_sha") == expected_sha
+guarded._git = lambda *args: base if args == ("rev-parse", "HEAD") else "integration-test"
+emergency.local_stop_active = lambda root: False
+guarded._shared_stop_active = lambda: False
+class Response:
+    status = 201
+    def __enter__(self): return self
+    def __exit__(self, *args): return False
+    def read(self):
+        body = json.loads(self.request.data.decode("utf-8"))
+        return json.dumps({"ref": body["ref"], "object":{"sha":body["sha"]}}).encode()
+def fake_urlopen(request, timeout):
+    global_response = Response()
+    global_response.request = request
+    return global_response
+guarded.urllib.request.urlopen = fake_urlopen
+def execute(instruction):
+    Path(os.environ["TEST_CAPTURE_PATH"]).write_text(instruction, encoding="utf-8")
+    return 0
+guarded.runtime.execute = execute
+raise SystemExit(guarded.main())
+'''
+    env = os.environ.copy()
+    env.update({
+        "TEST_BASE_SHA": base_sha,
+        "TEST_CAPTURE_PATH": str(capture_path),
+        "AUTONOMOUS_APPROVED_INSTRUCTION": approved,
+        "DEV_INSTRUCTION": "approved task instruction\\n\\nMALICIOUS UNAPPROVED RAG APPENDIX",
+        "AUTONOMOUS_TASK_ID": "child-integration-task",
+        "AUTONOMOUS_ALLOWED_PATHS": json.dumps(allowed_paths),
+        "AUTONOMOUS_SUMMARY_PATH": str(tmp_path / "summary.json"),
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_EVENT_PATH": str(event_path),
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_ACTOR": "nonkun12",
+        "GITHUB_REPOSITORY": "nonkun12/line-bot",
+        "GITHUB_TOKEN": "dummy-test-token",
+    })
+    result = subprocess.run([sys.executable, "-c", script], cwd=Path(__file__).resolve().parents[1], env=env, text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert capture_path.read_text(encoding="utf-8") == normalized
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert summary["execution_approval"]["consumption"]["gate"] == "PASS"
 
 
 def test_common_runtime_blocks_when_shared_stop_status_is_unavailable(monkeypatch, tmp_path):

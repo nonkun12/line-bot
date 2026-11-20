@@ -3,6 +3,8 @@ import json
 
 import pytest
 
+from scripts import register_approved_task_candidate as registrar
+
 from scripts.register_approved_task_candidate import register_approved_candidate, main
 from scripts.autonomous_task_issue_drafts import build_issue_drafts
 
@@ -234,6 +236,41 @@ def test_cli_writes_catalog_only_after_explicit_approval(tmp_path):
     assert updated["tasks"][-1]["allowed_paths"] == [TEST]
 
 
+
+def test_catalog_write_uses_atomic_replace_and_preserves_existing_file_on_failure(tmp_path, monkeypatch):
+    root = repository(tmp_path)
+    issue_path = tmp_path / "issue.json"
+    catalog_path = tmp_path / "catalog.json"
+    state_path = tmp_path / "state.json"
+    issue_path.write_text(json.dumps(issue(root)), encoding="utf-8")
+    original = json.dumps(catalog())
+    catalog_path.write_text(original, encoding="utf-8")
+    state_path.write_text(json.dumps(state()), encoding="utf-8")
+
+    def fail_replace(source, destination):
+        raise OSError("simulated atomic replace failure")
+
+    monkeypatch.setattr(registrar.os, "replace", fail_replace)
+    assert main([
+        "--issue", str(issue_path),
+        "--catalog", str(catalog_path),
+        "--state", str(state_path),
+        "--repo-root", str(root),
+    ]) == 2
+    assert catalog_path.read_text(encoding="utf-8") == original
+    assert list(tmp_path.glob(".catalog.json.*.tmp")) == []
+
+
+def test_atomic_catalog_writer_rejects_symlink_target(tmp_path):
+    target = tmp_path / "real.json"
+    target.write_text("{}", encoding="utf-8")
+    link = tmp_path / "catalog.json"
+    link.symlink_to(target)
+    with pytest.raises(ValueError, match="must not be a symlink"):
+        registrar._atomic_write_json(link, {"tasks": []})
+    assert target.read_text(encoding="utf-8") == "{}"
+
+
 def test_catalog_candidate_workflow_only_creates_draft_registration_pr():
     from pathlib import Path
 
@@ -272,6 +309,7 @@ def test_generated_issue_instruction_is_accepted_by_registration_validator(tmp_p
     result, changed = register_approved_candidate(candidate, catalog(), state(), root)
     assert changed is True
     assert result["status"] == "REGISTERED_FOR_REVIEW"
+    assert result["catalog_entry"]["execution_approved"] is False
 
 
 def test_comment_and_string_mentions_do_not_make_candidate_stale(tmp_path):

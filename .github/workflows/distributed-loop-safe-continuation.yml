@@ -75,12 +75,12 @@ jobs:
         run: |
           set -euo pipefail
           case "$NEXT_DEPTH" in ""|*[!0-9]*|0) echo "::error::Invalid continuation depth"; exit 1 ;; esac
-          gh workflow run distributed-autonomous-loop.yml \
+          # Continuation is observation-only; execution requires a separate
+          # task-bound workflow_dispatch approval and is never auto-dispatched.
+          gh workflow run distributed-autonomous-observation.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref main \
-            -f max_tasks=1 \
-            -f continuation_depth="$NEXT_DEPTH"
-          echo "Dispatched bounded next cycle at continuation_depth=$NEXT_DEPTH"
+            --ref main
+          echo "Dispatched read-only observation; no development execution was started."
 
       - name: Report safe stop
         if: steps.decision.outputs.continue != 'true'
