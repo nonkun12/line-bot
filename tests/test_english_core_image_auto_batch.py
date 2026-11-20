@@ -268,7 +268,7 @@ def test_builder_skips_historical_reserved_and_flashcard_words(tmp_path, monkeyp
     module_path = tmp_path / "core_image.py"
     queue_path = tmp_path / "candidates.json"
     registry_path = tmp_path / "registry.json"
-    module_path.write_text('_ENTRIES = {}\n', encoding="utf-8")
+    module_path.write_text('_ENTRIES = {\n}\n', encoding="utf-8")
     queue_path.write_text(
         json.dumps([_candidate("historical"), _candidate("reserved"), _candidate("flashcard"), _candidate("newword")]),
         encoding="utf-8",
