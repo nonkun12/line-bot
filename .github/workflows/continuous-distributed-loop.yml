@@ -4,7 +4,9 @@ name: Continuous Distributed Loop
 # and durable completion evidence. Empty queues, NO_CHANGE, HOLD/FAIL, missing
 # evidence, kill switch, and the depth limit all stop the chain.
 on:
-  workflow_dispatch:
+  workflow_run:
+    workflows: ["Distributed Autonomous Development Loop"]
+    types: [completed]
 
 permissions:
   actions: write
@@ -16,7 +18,7 @@ concurrency:
 
 jobs:
   continue-after-verified-pass:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Distributed Autonomous Development Loop' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -73,11 +75,13 @@ jobs:
             echo "Continuation depth missing or invalid; fail closed." >&2
             exit 1
           fi
-          active="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=20" \
+          active_loop="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=20" \
             --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
-          if [ "$active" -gt 0 ]; then
+          active_observation="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-observation.yml/runs?per_page=20" \
+            --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
+          if [ "$active_loop" -gt 0 ] || [ "$active_observation" -gt 0 ]; then
             echo "dispatch=false" >> "$GITHUB_OUTPUT"
-            echo "CONTINUATION_STOP=another_loop_is_active"
+            echo "CONTINUATION_STOP=another_loop_or_observation_is_active"
           else
             echo "dispatch=true" >> "$GITHUB_OUTPUT"
             echo "next_depth=$((depth + 1))" >> "$GITHUB_OUTPUT"
