@@ -33,6 +33,96 @@ _NATURAL_DEV_QUESTION = re.compile(
     r"(?:教えて|方法|やり方|どうやって|できますか|可能ですか|おすすめ|比較|とは)",
 )
 _MAX_INSTRUCTION_LENGTH = 2000
+
+# Keep this manifest aligned with the worker's protected paths and shared
+# self-improvement policy. The worker performs its own independent validation.
+_WORKER_PROTECTED_PATHS = {
+    ".github", ".env", "config.py",
+    "scripts/line_development_worker.py",
+    "scripts/line_development_worker_safe.py",
+    "scripts/line_development_worker_v2.py",
+    "core/line_development_runtime.py",
+    "scripts/run_minimal_autonomous_loop.py",
+    "tests/test_minimal_autonomous_loop.py",
+    "line_development.py",
+    "git_safety.py", "patch_validator.py", "render_client.py",
+}
+_POLICY_PROTECTED_PATHS = {
+    "internal_ask_route.py", "internal_push_route.py",
+    "core/execution_safety.py", "core/agent_runtime.py",
+    "core/management_safety.py", "core/self_improvement_policy.py",
+    "core/hermes_advisor.py",
+}
+_ALLOWED_SUFFIXES = (".py", ".md", ".json", ".txt")
+
+
+def _build_execution_manifest(token: str, repository: str) -> dict[str, str] | None:
+    """Bind one dispatch to the exact main SHA and its bounded editable path manifest."""
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    try:
+        ref_response = httpx.get(
+            f"https://api.github.com/repos/{repository}/git/ref/heads/main",
+            headers=headers,
+            timeout=_DISPATCH_TIMEOUT_SECONDS,
+        )
+        if ref_response.status_code != 200:
+            return None
+        ref_payload = ref_response.json()
+        base_sha = str(ref_payload.get("object", {}).get("sha", ""))
+        if not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+            return None
+
+        tree_response = httpx.get(
+            f"https://api.github.com/repos/{repository}/git/trees/{base_sha}?recursive=1",
+            headers=headers,
+            timeout=_DISPATCH_TIMEOUT_SECONDS,
+        )
+        if tree_response.status_code != 200:
+            return None
+        tree_payload = tree_response.json()
+        if tree_payload.get("truncated") is True:
+            return None
+        entries = tree_payload.get("tree")
+        if not isinstance(entries, list):
+            return None
+
+        paths: list[str] = []
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("type") != "blob":
+                continue
+            path = entry.get("path")
+            if not isinstance(path, str) or not path.endswith(_ALLOWED_SUFFIXES):
+                continue
+            if (
+                path in _WORKER_PROTECTED_PATHS
+                or path in _POLICY_PROTECTED_PATHS
+                or path.startswith((".github/", "secrets/", ".git/"))
+            ):
+                continue
+            paths.append(path)
+        paths = sorted(set(paths))
+        if not paths:
+            return None
+        allowed_paths = __import__("json").dumps(
+            paths, ensure_ascii=False, separators=(",", ":")
+        )
+        # GitHub workflow_dispatch limits all inputs together to 65,535 chars.
+        if len(allowed_paths) > 40000:
+            return None
+        digest = __import__("hashlib").sha256(allowed_paths.encode("utf-8")).hexdigest()
+        return {
+            "base_sha": base_sha,
+            "allowed_paths": allowed_paths,
+            "allowed_paths_sha256": digest,
+        }
+    except (httpx.HTTPError, ValueError, TypeError, KeyError):
+        return None
+
+
 _WORKFLOW_FILE = "line-development-dispatch.yml"
 _DISPATCH_TIMEOUT_SECONDS = 10.0
 _DISPATCH_ATTEMPTS = 3
@@ -102,11 +192,15 @@ def dispatch_development_workflow(
         logger.error("line_dev_dispatch event=failed request_id=%s reason=missing_token", request_id)
         return "開発ワークフローを起動できません。GITHUB_TOKENが設定されていません。"
 
-    # 新規アプリ作成も既存システムの保守・機能追加も受け付ける。
-    # すべて同じ認可・GitHub Actionsの管理された開発フローへ送り、安全性は実行側で検査する。
-
-    # 通常のLINE開発指示は、分類器の汎用判定に関わらず既存リポジトリへ送る。
+    # 新規アプリ作成も既存システムの保守・機能追加も同じ管理経路へ送る。
+    # 実行承認はLINE allowlist認証済みの明示的な開発指示にだけ結び付ける。
     repository = repository or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
+    manifest = _build_execution_manifest(token, repository)
+    if manifest is None:
+        logger.error("line_dev_dispatch event=failed request_id=%s reason=execution_manifest_unavailable", request_id)
+        return "開発ワークフローを起動できません。mainのSHAまたは安全な編集範囲を確認できませんでした。"
+    task_id = uuid.uuid4().hex
+    instruction_digest = __import__("hashlib").sha256(instruction.encode("utf-8")).hexdigest()
     dispatch_url = (
         f"https://api.github.com/repos/{repository}"
         f"/actions/workflows/{_WORKFLOW_FILE}/dispatches"
@@ -121,6 +215,13 @@ def dispatch_development_workflow(
         "inputs": {
             "instruction": instruction,
             "user_id": str(user_id),
+            "execution_approval": "APPROVE_EXECUTION",
+            "task_id": task_id,
+            "approval_task_id": task_id,
+            "approval_instruction_sha256": instruction_digest,
+            "approval_base_sha": manifest["base_sha"],
+            "allowed_paths": manifest["allowed_paths"],
+            "approval_allowed_paths_sha256": manifest["allowed_paths_sha256"],
         },
     }
 
