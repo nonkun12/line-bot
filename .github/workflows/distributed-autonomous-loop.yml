@@ -120,7 +120,7 @@ jobs:
     permissions:
       actions: write
       contents: write
-      pull-requests: write
+      pull-requests: read
       issues: read
     runs-on: ubuntu-latest
     timeout-minutes: 40
