@@ -466,7 +466,12 @@ def main() -> int:
         return 82
 
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
-    approval_evidence = _verify_execution_approval(start_sha, instruction)
+    # Verify the exact catalog instruction approved by the user. The executable
+    # instruction may additionally contain untrusted advisory RAG context.
+    approval_instruction = os.environ.get("AUTONOMOUS_APPROVED_INSTRUCTION")
+    if approval_instruction is None:
+        approval_instruction = instruction
+    approval_evidence = _verify_execution_approval(start_sha, approval_instruction)
     if approval_evidence.get("execution_authorized") is True:
         consumption = _consume_execution_approval(approval_evidence, start_sha)
         approval_evidence["consumption"] = consumption
