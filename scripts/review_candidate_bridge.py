@@ -81,15 +81,19 @@ def build_pool(input_path: Path, store_path: Path, summary_path: Path) -> dict[s
             }:
                 raise ValueError("candidate store schema is invalid; refusing to overwrite")
             normalized = normalize_candidate(row)
-            if (
-                normalized is None
-                or row.get("schema_version") != 1
-                or row.get("execution_authorized") is not False
-                or row.get("candidate_key") != normalized["candidate_key"]
-                or row != normalized
-            ):
+            if normalized is None or row.get("schema_version") != 1 or row.get("execution_authorized") is not False:
                 raise ValueError("candidate store row is invalid; refusing to overwrite")
-        existing = {row["candidate_key"]: row for row in old_rows}
+            # Accept the exact pre-source-identity key once, then migrate it
+            # atomically to the stronger key that includes source_id.
+            legacy_material = json.dumps(
+                {"source": normalized["source"], "title": normalized["title"].casefold(),
+                 "rationale": normalized["rationale"].casefold()},
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            )
+            legacy_key = hashlib.sha256(legacy_material.encode("utf-8")).hexdigest()[:24]
+            if row != normalized and row != {**normalized, "candidate_key": legacy_key}:
+                raise ValueError("candidate store row is invalid; refusing to overwrite")
+            existing[normalized["candidate_key"]] = normalized
 
     accepted = 0
     rejected = 0
