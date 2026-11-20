@@ -226,8 +226,8 @@ jobs:
                   "verification_run_id": verify_run_id,
                   "test_outcome": receipt.get("test_outcome", "UNKNOWN"),
                   "diff_scan": receipt.get("diff_scan", "UNKNOWN"),
-                  "stop_state": receipt.get("stop_state", "UNKNOWN"),
-                  "hold_state": receipt.get("hold_state", "UNKNOWN"),
+                  "stop_state": stop_state,
+                  "hold_state": hold_state,
                   "risk": receipt.get("risk", "UNKNOWN"),
                   "candidate_evidence_sha256": hashlib.sha256(
                       row_artifact.encode("utf-8")
