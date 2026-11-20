@@ -377,12 +377,12 @@ def _fetch_task_approval_candidate(client: httpx.Client, headers: dict[str, str]
         raise ValueError("approval_base_sha_unavailable")
 
     queue_response = client.get(
-        f"{base}/contents/.github/autonomous-loop-tasks.json?ref=main",
+        f"{base}/contents/.github/autonomous-loop-tasks.json?ref={base_sha}",
         headers=headers,
     )
     queue_response.raise_for_status()
     catalog_response = client.get(
-        f"{base}/contents/.github/autonomous-loop-task-catalog.json?ref=main",
+        f"{base}/contents/.github/autonomous-loop-task-catalog.json?ref={base_sha}",
         headers=headers,
     )
     catalog_response.raise_for_status()
@@ -458,7 +458,7 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                     f"期限Unix: {expires_at}\\n\\n"
                     "内容を確認し、このタスクだけを承認する場合は次の1行をそのまま返信してください。\\n"
                     f"{command}\\n"
-                    "この返信は実行承認です。別タスク・別SHAには適用されません。"
+                    "実行時にもRecovery HOLD・REA・STOP・基準SHAを再検証します。HOLD解除は行いません。\\n"\n                    "この返信は実行承認です。別タスク・別SHAには適用されません。"
                 )
 
             candidate["expires_at"] = approval.expires_at
