@@ -466,13 +466,13 @@ def main() -> int:
         print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
         return 82
 
-    instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
-    # Verify the exact catalog instruction approved by the user. The executable
-    # instruction may additionally contain untrusted advisory RAG context.
+    # The approved text is the sole executable instruction. Ignore any
+    # augmented DEV_INSTRUCTION supplied by RAG/history or another caller.
     approval_instruction = os.environ.get("AUTONOMOUS_APPROVED_INSTRUCTION")
     if approval_instruction is None:
-        approval_instruction = instruction
-    approval_evidence = _verify_execution_approval(start_sha, approval_instruction)
+        approval_instruction = os.environ.get("DEV_INSTRUCTION", "")
+    instruction = str(approval_instruction).strip()[: worker.MAX_INSTRUCTION_LENGTH]
+    approval_evidence = _verify_execution_approval(start_sha, instruction)
     if approval_evidence.get("execution_authorized") is True:
         consumption = _consume_execution_approval(approval_evidence, start_sha)
         approval_evidence["consumption"] = consumption
