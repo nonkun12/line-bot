@@ -78,7 +78,7 @@ def test_non_dispatch_or_wrong_actor_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
     queue, event, catalog = _fixtures(tmp_path)
     with pytest.raises(ValueError, match="event_not_authorized"):
-        _authorize(queue, event)
+        _authorize(queue, event, catalog)
 
 
 def test_invalid_ref_or_repository_is_rejected(tmp_path, monkeypatch):
@@ -87,3 +87,13 @@ def test_invalid_ref_or_repository_is_rejected(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="event_not_authorized"):
         authorize_one_task(queue, event, catalog, base_sha="a" * 40, ref="refs/heads/feature",
                            actor="nonkun12", repository="nonkun12/line-bot")
+
+
+def test_unapproved_catalog_task_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    queue, event, catalog = _fixtures(tmp_path)
+    data = json.loads(catalog.read_text())
+    data["tasks"][0]["execution_approved"] = False
+    catalog.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="not_registered_or_not_approved"):
+        _authorize(queue, event, catalog)
