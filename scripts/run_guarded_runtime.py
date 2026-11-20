@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 from groq import Groq
 
 from core import line_development_runtime as runtime
+from core.line_task_approval import verify_approval_envelope_signature
 from core.self_improvement_analyzer import analyze_signals
 from core.self_improvement_history import SelfImprovementHistory
 from core.hermes_advisor import build_self_improvement_prompt, run_hermes_advisor
@@ -191,6 +192,8 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         if approval_expires_at <= now_epoch or approval_expires_at > now_epoch + 600:
             return blocked
         line_approver_user_id = str(inputs.get("approval_line_user_id", "")).strip()
+        approval_nonce = str(inputs.get("approval_nonce", "")).strip()
+        approval_signature = str(inputs.get("approval_signature", "")).strip()
         approval_fields_valid = (
             str(inputs.get("execution_approval", "")) == "APPROVE_EXECUTION"
             and str(inputs.get("approval_task_id", "")) == task_id
@@ -199,19 +202,21 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
             and bool(allowed_paths_digest)
             and str(inputs.get("approval_allowed_paths_sha256", "")).lower() == allowed_paths_digest
             and str(inputs.get("approval_base_sha", "")) == start_sha
+            and verify_approval_envelope_signature(
+                task_id=task_id,
+                instruction_sha256=instruction_digest,
+                allowed_paths_sha256=allowed_paths_digest,
+                base_sha=start_sha,
+                expires_at=approval_expires_at,
+                approver_user_id=line_approver_user_id,
+                nonce=approval_nonce,
+                signature=approval_signature,
+                secret=os.environ.get("LINE_TASK_APPROVAL_HMAC_SECRET", ""),
+            )
         )
     else:
-        # Compatibility path for the existing LINE dispatch workflow: its trusted
-        # preparation step mints a one-run envelope in GITHUB_ENV before runtime.
-        approval_fields_valid = (
-            os.environ.get("AUTONOMOUS_EXECUTION_APPROVAL", "") == "APPROVE_EXECUTION"
-            and os.environ.get("AUTONOMOUS_APPROVAL_TASK_ID", "").strip() == task_id
-            and os.environ.get("AUTONOMOUS_APPROVAL_INSTRUCTION_SHA256", "").lower() == instruction_digest
-            and os.environ.get("AUTONOMOUS_APPROVAL_ALLOWED_PATHS_SHA256", "").lower() == allowed_paths_digest
-            and os.environ.get("AUTONOMOUS_APPROVAL_BASE_SHA", "") == start_sha
-            and str(inputs.get("instruction", "")) == instruction
-            and bool(str(inputs.get("user_id", "")).strip())
-        )
+        # Unsigned legacy environment inputs are not proof of LINE-originated approval.
+        approval_fields_valid = False
     if (
         actor != "nonkun12"
         or os.environ.get("GITHUB_REF", "") != "refs/heads/main"
@@ -236,6 +241,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
     if line_approver_user_id:
         evidence["line_approver_user_id"] = line_approver_user_id
         evidence["expires_at"] = approval_expires_at
+        evidence["approval_nonce"] = approval_nonce
     return evidence
 
 
@@ -389,6 +395,9 @@ def _consume_execution_approval(approval_evidence: dict[str, object], start_sha:
         "instruction_sha256": approval_evidence.get("instruction_sha256", ""),
         "allowed_paths_sha256": approval_evidence.get("allowed_paths_sha256", ""),
         "base_sha": start_sha,
+        "line_approver_user_id": approval_evidence.get("line_approver_user_id", ""),
+        "expires_at": approval_evidence.get("expires_at", ""),
+        "approval_nonce": approval_evidence.get("approval_nonce", ""),
     }
     if not all(isinstance(value, str) and value for value in identity.values()):
         return {"gate": "BLOCKED", "reason_code": "approval_ledger_identity_invalid"}
