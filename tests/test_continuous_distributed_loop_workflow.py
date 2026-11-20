@@ -234,6 +234,5 @@ def test_continuation_only_has_dispatch_permission_and_never_writes_repository()
 
 
 def test_legacy_safe_continuation_dispatcher_remains_disabled():
-    root = WORKFLOW.parents[1]
-    legacy = (root / "distributed-loop-safe-continuation.yml").read_text(encoding="utf-8")
+    legacy = (WORKFLOW.parent / "distributed-loop-safe-continuation.yml").read_text(encoding="utf-8")
     assert "if: github.event.workflow_run.run_attempt < 0" in legacy
