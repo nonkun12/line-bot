@@ -337,3 +337,13 @@ def test_guarded_runtime_blocks_malformed_ledger_response(monkeypatch):
         "a" * 40,
     )
     assert result == {"gate": "BLOCKED", "reason_code": "approval_ledger_response_invalid"}
+
+
+
+def test_minimal_loop_keeps_approved_instruction_separate_from_advisory_context():
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "scripts/run_minimal_autonomous_loop.py").read_text(encoding="utf-8")
+    assert 'approved_instruction = instruction' in source
+    assert 'env["AUTONOMOUS_APPROVED_INSTRUCTION"] = approved_instruction' in source
+    assert source.index('approved_instruction = instruction') < source.index('if rag_db_path and rag_namespace:')
+    assert source.index('env["AUTONOMOUS_APPROVED_INSTRUCTION"] = approved_instruction') < source.index('env["DEV_INSTRUCTION"] = instruction')
