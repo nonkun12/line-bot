@@ -210,6 +210,8 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "instruction_sha256": instruction_digest,
         "allowed_paths_sha256": allowed_paths_digest,
         "base_sha": start_sha,
+        "line_approver_user_id": str(inputs.get("approval_line_user_id", ""))[:128],
+        "expires_at": approval_expires_at,
     }
 
 
