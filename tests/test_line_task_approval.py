@@ -16,7 +16,7 @@ from core.line_task_approval import (
 def _candidate(**overrides):
     data = {
         "task_id": "review-gap-abc123",
-        "queued": True,
+        "catalog_registered": True,
         "catalog_match": True,
         "execution_approved": True,
         "instruction": "Add one bounded regression test.",
@@ -70,7 +70,7 @@ def test_validate_approval_binds_catalog_task_and_preview_snapshot():
     ("overrides", "message"),
     [
         ({"task_id": "other-task"}, "identity mismatch"),
-        ({"queued": False}, "runtime queue"),
+        ({"catalog_registered": False}, "trusted catalog"),
         ({"catalog_match": False}, "trusted catalog"),
         ({"execution_approved": False}, "catalog execution approval"),
         ({"instruction": "changed"}, "instruction changed"),
