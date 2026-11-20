@@ -111,7 +111,7 @@ jobs:
               raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED")
           print("TASK_BOUND_APPROVAL=PASS")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
-              fh.write(f"AUTONOMOUS_START_SHA={head}\\n")
+              fh.write(f"AUTONOMOUS_START_SHA={head}\n")
 
       - name: Run bounded multi-agent LINE development runtime
         id: development
