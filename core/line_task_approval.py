@@ -11,7 +11,7 @@ from typing import Any, Mapping
 
 _TASK_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,99}$")
 _SHA = re.compile(r"^[0-9a-f]{40}$")
-_COMMAND = re.compile(r"^実行承認[：:][ ]**([a-z0-9][a-z0-9._-]{2,99})[ ]**$")
+_COMMAND = re.compile(r"^実行承認[：:][ ]*([a-z0-9][a-z0-9._-]{2,99})[ ]*$")
 
 @dataclass(frozen=True)
 class ApprovalCommand:
