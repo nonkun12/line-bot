@@ -12,6 +12,11 @@ from typing import Any
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 TASK_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,99}$")
+MAX_INSTRUCTION_LENGTH = 2000
+
+
+def _normalize_instruction(value: str) -> str:
+    return value.strip()[:MAX_INSTRUCTION_LENGTH]
 
 
 def _digest(value: str) -> str:
@@ -80,7 +85,7 @@ def authorize_one_task(
         or len(set(paths)) != len(paths)
     ):
         raise ValueError("approved_paths_invalid")
-    instruction_digest = _digest(instruction)
+    instruction_digest = _digest(_normalize_instruction(instruction))
     paths_digest = _digest(json.dumps(sorted(paths), ensure_ascii=False, separators=(",", ":")))
     if not SHA256.fullmatch(str(inputs.get("approval_instruction_sha256", ""))) or inputs["approval_instruction_sha256"] != instruction_digest:
         raise ValueError("approval_instruction_digest_mismatch")
