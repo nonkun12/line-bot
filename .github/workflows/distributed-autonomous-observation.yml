@@ -31,6 +31,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           gh api --paginate --slurp "repos/${REPOSITORY}/issues?state=all&per_page=100" > /tmp/issues-pages.json
@@ -38,6 +39,8 @@ jobs:
           gh api --paginate --slurp "repos/${REPOSITORY}/actions/runs?per_page=50" > /tmp/runs-pages.json
           python - <<'PY'
           import json
+          import hashlib
+          import os
           from pathlib import Path
           from datetime import datetime, timezone
 
@@ -52,14 +55,24 @@ jobs:
           catalog = json.loads(Path(".github/autonomous-loop-task-catalog.json").read_text(encoding="utf-8"))
           tasks = queue.get("tasks", [])
           registered = catalog.get("tasks", [])
+          approved = [x for x in registered if isinstance(x, dict) and x.get("execution_approved") is True] if isinstance(registered, list) else []
+          approval_candidates = [{
+              "task_id": x.get("id"),
+              "instruction": x.get("instruction"),
+              "instruction_sha256": hashlib.sha256(str(x.get("instruction", "")).encode("utf-8")).hexdigest(),
+              "allowed_paths": sorted(x.get("allowed_paths", [])) if isinstance(x.get("allowed_paths"), list) else [],
+              "allowed_paths_sha256": hashlib.sha256(json.dumps(sorted(x.get("allowed_paths", [])), ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest(),
+          } for x in approved]
           report = {
               "observed_at": datetime.now(timezone.utc).isoformat(),
               "mode": "READ_ONLY",
-              "repository": __import__("os").environ["REPOSITORY"],
+              "repository": os.environ["REPOSITORY"],
+              "base_sha": os.environ["GITHUB_SHA"],
               "kill_switch_local_marker": Path(".autonomous-loop.stop").exists(),
               "runtime_queue_count": len(tasks) if isinstance(tasks, list) else None,
               "catalog_count": len(registered) if isinstance(registered, list) else None,
-              "catalog_execution_approved_count": sum(1 for x in registered if isinstance(x, dict) and x.get("execution_approved") is True) if isinstance(registered, list) else None,
+              "catalog_execution_approved_count": len(approved),
+              "approval_candidates": approval_candidates,
               "open_issues_count": sum(1 for x in issues if x.get("state") == "open"),
               "closed_issues_count": sum(1 for x in issues if x.get("state") == "closed"),
               "open_pull_requests_count": len(pulls),
