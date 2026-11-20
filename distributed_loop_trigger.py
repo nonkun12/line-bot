@@ -458,7 +458,7 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                     f"期限Unix: {expires_at}\\n\\n"
                     "内容を確認し、このタスクだけを承認する場合は次の1行をそのまま返信してください。\\n"
                     f"{command}\\n"
-                    "実行時にもRecovery HOLD・REA・STOP・基準SHAを再検証します。HOLD解除は行いません。\\n"
+                    "実行時にもRecovery HOLD・REA・STOP・基準SHAを再検証します。HOLD解除は行いません。\n"
                     "この返信は実行承認です。別タスク・別SHAには適用されません。"
                 )
 
