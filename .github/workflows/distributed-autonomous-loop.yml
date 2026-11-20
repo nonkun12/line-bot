@@ -349,7 +349,8 @@ jobs:
           success() && (
             (github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '') ||
             (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id='))
-          ) && steps.validate_resume_request.outputs.task_id != ''
+          ) && steps.validate_resume_request.outputs.task_id != '' &&
+          steps.execution_approval.outputs.task_id == steps.validate_resume_request.outputs.task_id
         env:
           RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id }}
         run: |
@@ -408,6 +409,7 @@ jobs:
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
 
       - name: Verify one-shot task-bound execution approval
+        id: execution_approval
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -422,6 +424,7 @@ jobs:
           python -m scripts.distributed_loop_execution_approval \
             --queue /tmp/autonomous-loop-runtime-queue.json \
             --event "$GITHUB_EVENT_PATH" \
+            --catalog .github/autonomous-loop-task-catalog.json \
             --base-sha "$APPROVAL_BASE_SHA"
 
       - name: Load all existing issues for candidate deduplication
