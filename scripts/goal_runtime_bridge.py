@@ -201,7 +201,9 @@ def run(args: argparse.Namespace) -> int:
                     _reconcile_claimed_tasks(store, claimed_this_run, goal_output)
                     return 80
                 return 79
-            claim = store.claim_next(\n                GOAL_ID, expected_task_id=os.environ.get("GOAL_APPROVAL_TASK_ID", "").strip()\n            )
+            claim = store.claim_next(
+                GOAL_ID, expected_task_id=os.environ.get("GOAL_APPROVAL_TASK_ID", "").strip()
+            )
             if claim.get("decision") == "COMPLETE":
                 break
             if claim.get("decision") != "CLAIMED":
