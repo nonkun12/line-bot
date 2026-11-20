@@ -434,6 +434,34 @@ def test_bounded_scope_does_not_override_read_only_or_no_code_change(message):
     assert extract_development_instruction(message) is None
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "開発: 英単語クイズ機能のコード変更を実装・テスト・Draft PR作成まで。マージ・デプロイ等は禁止",
+        "開発: 英単語クイズ機能のコード変更を実装・テスト・Draft PR作成まで。マージ・デプロイは禁止",
+        "開発: 英単語クイズ機能のコード変更を実装・テスト・Draft PR作成まで。マージ、デプロイ等は禁止",
+    ],
+)
+def test_bounded_english_feature_request_allows_terminal_prohibition_with_etc(message):
+    assert extract_development_instruction(message) is not None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "開発: 英単語クイズ機能のコード変更を実装・テスト・Draft PR作成まで。コード変更は禁止",
+        "開発: 英単語クイズ機能のコード変更を実装・テスト・Draft PR作成まで。読み取り専用で",
+    ],
+)
+def test_bounded_english_feature_request_still_blocks_code_change_or_read_only_prohibition(message):
+    assert extract_development_instruction(message) is None
+
+
+def test_bounded_instruction_without_explicit_dev_prefix_is_not_dispatched():
+    message = "英単語クイズ機能のコード変更を実装・テスト・Draft PR作成まで。マージ・デプロイ等は禁止"
+    assert extract_development_instruction(message) is None
+
+
 def test_bounded_development_scope_dispatches_without_enabling_terminal_actions(monkeypatch):
     monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
     captured = {}
