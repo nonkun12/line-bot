@@ -132,6 +132,14 @@ def main() -> int:
         return 1
     result["verification"] = "PASS"
     result["consumption"] = "DEFERRED_TO_GUARDED_RUNTIME"
+    resume_task_id = os.environ.get("RESUME_TASK_ID", "").strip()
+    if resume_task_id and resume_task_id != str(result["task_id"]):
+        print("EXECUTION_APPROVAL=BLOCKED reason=resume_task_id_mismatch")
+        return 1
+    output_path = os.environ.get("GITHUB_OUTPUT", "")
+    if output_path:
+        with open(output_path, "a", encoding="utf-8") as output:
+            output.write("task_id=" + str(result["task_id"]) + "\\n")
     print("EXECUTION_APPROVAL=" + json.dumps(result, sort_keys=True))
     return 0
 
