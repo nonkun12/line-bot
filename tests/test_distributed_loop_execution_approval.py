@@ -61,14 +61,15 @@ def test_mismatched_or_denied_dispatch_fails_closed(tmp_path, monkeypatch, field
     assert queue.read_text() == before
 
 
-def test_queue_with_multiple_tasks_is_rejected(tmp_path, monkeypatch):
+def test_approval_selects_exactly_one_task_from_multi_task_queue(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     queue, event = _fixtures(tmp_path)
     data = json.loads(queue.read_text())
     data["tasks"].append({**data["tasks"][0], "id": "another-task-002"})
     queue.write_text(json.dumps(data))
-    with pytest.raises(ValueError, match="exactly_one"):
-        _authorize(queue, event)
+    result = _authorize(queue, event)
+    assert result["authorized_task_count"] == 1
+    assert [task["id"] for task in json.loads(queue.read_text())["tasks"]] == ["approved-task-001"]
 
 
 def test_non_dispatch_or_wrong_actor_is_rejected(tmp_path, monkeypatch):
