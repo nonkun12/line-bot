@@ -6,6 +6,20 @@ import pytest
 from line_development import extract_development_instruction, dispatch_development_workflow
 
 
+@pytest.fixture(autouse=True)
+def _stub_task_manifest(monkeypatch):
+    paths = ["core/example.py", "tests/test_line_development.py"]
+    encoded = json.dumps(paths, ensure_ascii=False, separators=(",", ":"))
+    monkeypatch.setattr(
+        "line_development._build_execution_manifest",
+        lambda token, repository: {
+            "base_sha": "a" * 40,
+            "allowed_paths": encoded,
+            "allowed_paths_sha256": hashlib.sha256(encoded.encode("utf-8")).hexdigest(),
+        },
+    )
+
+
 class FakeResponse:
     status_code = 204
 
