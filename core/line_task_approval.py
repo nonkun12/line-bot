@@ -97,8 +97,8 @@ def validate_approval_request(
         raise ValueError("candidate snapshot is invalid")
     if candidate.get("task_id") != command.task_id:
         raise ValueError("task identity mismatch")
-    if candidate.get("queued") is not True:
-        raise ValueError("task is not in the runtime queue")
+    if candidate.get("catalog_registered") is not True:
+        raise ValueError("task is not registered in the trusted catalog")
     if candidate.get("catalog_match") is not True:
         raise ValueError("runtime task does not match the trusted catalog")
     if candidate.get("execution_approved") is not True:
