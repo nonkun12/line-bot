@@ -297,6 +297,26 @@ def test_stage188_binds_unsupported_claims_and_rejects_their_replay():
         )
 
 
+def test_stage190_rejects_noncanonical_claim_digest_order():
+    trend, audit, _, ledger = build_pipeline()
+    claims = (
+        signed(RegressionClaim(
+            "candidate_regression", 2, "candidate-main", "e" * 64, "diagnostician-a", "",
+        )),
+        signed(RegressionClaim(
+            "data_drift", 3, "candidate-main", "f" * 64, "diagnostician-b", "",
+        )),
+    )
+    attribution = Stage188RegressionAttributor().build(
+        trend, audit, claims, verify_trend_signature=VERIFY,
+        verify_audit_signature=VERIFY, verify_claim_signature=VERIFY,
+        verify_report_signature=VERIFY, sign_report=SIGN,
+    )
+    forged_order = replace(attribution, claim_digests=tuple(reversed(attribution.claim_digests)))
+    with pytest.raises(LongitudinalEvolutionError, match="regression claim digest set is invalid"):
+        package(trend, audit, forged_order, ledger)
+
+
 def test_stage190_rejects_unsupported_count_exceeding_bound_claim_digests():
     trend, audit, attribution, ledger = build_pipeline()
     forged = replace(attribution, unsupported_claim_count=1)
