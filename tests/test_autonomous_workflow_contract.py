@@ -100,7 +100,7 @@ def test_autonomous_workflow_persists_self_improvement_history_between_runs():
     assert "branch: main" not in restore
 
 
-def test_autonomous_workflow_supports_explicit_on_demand_push_trigger():
+def test_autonomous_workflow_requires_explicit_dispatch_for_execution():
     text = WORKFLOW.read_text(encoding="utf-8")
     event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
     assert "push:" in event_block
@@ -108,5 +108,9 @@ def test_autonomous_workflow_supports_explicit_on_demand_push_trigger():
     assert "- main" in event_block
     assert "schedule:" in event_block
     assert "workflow_dispatch:" in event_block
-    assert "[run-autonomous-loop]" in text
-    assert "github.event_name != 'push'" in text
+    assert "if: ${{ github.event_name == 'workflow_dispatch' }}" in text
+    assert "execution_approval:" in text
+    assert "approval_task_id:" in text
+    assert "approval_instruction_sha256:" in text
+    assert "approval_allowed_paths_sha256:" in text
+    assert "approval_base_sha:" in text
