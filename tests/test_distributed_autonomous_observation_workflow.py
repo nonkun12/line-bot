@@ -25,7 +25,7 @@ def test_observation_restores_and_validates_durable_state_without_git_write_cred
     assert "persist-credentials: false" in source
     assert "contents: read" in source
     assert "contents/.autonomous-loop-state.json?ref=autonomous-loop-state" in source
-    assert "base64.b64decode(encoded, validate=True)" in source
+    assert 'base64.b64decode("".join(encoded.split()), validate=True)' in source
     assert 'recovery.get("schema_version") != 1' in source
     assert '"/tmp/autonomous-loop-state.json"' in source
     assert '"/tmp/autonomous-loop-all-issues.json"' in source
