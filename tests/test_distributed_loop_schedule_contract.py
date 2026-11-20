@@ -29,6 +29,14 @@ def test_scheduled_observation_is_read_only_and_execution_is_manual():
     assert "AUTO_DEPLOY: 'false'" in execution
 
 
+def test_execution_preserves_non_cancelling_concurrency_queue():
+    text = EXECUTION.read_text(encoding="utf-8")
+    concurrency = text.split("concurrency:", 1)[1].split("jobs:", 1)[0]
+    assert "group: distributed-autonomous-loop" in concurrency
+    assert "cancel-in-progress: false" in concurrency
+    assert "queue: max" in concurrency
+
+
 def test_recovery_ai_durable_write_refreshes_freshness_timestamp():
     text = EXECUTION.read_text(encoding="utf-8")
     assert "recovery['state_updated_at'] = datetime.now(timezone.utc).isoformat()" in text
