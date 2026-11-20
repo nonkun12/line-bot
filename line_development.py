@@ -44,7 +44,7 @@ _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 _BOUNDED_EXECUTION_SCOPE = re.compile(
-    r"(?:実装|修正|追加|改善|開発).{0,80}(?:Draft\\s*PR|PR|テスト).{0,30}まで",
+    r"(?:実装|修正|追加|改善|開発).{0,80}(?:Draft\s*PR|PR|テスト).{0,30}まで",
     re.IGNORECASE | re.DOTALL,
 )
 # These are terminal actions intentionally excluded from a request whose
@@ -53,8 +53,8 @@ _BOUNDED_EXECUTION_SCOPE = re.compile(
 # on code changes, execution, or the whole task remain fail-closed.
 _TERMINAL_ACTION_PROHIBITION = re.compile(
     r"(?:マージ|デプロイ|HOLD解除|権限変更)"
-    r"(?:[、,・\\s]+(?:マージ|デプロイ|HOLD解除|権限変更))*"
-    r"\\s*(?:は|を)?\\s*(?:一切)?"
+    r"(?:[、,・\s]+(?:マージ|デプロイ|HOLD解除|権限変更))*"
+    r"\s*(?:は|を)?\s*(?:一切)?"
     r"(?:行わないでください|行わないで|行わない|しないでください|しないで|しない|禁止)",
     re.IGNORECASE,
 )
@@ -117,7 +117,7 @@ def dispatch_development_workflow(
     """Dispatch authorized development requests to the existing Secretary repository."""
     instruction = str(instruction or "").strip()
     request_id = uuid.uuid4().hex[:12]
-    if is_non_execution_request(instruction):
+    if _is_read_only_development_request(instruction):
         return "読み取り専用の依頼として受け付けました。開発ワークフローは起動していません。"
     if not instruction:
         return "開発指示が空です。『開発: ○○を実装して』の形式で指定してください。"
