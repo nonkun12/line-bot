@@ -93,4 +93,5 @@ def test_failed_publish_or_state_gate_never_teaches_task_success(tmp_path):
         history, results, catalog, publish_outcome="failure",
         state_outcome="success", cycle_id="70002",
     ) == 0
-    assert not history.exists()
+    assert history.exists()
+    assert history.read_text(encoding="utf-8") == ""
