@@ -29,10 +29,12 @@ jobs:
           persist-credentials: false
 
       - name: Load durable autonomous loop state
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git fetch --quiet --no-tags origin refs/heads/autonomous-loop-state:refs/remotes/origin/autonomous-loop-state
-          git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/autonomous-loop-state.json
+          gh api "repos/${GITHUB_REPOSITORY}/contents/.autonomous-loop-state.json?ref=autonomous-loop-state" \
+            --jq '.content' | base64 --decode > /tmp/autonomous-loop-state.json
           python -m json.tool /tmp/autonomous-loop-state.json >/dev/null
 
       - name: Set up Python
