@@ -221,7 +221,7 @@ def _atomic_write_json(path: Path, payload: object) -> None:
         raise ValueError("catalog path must not be a symlink")
     if not path.parent.is_dir():
         raise ValueError("catalog parent directory is unavailable")
-    encoded = json.dumps(payload, ensure_ascii=False, indent=2) + "\\n"
+    encoded = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o600
     fd, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
