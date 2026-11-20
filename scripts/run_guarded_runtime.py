@@ -176,6 +176,13 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
     inputs = event.get("inputs") if isinstance(event, dict) else None
     if not isinstance(sender, dict) or not isinstance(repository, dict) or not isinstance(inputs, dict):
         return blocked
+    try:
+        approval_expires_at = int(str(inputs.get("approval_expires_at", "")))
+    except (TypeError, ValueError):
+        return blocked
+    now_epoch = int(datetime.now(timezone.utc).timestamp())
+    if approval_expires_at <= now_epoch or approval_expires_at > now_epoch + 600:
+        return blocked
     actor = str(sender.get("login", ""))
     repo_name = str(repository.get("full_name", ""))
     if (
