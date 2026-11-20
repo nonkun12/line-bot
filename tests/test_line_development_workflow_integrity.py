@@ -20,3 +20,21 @@ def test_dispatch_workflow_keeps_e2e_test_only_gate():
     assert 'echo "test_only=true" >> "$GITHUB_OUTPUT"' in text
     assert 'python -m pytest -q --tb=native' in text
     assert 'steps.development.outputs.test_only != \'true\'' in text
+
+
+def test_dispatch_workflow_verifies_task_approval_before_any_execution_path():
+    workflow_path = ROOT / ".github" / "workflows" / _WORKFLOW_FILE
+    text = workflow_path.read_text(encoding="utf-8")
+    approval_marker = "- name: Verify task-bound approval before any execution path"
+    runtime_marker = "- name: Run bounded multi-agent LINE development runtime"
+    scaffold_marker = "python -m scripts.create_app_scaffold"
+    assert approval_marker in text
+    assert text.index(approval_marker) < text.index(runtime_marker)
+    assert text.index(approval_marker) < text.index(scaffold_marker)
+    approval_step = text[
+        text.index(approval_marker) : text.index(runtime_marker)
+    ]
+    assert "from scripts.run_guarded_runtime import _verify_execution_approval" in approval_step
+    assert 'evidence.get("gate") != "PASS"' in approval_step
+    assert 'evidence.get("execution_authorized") is not True' in approval_step
+    assert "checked_out_head != approved_base" in approval_step
