@@ -134,7 +134,7 @@ def test_cli_requires_and_accepts_catalog_argument(tmp_path, monkeypatch):
     assert result.returncode == 0, result.stderr + result.stdout
     assert '"status": "PASS"' in result.stdout
     assert "consumption" in result.stdout
-    assert output_file.read_text(encoding="utf-8") == "task_id=task-001\n"
+    assert output_file.read_text(encoding="utf-8") == "task_id=approved-task-001\n"
 
 
 def test_guarded_runtime_consumes_task_bound_approval_with_atomic_ref(tmp_path, monkeypatch):
