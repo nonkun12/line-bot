@@ -161,31 +161,31 @@ jobs:
             echo "app_creation=false" >> "$GITHUB_OUTPUT"
             # Run tests without task approval, development credentials, or ambient secrets.
             python - <<'PY'
-            import os
-            import subprocess
-            import sys
+          import os
+          import subprocess
+          import sys
 
-            clean_env = os.environ.copy()
-            for name in tuple(clean_env):
-                upper = name.upper()
-                if upper.startswith(("AUTONOMOUS_", "DEV_")):
-                    clean_env.pop(name, None)
-                    continue
-                if upper in {"GH_TOKEN", "GITHUB_TOKEN"}:
-                    clean_env.pop(name, None)
-                    continue
-                if any(marker in upper for marker in (
-                    "TOKEN", "API_KEY", "SECRET", "PASSWORD", "CREDENTIAL",
-                    "ACCESS_KEY", "PRIVATE_KEY", "WEBHOOK",
-                )):
-                    clean_env.pop(name, None)
-            result = subprocess.run(
-                [sys.executable, "-m", "pytest", "-q", "--tb=native"],
-                env=clean_env,
-                check=False,
-            )
-            raise SystemExit(result.returncode)
-            PY
+          clean_env = os.environ.copy()
+          for name in tuple(clean_env):
+              upper = name.upper()
+              if upper.startswith(("AUTONOMOUS_", "DEV_")):
+                  clean_env.pop(name, None)
+                  continue
+              if upper in {"GH_TOKEN", "GITHUB_TOKEN"}:
+                  clean_env.pop(name, None)
+                  continue
+              if any(marker in upper for marker in (
+                  "TOKEN", "API_KEY", "SECRET", "PASSWORD", "CREDENTIAL",
+                  "ACCESS_KEY", "PRIVATE_KEY", "WEBHOOK",
+              )):
+                  clean_env.pop(name, None)
+          result = subprocess.run(
+              [sys.executable, "-m", "pytest", "-q", "--tb=native"],
+              env=clean_env,
+              check=False,
+          )
+          raise SystemExit(result.returncode)
+          PY
           elif python -c 'import sys; from scripts.create_app_scaffold import is_new_app_request; sys.exit(0 if is_new_app_request(sys.argv[1]) else 1)' "$DEV_INSTRUCTION"; then
             echo "test_only=false" >> "$GITHUB_OUTPUT"
             echo "app_creation=true" >> "$GITHUB_OUTPUT"
