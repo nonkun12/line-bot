@@ -181,9 +181,10 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
     # envelope only after authenticating the workflow actor, repository, ref,
     # instruction, and exact safe-path manifest. Legacy task-bound event inputs
     # remain supported for existing callers and regression coverage.
-    if str(inputs.get("execution_approval", "")) == "APPROVE_EXECUTION":
+    if "execution_approval" in inputs:
         approval_fields_valid = (
-            str(inputs.get("approval_task_id", "")) == task_id
+            str(inputs.get("execution_approval", "")) == "APPROVE_EXECUTION"
+            and str(inputs.get("approval_task_id", "")) == task_id
             and str(inputs.get("approval_instruction_sha256", "")).lower() == instruction_digest
             and bool(allowed_paths_digest)
             and str(inputs.get("approval_allowed_paths_sha256", "")).lower() == allowed_paths_digest
