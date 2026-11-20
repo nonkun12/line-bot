@@ -27,19 +27,12 @@ on:
         description: 'Exact base commit SHA shown by the prior BLOCKED run'
         required: false
         type: string
-  schedule:
-    - cron: '0 4 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '0 16 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '0 22 * * *'
-      timezone: 'Asia/Tokyo'
-
-# Scheduled runs are intentionally on the default branch.
-# Autonomous changes are pushed to a dedicated branch and reviewed via PR.
+# Legacy worker is manual-only. Scheduled observation is handled by the
+# dedicated read-only observation workflow.
 permissions:
-  contents: write
-  pull-requests: write
+  actions: read
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: autonomous-development-loop
@@ -47,6 +40,13 @@ concurrency:
 
 jobs:
   autonomous-development:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.execution_approval == 'APPROVE_EXECUTION'
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
