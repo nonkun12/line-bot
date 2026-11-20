@@ -1,6 +1,8 @@
 """Explicit LINE/Slack -> governed development command dispatcher."""
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 import re
@@ -100,20 +102,20 @@ def _build_execution_manifest(token: str, repository: str) -> dict[str, str] | N
             if (
                 path in _WORKER_PROTECTED_PATHS
                 or path in _POLICY_PROTECTED_PATHS
-                or path.startswith((".github/", "secrets/", ".git/"))
+                or path.startswith((".github/", "security/", "secrets/", ".git/"))
             ):
                 continue
             paths.append(path)
         paths = sorted(set(paths))
         if not paths:
             return None
-        allowed_paths = __import__("json").dumps(
+        allowed_paths = json.dumps(
             paths, ensure_ascii=False, separators=(",", ":")
         )
         # GitHub workflow_dispatch limits all inputs together to 65,535 chars.
         if len(allowed_paths) > 40000:
             return None
-        digest = __import__("hashlib").sha256(allowed_paths.encode("utf-8")).hexdigest()
+        digest = hashlib.sha256(allowed_paths.encode("utf-8")).hexdigest()
         return {
             "base_sha": base_sha,
             "allowed_paths": allowed_paths,
