@@ -496,6 +496,8 @@ class Stage188RegressionAttributor:
             raise LongitudinalEvolutionError("generalization audit lineage mismatch")
         rows = _bounded_rows(claims, 64, "regression claims")
         accepted = []
+        all_claim_digests = []
+        seen_claim_digests = set()
         unsupported = 0
         independent_ids = set(trend.evaluator_ids) | {trend.executor_id, audit.evaluator_id}
         diagnosticians = set()
@@ -507,11 +509,21 @@ class Stage188RegressionAttributor:
             _digest_ok(claim.causal_evidence_digest, "causal evidence")
             if type(claim.affected_generation) is not int:
                 raise LongitudinalEvolutionError("claim generation is invalid")
+            if not isinstance(claim.category, str):
+                raise LongitudinalEvolutionError("claim category is invalid")
             if claim.evaluator_id in independent_ids:
                 raise LongitudinalEvolutionError("diagnostician is not independent")
             diagnosticians.add(claim.evaluator_id)
             claim_digest = _unsigned_digest(claim)
             _signed(claim_digest, claim.signature, verify_claim_signature, "Stage 188 claim")
+            # Replay detection and report binding apply to every signed claim, including
+            # unsupported claims. Otherwise a duplicate unsupported claim could evade
+            # replay detection and its evidence could be swapped without changing the
+            # signed attribution report digest.
+            if claim_digest in seen_claim_digests:
+                raise LongitudinalEvolutionError("replayed regression claim")
+            seen_claim_digests.add(claim_digest)
+            all_claim_digests.append(claim_digest)
             if (claim.category not in self.ALLOWED or claim.candidate_id != trend.candidate_id
                     or not trend.first_generation <= claim.affected_generation <= trend.last_generation):
                 unsupported += 1
@@ -519,9 +531,7 @@ class Stage188RegressionAttributor:
             accepted.append((claim_digest, claim))
             if claim.category == "unknown":
                 unsupported += 1
-        digests = tuple(sorted(item[0] for item in accepted))
-        if len(set(digests)) != len(digests):
-            raise LongitudinalEvolutionError("replayed regression claim")
+        digests = tuple(sorted(all_claim_digests))
         categories = tuple(sorted({item[1].category for item in accepted}))
         evaluator_ids = tuple(sorted(diagnosticians))
         payload = {
@@ -683,7 +693,8 @@ class Stage190LongitudinalCertificatePackager:
         if (attribution.trend_report_digest != trend.report_digest
                 or attribution.generalization_audit_digest != audit.audit_digest):
             raise LongitudinalEvolutionError("regression attribution lineage mismatch")
-        if type(attribution.unsupported_claim_count) is not int or not 0 <= attribution.unsupported_claim_count <= 64:
+        if (type(attribution.unsupported_claim_count) is not int
+                or not 0 <= attribution.unsupported_claim_count <= len(attribution.claim_digests) <= 64):
             raise LongitudinalEvolutionError("unsupported claim count is outside bounds")
         if (len(attribution.claim_digests) > 64
                 or len(set(attribution.claim_digests)) != len(attribution.claim_digests)):
