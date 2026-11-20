@@ -6,7 +6,8 @@ import re
 import subprocess
 from pathlib import Path
 from typing import Any
-from scripts.autonomous_task_issue_drafts import MAX_DRAFTS, SPEC_MARKER, TASK_ID
+from scripts.autonomous_task_issue_drafts import MAX_DRAFTS, MAX_OPEN_REVIEW_ISSUES, SPEC_MARKER, TASK_ID
+from scripts.autonomous_task_target_allowlist import TARGETS
 
 LABEL = "autonomous-task-candidate"
 
@@ -54,11 +55,32 @@ def _validate(value: object) -> list[dict[str, str]]:
             raise ValueError("embedded candidate identity mismatch")
         if spec.get("execution_approved") is True or spec.get("execution_authorized") is True:
             raise ValueError("draft must never carry execution authority")
-        if not isinstance(spec.get("allowed_paths"), list) or len(spec["allowed_paths"]) != 1:
-            raise ValueError("draft allowed path must be singular")
+        allowed = spec.get("allowed_paths")
+        allowed_tests = {test_path for _, test_path in TARGETS}
+        if not isinstance(allowed, list) or len(allowed) != 1 or allowed[0] not in allowed_tests:
+            raise ValueError("draft allowed path is outside the explicit test allowlist")
         seen.add(task_id)
         result.append({"task_id": task_id, "title": title, "body": body})
     return result
+
+def _open_review_count(rows: list[dict[str, Any]]) -> int:
+    count = 0
+    for row in rows:
+        if row.get("state") != "open":
+            continue
+        labels = row.get("labels", [])
+        if not isinstance(labels, list) or LABEL not in {
+            item.get("name") for item in labels if isinstance(item, dict)
+        }:
+            continue
+        body = row.get("body")
+        if not isinstance(body, str) or body.count(SPEC_MARKER) != 2:
+            continue
+        if "Queue admission: not authorized" not in body and "実行承認ではありません" not in body:
+            continue
+        count += 1
+    return count
+
 
 def publish(drafts: list[dict[str, str]], repo: str) -> dict[str, Any]:
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
@@ -67,7 +89,12 @@ def publish(drafts: list[dict[str, str]], repo: str) -> dict[str, Any]:
         return {"status": "NO_DRAFTS", "created": [], "execution_approval_granted": False}
     _run(["gh", "api", f"repos/{repo}/labels/{LABEL}"])
     created, duplicates = [], 0
-    for draft in drafts:
+    initial_issues = _issues(repo)
+    capacity = max(0, MAX_OPEN_REVIEW_ISSUES - _open_review_count(initial_issues))
+    if capacity == 0:
+        return {"status": "REVIEW_BACKLOG_FULL", "created": [],
+                "execution_approval_granted": False}
+    for draft in drafts[:capacity]:
         if draft["task_id"] in _ids(_issues(repo)):
             duplicates += 1
             continue
