@@ -399,3 +399,95 @@ def test_five_stream_read_only_questions_are_not_dispatched(message):
 def test_five_stream_command_with_read_only_constraint_is_not_dispatched():
     message = "STAR-NIGHTを進めて。コード変更は行わず結果だけ報告して"
     assert extract_development_instruction(message) is None
+
+
+def test_bounded_development_scope_is_not_misclassified_as_read_only():
+    message = """開発: Issue #1315 の Core Vocabulary / Side 5 を進める。
+
+まず既存の English Agent、コアイメージ辞書、単語ローテーション、クイズ、復習履歴を調査し、既存機能を最大限再利用して、最小の実装単位を1つ選ぶ。
+
+その範囲だけ実装・テストし、Draft PRを作成する。
+
+- 既存Issue #535 / #636 / #754、PR #368を正本として参照し、重複実装しない。
+- 辞書の登録済み・検証済み単語数を確認し、未レビュー候補を完成数に含めない。
+- ユーザー別の学習履歴を維持し、同じ出題の繰り返しを減らす。
+- 無料・ローカル優先。有料API・外部ランタイム検索・新規cronは禁止。
+- Orca / Distributed AI ダッシュボードとの整合性を確認する。
+- AUTO_APPLY_PATCH=false、AUTO_DEPLOY=falseを維持する。
+- REA独立レビューとCIを実施する。
+- HOLDや証拠不足を成功扱いしない。
+- Task ID、実行結果、SHA、変更ファイル、テスト結果、REA判定、Draft PR URLを報告する。
+
+今回は実装とDraft PR作成まで。マージ、デプロイ、HOLD解除、権限変更は行わない。"""
+    assert extract_development_instruction(message) is not None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "開発: コード変更は行わず、テスト状況だけ確認して",
+        "開発: 読み取り専用で実装内容を調査して",
+        "開発: 実装・テスト・Draft PR作成まで。ただしコード変更は行わない",
+    ],
+)
+def test_bounded_scope_does_not_override_read_only_or_no_code_change(message):
+    assert extract_development_instruction(message) is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "開発: 英単語クイズ機能のコード変更を実装・テスト・Draft PR作成まで。マージ・デプロイ等は禁止",
+        "開発: 英単語クイズ機能のコード変更を実装・テスト・Draft PR作成まで。マージ・デプロイは禁止",
+        "開発: 英単語クイズ機能のコード変更を実装・テスト・Draft PR作成まで。マージ、デプロイ等は禁止",
+    ],
+)
+def test_bounded_english_feature_request_allows_terminal_prohibition_with_etc(message):
+    assert extract_development_instruction(message) is not None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "開発: 英単語クイズ機能のコード変更を実装・テスト・Draft PR作成まで。コード変更は禁止",
+        "開発: 英単語クイズ機能のコード変更を実装・テスト・Draft PR作成まで。読み取り専用で",
+    ],
+)
+def test_bounded_english_feature_request_still_blocks_code_change_or_read_only_prohibition(message):
+    assert extract_development_instruction(message) is None
+
+
+def test_bounded_instruction_without_explicit_dev_prefix_is_not_dispatched():
+    message = "英単語クイズ機能のコード変更を実装・テスト・Draft PR作成まで。マージ・デプロイ等は禁止"
+    assert extract_development_instruction(message) is None
+
+
+def test_bounded_development_scope_dispatches_without_enabling_terminal_actions(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return FakeResponse()
+
+    monkeypatch.setattr("line_development.httpx.post", fake_post)
+    message = (
+        "開発: Core Vocabularyを実装し、テストとDraft PR作成まで行う。"
+        "マージ、デプロイ、HOLD解除、権限変更は行わない。"
+    )
+    instruction = extract_development_instruction(message)
+    assert instruction is not None
+
+    reply = dispatch_development_workflow(
+        instruction,
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert captured["url"].endswith(
+        "/actions/workflows/line-development-dispatch.yml/dispatches"
+    )
+    assert captured["json"]["inputs"]["instruction"] == instruction
+    assert "受け付けました" in reply
