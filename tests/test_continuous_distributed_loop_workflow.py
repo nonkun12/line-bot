@@ -217,7 +217,7 @@ def test_continuation_checks_both_execution_and_observation_for_duplicates():
     assert "actions/workflows/distributed-autonomous-observation.yml/runs?per_page=20" in source
     assert 'active_loop" -gt 0' in source
     assert 'active_observation" -gt 0' in source
-    assert "another_loop_or_observation_is_active" in source
+    assert "another_loop_is_active" in source
 
 
 def test_continuation_only_has_dispatch_permission_and_never_writes_repository():
