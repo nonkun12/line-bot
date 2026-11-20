@@ -32,6 +32,14 @@ on:
         description: 'Exact base commit SHA shown by the blocked preflight'
         required: false
         type: string
+      approval_expires_at:
+        description: 'Unix expiry for the task-bound LINE approval (maximum ten minutes)'
+        required: false
+        type: string
+      approval_line_user_id:
+        description: 'LINE user ID recorded as the explicit task approver'
+        required: false
+        type: string
       max_tasks:
         description: 'Manual run task limit (1–4 tasks; all safety gates still apply)'
         required: false
@@ -548,6 +556,7 @@ jobs:
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
           # Populated only after cause-fixed and post-resume-review confirmations pass.
           GOAL_RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id || '' }}
+          GOAL_APPROVAL_TASK_ID: ${{ github.event.inputs.approval_task_id || '' }}
         run: |
           set -euo pipefail
           : > /tmp/minimal-autonomous-loop.jsonl

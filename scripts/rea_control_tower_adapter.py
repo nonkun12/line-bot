@@ -9,7 +9,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from scripts.rea_readonly_scanner import ALLOWED_ROOTS, ALLOWED_SUFFIXES, scan_repository
+from scripts.rea_readonly_scanner import ALLOWED_ROOTS, ALLOWED_ROOT_FILES, ALLOWED_SUFFIXES, scan_repository
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _FINDING_ID_RE = re.compile(r"^[0-9a-f]{16}$")
@@ -132,7 +132,7 @@ def _safe_path(path: str) -> bool:
     normalized = parsed.as_posix()
     return (
         normalized == path
-        and any(path.startswith(root) for root in ALLOWED_ROOTS)
+        and (path in ALLOWED_ROOT_FILES or any(path.startswith(root) for root in ALLOWED_ROOTS))
         and Path(path).suffix.lower() in ALLOWED_SUFFIXES
     )
 

@@ -45,7 +45,7 @@ class GoalStateStore:
             if cur.rowcount != 1: conn.rollback(); raise RuntimeError("goal revision conflict")
             conn.commit()
         return expected_revision + 1
-    def claim_next(self, goal_id: str) -> dict[str, Any]:
+    def claim_next(self, goal_id: str, expected_task_id: str = "") -> dict[str, Any]:
         """Atomically persist IN_PROGRESS before any external executor can run."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -54,6 +54,11 @@ class GoalStateStore:
             revision, goal = int(row["revision"]), json.loads(row["document"])
             decision = evaluate_goal(goal)
             if decision["decision"] != "CONTINUE": conn.rollback(); return decision
+            if expected_task_id and decision.get("task_id") != expected_task_id:
+                conn.rollback()
+                return {"decision": "HOLD", "reason": "approval_target_not_next",
+                        "expected_task_id": expected_task_id,
+                        "selected_task_id": decision.get("task_id")}
             task = next(item for item in goal["tasks"] if item["task_id"] == decision["task_id"])
             task["status"] = "IN_PROGRESS"
             payload = json.dumps(goal, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

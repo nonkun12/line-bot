@@ -1,5 +1,6 @@
 import hashlib
 import json
+import time
 
 import pytest
 
@@ -240,7 +241,7 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
     event_path = tmp_path / "event.json"
-    event_path.write_text(json.dumps({"sender": {"login": "nonkun12"}, "repository": {"full_name": "nonkun12/line-bot"}, "inputs": {"execution_approval": "APPROVE_EXECUTION", "approval_task_id": "rsi-test-task", "approval_instruction_sha256": hashlib.sha256(instruction.encode()).hexdigest(), "approval_base_sha": sha, "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()}}), encoding="utf-8")
+    event_path.write_text(json.dumps({"sender": {"login": "nonkun12"}, "repository": {"full_name": "nonkun12/line-bot"}, "inputs": {"execution_approval": "APPROVE_EXECUTION", "approval_task_id": "rsi-test-task", "approval_line_user_id": "U-line-user", "approval_instruction_sha256": hashlib.sha256(instruction.encode()).hexdigest(), "approval_base_sha": sha, "approval_expires_at": str(int(time.time()) + 300), "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()}}), encoding="utf-8")
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
     monkeypatch.delenv("GITHUB_ENV", raising=False)
 
@@ -364,8 +365,10 @@ def test_execution_approval_rejects_mismatched_binding(tmp_path, monkeypatch, fi
         "inputs": {
             "execution_approval": "APPROVE_EXECUTION",
             "approval_task_id": "bound-task",
+            "approval_line_user_id": "U-line-user",
             "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
             "approval_base_sha": base_sha,
+            "approval_expires_at": str(int(time.time()) + 300),
             "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest(),
         },
     }
@@ -399,8 +402,10 @@ def test_execution_approval_rejects_actor_environment_mismatch(tmp_path, monkeyp
             "inputs": {
                 "execution_approval": "APPROVE_EXECUTION",
                 "approval_task_id": "bound-task",
+                "approval_line_user_id": "U-line-user",
                 "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
                 "approval_base_sha": base_sha,
+                "approval_expires_at": str(int(time.time()) + 300),
             "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest(),
             },
         }),
@@ -430,8 +435,10 @@ def test_execution_approval_rejects_dispatch_from_non_default_branch(tmp_path, m
             "inputs": {
                 "execution_approval": "APPROVE_EXECUTION",
                 "approval_task_id": "bound-task",
+                "approval_line_user_id": "U-line-user",
                 "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
                 "approval_base_sha": base_sha,
+                "approval_expires_at": str(int(time.time()) + 300),
             "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest(),
             },
         }),
@@ -625,8 +632,10 @@ def test_explicit_denial_cannot_fall_back_to_workflow_prepared_approval(tmp_path
                 "user_id": "U123",
                 "execution_approval": "DENY",
                 "approval_task_id": task_id,
+                "approval_line_user_id": "U-line-user",
                 "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
                 "approval_base_sha": base_sha,
+                "approval_expires_at": str(int(time.time()) + 300),
                 "approval_allowed_paths_sha256": hashlib.sha256(canonical_paths.encode("utf-8")).hexdigest(),
             },
         }),
@@ -653,3 +662,46 @@ def test_explicit_denial_cannot_fall_back_to_workflow_prepared_approval(tmp_path
 
     assert evidence["gate"] == "BLOCKED"
     assert evidence["execution_authorized"] is False
+
+
+def test_execution_approval_binds_raw_catalog_instruction_and_short_expiry(monkeypatch, tmp_path):
+    task_instruction = "  catalog instruction exactly as reviewed  "
+    advisory_instruction = task_instruction + "\\n\\nUNTRUSTED advisory"
+    task_id = "approved-test-task"
+    paths = ["tests/test_example.py"]
+    sha = "f" * 40
+    event_path = tmp_path / "event.json"
+    expiry = int(time.time()) + 300
+    event_path.write_text(json.dumps({
+        "sender": {"login": "nonkun12"},
+        "repository": {"full_name": "nonkun12/line-bot"},
+        "inputs": {
+            "execution_approval": "APPROVE_EXECUTION",
+            "approval_task_id": task_id,
+            "approval_line_user_id": "U-line-user",
+            "approval_instruction_sha256": hashlib.sha256(task_instruction.encode()).hexdigest(),
+            "approval_allowed_paths_sha256": hashlib.sha256(
+                json.dumps(paths, ensure_ascii=False, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "approval_base_sha": sha,
+            "approval_expires_at": str(expiry),
+        },
+    }), encoding="utf-8")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)
+    monkeypatch.setenv("AUTONOMOUS_APPROVAL_INSTRUCTION", task_instruction)
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(paths))
+
+    decision = guarded_runtime._verify_execution_approval(sha, advisory_instruction)
+    assert decision["execution_authorized"] is True
+    assert decision["instruction_sha256"] == hashlib.sha256(task_instruction.encode()).hexdigest()
+
+    event = json.loads(event_path.read_text(encoding="utf-8"))
+    event["inputs"]["approval_expires_at"] = str(int(time.time()) - 1)
+    event_path.write_text(json.dumps(event), encoding="utf-8")
+    expired = guarded_runtime._verify_execution_approval(sha, advisory_instruction)
+    assert expired["execution_authorized"] is False

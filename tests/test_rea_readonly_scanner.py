@@ -81,7 +81,7 @@ class ReadonlyScannerTests(unittest.TestCase):
 
     def test_commit_diff_scans_generated_output_and_binds_hashes(self) -> None:
         base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.root, text=True).strip()
-        self._write("scripts/generated.py", "def broken(:\\n  pass\\n")
+        self._write("scripts/generated.py", "def broken(:\n  pass\n")
         self._commit()
         target = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.root, text=True).strip()
 
@@ -92,6 +92,35 @@ class ReadonlyScannerTests(unittest.TestCase):
         self.assertEqual(report["status"], "FINDINGS")
         self.assertIn("python_syntax", {item["category"] for item in report["findings"]})
         self.assertTrue(report["capabilities"]["read_only"])
+
+    def test_commit_diff_allows_explicit_line_entrypoint_but_blocks_other_root_file(self) -> None:
+        base = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        self._write("distributed_loop_trigger.py", "VALUE = 1\n")
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(report["status"], "PASS")
+        self.assertNotIn(
+            "path_policy",
+            {item["category"] for item in report["findings"]},
+        )
+        self.assertGreaterEqual(scan_repository(self.root)["files_scanned"], 4)
+
+        base = target
+        self._write("unapproved_root.py", "VALUE = 2\n")
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        findings = [item for item in report["findings"] if item["category"] == "path_policy"]
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["evidence"]["path"], "unapproved_root.py")
 
     def test_commit_diff_blocks_invalid_sha(self) -> None:
         with self.assertRaises(ScanBlocked):
@@ -123,7 +152,7 @@ class ReadonlyScannerTests(unittest.TestCase):
             ["git", "rm", "-rf", "."], cwd=self.root, check=True,
             capture_output=True,
         )
-        self._write("scripts/unrelated.py", "VALUE = 9\\n")
+        self._write("scripts/unrelated.py", "VALUE = 9\n")
         self._commit()
         target = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True

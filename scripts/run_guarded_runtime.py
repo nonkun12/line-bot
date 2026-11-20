@@ -133,7 +133,10 @@ def _shared_stop_active() -> bool:
 
 def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, object]:
     """Verify approval against the exact task, instruction, base, and path scope."""
-    instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
+    approval_instruction = os.environ.get("AUTONOMOUS_APPROVAL_INSTRUCTION")
+    if approval_instruction is None:
+        approval_instruction = instruction
+    instruction_digest = hashlib.sha256(approval_instruction.encode("utf-8")).hexdigest()
     raw_allowed_paths = os.environ.get("AUTONOMOUS_ALLOWED_PATHS", "")
     try:
         allowed_paths = json.loads(raw_allowed_paths)
@@ -177,20 +180,29 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         return blocked
     actor = str(sender.get("login", ""))
     repo_name = str(repository.get("full_name", ""))
-    # Preferred path: the trusted LINE workflow creates a fresh approval
-    # envelope only after authenticating the workflow actor, repository, ref,
-    # instruction, and exact safe-path manifest. Legacy task-bound event inputs
-    # remain supported for existing callers and regression coverage.
+    line_approver_user_id = ""
+    approval_expires_at = 0
     if "execution_approval" in inputs:
+        try:
+            approval_expires_at = int(str(inputs.get("approval_expires_at", "")))
+        except (TypeError, ValueError):
+            return blocked
+        now_epoch = int(datetime.now(timezone.utc).timestamp())
+        if approval_expires_at <= now_epoch or approval_expires_at > now_epoch + 600:
+            return blocked
+        line_approver_user_id = str(inputs.get("approval_line_user_id", "")).strip()
         approval_fields_valid = (
             str(inputs.get("execution_approval", "")) == "APPROVE_EXECUTION"
             and str(inputs.get("approval_task_id", "")) == task_id
+            and bool(line_approver_user_id)
             and str(inputs.get("approval_instruction_sha256", "")).lower() == instruction_digest
             and bool(allowed_paths_digest)
             and str(inputs.get("approval_allowed_paths_sha256", "")).lower() == allowed_paths_digest
             and str(inputs.get("approval_base_sha", "")) == start_sha
         )
     else:
+        # Compatibility path for the existing LINE dispatch workflow: its trusted
+        # preparation step mints a one-run envelope in GITHUB_ENV before runtime.
         approval_fields_valid = (
             os.environ.get("AUTONOMOUS_EXECUTION_APPROVAL", "") == "APPROVE_EXECUTION"
             and os.environ.get("AUTONOMOUS_APPROVAL_TASK_ID", "").strip() == task_id
@@ -210,7 +222,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         or not approval_fields_valid
     ):
         return blocked
-    return {
+    evidence = {
         "gate": "PASS",
         "reason_code": "authenticated_workflow_dispatch_approval",
         "execution_authorized": True,
@@ -221,6 +233,10 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "allowed_paths_sha256": allowed_paths_digest,
         "base_sha": start_sha,
     }
+    if line_approver_user_id:
+        evidence["line_approver_user_id"] = line_approver_user_id
+        evidence["expires_at"] = approval_expires_at
+    return evidence
 
 
 def _augment_instruction_with_history(instruction: str, history_path: Path) -> str:
