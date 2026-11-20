@@ -30,4 +30,6 @@ def test_manifest_clearly_requires_human_dispatch_and_does_not_execute():
     assert "This workflow is read-only" in source
     assert "does not approve, queue, execute, merge, or deploy anything" in source
     assert "APPROVE_EXECUTION" in source
-    assert "approval_base_sha" not in source  # summary labels show the field values for manual dispatch
+    assert "Base SHA:" in source
+    assert "Instruction SHA-256:" in source
+    assert "Allowed paths SHA-256:" in source
