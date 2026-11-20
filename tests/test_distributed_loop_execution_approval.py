@@ -347,7 +347,8 @@ def test_minimal_loop_keeps_approved_instruction_separate_from_advisory_context(
     assert 'approved_instruction = instruction' in source
     assert 'env["AUTONOMOUS_APPROVED_INSTRUCTION"] = approved_instruction' in source
     assert source.index('approved_instruction = instruction') < source.index('if rag_db_path and rag_namespace:')
-    assert source.index('env["AUTONOMOUS_APPROVED_INSTRUCTION"] = approved_instruction') < source.index('env["DEV_INSTRUCTION"] = instruction')
+    assert 'env["DEV_INSTRUCTION"] = approved_instruction' in source
+    assert 'env["AUTONOMOUS_ADVISORY_CONTEXT"] = instruction[len(approved_instruction):]' in source
 
 
 def test_approval_digest_uses_runtime_instruction_normalization(tmp_path, monkeypatch):
