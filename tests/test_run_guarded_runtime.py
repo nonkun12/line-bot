@@ -256,6 +256,8 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     assert summary["rea"] == rea
     assert summary["execution_approval"]["gate"] == "PASS"
     assert summary["execution_approval"]["scope"] == "execution"
+    assert summary["execution_approval"]["line_approver_user_id"] == "U-line-user"
+    assert summary["execution_approval"]["expires_at"] > int(time.time())
 
 
 
