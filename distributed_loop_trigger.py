@@ -483,6 +483,7 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                         "approval_instruction_sha256": decision.instruction_sha256,
                         "approval_base_sha": decision.base_sha,
                         "approval_expires_at": str(decision.expires_at),
+                        "approval_line_user_id": decision.approver_user_id,
                         "max_tasks": "1",
                         "request_id": request_id,
                         "continuation_depth": "0",
