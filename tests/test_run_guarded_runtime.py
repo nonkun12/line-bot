@@ -241,7 +241,7 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
     event_path = tmp_path / "event.json"
-    event_path.write_text(json.dumps({"sender": {"login": "nonkun12"}, "repository": {"full_name": "nonkun12/line-bot"}, "inputs": {"execution_approval": "APPROVE_EXECUTION", "approval_task_id": "rsi-test-task", "approval_instruction_sha256": hashlib.sha256(instruction.encode()).hexdigest(), "approval_base_sha": sha, "approval_expires_at": str(int(__import__("time").time()) + 300), "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()}}), encoding="utf-8")
+    event_path.write_text(json.dumps({"sender": {"login": "nonkun12"}, "repository": {"full_name": "nonkun12/line-bot"}, "inputs": {"execution_approval": "APPROVE_EXECUTION", "approval_task_id": "rsi-test-task", "approval_line_user_id": "U-line-user", "approval_instruction_sha256": hashlib.sha256(instruction.encode()).hexdigest(), "approval_base_sha": sha, "approval_expires_at": str(int(__import__("time").time()) + 300), "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()}}), encoding="utf-8")
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
     monkeypatch.delenv("GITHUB_ENV", raising=False)
 
@@ -365,6 +365,7 @@ def test_execution_approval_rejects_mismatched_binding(tmp_path, monkeypatch, fi
         "inputs": {
             "execution_approval": "APPROVE_EXECUTION",
             "approval_task_id": "bound-task",
+            "approval_line_user_id": "U-line-user",
             "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
             "approval_base_sha": base_sha,
             "approval_expires_at": str(int(time.time()) + 300),
@@ -401,6 +402,7 @@ def test_execution_approval_rejects_actor_environment_mismatch(tmp_path, monkeyp
             "inputs": {
                 "execution_approval": "APPROVE_EXECUTION",
                 "approval_task_id": "bound-task",
+                "approval_line_user_id": "U-line-user",
                 "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
                 "approval_base_sha": base_sha,
                 "approval_expires_at": str(int(time.time()) + 300),
@@ -433,6 +435,7 @@ def test_execution_approval_rejects_dispatch_from_non_default_branch(tmp_path, m
             "inputs": {
                 "execution_approval": "APPROVE_EXECUTION",
                 "approval_task_id": "bound-task",
+                "approval_line_user_id": "U-line-user",
                 "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
                 "approval_base_sha": base_sha,
                 "approval_expires_at": str(int(time.time()) + 300),
@@ -539,6 +542,7 @@ def test_execution_approval_binds_raw_catalog_instruction_and_short_expiry(monke
         "inputs": {
             "execution_approval": "APPROVE_EXECUTION",
             "approval_task_id": task_id,
+            "approval_line_user_id": "U-line-user",
             "approval_instruction_sha256": hashlib.sha256(task_instruction.encode()).hexdigest(),
             "approval_allowed_paths_sha256": hashlib.sha256(
                 json.dumps(paths, ensure_ascii=False, separators=(",", ":")).encode()
