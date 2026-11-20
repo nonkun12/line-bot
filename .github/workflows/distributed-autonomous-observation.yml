@@ -1,0 +1,87 @@
+name: Distributed Autonomous Observation
+run-name: Distributed Observation (read-only)
+
+on:
+  schedule:
+    - cron: "0,30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: distributed-autonomous-observation
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout without persistent credentials
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Collect read-only repository signals
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp "repos/${REPOSITORY}/issues?state=all&per_page=100" > /tmp/issues-pages.json
+          gh api --paginate --slurp "repos/${REPOSITORY}/pulls?state=open&per_page=100" > /tmp/pulls-pages.json
+          gh api --paginate --slurp "repos/${REPOSITORY}/actions/runs?per_page=50" > /tmp/runs-pages.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          def pages(path):
+              raw = json.loads(Path(path).read_text(encoding="utf-8"))
+              return [item for page in raw for item in page if isinstance(item, dict)]
+
+          issues = [x for x in pages("/tmp/issues-pages.json") if "pull_request" not in x]
+          pulls = pages("/tmp/pulls-pages.json")
+          runs = pages("/tmp/runs-pages.json")
+          queue = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8"))
+          catalog = json.loads(Path(".github/autonomous-loop-task-catalog.json").read_text(encoding="utf-8"))
+          tasks = queue.get("tasks", [])
+          registered = catalog.get("tasks", [])
+          report = {
+              "observed_at": datetime.now(timezone.utc).isoformat(),
+              "mode": "READ_ONLY",
+              "repository": __import__("os").environ["REPOSITORY"],
+              "kill_switch_local_marker": Path(".autonomous-loop.stop").exists(),
+              "runtime_queue_count": len(tasks) if isinstance(tasks, list) else None,
+              "catalog_count": len(registered) if isinstance(registered, list) else None,
+              "catalog_execution_approved_count": sum(1 for x in registered if isinstance(x, dict) and x.get("execution_approved") is True) if isinstance(registered, list) else None,
+              "open_issues_count": sum(1 for x in issues if x.get("state") == "open"),
+              "closed_issues_count": sum(1 for x in issues if x.get("state") == "closed"),
+              "open_pull_requests_count": len(pulls),
+              "recent_workflow_runs": [{
+                  "name": x.get("name"), "event": x.get("event"),
+                  "status": x.get("status"), "conclusion": x.get("conclusion"),
+                  "run_number": x.get("run_number"), "html_url": x.get("html_url")
+              } for x in runs[:20]],
+              "safety_boundary": "No repository, issue, branch, PR, workflow, or durable-state writes are performed."
+          }
+          Path("/tmp/distributed-observation.json").write_text(
+              json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          PY
+          cat /tmp/distributed-observation.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload observation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributed-observation-${{ github.run_id }}
+          path: /tmp/distributed-observation.json
+          if-no-files-found: warn
+          retention-days: 30
