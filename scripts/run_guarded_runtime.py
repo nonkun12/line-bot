@@ -396,7 +396,7 @@ def _consume_execution_approval(approval_evidence: dict[str, object], start_sha:
         "allowed_paths_sha256": approval_evidence.get("allowed_paths_sha256", ""),
         "base_sha": start_sha,
         "line_approver_user_id": approval_evidence.get("line_approver_user_id", ""),
-        "expires_at": approval_evidence.get("expires_at", ""),
+        "expires_at": str(approval_evidence.get("expires_at", "")),
         "approval_nonce": approval_evidence.get("approval_nonce", ""),
     }
     if not all(isinstance(value, str) and value for value in identity.values()):
