@@ -569,13 +569,13 @@ def test_status_classifier_does_not_swallow_development_requests():
 
 
 class _ApprovalClient:
-    def __init__(self, *, execution_approved=True, base_sha="a" * 40):
+    def __init__(self, *, execution_approved=True, base_sha="a" * 40, tracked_queue=True):
         self.task = {
             "id": "approved-test-task",
             "instruction": "Run one bounded regression test.",
             "allowed_paths": ["tests/test_example.py"],
         }
-        self.queue = {"version": 1, "max_tasks_per_run": 1, "tasks": [self.task]}
+        self.queue = {"version": 1, "max_tasks_per_run": 1, "tasks": [self.task] if tracked_queue else []}
         self.catalog = {
             "version": 1,
             "tasks": [{**self.task, "execution_approved": execution_approved}],
@@ -677,3 +677,17 @@ def test_malformed_explicit_line_approval_is_handled_not_routed_to_general_chat(
     handled, reply = request_distributed_loop("u1", "実行承認: approved-test-task")
     assert handled is True
     assert "形式が不正" in reply
+
+
+
+def test_line_approval_preview_accepts_catalog_task_for_runtime_refill(monkeypatch):
+    from unittest.mock import patch
+
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _ApprovalClient(tracked_queue=False)
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = request_distributed_loop("u1", "承認候補: approved-test-task")
+    assert handled is True
+    assert "実行承認: approved-test-task" in reply
+    assert client.posted == []
