@@ -58,7 +58,7 @@ def authorize_one_task(
     if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id):
         raise ValueError("approval_task_id_invalid")
     matches = [task for task in tasks if isinstance(task, dict) and task.get("id") == task_id]
-    if len(matches) != 1 or len(tasks) != 1:
+    if len(matches) != 1:
         raise ValueError("approval_must_bind_exactly_one_queued_task")
     task = matches[0]
     instruction, paths = task.get("instruction"), task.get("allowed_paths")
