@@ -7,7 +7,9 @@ from line_development import extract_development_instruction, dispatch_developme
 
 
 @pytest.fixture(autouse=True)
-def _stub_task_manifest(monkeypatch):
+def _stub_task_manifest(monkeypatch, request):
+    if request.node.name.startswith("test_execution_manifest_"):
+        return
     paths = ["core/example.py", "tests/test_line_development.py"]
     encoded = json.dumps(paths, ensure_ascii=False, separators=(",", ":"))
     monkeypatch.setattr(
