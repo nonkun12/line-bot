@@ -123,3 +123,26 @@ def test_corrupt_history_is_not_replaced(tmp_path):
     with pytest.raises(ValueError, match="refusing to overwrite"):
         append_rea_observations(history, results, catalog, cycle_id="10006")
     assert history.read_text(encoding="utf-8") == "{bad json}\n"
+
+
+def test_rea_history_round_trips_through_durable_state(tmp_path):
+    import sys
+    from scripts.rea_self_improvement_history import main
+
+    state = tmp_path / "state.json"
+    history = tmp_path / "rea.jsonl"
+    state.write_text(json.dumps({"version": 1, "rea_observations": [{
+        "record_type": "rea_observation", "cycle_id": "10007", "task_id": "task-a",
+        "gate": "BLOCKED", "scanner_status": "BLOCKED", "category": "evidence_block",
+        "finding_count": 0, "critical_count": 0, "blocking_count": 0, "target_sha": None,
+    }]}), encoding="utf-8")
+    original = sys.argv
+    try:
+        sys.argv = ["rea_self_improvement_history.py", "import", "--state", str(state), "--history", str(history)]
+        assert main() == 0
+        sys.argv = ["rea_self_improvement_history.py", "export", "--state", str(state), "--history", str(history)]
+        assert main() == 0
+    finally:
+        sys.argv = original
+    durable = json.loads(state.read_text(encoding="utf-8"))
+    assert durable["rea_observations"][0]["category"] == "evidence_block"
