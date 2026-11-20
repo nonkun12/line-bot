@@ -257,6 +257,10 @@ def append_cycle_memory(
             ))):
                 outcome = "FAIL"
         elif status == "BLOCKED":
+            # REA security/evidence blocks have their own typed history and
+            # must not also become generic development-cycle BLOCKED memory.
+            if isinstance(reason, str) and reason.startswith("control_tower_rea:"):
+                continue
             outcome = "BLOCKED"
     if outcome is None:
         return 0
