@@ -6,7 +6,6 @@ This store keeps only bounded categorical metadata and never grants authority.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 from pathlib import Path
@@ -57,6 +56,8 @@ def validate_durable_rea_observations(records: object) -> list[dict[str, object]
             raise ValueError("REA observation task ID is invalid")
         if not all(_count(row.get(key)) for key in ("finding_count", "critical_count", "blocking_count")):
             raise ValueError("REA observation counts are invalid")
+        if row["critical_count"] > row["blocking_count"] or row["blocking_count"] > row["finding_count"]:
+            raise ValueError("REA observation severity counts are inconsistent")
         target_sha = row.get("target_sha")
         if target_sha is not None and (not isinstance(target_sha, str) or not _SHA.fullmatch(target_sha)):
             raise ValueError("REA observation target SHA is invalid")
@@ -78,7 +79,10 @@ def validate_durable_rea_observations(records: object) -> list[dict[str, object]
                 scanner != "FINDINGS" or blocking < 1 or finding_count < blocking or target_sha is None
             ):
                 raise ValueError("REA finding block is inconsistent")
-            if category == "evidence_block" and scanner != "BLOCKED":
+            if category == "evidence_block" and (
+                scanner != "BLOCKED" or finding_count != 0 or critical != 0
+                or blocking != 0 or target_sha is not None
+            ):
                 raise ValueError("REA evidence block is inconsistent")
         else:
             raise ValueError("REA observation gate is invalid")
