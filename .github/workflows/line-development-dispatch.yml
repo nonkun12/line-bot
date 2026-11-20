@@ -113,6 +113,35 @@ jobs:
           print(f"APPROVED_PATH_COUNT={len(paths)}")
           PY
 
+      - name: Verify task-bound approval before any execution path
+        env:
+          DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import subprocess
+          from scripts.run_guarded_runtime import _verify_execution_approval
+
+          approved_base = os.environ.get("AUTONOMOUS_START_SHA", "").strip()
+          checked_out_head = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], text=True
+          ).strip()
+          if not approved_base or checked_out_head != approved_base:
+              raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED reason=base_sha_mismatch")
+
+          evidence = _verify_execution_approval(
+              approved_base, os.environ["DEV_INSTRUCTION"]
+          )
+          if (
+              evidence.get("gate") != "PASS"
+              or evidence.get("execution_authorized") is not True
+          ):
+              raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED")
+          print("TASK_BOUND_APPROVAL=PASS")
+          print(f"APPROVED_TASK_ID={evidence['task_id']}")
+          PY
+
       - name: Run bounded multi-agent LINE development runtime
         id: development
         env:
