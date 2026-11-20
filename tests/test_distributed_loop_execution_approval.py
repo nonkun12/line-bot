@@ -348,3 +348,36 @@ def test_minimal_loop_keeps_approved_instruction_separate_from_advisory_context(
     assert 'env["AUTONOMOUS_APPROVED_INSTRUCTION"] = approved_instruction' in source
     assert source.index('approved_instruction = instruction') < source.index('if rag_db_path and rag_namespace:')
     assert source.index('env["AUTONOMOUS_APPROVED_INSTRUCTION"] = approved_instruction') < source.index('env["DEV_INSTRUCTION"] = instruction')
+
+
+def test_approval_digest_uses_runtime_instruction_normalization(tmp_path, monkeypatch):
+    import hashlib
+
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    queue, event, catalog = _fixtures(tmp_path)
+    instruction = "  " + ("x" * 2100) + "  "
+
+    queue_data = json.loads(queue.read_text(encoding="utf-8"))
+    queue_data["tasks"][0]["instruction"] = instruction
+    queue.write_text(json.dumps(queue_data), encoding="utf-8")
+
+    catalog_data = json.loads(catalog.read_text(encoding="utf-8"))
+    catalog_data["tasks"][0]["instruction"] = instruction
+    catalog.write_text(json.dumps(catalog_data), encoding="utf-8")
+
+    normalized = instruction.strip()[:2000]
+    event_data = json.loads(event.read_text(encoding="utf-8"))
+    event_data["inputs"]["approval_instruction_sha256"] = hashlib.sha256(
+        normalized.encode("utf-8")
+    ).hexdigest()
+    event.write_text(json.dumps(event_data), encoding="utf-8")
+
+    result = _authorize(queue, event, catalog)
+    assert result["status"] == "PASS"
+    assert result["instruction_sha256"] == hashlib.sha256(
+        normalized.encode("utf-8")
+    ).hexdigest()
+
+    from scripts.distributed_loop_execution_approval import MAX_INSTRUCTION_LENGTH
+    from scripts.line_development_worker_v2 import MAX_INSTRUCTION_LENGTH as RUNTIME_MAX_INSTRUCTION_LENGTH
+    assert MAX_INSTRUCTION_LENGTH == RUNTIME_MAX_INSTRUCTION_LENGTH == 2000
