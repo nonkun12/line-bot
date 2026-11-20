@@ -389,8 +389,17 @@ jobs:
         if: success() && env.TRIGGER_MODE == 'normal'
         run: |
           set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          source = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8"))
+          source["max_tasks_per_run"] = 1
+          Path("/tmp/autonomous-loop-one-task-queue.json").write_text(
+              json.dumps(source, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
           python -m scripts.autonomous_task_refill \
-            --queue .github/autonomous-loop-tasks.json \
+            --queue /tmp/autonomous-loop-one-task-queue.json \
             --catalog .github/autonomous-loop-task-catalog.json \
             --completed-state /tmp/autonomous-loop-state.json \
             --output /tmp/autonomous-loop-runtime-queue.json \
