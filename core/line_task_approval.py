@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import hmac
 import json
 import re
 from typing import Any, Mapping
@@ -78,6 +79,81 @@ def allowed_paths_digest(paths: list[str]) -> str:
     return hashlib.sha256(
         json.dumps(canonical, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def approval_envelope_payload(
+    *,
+    task_id: str,
+    instruction_sha256: str,
+    allowed_paths_sha256: str,
+    base_sha: str,
+    expires_at: int,
+    approver_user_id: str,
+    nonce: str,
+) -> bytes:
+    """Return canonical bytes binding every security-relevant approval field."""
+    fields = {
+        "task_id": task_id,
+        "instruction_sha256": instruction_sha256,
+        "allowed_paths_sha256": allowed_paths_sha256,
+        "base_sha": base_sha,
+        "expires_at": expires_at,
+        "approver_user_id": approver_user_id,
+        "nonce": nonce,
+    }
+    return json.dumps(fields, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def sign_approval_envelope(decision: ApprovalDecision, *, nonce: str, secret: str) -> str:
+    """Sign a fresh LINE-authorized approval; callers must fail closed without a secret."""
+    if not isinstance(secret, str) or len(secret) < 32:
+        raise ValueError("LINE approval signing secret is missing or too short")
+    if not re.fullmatch(r"[0-9a-f]{32}", nonce):
+        raise ValueError("approval nonce is invalid")
+    payload = approval_envelope_payload(
+        task_id=decision.task_id,
+        instruction_sha256=decision.instruction_sha256,
+        allowed_paths_sha256=decision.allowed_paths_sha256,
+        base_sha=decision.base_sha,
+        expires_at=decision.expires_at,
+        approver_user_id=decision.approver_user_id,
+        nonce=nonce,
+    )
+    return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def verify_approval_envelope_signature(
+    *,
+    task_id: str,
+    instruction_sha256: str,
+    allowed_paths_sha256: str,
+    base_sha: str,
+    expires_at: int,
+    approver_user_id: str,
+    nonce: str,
+    signature: str,
+    secret: str,
+) -> bool:
+    if not isinstance(secret, str) or len(secret) < 32:
+        return False
+    if not isinstance(signature, str) or not _DIGEST.fullmatch(signature):
+        return False
+    if not isinstance(nonce, str) or not re.fullmatch(r"[0-9a-f]{32}", nonce):
+        return False
+    try:
+        payload = approval_envelope_payload(
+            task_id=task_id,
+            instruction_sha256=instruction_sha256,
+            allowed_paths_sha256=allowed_paths_sha256,
+            base_sha=base_sha,
+            expires_at=expires_at,
+            approver_user_id=approver_user_id,
+            nonce=nonce,
+        )
+    except (TypeError, ValueError):
+        return False
+    expected = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
 
 
 def validate_approval_request(
