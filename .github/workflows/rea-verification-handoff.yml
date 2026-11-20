@@ -249,6 +249,8 @@ jobs:
                   result.update(gate="HOLD", reason_code="independent_diff_scan_unverified")
               elif receipt.get("risk") in {"LOW", "MEDIUM"}:
                   result.update(gate="REVIEW_REQUIRED", reason_code="independent_tests_pass_risk_requires_rea")
+              elif receipt.get("risk") == "HIGH":
+                  result.update(gate="BLOCKED", reason_code="risk_high")
               else:
                   result.update(gate="HOLD", reason_code="risk_unknown_no_promotion")
           except Exception as exc:
