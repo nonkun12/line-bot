@@ -81,10 +81,10 @@ jobs:
           TARGET_SHA: ${{ steps.identity.outputs.verified_sha }}
         run: |
           set -euo pipefail
-          python scripts/rea_independent_verifier.py \
+          PYTHONDONTWRITEBYTECODE=1 python scripts/rea_independent_verifier.py \
             --base-sha "$BASE_SHA" \
             --target-sha "$TARGET_SHA" \
-            > rea-independent-worker.json
+            > "$RUNNER_TEMP/rea-independent-worker.json"
 
       - name: Write SHA-bound verification receipt
         if: always()
@@ -100,7 +100,7 @@ jobs:
 
           try:
               independent = json.loads(
-                  Path("rea-independent-worker.json").read_text(encoding="utf-8")
+                  (Path(os.environ["RUNNER_TEMP"]) / "rea-independent-worker.json").read_text(encoding="utf-8")
               )
           except (OSError, ValueError, TypeError):
               independent = {}
