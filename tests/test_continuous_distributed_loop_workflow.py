@@ -125,14 +125,12 @@ def test_chain_job_ai_is_the_workflow_continuation_decision_owner():
     assert "python - <<'PY'" not in source
 
 
-def test_continuation_depth_is_passed_from_chain_job_ai_and_incremented():
+def test_continuation_depth_is_only_observability_metadata_not_execution_authority():
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "GATE_DEPTH: ${{ steps.gate.outputs.depth }}" in source
     assert 'depth="$GATE_DEPTH"' in source
-    assert '-f continuation_depth="${{ steps.active.outputs.next_depth }}"' in source
-    assert "continuation_depth:" in (
-        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
-    ).read_text(encoding="utf-8")
+    assert "gh workflow run distributed-autonomous-observation.yml" in source
+    assert "gh workflow run distributed-autonomous-loop.yml" not in source
 
 
 def test_continuation_depth_zero_dispatches_depth_one(tmp_path):
@@ -176,12 +174,15 @@ def test_distributed_loop_is_manual_approved_and_observation_is_scheduled():
     assert 'cron: "0,30 * * * *"' in observation
 
 
-def test_only_continuous_workflow_owns_automatic_dispatch():
+def test_automatic_continuations_can_dispatch_observation_but_never_execution():
     root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
     continuous = (root / "continuous-distributed-loop.yml").read_text(encoding="utf-8")
+    safe = (root / "distributed-loop-safe-continuation.yml").read_text(encoding="utf-8")
     postrun = (root / "distributed-loop-postrun.yml").read_text(encoding="utf-8")
     distributed = (root / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    assert "gh workflow run distributed-autonomous-loop.yml" in continuous
+    for source in (continuous, safe):
+        assert "gh workflow run distributed-autonomous-observation.yml" in source
+        assert "gh workflow run distributed-autonomous-loop.yml" not in source
     assert "gh workflow run distributed-autonomous-loop.yml" not in postrun
     assert "actions/workflows/distributed-autonomous-loop.yml/dispatches" not in distributed
     assert "Dispatch next bounded job when verified work remains" not in distributed
