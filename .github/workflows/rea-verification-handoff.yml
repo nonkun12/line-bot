@@ -179,7 +179,7 @@ jobs:
               )
               row_artifact = artifact_text(
                   source_run_id,
-                  f"rea-candidate-evidence-{source_run_id}",
+                  f"minimal-autonomous-loop-{source_run_id}",
                   "minimal-autonomous-loop.jsonl",
               )
               rows = [json.loads(line) for line in row_artifact.splitlines() if line.strip()]
