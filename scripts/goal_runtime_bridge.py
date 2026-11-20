@@ -206,6 +206,13 @@ def run(args: argparse.Namespace) -> int:
             )
             if claim.get("decision") == "COMPLETE":
                 break
+            if claim.get("reason") == "approval_target_not_next":
+                _append_blocked(
+                    results_path,
+                    os.environ.get("GOAL_APPROVAL_TASK_ID", "").strip(),
+                    "approval_target_not_next_or_eligible",
+                )
+                return 79
             if claim.get("decision") != "CLAIMED":
                 if claimed_this_run:
                     _reconcile_claimed_tasks(store, claimed_this_run, goal_output)
