@@ -202,7 +202,7 @@ def dispatch_development_workflow(
         logger.error("line_dev_dispatch event=failed request_id=%s reason=execution_manifest_unavailable", request_id)
         return "開発ワークフローを起動できません。mainのSHAまたは安全な編集範囲を確認できませんでした。"
     task_id = uuid.uuid4().hex
-    instruction_digest = __import__("hashlib").sha256(instruction.encode("utf-8")).hexdigest()
+    instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
     dispatch_url = (
         f"https://api.github.com/repos/{repository}"
         f"/actions/workflows/{_WORKFLOW_FILE}/dispatches"
