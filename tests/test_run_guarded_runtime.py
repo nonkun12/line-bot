@@ -367,6 +367,7 @@ def test_execution_approval_rejects_mismatched_binding(tmp_path, monkeypatch, fi
             "approval_task_id": "bound-task",
             "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
             "approval_base_sha": base_sha,
+            "approval_expires_at": str(int(time.time()) + 300),
             "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest(),
         },
     }
@@ -402,6 +403,7 @@ def test_execution_approval_rejects_actor_environment_mismatch(tmp_path, monkeyp
                 "approval_task_id": "bound-task",
                 "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
                 "approval_base_sha": base_sha,
+                "approval_expires_at": str(int(time.time()) + 300),
             "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest(),
             },
         }),
@@ -433,6 +435,7 @@ def test_execution_approval_rejects_dispatch_from_non_default_branch(tmp_path, m
                 "approval_task_id": "bound-task",
                 "approval_instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
                 "approval_base_sha": base_sha,
+                "approval_expires_at": str(int(time.time()) + 300),
             "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest(),
             },
         }),
