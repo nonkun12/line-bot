@@ -322,6 +322,9 @@ jobs:
           python scripts/self_improvement_state.py import \
             --state /tmp/autonomous-loop-state.json \
             --history /tmp/line-bot-self-improvement.jsonl
+          python -m scripts.rea_self_improvement_history import \
+            --state /tmp/autonomous-loop-state.json \
+            --history /tmp/line-bot-rea-self-improvement.jsonl
 
       - name: Prepare bounded runtime task refill
         if: success() && env.TRIGGER_MODE == 'normal'
@@ -993,9 +996,18 @@ jobs:
             --publish-outcome "${PUBLISH_OUTCOME:-}" \
             --state-outcome "${STATE_OUTCOME:-}" \
             --cycle-id "${GITHUB_RUN_ID}"
+          # REA gate outcomes are persisted separately; they never train task-failure priority.
+          python -m scripts.rea_self_improvement_history append \
+            --history /tmp/line-bot-rea-self-improvement.jsonl \
+            --results /tmp/minimal-autonomous-loop.jsonl \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --cycle-id "${GITHUB_RUN_ID}"
           python scripts/self_improvement_state.py export \
             --state /tmp/autonomous-loop-state.json \
             --history /tmp/line-bot-self-improvement.jsonl
+          python -m scripts.rea_self_improvement_history export \
+            --state /tmp/autonomous-loop-state.json \
+            --history /tmp/line-bot-rea-self-improvement.jsonl
           python - <<'PY'
           import json
           from pathlib import Path
@@ -1085,6 +1097,14 @@ jobs:
           except ValueError as exc:
               raise SystemExit(f'self-improvement history failed schema validation: {exc}') from exc
           data['self_improvement_history'] = self_improvement
+          from scripts.rea_self_improvement_history import validate_durable_rea_observations
+          try:
+              rea_observations = validate_durable_rea_observations(
+                  local_state.get('rea_observations', [])
+              )
+          except ValueError as exc:
+              raise SystemExit(f'REA self-improvement history failed schema validation: {exc}') from exc
+          data['rea_observations'] = rea_observations
           data['version'] = 1
           state_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           PY
@@ -1115,6 +1135,8 @@ jobs:
           local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
           if durable.get('self_improvement_history') != local_state.get('self_improvement_history'):
               raise SystemExit('self-improvement durable read-back mismatch')
+          if durable.get('rea_observations', []) != local_state.get('rea_observations', []):
+              raise SystemExit('REA self-improvement durable read-back mismatch')
           if durable.get('goal_autopilot') != local_state.get('goal_autopilot'):
               raise SystemExit('Goal Autopilot durable read-back mismatch')
           print('Recovery AI, RAG, self-improvement, and Goal Autopilot durable state read-back verified.')
