@@ -1192,6 +1192,15 @@ jobs:
             --store artifacts/self-improvement-candidates/candidates.jsonl \
             --summary artifacts/self-improvement-candidates/summary.md
 
+      - name: Include catalog exhaustion evidence for review publication
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -s /tmp/catalog-exhaustion-report.json ]; then
+            mkdir -p artifacts/self-improvement-candidates
+            cp /tmp/catalog-exhaustion-report.json artifacts/self-improvement-candidates/catalog-exhaustion-report.json
+          fi
+
       - name: Upload review-only self-improvement candidates
         if: always()
         continue-on-error: true
@@ -1610,3 +1619,56 @@ jobs:
             /tmp/distributed-final-report.txt
           if-no-files-found: ignore
 
+  publish-review-issues:
+    name: Publish bounded review-only candidate issues
+    needs: minimal-loop
+    if: needs.minimal-loop.result == 'success'
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@v4
+        with:
+          ref: \${{ github.sha }}
+          persist-credentials: false
+      - name: Download review-only candidate evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: self-improvement-review-candidates-\${{ github.run_id }}
+          path: /tmp/review-candidates
+      - name: Fetch existing issues and pull requests
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --jq '.[] | select(has("pull_request") | not)' "repos/\${GITHUB_REPOSITORY}/issues?state=all&per_page=100" > /tmp/issues.jsonl
+          gh api --paginate --jq '.[]' "repos/\${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" > /tmp/pulls.jsonl
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for src, dst in (("/tmp/issues.jsonl", "/tmp/issues.json"), ("/tmp/pulls.jsonl", "/tmp/pulls.json")):
+              rows = [json.loads(line) for line in Path(src).read_text().splitlines() if line.strip()]
+              Path(dst).write_text(json.dumps(rows, ensure_ascii=False) + "\n")
+          PY
+      - name: Build bounded review-only issue drafts
+        run: |
+          set -euo pipefail
+          test -s /tmp/review-candidates/catalog-exhaustion-report.json
+          python -m scripts.autonomous_task_issue_drafts \
+            --report /tmp/review-candidates/catalog-exhaustion-report.json \
+            --issues /tmp/issues.json \
+            --pull-requests /tmp/pulls.json \
+            --output /tmp/review-issue-drafts.json
+      - name: Publish issues without granting execution authority
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m scripts.publish_autonomous_task_issue_drafts \
+            --drafts /tmp/review-issue-drafts.json \
+            --repo "$GITHUB_REPOSITORY"
