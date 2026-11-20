@@ -62,7 +62,7 @@ def test_legacy_nightly_autonomous_worker_is_disabled_until_task_bound_approval_
     assert "approval_instruction_sha256:" not in event_block
     assert "approval_allowed_paths_sha256:" not in event_block
     assert "approval_base_sha:" not in event_block
-    assert "if: false" in text
+    assert "github.event_name == 'workflow_dispatch' && false" in text
     assert "pull-requests: write" not in text
     assert "contents: write" not in text
 
