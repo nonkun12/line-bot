@@ -1,4 +1,4 @@
-import distributed_loop_trigger as trigger
+import base64\nimport hashlib\nimport json\nimport time\n\nimport distributed_loop_trigger as trigger
 from distributed_loop_trigger import request_distributed_loop
 
 def test_trigger_ignores_non_command(monkeypatch):
@@ -560,3 +560,108 @@ def test_status_classifier_does_not_swallow_development_requests():
     from distributed_loop_trigger import _is_readonly_status_request
     assert not _is_readonly_status_request("分散Loopを起動して4タスク開発してください")
     assert not _is_readonly_status_request("分散Loopの仕組みを修正してPRを作成してください")
+
+
+
+class _ApprovalClient:
+    def __init__(self, *, execution_approved=True, base_sha="a" * 40):
+        self.task = {
+            "id": "approved-test-task",
+            "instruction": "Run one bounded regression test.",
+            "allowed_paths": ["tests/test_example.py"],
+        }
+        self.queue = {"version": 1, "max_tasks_per_run": 1, "tasks": [self.task]}
+        self.catalog = {
+            "version": 1,
+            "tasks": [{**self.task, "execution_approved": execution_approved}],
+        }
+        self.base_sha = base_sha
+        self.posted = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def get(self, url, **kwargs):
+        if url.endswith("/commits/main"):
+            return _Response(200, {"sha": self.base_sha})
+        if "autonomous-loop-tasks.json" in url:
+            value = self.queue
+        elif "autonomous-loop-task-catalog.json" in url:
+            value = self.catalog
+        else:
+            return _Response(404, {})
+        encoded = base64.b64encode(json.dumps(value).encode()).decode()
+        return _Response(200, {"encoding": "base64", "content": encoded})
+
+    def post(self, url, **kwargs):
+        self.posted.append(kwargs.get("json") or {})
+        return _Response(204, {})
+
+
+def test_line_approval_preview_shows_exact_catalog_scope(monkeypatch):
+    from unittest.mock import patch
+
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _ApprovalClient()
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = request_distributed_loop("u1", "承認候補: approved-test-task")
+    assert handled is True
+    assert "Run one bounded regression test." in reply
+    assert "tests/test_example.py" in reply
+    assert "実行承認: approved-test-task" in reply
+    assert client.posted == []
+
+
+def test_line_approval_dispatches_only_exact_preview_snapshot(monkeypatch):
+    from unittest.mock import patch
+
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _ApprovalClient()
+    expires = int(time.time()) + 300
+    digest = hashlib.sha256(client.task["instruction"].encode()).hexdigest()
+    command = f"実行承認: approved-test-task {digest} {client.base_sha} {expires}"
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = request_distributed_loop("u1", command)
+    assert handled is True
+    assert "起動要求を送りました" in reply
+    inputs = client.posted[0]["inputs"]
+    assert inputs["execution_approval"] == "APPROVE_EXECUTION"
+    assert inputs["approval_task_id"] == "approved-test-task"
+    assert inputs["approval_instruction_sha256"] == digest
+    assert inputs["approval_base_sha"] == client.base_sha
+    assert inputs["approval_expires_at"] == str(expires)
+    assert inputs["max_tasks"] == "1"
+
+
+def test_line_approval_preview_rejects_catalog_unapproved_task(monkeypatch):
+    from unittest.mock import patch
+
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _ApprovalClient(execution_approved=False)
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = request_distributed_loop("u1", "承認候補: approved-test-task")
+    assert handled is True
+    assert "Catalog上の実行登録承認がありません" in reply
+    assert client.posted == []
+
+
+def test_line_approval_rejects_changed_repository_head(monkeypatch):
+    from unittest.mock import patch
+
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    client = _ApprovalClient()
+    expires = int(time.time()) + 300
+    digest = hashlib.sha256(client.task["instruction"].encode()).hexdigest()
+    command = f"実行承認: approved-test-task {digest} " + "b" * 40 + f" {expires}"
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = request_distributed_loop("u1", command)
+    assert handled is True
+    assert "HEAD changed since preview" in reply
+    assert client.posted == []
