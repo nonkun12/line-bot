@@ -78,7 +78,7 @@ jobs:
               or not instruction.strip()
           ):
               raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED")
-          
+
           # Reuse the worker's exact protected-path and shared-policy filters.
           # The manifest is generated from this checked-out immutable base.
           paths = sorted(set(worker.repo_files()))
@@ -93,7 +93,7 @@ jobs:
           allowed_paths = json.dumps(paths, ensure_ascii=False, separators=(",", ":"))
           if len(allowed_paths) > 40000:
               raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED")
-          
+
           task_id = uuid.uuid4().hex
           values = {
               "AUTONOMOUS_START_SHA": head,
