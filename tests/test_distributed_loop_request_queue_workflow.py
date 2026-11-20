@@ -57,21 +57,17 @@ def test_actionlint_compatibility_ignore_is_scoped_to_this_workflow():
 
 
 
-def test_line_can_resume_any_held_task_only_with_two_explicit_confirmations():
+def test_held_task_resume_fails_closed_until_task_bound_gate_exists():
     workflow = (
         Path(__file__).resolve().parents[1]
         / ".github"
         / "workflows"
         / "distributed-autonomous-loop.yml"
     ).read_text(encoding="utf-8")
-
-    assert "startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')" in workflow
-    assert "confirm_cause_fixed=true reviewed=true" in workflow
-    assert "confirm_resume_review:" in workflow
-    assert "CONFIRM_RESUME_REVIEW_INPUT" in workflow
-    assert "steps.validate_resume_request.outputs.task_id" in workflow
-    assert "python -m scripts.confirm_recovery_resume_review" in workflow
-    assert "--recovery-state-file /tmp/recovery-ai-state.json" in workflow
+    assert "Block held-task resume until task-bound resume approval is implemented" in workflow
+    assert "resume_task_id != ''" in workflow
+    assert "exit 1" in workflow
+    assert "Resume one explicitly approved held task" not in workflow
 
 
 def test_held_task_resume_stays_bounded_to_one_manual_approved_task():
@@ -89,4 +85,4 @@ def test_held_task_resume_stays_bounded_to_one_manual_approved_task():
     assert "default: 'DENY'" in trigger_block
     assert "resume_task_id:" in trigger_block
     assert "confirm_resume_review:" in trigger_block
-    assert "steps.validate_resume_request.outputs.task_id" in workflow
+    assert "Block held-task resume until task-bound resume approval is implemented" in workflow
