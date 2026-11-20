@@ -697,7 +697,7 @@ class Stage190LongitudinalCertificatePackager:
                 or not 0 <= attribution.unsupported_claim_count <= len(attribution.claim_digests) <= 64):
             raise LongitudinalEvolutionError("unsupported claim count is outside bounds")
         if (len(attribution.claim_digests) > 64
-                or len(set(attribution.claim_digests)) != len(attribution.claim_digests)):
+                or attribution.claim_digests != tuple(sorted(set(attribution.claim_digests)))):
             raise LongitudinalEvolutionError("regression claim digest set is invalid")
         for value in attribution.claim_digests:
             _digest_ok(value, "regression claim")
