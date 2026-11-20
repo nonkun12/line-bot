@@ -77,6 +77,48 @@ jobs:
         id: tests
         run: python -m pytest -q
 
+      - name: Run deterministic REA diff scan
+        id: rea
+        env:
+          BASE_SHA: ${{ steps.identity.outputs.base_sha }}
+          TARGET_SHA: ${{ steps.identity.outputs.verified_sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from scripts.rea_readonly_scanner import scan_commit_diff
+
+          report = scan_commit_diff(
+              ".",
+              base_sha=os.environ["BASE_SHA"],
+              target_sha=os.environ["TARGET_SHA"],
+          )
+          if report.get("complete") is not True:
+              raise SystemExit("REA_DIFF_SCAN=BLOCKED")
+          severities = [item.get("severity") for item in report.get("findings", [])]
+          if any(value == "CRITICAL" for value in severities):
+              risk = "CRITICAL"
+          elif any(value == "HIGH" for value in severities):
+              risk = "HIGH"
+          elif any(value == "MEDIUM" for value in severities):
+              risk = "MEDIUM"
+          else:
+              risk = "LOW"
+          report["risk"] = risk
+          Path("rea-diff-scan.json").write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\\n",
+              encoding="utf-8",
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"risk={risk}\\n")
+              fh.write(f"finding_count={report.get('findings_count', 0)}\\n")
+              fh.write(f"diff_sha256={report.get('diff_sha256', '')}\\n")
+          print(json.dumps({"status": report.get("status"), "risk": risk, "findings_count": report.get("findings_count")}, sort_keys=True))
+          if risk in {"HIGH", "CRITICAL"}:
+              raise SystemExit("REA_DIFF_SCAN=BLOCKED")
+          PY
+
       - name: Write SHA-bound verification receipt
         if: always()
         env:
@@ -84,6 +126,9 @@ jobs:
           BASE_SHA: ${{ steps.identity.outputs.base_sha }}
           TEST_OUTCOME: ${{ steps.tests.outcome }}
           IDENTITY_OUTCOME: ${{ steps.identity.outcome }}
+          REA_RISK: ${{ steps.rea.outputs.risk || 'UNKNOWN' }}
+          REA_FINDING_COUNT: ${{ steps.rea.outputs.finding_count || '0' }}
+          REA_DIFF_SHA256: ${{ steps.rea.outputs.diff_sha256 || '' }}
           RUN_ID: ${{ github.run_id }}
         run: |
           python - <<'PY'
@@ -96,7 +141,10 @@ jobs:
               "base_sha": os.environ["BASE_SHA"],
               "test_outcome": os.environ.get("TEST_OUTCOME", "unknown").upper(),
               "identity_outcome": os.environ.get("IDENTITY_OUTCOME", "unknown").upper(),
-              "risk": "UNKNOWN",
+              "risk": os.environ.get("REA_RISK", "UNKNOWN"),
+              "rea_finding_count": int(os.environ.get("REA_FINDING_COUNT", "0")),
+              "rea_diff_sha256": os.environ.get("REA_DIFF_SHA256", ""),
+              "risk_basis": "deterministic_read_only_commit_diff_scan",
               "execution_authorized": False,
               "patch_authorized": False,
               "hold_clear_authorized": False,
@@ -114,6 +162,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rea-independent-verification-${{ github.run_id }}
-          path: rea-independent-verification.json
+          path: |
+            rea-independent-verification.json
+            rea-diff-scan.json
           if-no-files-found: error
           retention-days: 30
