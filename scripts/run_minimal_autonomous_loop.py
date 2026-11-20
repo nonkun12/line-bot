@@ -724,7 +724,7 @@ def run_task(
             print("REA_RAG_CONTEXT attached=true", flush=True)
         else:
             print("REA_RAG_CONTEXT attached=false", flush=True)
-    env["DEV_INSTRUCTION"] = instruction
+    env["AUTONOMOUS_APPROVAL_INSTRUCTION"] = str(task["instruction"])\n    env["DEV_INSTRUCTION"] = instruction
     env["AUTONOMOUS_SUMMARY_PATH"] = str(summary)
     env["AUTONOMOUS_RUN_SOURCE"] = "minimal-mvp-loop"
     env["AUTONOMOUS_TASK_ID"] = task["id"]
