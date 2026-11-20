@@ -67,6 +67,12 @@ def test_observation_flattens_paginated_workflow_run_envelopes_without_exposing_
     assert '"instruction": x.get("instruction")' not in workflow
 
 
+def test_observation_instruction_digest_uses_approval_normalization():
+    workflow = OBSERVATION.read_text(encoding="utf-8")
+    assert 'str(x.get("instruction", "")).strip()[:2000]' in workflow
+    assert 'hashlib.sha256(str(x.get("instruction", "")).encode("utf-8"))' not in workflow
+
+
 def test_legacy_autonomous_worker_is_disabled_until_task_bound_approval_exists():
     workflow = (ROOT / ".github/workflows/nightly-autonomous-worker.yml").read_text(encoding="utf-8")
     trigger_block = workflow.split("\non:\n", 1)[1].split("\n# Legacy worker", 1)[0]
