@@ -132,7 +132,8 @@ def _shared_stop_active() -> bool:
 
 
 def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, object]:
-    """Verify approval against the exact task, instruction, base, and path scope."""
+    """Verify approval against the normalized task, instruction, base, and path scope."""
+    instruction = instruction.strip()[:worker.MAX_INSTRUCTION_LENGTH]
     instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
     raw_allowed_paths = os.environ.get("AUTONOMOUS_ALLOWED_PATHS", "")
     try:
