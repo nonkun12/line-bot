@@ -140,3 +140,36 @@ def test_partial_workflow_failure_does_not_durably_complete_unpublished_prior_ta
     goal = json.loads(goal_output.read_text())
     statuses = {task["task_id"]: task["status"] for task in goal["tasks"]}
     assert statuses == {"approved-test-task": "PENDING", "approved-test-task-2": "HELD"}
+
+
+def test_bridge_does_not_execute_when_line_approval_targets_a_later_task(tmp_path, monkeypatch):
+    queue, catalog, state, results, stop = _inputs(tmp_path)
+    queue_data = json.loads(queue.read_text())
+    catalog_data = json.loads(catalog.read_text())
+    second = {
+        "id": "approved-test-task-2",
+        "instruction": "Run a second bounded test-only task",
+        "allowed_paths": ["tests/test_second.py"],
+    }
+    queue_data["tasks"].append(second)
+    catalog_data["tasks"].append({**second, "execution_approved": True})
+    queue.write_text(json.dumps(queue_data))
+    catalog.write_text(json.dumps(catalog_data))
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
+    monkeypatch.setenv("GOAL_APPROVAL_TASK_ID", "approved-test-task-2")
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        bridge.subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("wrong task must not execute")),
+    )
+    goal_output = tmp_path / "goal-pending.json"
+    args = SimpleNamespace(
+        catalog=catalog, state=state, results=results, stop_file=stop,
+        goal_state_output=goal_output, max_tasks=1,
+    )
+    assert bridge.run(args) == 79
+    rows = [json.loads(line) for line in results.read_text().splitlines()]
+    assert rows[-1]["status"] == "BLOCKED"
+    assert rows[-1]["task_id"] == "approved-test-task-2"
+    assert rows[-1]["failure_reason"] == "approval_target_not_next_or_eligible"
