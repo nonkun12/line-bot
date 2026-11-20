@@ -63,6 +63,8 @@ def validate_durable_rea_observations(records: object) -> list[dict[str, object]
             raise ValueError("REA observation target SHA is invalid")
         gate, scanner, category = row.get("gate"), row.get("scanner_status"), row.get("category")
         finding_count, critical, blocking = row["finding_count"], row["critical_count"], row["blocking_count"]
+        if not all(isinstance(value, str) for value in (gate, scanner, category)):
+            raise ValueError("REA observation categories are invalid")
         if gate == "PASS":
             if (
                 scanner not in {"PASS", "FINDINGS"}
@@ -151,13 +153,14 @@ def append_rea_observations(
             category = "nonblocking_findings" if rea["finding_count"] else "clean_scan"
         elif gate == "BLOCKED":
             reason = rea.get("reason_code")
-            category = _REASON_CATEGORIES.get(reason)
+            category = _REASON_CATEGORIES.get(reason) if isinstance(reason, str) else None
             if (
                 category is None
                 or rea.get("execution_authorized") is not False
                 or rea.get("patch_authorized") is not False
                 or rea.get("hold_clear_authorized") is not False
                 or rea.get("merge_deploy_authorized") is not False
+                or not isinstance(rea.get("scanner_status"), str)
                 or rea.get("scanner_status") not in {"BLOCKED", "FINDINGS"}
                 or not all(_count(rea.get(key)) for key in ("finding_count", "critical_count", "blocking_count"))
                 or not isinstance(rea.get("findings"), list)
