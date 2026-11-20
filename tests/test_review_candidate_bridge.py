@@ -100,3 +100,37 @@ def test_summary_escapes_untrusted_markdown_structure(tmp_path):
     assert "**bold**" not in report
     assert "\\| another column" in report
     assert " | another column" not in report
+
+
+def test_distinct_source_ids_do_not_collapse_identical_review_text():
+    first = normalize_candidate({
+        "source": "self_improvement", "source_id": "rea-observation:first",
+        "title": "Review REA findings", "rationale": "Inspect independently",
+    })
+    second = normalize_candidate({
+        "source": "self_improvement", "source_id": "rea-observation:second",
+        "title": "Review REA findings", "rationale": "Inspect independently",
+    })
+    assert first is not None and second is not None
+    assert first["candidate_key"] != second["candidate_key"]
+
+
+def test_new_candidates_are_not_starved_when_bounded_pool_is_full(tmp_path):
+    source, store, summary = tmp_path / "input.json", tmp_path / "pool.jsonl", tmp_path / "summary.md"
+    rows = [{
+        "source": "self_improvement", "source_id": f"old-{i}",
+        "title": f"Old {i}", "rationale": "Historical candidate",
+    } for i in range(50)]
+    source.write_text(json.dumps(rows), encoding="utf-8")
+    first = build_pool(source, store, summary)
+    assert first["stored"] == 50
+
+    source.write_text(json.dumps([{
+        "source": "self_improvement", "source_id": "rea-observation:new",
+        "title": "New REA review", "rationale": "Inspect the latest evidence",
+    }]), encoding="utf-8")
+    second = build_pool(source, store, summary)
+    stored = [json.loads(line) for line in store.read_text(encoding="utf-8").splitlines()]
+    assert second["stored"] == 50
+    assert any(row["source_id"] == "rea-observation:new" for row in stored)
+    assert not any(row["source_id"] == "old-0" for row in stored)
