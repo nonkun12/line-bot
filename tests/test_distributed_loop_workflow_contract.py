@@ -67,16 +67,20 @@ def test_observation_flattens_paginated_workflow_run_envelopes_without_exposing_
     assert '"instruction": x.get("instruction")' not in workflow
 
 
-def test_legacy_autonomous_worker_is_manual_and_explicitly_approved():
+def test_legacy_autonomous_worker_is_disabled_until_task_bound_approval_exists():
     workflow = (ROOT / ".github/workflows/nightly-autonomous-worker.yml").read_text(encoding="utf-8")
-    trigger_block = workflow.split("\non:\n", 1)[1].split("\n# Legacy worker", 1)[0]
+    trigger_block = workflow.split("\\non:\\n", 1)[1].split("\\n# Legacy worker", 1)[0]
     assert "workflow_dispatch:" in trigger_block
     assert "schedule:" not in trigger_block
-    assert "github.event_name == 'workflow_dispatch'" in workflow
-    assert "github.event.inputs.execution_approval == 'APPROVE_EXECUTION'" in workflow
-    top_permissions = workflow.split("permissions:", 1)[1].split("concurrency:", 1)[0]
+    assert "if: false" in workflow
+    assert "execution_approval" not in workflow
+    assert "approval_task_id" not in workflow
+    assert "approval_instruction_sha256" not in workflow
+    assert "approval_allowed_paths_sha256" not in workflow
+    assert "approval_base_sha" not in workflow
+    top_permissions = workflow.split("permissions:", 1)[1].split("\\nconcurrency:", 1)[0]
     assert "contents: read" in top_permissions
     assert "pull-requests: read" in top_permissions
-    job_permissions = workflow.split("jobs:", 1)[1].split("runs-on:", 1)[0]
-    assert "contents: write" in job_permissions
-    assert "pull-requests: write" in job_permissions
+    assert "contents: write" not in workflow
+    assert "pull-requests: write" not in workflow
+
