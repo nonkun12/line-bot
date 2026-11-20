@@ -199,3 +199,31 @@ def test_line_notification_failure_does_not_block_verified_continuation():
     source = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     notification = source.split("      - name: Notify LINE of distributed loop final report", 1)[1].split("      - name:", 1)[0]
     assert "continue-on-error: true" in notification
+
+def test_continuation_is_triggered_by_completed_distributed_loop_workflow():
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert 'workflow_run:' in source
+    assert 'workflows: ["Distributed Autonomous Development Loop"]' in source
+    assert 'types: [completed]' in source
+    assert "github.event_name == 'workflow_run'" in source
+    assert "github.event.workflow_run.name == 'Distributed Autonomous Development Loop'" in source
+    assert "github.event.workflow_run.conclusion == 'success'" in source
+    assert "workflow_dispatch:" not in source.split("permissions:", 1)[0]
+
+
+def test_continuation_checks_both_execution_and_observation_for_duplicates():
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert "actions/workflows/distributed-autonomous-loop.yml/runs?per_page=20" in source
+    assert "actions/workflows/distributed-autonomous-observation.yml/runs?per_page=20" in source
+    assert 'active_loop" -gt 0' in source
+    assert 'active_observation" -gt 0' in source
+    assert "another_loop_or_observation_is_active" in source
+
+
+def test_continuation_remains_read_only_and_never_dispatches_execution():
+    source = WORKFLOW.read_text(encoding="utf-8")
+    permissions = source.split("permissions:", 1)[1].split("concurrency:", 1)[0]
+    assert "actions: write" not in permissions
+    assert "contents: write" not in permissions
+    assert "gh workflow run distributed-autonomous-observation.yml" in source
+    assert "gh workflow run distributed-autonomous-loop.yml" not in source
