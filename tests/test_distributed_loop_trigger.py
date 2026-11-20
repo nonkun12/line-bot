@@ -626,6 +626,7 @@ def test_line_approval_dispatches_only_exact_preview_snapshot(monkeypatch):
 
     monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
     monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    monkeypatch.setenv("LINE_TASK_APPROVAL_HMAC_SECRET", "test-only-shared-approval-secret-32-bytes")
     client = _ApprovalClient()
     expires = int(time.time()) + 300
     digest = hashlib.sha256(client.task["instruction"].encode()).hexdigest()
@@ -641,6 +642,20 @@ def test_line_approval_dispatches_only_exact_preview_snapshot(monkeypatch):
     assert inputs["approval_base_sha"] == client.base_sha
     assert inputs["approval_expires_at"] == str(expires)
     assert inputs["approval_line_user_id"] == "u1"
+    assert len(inputs["approval_nonce"]) == 32
+    assert len(inputs["approval_signature"]) == 64
+    from core.line_task_approval import verify_approval_envelope_signature, allowed_paths_digest
+    assert verify_approval_envelope_signature(
+        task_id=inputs["approval_task_id"],
+        instruction_sha256=inputs["approval_instruction_sha256"],
+        allowed_paths_sha256=inputs["approval_allowed_paths_sha256"],
+        base_sha=inputs["approval_base_sha"],
+        expires_at=int(inputs["approval_expires_at"]),
+        approver_user_id=inputs["approval_line_user_id"],
+        nonce=inputs["approval_nonce"],
+        signature=inputs["approval_signature"],
+        secret="test-only-shared-approval-secret-32-bytes",
+    )
     assert inputs["max_tasks"] == "1"
 
 
