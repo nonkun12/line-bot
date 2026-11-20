@@ -416,6 +416,7 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           APPROVAL_BASE_SHA: ${{ env.AUTONOMOUS_START_SHA }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python -m scripts.distributed_loop_execution_approval \
