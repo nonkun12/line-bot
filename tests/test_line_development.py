@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 import pytest
 
 from line_development import extract_development_instruction, dispatch_development_workflow
@@ -87,10 +90,25 @@ def test_dispatch_uses_guarded_secretary_development_workflow(monkeypatch):
 
     assert "/actions/workflows/line-development-dispatch.yml" in captured["url"]
     assert captured["url"].endswith("/actions/workflows/line-development-dispatch.yml/dispatches")
-    assert captured["json"] == {
-        "ref": "main",
-        "inputs": {"instruction": "line_development.py にコメントを追加して", "user_id": "U123"},
-    }
+    inputs = captured["json"]["inputs"]
+    assert captured["json"]["ref"] == "main"
+    assert inputs["instruction"] == "line_development.py にコメントを追加して"
+    assert inputs["user_id"] == "U123"
+    assert inputs["execution_approval"] == "APPROVE_EXECUTION"
+    assert inputs["task_id"] == inputs["approval_task_id"]
+    assert len(inputs["task_id"]) == 32
+    assert inputs["approval_instruction_sha256"] == hashlib.sha256(
+        inputs["instruction"].encode("utf-8")
+    ).hexdigest()
+    assert inputs["approval_base_sha"] == "a" * 40
+    assert inputs["allowed_paths"] == json.dumps(
+        ["core/example.py", "tests/test_line_development.py"],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    assert inputs["approval_allowed_paths_sha256"] == hashlib.sha256(
+        inputs["allowed_paths"].encode("utf-8")
+    ).hexdigest()
     assert captured["headers"]["Authorization"] == "Bearer secret"
     assert captured["timeout"] == 10.0
     assert "受け付けました" in reply
@@ -399,3 +417,90 @@ def test_five_stream_read_only_questions_are_not_dispatched(message):
 def test_five_stream_command_with_read_only_constraint_is_not_dispatched():
     message = "STAR-NIGHTを進めて。コード変更は行わず結果だけ報告して"
     assert extract_development_instruction(message) is None
+
+
+def test_execution_manifest_binds_main_sha_and_safe_tracked_paths(monkeypatch):
+    from line_development import _build_execution_manifest
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    sha = "b" * 40
+    responses = [
+        Response({"object": {"sha": sha}}),
+        Response({
+            "truncated": False,
+            "tree": [
+                {"path": "core/example.py", "type": "blob"},
+                {"path": "tests/test_example.py", "type": "blob"},
+                {"path": ".github/workflows/deploy.yml", "type": "blob"},
+                {"path": "security/policy.py", "type": "blob"},
+                {"path": "config.py", "type": "blob"},
+                {"path": "README.md", "type": "blob"},
+                {"path": "folder", "type": "tree"},
+            ],
+        }),
+    ]
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return responses.pop(0)
+
+    monkeypatch.setattr("line_development.httpx.get", fake_get)
+    result = _build_execution_manifest("secret", "nonkun12/line-bot")
+
+    assert result is not None
+    assert result["base_sha"] == sha
+    assert json.loads(result["allowed_paths"]) == [
+        "README.md", "core/example.py", "tests/test_example.py"
+    ]
+    assert result["allowed_paths_sha256"] == hashlib.sha256(
+        result["allowed_paths"].encode("utf-8")
+    ).hexdigest()
+    assert len(calls) == 2
+    assert all(call[1]["headers"]["Authorization"] == "Bearer secret" for call in calls)
+
+
+def test_execution_manifest_fails_closed_on_truncated_tree(monkeypatch):
+    from line_development import _build_execution_manifest
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    responses = [
+        Response({"object": {"sha": "c" * 40}}),
+        Response({"truncated": True, "tree": []}),
+    ]
+    monkeypatch.setattr(
+        "line_development.httpx.get",
+        lambda *args, **kwargs: responses.pop(0),
+    )
+
+    assert _build_execution_manifest("secret", "nonkun12/line-bot") is None
+
+
+def test_dispatch_fails_closed_when_task_manifest_cannot_be_verified(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    monkeypatch.setattr("line_development._build_execution_manifest", lambda *args: None)
+
+    reply = dispatch_development_workflow(
+        "天気機能を改善して",
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert "安全な編集範囲を確認できません" in reply
