@@ -93,6 +93,39 @@ class ReadonlyScannerTests(unittest.TestCase):
         self.assertIn("python_syntax", {item["category"] for item in report["findings"]})
         self.assertTrue(report["capabilities"]["read_only"])
 
+
+    def test_commit_diff_allows_only_reviewed_line_development_entrypoint(self) -> None:
+        base = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        self._write("line_development.py", "VALUE = 2\\n")
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["findings_count"], 0)
+        self.assertEqual(report["changed_paths"], ["line_development.py"])
+
+    def test_commit_diff_still_blocks_other_repository_root_files(self) -> None:
+        base = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        self._write("app.py", "VALUE = 2\\n")
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(report["status"], "FINDINGS")
+        finding = report["findings"][0]
+        self.assertEqual(finding["category"], "path_policy")
+        self.assertEqual(finding["evidence"]["path"], "app.py")
+        self.assertEqual(finding["severity"], "CRITICAL")
+
     def test_commit_diff_blocks_invalid_sha(self) -> None:
         with self.assertRaises(ScanBlocked):
             scan_commit_diff(self.root, base_sha="not-a-sha", target_sha="0" * 40)
