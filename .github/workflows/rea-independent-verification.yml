@@ -1,0 +1,146 @@
+name: REA Independent Verification
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - "line-dev/**"
+      - "rea-candidate/**"
+      - "feat/rea-verifier-workflow-integration-*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rea-independent-verification-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify exact commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install project and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          fi
+          python -m pip install pytest
+
+      - name: Verify commit identity and whitespace
+        id: identity
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_BRANCH: ${{ github.ref_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          PUSH_BEFORE_SHA: ${{ github.event.before || '' }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base_sha="$PR_BASE_SHA"
+          elif [[ "$HEAD_BRANCH" == rea-candidate/* ]]; then
+            # Candidate publication creates a single isolated commit on top of
+            # the approved base. github.event.before is the all-zero SHA for a
+            # newly created branch, so bind the receipt to the actual parent.
+            base_sha="$(git rev-parse "$actual^")"
+          else
+            base_sha="$PUSH_BEFORE_SHA"
+          fi
+          if ! [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]] || ! git cat-file -e "$base_sha^{commit}" 2>/dev/null; then
+            echo "::error::Unable to establish a trustworthy base commit."
+            exit 1
+          fi
+          echo "verified_sha=$actual" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+          git diff --check "$base_sha...$actual"
+
+      - name: Run independent verifier on exact base and target SHAs
+        id: independent
+        env:
+          BASE_SHA: ${{ steps.identity.outputs.base_sha }}
+          TARGET_SHA: ${{ steps.identity.outputs.verified_sha }}
+        run: |
+          set -euo pipefail
+          PYTHONDONTWRITEBYTECODE=1 python -m scripts.rea_independent_verifier \
+            --base-sha "$BASE_SHA" \
+            --target-sha "$TARGET_SHA" \
+            > "$RUNNER_TEMP/rea-independent-worker.json"
+
+      - name: Write SHA-bound verification receipt
+        if: always()
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ steps.identity.outputs.base_sha }}
+          IDENTITY_OUTCOME: ${{ steps.identity.outcome }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          try:
+              independent = json.loads(
+                  (Path(os.environ["RUNNER_TEMP"]) / "rea-independent-worker.json").read_text(encoding="utf-8")
+              )
+          except (OSError, ValueError, TypeError):
+              independent = {}
+
+          test_status = independent.get("tests")
+          receipt = {
+              "schema_version": 1,
+              "run_id": int(os.environ["RUN_ID"]),
+              "verified_sha": os.environ["EXPECTED_SHA"],
+              "base_sha": os.environ["BASE_SHA"],
+              "test_outcome": {
+                  "PASS": "SUCCESS",
+                  "FAIL": "FAIL",
+              }.get(test_status, "UNKNOWN"),
+              "diff_scan": independent.get("diff_scan", "UNKNOWN"),
+              "changed_files": independent.get("changed_files", []),
+              "diff_sha256": independent.get("diff_sha256"),
+              "identity_outcome": os.environ.get("IDENTITY_OUTCOME", "unknown").upper(),
+              "risk": independent.get("risk", "UNKNOWN"),
+              # STOP/HOLD are resolved by the downstream handoff from trusted
+              # source-run evidence. Never accept caller-supplied CLEAR claims.
+              "stop_state": "UNKNOWN",
+              "hold_state": "UNKNOWN",
+              "execution_authorized": False,
+              "patch_authorized": False,
+              "hold_clear_authorized": False,
+              "merge_deploy_authorized": False,
+          }
+          Path("rea-independent-verification.json").write_text(
+              json.dumps(receipt, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(receipt, sort_keys=True))
+          PY
+
+      - name: Upload verification receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-independent-verification-${{ github.run_id }}
+          path: rea-independent-verification.json
+          if-no-files-found: error
+          retention-days: 30
