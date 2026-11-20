@@ -33,7 +33,7 @@ def authorize_one_task(
     actor: str,
     repository: str,
 ) -> dict[str, Any]:
-    """Validate the signed-by-context dispatch intent and reduce queue to one exact task."""
+    """Validate authenticated dispatch context and reduce the queue to one exact task."""
     queue = json.loads(queue_path.read_text(encoding="utf-8"))
     event = json.loads(event_path.read_text(encoding="utf-8"))
     if not isinstance(queue, dict) or not isinstance(event, dict):
