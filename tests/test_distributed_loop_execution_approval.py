@@ -116,8 +116,10 @@ def test_cli_requires_and_accepts_catalog_argument(tmp_path, monkeypatch):
 
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     queue, event, catalog = _fixtures(tmp_path)
+    output_file = tmp_path / "github-output.txt"
     env = os.environ.copy()
     env.update({
+        "GITHUB_OUTPUT": str(output_file),
         "GITHUB_REF": "refs/heads/main",
         "GITHUB_ACTOR": "nonkun12",
         "GITHUB_REPOSITORY": "nonkun12/line-bot",
@@ -132,6 +134,7 @@ def test_cli_requires_and_accepts_catalog_argument(tmp_path, monkeypatch):
     assert result.returncode == 0, result.stderr + result.stdout
     assert '"status": "PASS"' in result.stdout
     assert "consumption" in result.stdout
+    assert output_file.read_text(encoding="utf-8") == "task_id=task-001\\n"
 
 
 def test_guarded_runtime_consumes_task_bound_approval_with_atomic_ref(tmp_path, monkeypatch):
@@ -236,3 +239,101 @@ def test_guarded_runtime_fails_closed_when_approval_ledger_token_is_missing(monk
         "a" * 40,
     )
     assert result == {"gate": "BLOCKED", "reason_code": "approval_ledger_token_missing"}
+
+
+
+def test_guarded_runtime_blocks_approval_ledger_http_forbidden(monkeypatch):
+    import io
+    import urllib.error
+    import scripts.run_guarded_runtime as runtime
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    evidence = {
+        "execution_authorized": True,
+        "actor": "nonkun12",
+        "task_id": "approved-task-001",
+        "instruction_sha256": "1" * 64,
+        "allowed_paths_sha256": "2" * 64,
+    }
+
+    def forbidden(request, timeout):
+        raise urllib.error.HTTPError(
+            request.full_url, 403, "forbidden", {}, io.BytesIO(b"")
+        )
+
+    monkeypatch.setattr(runtime.urllib.request, "urlopen", forbidden)
+    result = runtime._consume_execution_approval(evidence, "a" * 40)
+    assert result == {"gate": "BLOCKED", "reason_code": "approval_ledger_http_403"}
+
+
+def test_guarded_runtime_blocks_approval_ledger_network_error(monkeypatch):
+    import urllib.error
+    import scripts.run_guarded_runtime as runtime
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    def unavailable(request, timeout):
+        raise urllib.error.URLError("network unavailable")
+
+    monkeypatch.setattr(runtime.urllib.request, "urlopen", unavailable)
+    result = runtime._consume_execution_approval(
+        {
+            "execution_authorized": True,
+            "actor": "nonkun12",
+            "task_id": "approved-task-001",
+            "instruction_sha256": "1" * 64,
+            "allowed_paths_sha256": "2" * 64,
+        },
+        "a" * 40,
+    )
+    assert result["gate"] == "BLOCKED"
+    assert result["reason_code"].startswith("approval_ledger_error:")
+
+
+def test_guarded_runtime_blocks_invalid_ledger_identity(monkeypatch):
+    import scripts.run_guarded_runtime as runtime
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    result = runtime._consume_execution_approval(
+        {
+            "execution_authorized": True,
+            "actor": "nonkun12",
+            "task_id": "",
+            "instruction_sha256": "1" * 64,
+            "allowed_paths_sha256": "2" * 64,
+        },
+        "a" * 40,
+    )
+    assert result == {"gate": "BLOCKED", "reason_code": "approval_ledger_identity_invalid"}
+
+
+def test_guarded_runtime_blocks_malformed_ledger_response(monkeypatch):
+    import json
+    import scripts.run_guarded_runtime as runtime
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    class Response:
+        status = 201
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"ref": "refs/heads/wrong", "object": {"sha": "b" * 40}}).encode()
+
+    monkeypatch.setattr(runtime.urllib.request, "urlopen", lambda request, timeout: Response())
+    result = runtime._consume_execution_approval(
+        {
+            "execution_authorized": True,
+            "actor": "nonkun12",
+            "task_id": "approved-task-001",
+            "instruction_sha256": "1" * 64,
+            "allowed_paths_sha256": "2" * 64,
+        },
+        "a" * 40,
+    )
+    assert result == {"gate": "BLOCKED", "reason_code": "approval_ledger_response_invalid"}
