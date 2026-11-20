@@ -49,7 +49,7 @@ jobs:
           encoded = payload.get("content")
           if not isinstance(encoded, str) or not encoded.strip():
               raise SystemExit("durable_state_content_missing")
-          state_bytes = base64.b64decode(encoded, validate=True)
+          state_bytes = base64.b64decode("".join(encoded.split()), validate=True)
           state = json.loads(state_bytes.decode("utf-8"))
           recovery = state.get("recovery_ai") if isinstance(state, dict) else None
           if (
