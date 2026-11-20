@@ -1,5 +1,6 @@
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -518,3 +519,16 @@ def test_write_summary_never_reports_publish_gate_pass_after_runtime_failure(tmp
     assert postgen["diagnostic_only"] is False
     assert postgen["gate_stage"] == "pre_publish"
     assert postgen["publish_gate_passed"] is False
+
+
+def test_overnight_workflow_requires_explicit_dispatch_bound_approval():
+    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/overnight-development.yml").read_text(encoding="utf-8")
+    assert "if: ${{ github.event_name == 'workflow_dispatch' }}" in workflow
+    assert "execution_approval:" in workflow
+    assert "approval_task_id:" in workflow
+    assert "approval_instruction_sha256:" in workflow
+    assert "approval_allowed_paths:" in workflow
+    assert "approval_allowed_paths_sha256:" in workflow
+    assert "approval_base_sha:" in workflow
+    assert "AUTONOMOUS_TASK_ID: ${{ inputs.approval_task_id }}" in workflow
+    assert "AUTONOMOUS_ALLOWED_PATHS: ${{ inputs.approval_allowed_paths }}" in workflow
