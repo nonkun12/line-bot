@@ -229,10 +229,13 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     monkeypatch.setattr(guarded_runtime, "_augment_instruction_with_history", lambda instruction, path: instruction)
     monkeypatch.setattr(guarded_runtime, "_augment_with_hermes_advice", lambda instruction, path: instruction)
     monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: False)
-    monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: 0)
+    executed_instructions = []
+    monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda value: executed_instructions.append(value) or 0)
     monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
     instruction = "safe test instruction"
-    monkeypatch.setenv("DEV_INSTRUCTION", instruction)
+    augmented_instruction = instruction + "\\n\\n--- Advisory historical context ---\\nnon-authoritative note"
+    monkeypatch.setenv("AUTONOMOUS_APPROVED_INSTRUCTION", instruction)
+    monkeypatch.setenv("DEV_INSTRUCTION", augmented_instruction)
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-test-task")
     monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
@@ -255,6 +258,7 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     assert summary["rea"] == rea
     assert summary["execution_approval"]["gate"] == "PASS"
     assert summary["execution_approval"]["scope"] == "execution"
+    assert executed_instructions == [augmented_instruction]
 
 
 
