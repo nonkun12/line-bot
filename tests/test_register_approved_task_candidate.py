@@ -272,6 +272,7 @@ def test_generated_issue_instruction_is_accepted_by_registration_validator(tmp_p
     result, changed = register_approved_candidate(candidate, catalog(), state(), root)
     assert changed is True
     assert result["status"] == "REGISTERED_FOR_REVIEW"
+    assert result["catalog_entry"]["execution_approved"] is False
 
 
 def test_comment_and_string_mentions_do_not_make_candidate_stale(tmp_path):
