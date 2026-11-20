@@ -395,16 +395,19 @@ def _fetch_task_approval_candidate(client: httpx.Client, headers: dict[str, str]
 
     queued = [item for item in queued_tasks if isinstance(item, dict) and item.get("id") == task_id]
     registered = [item for item in catalog_tasks if isinstance(item, dict) and item.get("id") == task_id]
-    if len(queued) != 1 or len(registered) != 1:
-        raise ValueError("approval_task_not_unique_in_queue_and_catalog")
-    queue_task, catalog_task = queued[0], registered[0]
-    catalog_match = all(
-        queue_task.get(key) == catalog_task.get(key)
+    if len(registered) != 1 or len(queued) > 1:
+        raise ValueError("approval_task_not_unique_in_trusted_catalog")
+    catalog_task = registered[0]
+    # The workflow regenerates its runtime queue from the versioned catalog
+    # and durable completed/hold state. A tracked queue entry, when present,
+    # must match; absence is allowed because approved catalog tasks are refilled.
+    catalog_match = not queued or all(
+        queued[0].get(key) == catalog_task.get(key)
         for key in ("id", "instruction", "allowed_paths")
     )
     return {
         "task_id": task_id,
-        "queued": True,
+        "catalog_registered": True,
         "catalog_match": catalog_match,
         "execution_approved": catalog_task.get("execution_approved") is True,
         "instruction": catalog_task.get("instruction"),
