@@ -487,9 +487,8 @@ def main() -> int:
 
     worker.ask = guarded_ask
     worker.ask_text = guarded_ask_text
-    history_path = Path(os.environ.get("SELF_IMPROVEMENT_HISTORY_PATH", "/tmp/line-bot-self-improvement.jsonl"))
-    instruction = _augment_instruction_with_history(instruction, history_path)
-    instruction = _augment_with_hermes_advice(instruction, history_path)
+    # Approval covers the exact instruction passed to the runtime. Historical
+    # and Hermes augmentation is deliberately excluded from executable input.
     exit_code = 1
     try:
         exit_code = runtime.execute(instruction)
