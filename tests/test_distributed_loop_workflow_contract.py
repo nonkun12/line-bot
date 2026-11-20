@@ -69,7 +69,7 @@ def test_observation_flattens_paginated_workflow_run_envelopes_without_exposing_
 
 def test_legacy_autonomous_worker_is_manual_and_explicitly_approved():
     workflow = (ROOT / ".github/workflows/nightly-autonomous-worker.yml").read_text(encoding="utf-8")
-    trigger_block = workflow.split("\\non:\\n", 1)[1].split("\\n# Legacy worker", 1)[0]
+    trigger_block = workflow.split("\non:\n", 1)[1].split("\n# Legacy worker", 1)[0]
     assert "workflow_dispatch:" in trigger_block
     assert "schedule:" not in trigger_block
     assert "github.event_name == 'workflow_dispatch'" in workflow
