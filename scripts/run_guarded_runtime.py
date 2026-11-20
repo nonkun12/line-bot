@@ -339,8 +339,14 @@ def _write_summary(
 def _consume_execution_approval(approval_evidence: dict[str, object], start_sha: str) -> dict[str, object]:
     """Atomically consume a task-bound approval using a unique Git ref.
 
-    GitHub's create-ref endpoint rejects an existing ref, making the marker a
-    durable, repository-native single-use ledger without a database or new secret.
+    GitHub's create-ref endpoint rejects an existing ref, providing an atomic
+    repository-native single-use marker without a database or new secret.
+
+    This is not tamper-proof against repository actors who can delete refs. Until
+    an administrator enables a protected ruleset, treat the ledger as fail-closed
+    operational protection, not immutable audit storage. A consumed approval is
+    never restored after cancellation or failure; the operator must issue a new
+    task-bound approval against the new base SHA.
     """
     if approval_evidence.get("execution_authorized") is not True:
         return {"gate": "BLOCKED", "reason_code": "approval_not_verified"}
