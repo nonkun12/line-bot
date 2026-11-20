@@ -119,17 +119,19 @@ def main() -> int:
     task_rows = json.loads(args.queue.read_text(encoding="utf-8"))["tasks"]
     os.environ["AUTONOMOUS_ALLOWED_PATHS"] = json.dumps(task_rows[0]["allowed_paths"], ensure_ascii=False)
     try:
-        from scripts.run_guarded_runtime import _consume_execution_approval, _verify_execution_approval
+        # Verify the exact dispatch context here, but do not consume the one-shot
+        # marker. run_guarded_runtime owns the single atomic consumption immediately
+        # before execution; consuming here would make the runtime reject the same
+        # valid approval as already consumed.
+        from scripts.run_guarded_runtime import _verify_execution_approval
         evidence = _verify_execution_approval(args.base_sha, task_rows[0]["instruction"])
         if evidence.get("execution_authorized") is not True:
             raise ValueError("independent_execution_approval_verification_failed")
-        consumption = _consume_execution_approval(evidence, args.base_sha)
-        if consumption.get("gate") != "PASS":
-            raise ValueError(str(consumption.get("reason_code", "approval_consumption_blocked")))
     except Exception as exc:
         print(f"EXECUTION_APPROVAL=BLOCKED reason={type(exc).__name__}")
         return 1
-    result["consumption"] = "PASS"
+    result["verification"] = "PASS"
+    result["consumption"] = "DEFERRED_TO_GUARDED_RUNTIME"
     print("EXECUTION_APPROVAL=" + json.dumps(result, sort_keys=True))
     return 0
 
