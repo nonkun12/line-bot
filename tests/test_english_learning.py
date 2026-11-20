@@ -367,4 +367,3 @@ def test_side5_review_action_preserves_review_prompt(monkeypatch, tmp_path):
     assert "英語復習モードです" in result.text
     assert "今回の復習語:" in result.text
     assert "英文を1つ作ってください" in result.text
-
