@@ -97,3 +97,12 @@ def test_unapproved_catalog_task_is_rejected(tmp_path, monkeypatch):
     catalog.write_text(json.dumps(data))
     with pytest.raises(ValueError, match="not_registered_or_not_approved"):
         _authorize(queue, event, catalog)
+
+
+
+def test_one_shot_marker_is_consumed_only_by_guarded_runtime():
+    root = Path(__file__).resolve().parents[1]
+    approval_helper = (root / "scripts/distributed_loop_execution_approval.py").read_text(encoding="utf-8")
+    guarded_runtime = (root / "scripts/run_guarded_runtime.py").read_text(encoding="utf-8")
+    assert "_consume_execution_approval" not in approval_helper
+    assert "consumption = _consume_execution_approval(approval_evidence, start_sha)" in guarded_runtime
