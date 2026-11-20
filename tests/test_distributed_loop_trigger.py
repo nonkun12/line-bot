@@ -670,3 +670,9 @@ def test_line_approval_rejects_changed_repository_head(monkeypatch):
     assert handled is True
     assert "HEAD changed since preview" in reply
     assert client.posted == []
+
+
+def test_malformed_explicit_line_approval_is_handled_not_routed_to_general_chat():
+    handled, reply = request_distributed_loop("u1", "実行承認: approved-test-task")
+    assert handled is True
+    assert "形式が不正" in reply
