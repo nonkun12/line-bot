@@ -220,10 +220,20 @@ def test_continuation_checks_both_execution_and_observation_for_duplicates():
     assert "another_loop_or_observation_is_active" in source
 
 
-def test_continuation_remains_read_only_and_never_dispatches_execution():
+def test_continuation_only_has_dispatch_permission_and_never_writes_repository():
     source = WORKFLOW.read_text(encoding="utf-8")
     permissions = source.split("permissions:", 1)[1].split("concurrency:", 1)[0]
-    assert "actions: write" not in permissions
+    # actions:write is required only to dispatch the read-only observation workflow.
+    assert "actions: write" in permissions
+    assert "contents: read" in permissions
     assert "contents: write" not in permissions
+    assert "issues: write" not in permissions
+    assert "pull-requests: write" not in permissions
     assert "gh workflow run distributed-autonomous-observation.yml" in source
     assert "gh workflow run distributed-autonomous-loop.yml" not in source
+
+
+def test_legacy_safe_continuation_dispatcher_remains_disabled():
+    root = WORKFLOW.parents[1]
+    legacy = (root / "distributed-loop-safe-continuation.yml").read_text(encoding="utf-8")
+    assert "if: github.event.workflow_run.run_attempt < 0" in legacy
