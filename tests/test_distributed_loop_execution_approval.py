@@ -106,3 +106,29 @@ def test_one_shot_marker_is_consumed_only_by_guarded_runtime():
     guarded_runtime = (root / "scripts/run_guarded_runtime.py").read_text(encoding="utf-8")
     assert "_consume_execution_approval" not in approval_helper
     assert "consumption = _consume_execution_approval(approval_evidence, start_sha)" in guarded_runtime
+
+
+
+def test_cli_requires_and_accepts_catalog_argument(tmp_path, monkeypatch):
+    import os
+    import subprocess
+    import sys
+
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    queue, event, catalog = _fixtures(tmp_path)
+    env = os.environ.copy()
+    env.update({
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_ACTOR": "nonkun12",
+        "GITHUB_REPOSITORY": "nonkun12/line-bot",
+    })
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.distributed_loop_execution_approval",
+         "--queue", str(queue), "--event", str(event),
+         "--catalog", str(catalog), "--base-sha", "a" * 40],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env, text=True, capture_output=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert '"status": "PASS"' in result.stdout
+    assert "consumption" in result.stdout
