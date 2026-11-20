@@ -113,6 +113,8 @@ def test_durable_schema_rejects_malformed_rows():
         validate_durable_rea_observations([{**row, "execution_authorized": True}])
     with pytest.raises(ValueError):
         validate_durable_rea_observations([{**row, "blocking_count": True}])
+    with pytest.raises(ValueError):
+        validate_durable_rea_observations([{**row, "category": ["finding_block"]}])
 
 
 def test_corrupt_history_is_not_replaced(tmp_path):
