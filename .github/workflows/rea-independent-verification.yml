@@ -120,8 +120,8 @@ jobs:
               "diff_sha256": independent.get("diff_sha256"),
               "identity_outcome": os.environ.get("IDENTITY_OUTCOME", "unknown").upper(),
               "risk": independent.get("risk", "UNKNOWN"),
-              # STOP/HOLD are deliberately UNKNOWN until a trusted source-run
-              # evidence adapter is implemented. Never accept caller-supplied CLEAR.
+              # STOP/HOLD are resolved by the downstream handoff from trusted
+              # source-run evidence. Never accept caller-supplied CLEAR claims.
               "stop_state": "UNKNOWN",
               "hold_state": "UNKNOWN",
               "execution_authorized": False,
