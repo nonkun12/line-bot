@@ -609,7 +609,7 @@ def _sanitized_execution_approval(value: object) -> dict[str, object] | None:
         return None
     allowed = (
         "gate", "reason_code", "execution_authorized", "scope", "actor",
-        "task_id", "instruction_sha256", "allowed_paths_sha256", "base_sha",
+        "task_id", "instruction_sha256", "allowed_paths_sha256", "base_sha", "line_approver_user_id", "expires_at",
     )
     result = {key: value[key] for key in allowed if key in value}
     consumption = value.get("consumption")
