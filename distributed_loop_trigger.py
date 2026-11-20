@@ -417,8 +417,10 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
     preview = parse_approval_preview_command(message)
     approval = parse_approval_command(message)
     if preview is None and approval is None:
+        normalized = unicodedata.normalize("NFKC", str(message)).strip()
+        if normalized.startswith(("承認候補", "実行承認")):
+            return True, "承認コマンドの形式が不正です。表示された承認候補の1行をそのまま返信してください。"
         return False, ""
-    if not user_id or user_id not in _allowed_users():
         return True, "タスク承認は許可されていません（LINEユーザーの許可リストにありません）。"
     token = (os.environ.get("GITHUB_ACTIONS_DISPATCH_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
     if not token:
