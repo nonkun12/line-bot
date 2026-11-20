@@ -226,8 +226,8 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
         "scripts.rea_control_tower_adapter.prepare_rea_evidence",
         lambda root, expected_sha: rea,
     )
-    monkeypatch.setattr(guarded_runtime, "_augment_instruction_with_history", lambda instruction, path: instruction)
-    monkeypatch.setattr(guarded_runtime, "_augment_with_hermes_advice", lambda instruction, path: instruction)
+    monkeypatch.setattr(guarded_runtime, "_augment_instruction_with_history", lambda *args: (_ for _ in ()).throw(AssertionError("history must not alter approved instruction")))
+    monkeypatch.setattr(guarded_runtime, "_augment_with_hermes_advice", lambda *args: (_ for _ in ()).throw(AssertionError("Hermes advice must not alter approved instruction")))
     monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: False)
     executed_instructions = []
     monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda value: executed_instructions.append(value) or 0)
@@ -258,7 +258,7 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     assert summary["rea"] == rea
     assert summary["execution_approval"]["gate"] == "PASS"
     assert summary["execution_approval"]["scope"] == "execution"
-    assert executed_instructions == [augmented_instruction]
+    assert executed_instructions == [instruction]
 
 
 
