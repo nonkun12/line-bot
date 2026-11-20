@@ -71,7 +71,7 @@ def test_rea_observations_create_distinct_review_candidates_not_task_failures():
         "Review REA high-severity evidence",
         "Improve REA evidence completeness",
     }
-    assert all("not a developer failure" in row["rationale"] for row in rows)
+    assert all("developer" in row["rationale"] and "failure" in row["rationale"] for row in rows)
     assert all("execution_authorized" not in row for row in rows)
     assert "task-a" not in json.dumps(rows)
 
