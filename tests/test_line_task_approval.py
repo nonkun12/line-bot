@@ -1,63 +1,128 @@
 from datetime import datetime, timezone
+
 import pytest
-from core.line_task_approval import ApprovalCommand, parse_approval_command, validate_approval_request
+
+from core.line_task_approval import (
+    ApprovalCommand,
+    ApprovalPreviewCommand,
+    allowed_paths_digest,
+    instruction_digest,
+    parse_approval_command,
+    parse_approval_preview_command,
+    validate_approval_request,
+)
+
 
 def _candidate(**overrides):
     data = {
-        "task_id": "review-gap-abc123", "issue_number": 123,
-        "issue_state": "open", "candidate_label": True,
-        "execution_approval_label": False, "execution_approved": False,
-        "held": False, "resume_requires_review": False,
-        "review_passed": True, "rea_passed": True, "base_sha": "a" * 40,
+        "task_id": "review-gap-abc123",
+        "queued": True,
+        "catalog_match": True,
+        "execution_approved": True,
+        "instruction": "Add one bounded regression test.",
         "allowed_paths": ["tests/test_example.py"],
-        "expires_at": "2026-11-20T23:59:00+00:00",
+        "base_sha": "a" * 40,
+        "expires_at": 1795212000,
     }
     data.update(overrides)
     return data
 
-def test_parse_only_explicit_task_approval_command():
-    assert parse_approval_command("実行承認: review-gap-abc123") == ApprovalCommand("review-gap-abc123")
-    assert parse_approval_command("承認 review-gap-abc123") is None
-    assert parse_approval_command("実行承認:") is None
-    assert parse_approval_command("実行承認: review-gap-abc123 extra") is None
-    assert parse_approval_command("実行承認: 日本語ID") is None
 
-def test_validate_approval_binds_identity_and_safety_snapshot():
+def _command(candidate=None):
+    value = candidate or _candidate()
+    return ApprovalCommand(
+        task_id=value["task_id"],
+        instruction_sha256=instruction_digest(value["instruction"]),
+        base_sha=value["base_sha"],
+        expires_at=value["expires_at"],
+    )
+
+
+def test_parse_preview_and_exact_task_bound_approval_commands():
+    assert parse_approval_preview_command("承認候補: review-gap-abc123") == ApprovalPreviewCommand(
+        "review-gap-abc123"
+    )
+    command = "実行承認: review-gap-abc123 " + "b" * 64 + " " + "a" * 40 + " 1795212000"
+    assert parse_approval_command(command) == ApprovalCommand(
+        "review-gap-abc123", "b" * 64, "a" * 40, 1795212000
+    )
+    assert parse_approval_command("実行承認: review-gap-abc123") is None
+    assert parse_approval_command(command + " extra") is None
+    assert parse_approval_preview_command("承認候補:") is None
+
+
+def test_validate_approval_binds_catalog_task_and_preview_snapshot():
     result = validate_approval_request(
-        ApprovalCommand("review-gap-abc123"), user_id="U-authorized",
-        allowed_user_ids={"U-authorized"}, candidate=_candidate(),
-        now=datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc))
+        _command(),
+        user_id="U-authorized",
+        allowed_user_ids={"U-authorized"},
+        candidate=_candidate(),
+        now=datetime.fromtimestamp(1795211700, timezone.utc),
+    )
     assert result.task_id == "review-gap-abc123"
-    assert result.issue_number == 123
-    assert result.allowed_paths == ("tests/test_example.py",)
+    assert result.instruction_sha256 == instruction_digest("Add one bounded regression test.")
+    assert result.allowed_paths_sha256 == allowed_paths_digest(["tests/test_example.py"])
+    assert result.base_sha == "a" * 40
     assert result.approver_user_id == "U-authorized"
 
-@pytest.mark.parametrize(("overrides", "message"), [
-    ({"task_id": "other-task"}, "identity mismatch"),
-    ({"issue_state": "closed"}, "not open"),
-    ({"candidate_label": False}, "candidate label"),
-    ({"execution_approved": True}, "already execution-approved"),
-    ({"execution_approved": None}, "not explicitly false"),
-    ({"held": True}, "held"), ({"held": None}, "held"),
-    ({"resume_requires_review": True}, "requires review"),
-    ({"review_passed": False}, "review has not passed"),
-    ({"rea_passed": False}, "REA evidence"),
-    ({"base_sha": "ABC"}, "base SHA"),
-    ({"allowed_paths": ["scripts/unsafe.py"]}, "test-only path"),
-    ({"allowed_paths": ["tests/test_a.py", "tests/test_b.py"]}, "test-only path"),
-    ({"expires_at": "2020-01-01T00:00:00+00:00"}, "expired"),
-    ({"expires_at": "2026-11-20T23:59:00"}, "timezone"),
-])
-def test_validate_approval_fails_closed(overrides, message):
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"task_id": "other-task"}, "identity mismatch"),
+        ({"queued": False}, "runtime queue"),
+        ({"catalog_match": False}, "trusted catalog"),
+        ({"execution_approved": False}, "catalog execution approval"),
+        ({"instruction": "changed"}, "instruction changed"),
+        ({"allowed_paths": []}, "allowed paths"),
+        ({"allowed_paths": ["../unsafe.py"]}, "allowed paths"),
+        ({"allowed_paths": ["/absolute.py"]}, "allowed paths"),
+        ({"allowed_paths": ["tests/a.py", "tests/a.py"]}, "allowed paths"),
+        ({"base_sha": "ABC"}, "base SHA"),
+        ({"base_sha": "c" * 40}, "HEAD changed"),
+        ({"expires_at": 1795212001}, "expiry does not match"),
+        ({"expires_at": 1795210000}, "expiry does not match"),
+    ],
+)
+def test_validation_fails_closed_for_snapshot_mismatch(overrides, message):
+    candidate = _candidate(**overrides)
     with pytest.raises(ValueError, match=message):
         validate_approval_request(
-            ApprovalCommand("review-gap-abc123"), user_id="U-authorized",
-            allowed_user_ids={"U-authorized"}, candidate=_candidate(**overrides),
-            now=datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc))
+            _command(),
+            user_id="U-authorized",
+            allowed_user_ids={"U-authorized"},
+            candidate=candidate,
+            now=datetime.fromtimestamp(1795211700, timezone.utc),
+        )
 
-def test_validate_approval_rejects_unauthorized_user():
+
+def test_validation_rejects_expired_or_overlong_preview():
+    with pytest.raises(ValueError, match="expired"):
+        validate_approval_request(
+            _command(),
+            user_id="U-authorized",
+            allowed_user_ids={"U-authorized"},
+            candidate=_candidate(),
+            now=datetime.fromtimestamp(1795212000, timezone.utc),
+        )
+    candidate = _candidate(expires_at=1795212601)
+    command = _command(candidate)
+    with pytest.raises(ValueError, match="ten-minute"):
+        validate_approval_request(
+            command,
+            user_id="U-authorized",
+            allowed_user_ids={"U-authorized"},
+            candidate=candidate,
+            now=datetime.fromtimestamp(1795211700, timezone.utc),
+        )
+
+
+def test_validation_rejects_unauthorized_user():
     with pytest.raises(ValueError, match="unauthorized"):
         validate_approval_request(
-            ApprovalCommand("review-gap-abc123"), user_id="U-stranger",
-            allowed_user_ids={"U-authorized"}, candidate=_candidate(),
-            now=datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc))
+            _command(),
+            user_id="U-stranger",
+            allowed_user_ids={"U-authorized"},
+            candidate=_candidate(),
+            now=datetime.fromtimestamp(1795211700, timezone.utc),
+        )
