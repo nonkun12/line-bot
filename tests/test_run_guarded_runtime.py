@@ -498,6 +498,9 @@ def test_execution_approval_consumption_blocks_duplicate_ref(monkeypatch):
         "task_id": "task-1",
         "instruction_sha256": "a" * 64,
         "allowed_paths_sha256": "c" * 64,
+        "line_approver_user_id": "U-line-user",
+        "expires_at": "1790000000",
+        "approval_nonce": "d" * 32,
     }
     result = guarded_runtime._consume_execution_approval(evidence, "b" * 40)
     assert result["gate"] == "BLOCKED"
@@ -570,12 +573,9 @@ def test_execution_approval_accepts_workflow_prepared_line_dispatch(tmp_path, mo
 
     evidence = guarded_runtime._verify_execution_approval(base_sha, instruction)
 
-    assert evidence["gate"] == "PASS"
-    assert evidence["execution_authorized"] is True
-    assert evidence["reason_code"] == "authenticated_workflow_dispatch_approval"
-    assert evidence["task_id"] == task_id
-    assert evidence["instruction_sha256"] == instruction_digest
-    assert evidence["allowed_paths_sha256"] == paths_digest
+    assert evidence["gate"] == "BLOCKED"
+    assert evidence["execution_authorized"] is False
+    assert evidence["reason_code"] == "independent_execution_approval_missing_or_invalid"
 
 
 @pytest.mark.parametrize(
