@@ -132,3 +132,107 @@ def test_cli_requires_and_accepts_catalog_argument(tmp_path, monkeypatch):
     assert result.returncode == 0, result.stderr + result.stdout
     assert '"status": "PASS"' in result.stdout
     assert "consumption" in result.stdout
+
+
+def test_guarded_runtime_consumes_task_bound_approval_with_atomic_ref(tmp_path, monkeypatch):
+    import hashlib
+    import io
+    import json
+    from types import SimpleNamespace
+    import scripts.run_guarded_runtime as runtime
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    evidence = {
+        "execution_authorized": True,
+        "actor": "nonkun12",
+        "task_id": "approved-task-001",
+        "instruction_sha256": "1" * 64,
+        "allowed_paths_sha256": "2" * 64,
+    }
+    start_sha = "a" * 40
+    captured = {}
+
+    class Response:
+        status = 201
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            identity = {
+                "repository": "nonkun12/line-bot",
+                "actor": evidence["actor"],
+                "task_id": evidence["task_id"],
+                "instruction_sha256": evidence["instruction_sha256"],
+                "allowed_paths_sha256": evidence["allowed_paths_sha256"],
+                "base_sha": start_sha,
+            }
+            marker = hashlib.sha256(
+                json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            captured["ref"] = f"refs/heads/rsi-approval-consumed/{marker}"
+            return json.dumps({
+                "ref": captured["ref"],
+                "object": {"sha": start_sha},
+            }).encode()
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
+        captured["timeout"] = timeout
+        captured["body"] = json.loads(request.data)
+        return Response()
+
+    monkeypatch.setattr(runtime.urllib.request, "urlopen", fake_urlopen)
+    result = runtime._consume_execution_approval(evidence, start_sha)
+    assert result["gate"] == "PASS"
+    assert result["reason_code"] == "approval_consumed_once"
+    assert captured["method"] == "POST"
+    assert captured["url"].endswith("/git/refs")
+    assert captured["body"]["ref"] == captured["ref"]
+    assert captured["body"]["sha"] == start_sha
+
+
+def test_guarded_runtime_blocks_reused_approval_marker(tmp_path, monkeypatch):
+    import io
+    import urllib.error
+    import scripts.run_guarded_runtime as runtime
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    evidence = {
+        "execution_authorized": True,
+        "actor": "nonkun12",
+        "task_id": "approved-task-001",
+        "instruction_sha256": "1" * 64,
+        "allowed_paths_sha256": "2" * 64,
+    }
+
+    def already_consumed(request, timeout):
+        raise urllib.error.HTTPError(
+            request.full_url, 422, "reference already exists", {}, io.BytesIO(b"")
+        )
+
+    monkeypatch.setattr(runtime.urllib.request, "urlopen", already_consumed)
+    result = runtime._consume_execution_approval(evidence, "a" * 40)
+    assert result == {"gate": "BLOCKED", "reason_code": "approval_already_consumed"}
+
+
+def test_guarded_runtime_fails_closed_when_approval_ledger_token_is_missing(monkeypatch):
+    import scripts.run_guarded_runtime as runtime
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    result = runtime._consume_execution_approval(
+        {
+            "execution_authorized": True,
+            "actor": "nonkun12",
+            "task_id": "approved-task-001",
+            "instruction_sha256": "1" * 64,
+            "allowed_paths_sha256": "2" * 64,
+        },
+        "a" * 40,
+    )
+    assert result == {"gate": "BLOCKED", "reason_code": "approval_ledger_token_missing"}
