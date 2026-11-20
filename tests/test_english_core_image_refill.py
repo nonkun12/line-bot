@@ -69,6 +69,7 @@ def test_main_reports_invalid_candidate_json_as_blocked(tmp_path, monkeypatch, c
     assert result["status"] == "BLOCKED"
     assert result["reason_code"] == "catalog_invalid"
 
+
 def test_main_returns_nonzero_when_candidate_catalog_contains_invalid_entry(
     tmp_path, monkeypatch, capsys
 ):
