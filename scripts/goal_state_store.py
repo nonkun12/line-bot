@@ -59,6 +59,7 @@ class GoalStateStore:
                 return {"decision": "HOLD", "reason": "approval_target_not_next",
                         "expected_task_id": expected_task_id,
                         "selected_task_id": decision.get("task_id")}
+            task = next(item for item in goal["tasks"] if item["task_id"] == decision["task_id"])
             task["status"] = "IN_PROGRESS"
             payload = json.dumps(goal, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             cur = conn.execute("UPDATE goal_state SET revision=revision+1, document=? WHERE goal_id=? AND revision=?", (payload, goal_id, revision))
