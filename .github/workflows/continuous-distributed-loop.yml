@@ -90,11 +90,11 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh workflow run distributed-autonomous-loop.yml \
-            --repo "$REPOSITORY" --ref main \
-            -f max_tasks=1 \
-            -f continuation_depth="${{ steps.active.outputs.next_depth }}"
-          echo "CONTINUATION_DISPATCHED max_tasks=1"
+          # Chain continuation may schedule observation only. A new development
+          # cycle must be separately approved through the task-bound dispatch gate.
+          gh workflow run distributed-autonomous-observation.yml \
+            --repo "$REPOSITORY" --ref main
+          echo "OBSERVATION_DISPATCHED=read_only"
 
       - name: Explain why continuation stopped
         if: always() && steps.gate.outputs.continue != 'true'
