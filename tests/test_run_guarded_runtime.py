@@ -509,8 +509,6 @@ def test_execution_approval_consumption_blocks_duplicate_ref(monkeypatch):
 
 
 def test_new_signed_approval_nonce_creates_distinct_single_use_marker(monkeypatch):
-    import io
-
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
     refs = []
 
