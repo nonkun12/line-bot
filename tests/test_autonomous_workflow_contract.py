@@ -52,15 +52,19 @@ def test_autonomous_workflow_reuses_the_worker_pushed_branch_for_pr_creation():
     assert 'git ls-remote --exit-code origin "refs/heads/${BRANCH}"' not in guard
 
 
-def test_nightly_autonomous_worker_has_automatic_schedule():
+def test_legacy_nightly_autonomous_worker_is_disabled_until_task_bound_approval_exists():
     worker = ROOT / ".github" / "workflows" / "nightly-autonomous-worker.yml"
     text = worker.read_text(encoding="utf-8")
-    schedule_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
-    assert "schedule:" in schedule_block
-    assert "cron: '0 4 * * *'" in schedule_block
-    assert "cron: '0 16 * * *'" in schedule_block
-    assert "cron: '0 22 * * *'" in schedule_block
-    assert "timezone: 'Asia/Tokyo'" in schedule_block
+    event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert "workflow_dispatch:" in event_block
+    assert "schedule:" not in event_block
+    assert "approval_task_id:" not in event_block
+    assert "approval_instruction_sha256:" not in event_block
+    assert "approval_allowed_paths_sha256:" not in event_block
+    assert "approval_base_sha:" not in event_block
+    assert "if: false" in text
+    assert "pull-requests: write" not in text
+    assert "contents: write" not in text
 
 
 def test_autonomous_workflow_has_final_safety_gate_before_pr_creation():
