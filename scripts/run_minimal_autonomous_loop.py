@@ -726,7 +726,10 @@ def run_task(
         else:
             print("REA_RAG_CONTEXT attached=false", flush=True)
     env["AUTONOMOUS_APPROVED_INSTRUCTION"] = approved_instruction
-    env["DEV_INSTRUCTION"] = instruction
+    # RAG/REA retrieval above is advisory metadata only. Never append it to the
+    # human-approved instruction that the model is allowed to execute.
+    env["AUTONOMOUS_ADVISORY_CONTEXT"] = instruction[len(approved_instruction):]
+    env["DEV_INSTRUCTION"] = approved_instruction
     env["AUTONOMOUS_SUMMARY_PATH"] = str(summary)
     env["AUTONOMOUS_RUN_SOURCE"] = "minimal-mvp-loop"
     env["AUTONOMOUS_TASK_ID"] = task["id"]
