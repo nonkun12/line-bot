@@ -276,6 +276,34 @@ def test_stage188_rejects_replay_and_evaluator_overlap():
         )
 
 
+def test_stage188_binds_unsupported_claims_and_rejects_their_replay():
+    trend, audit, _, _ = build_pipeline()
+    unsupported = signed(RegressionClaim(
+        "unrecognized-cause", 2, "different-candidate", "e" * 64, "diagnostician-a", "",
+    ))
+    report = Stage188RegressionAttributor().build(
+        trend, audit, (unsupported,), verify_trend_signature=VERIFY,
+        verify_audit_signature=VERIFY, verify_claim_signature=VERIFY,
+        verify_report_signature=VERIFY, sign_report=SIGN,
+    )
+    assert report.unsupported_claim_count == 1
+    assert report.claim_digests == (unsigned_digest(unsupported),)
+
+    with pytest.raises(LongitudinalEvolutionError, match="replayed"):
+        Stage188RegressionAttributor().build(
+            trend, audit, (unsupported, unsupported), verify_trend_signature=VERIFY,
+            verify_audit_signature=VERIFY, verify_claim_signature=VERIFY,
+            verify_report_signature=VERIFY, sign_report=SIGN,
+        )
+
+
+def test_stage190_rejects_unsupported_count_exceeding_bound_claim_digests():
+    trend, audit, attribution, ledger = build_pipeline()
+    forged = replace(attribution, unsupported_claim_count=1)
+    with pytest.raises(LongitudinalEvolutionError, match="unsupported claim count"):
+        package(trend, audit, forged, ledger)
+
+
 def test_stage189_rejects_duplicate_gap_forgery_and_untrusted_predecessor():
     first = signed(SurvivalLedgerEntry(2, "candidate-main", "a" * 64, "s", "survived", "b" * 64, ""))
     duplicate = (first, first)
