@@ -16,13 +16,6 @@ from pathlib import Path
 from typing import Any
 
 ALLOWED_ROOTS = (".github/workflows/", "core/", "scripts/", "tests/", "docs/rea/")
-# Narrow root-level exception: LINE development routing is a reviewed entrypoint.
-# Do not broaden this to arbitrary repository-root files.
-ALLOWED_EXACT_PATHS = frozenset({"line_development.py"})
-
-
-def _is_allowed_path(relative: str) -> bool:
-    return relative in ALLOWED_EXACT_PATHS or relative.startswith(ALLOWED_ROOTS)
 ALLOWED_ROOT_FILES = frozenset({"line_development.py"})
 
 
