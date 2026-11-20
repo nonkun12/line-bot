@@ -2,31 +2,6 @@ name: Autonomous Development Loop (legacy manual)
 
 on:
   workflow_dispatch:
-    inputs:
-      execution_approval:
-        description: 'Explicitly approve one task-bound execution'
-        required: false
-        default: 'DENY'
-        type: choice
-        options:
-          - 'DENY'
-          - 'APPROVE_EXECUTION'
-      approval_task_id:
-        description: 'Exact task ID shown by the prior BLOCKED run'
-        required: false
-        type: string
-      approval_allowed_paths_sha256:
-        description: 'SHA-256 of the canonical sorted allowed_paths list'
-        required: false
-        type: string
-      approval_instruction_sha256:
-        description: 'SHA-256 of the exact development instruction'
-        required: false
-        type: string
-      approval_base_sha:
-        description: 'Exact base commit SHA shown by the prior BLOCKED run'
-        required: false
-        type: string
 # Legacy worker is manual-only. Scheduled observation is handled by the
 # dedicated read-only observation workflow.
 permissions:
@@ -39,14 +14,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Disabled until this legacy entry point uses the same task-bound approval
+  # verifier and one-shot ledger as distributed-autonomous-loop.yml.
   autonomous-development:
-    if: >-
-      github.event_name == 'workflow_dispatch' &&
-      github.event.inputs.execution_approval == 'APPROVE_EXECUTION'
-    permissions:
-      actions: write
-      contents: write
-      pull-requests: write
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
