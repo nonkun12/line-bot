@@ -1,8 +1,8 @@
-"Fail-closed LINE command adapter for autonomous task execution approval.
+"""Fail-closed LINE command adapter for autonomous task execution approval.
 
 Parses an explicit command and validates a separately resolved trusted snapshot.
 It does not fetch GitHub data, mutate state, grant approval, or dispatch.
-"
+"""
 from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
