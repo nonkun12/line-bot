@@ -1,4 +1,9 @@
-import base64\nimport hashlib\nimport json\nimport time\n\nimport distributed_loop_trigger as trigger
+import base64
+import hashlib
+import json
+import time
+
+import distributed_loop_trigger as trigger
 from distributed_loop_trigger import request_distributed_loop
 
 def test_trigger_ignores_non_command(monkeypatch):
