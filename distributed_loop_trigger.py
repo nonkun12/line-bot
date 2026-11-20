@@ -421,6 +421,7 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
         if normalized.startswith(("承認候補", "実行承認")):
             return True, "承認コマンドの形式が不正です。表示された承認候補の1行をそのまま返信してください。"
         return False, ""
+    if not user_id or user_id not in _allowed_users():
         return True, "タスク承認は許可されていません（LINEユーザーの許可リストにありません）。"
     token = (os.environ.get("GITHUB_ACTIONS_DISPATCH_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
     if not token:
@@ -449,17 +450,17 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                 command = (
                     f"実行承認: {task_id} {digest} {candidate['base_sha']} {expires_at}"
                 )
-                path_lines = "\\n".join(f"- {path}" for path in paths)
+                path_lines = "\n".join(f"- {path}" for path in paths)
                 return True, (
-                    "【実行承認候補・5分間有効】\\n"
-                    f"Task ID: {task_id}\\n"
-                    f"指示:\\n{instruction}\\n"
-                    f"許可ファイル:\\n{path_lines}\\n"
-                    f"指示SHA-256: {digest}\\n"
-                    f"基準SHA: {candidate['base_sha']}\\n"
-                    f"期限Unix: {expires_at}\\n\\n"
-                    "内容を確認し、このタスクだけを承認する場合は次の1行をそのまま返信してください。\\n"
-                    f"{command}\\n"
+                    "【実行承認候補・5分間有効】\n"
+                    f"Task ID: {task_id}\n"
+                    f"指示:\n{instruction}\n"
+                    f"許可ファイル:\n{path_lines}\n"
+                    f"指示SHA-256: {digest}\n"
+                    f"基準SHA: {candidate['base_sha']}\n"
+                    f"期限Unix: {expires_at}\n\n"
+                    "内容を確認し、このタスクだけを承認する場合は次の1行をそのまま返信してください。\n"
+                    f"{command}\n"
                     "実行時にもRecovery HOLD・REA・STOP・基準SHAを再検証します。HOLD解除は行いません。\n"
                     "この返信は実行承認です。別タスク・別SHAには適用されません。"
                 )
@@ -495,7 +496,7 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
             if response.status_code != 204:
                 return True, f"実行承認Dispatchを拒否されました（HTTP {response.status_code}）。実行は開始していません。"
             return True, (
-                f"Task {decision.task_id} の実行承認を受け付け、専用の1タスクWorkflowへ起動要求を送りました。\\n"
+                f"Task {decision.task_id} の実行承認を受け付け、専用の1タスクWorkflowへ起動要求を送りました。\n"
                 "これはDispatch受理の確認であり、実行開始・成功の確認ではありません。"
             )
     except ValueError as exc:
