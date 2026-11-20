@@ -11,7 +11,7 @@ from typing import Any, Mapping
 
 _TASK_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,99}$")
 _SHA = re.compile(r"^[0-9a-f]{40}$")
-_COMMAND = re.compile(r"^実行承認[：:]\\s*([a-z0-9][a-z0-9._-]{2,99})\\s*$")
+_COMMAND = re.compile(r"^実行承認[：:][ ]**([a-z0-9][a-z0-9._-]{2,99})[ ]**$")
 
 @dataclass(frozen=True)
 class ApprovalCommand:
@@ -72,7 +72,7 @@ def validate_approval_request(command: ApprovalCommand, *, user_id: str,
     paths = candidate.get("allowed_paths")
     if (not isinstance(paths, list) or len(paths) != 1
             or not isinstance(paths[0], str)
-            or not re.fullmatch(r"tests/test_[A-Za-z0-9_]+\\.py", paths[0])):
+            or not re.fullmatch(r"tests/test_[A-Za-z0-9_]+[.]py", paths[0])):
         raise ValueError("exactly one test-only path must be allowlisted")
     expires_at = candidate.get("expires_at")
     if not isinstance(expires_at, str):
