@@ -358,7 +358,7 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           APPROVAL_BASE_SHA: ${{ env.AUTONOMOUS_START_SHA }}
-          RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id }}
+          RESUME_TASK_ID: ''
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -445,7 +445,7 @@ jobs:
           INCIDENT_DETAIL: ${{ env.INCIDENT_DETAIL }}
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
           # Populated only after cause-fixed and post-resume-review confirmations pass.
-          GOAL_RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id || '' }}
+          GOAL_RESUME_TASK_ID: ''
         run: |
           set -euo pipefail
           : > /tmp/minimal-autonomous-loop.jsonl
