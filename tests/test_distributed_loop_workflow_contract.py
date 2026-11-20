@@ -18,6 +18,9 @@ def test_distributed_execution_is_manual_and_explicitly_approved():
     assert "actions: read" in workflow.split("jobs:", 1)[0]
     assert "contents: read" in workflow.split("jobs:", 1)[0]
     assert "issues: read" in workflow.split("jobs:", 1)[0]
+    job_permissions = workflow.split("jobs:", 1)[1].split("runs-on:", 1)[0]
+    assert "pull-requests: read" in job_permissions
+    assert "pull-requests: write" not in job_permissions
 
 
 def test_execution_approval_gate_precedes_task_runtime_and_mutating_steps():
@@ -28,6 +31,8 @@ def test_execution_approval_gate_precedes_task_runtime_and_mutating_steps():
     issue_read = workflow.index("Load all existing issues for candidate deduplication")
     assert refill < gate < issue_read < runtime
     assert "python -m scripts.distributed_loop_execution_approval" in workflow
+    approval_step = workflow.split("Verify one-shot task-bound execution approval", 1)[1].split("      - name:", 1)[0]
+    assert "--catalog .github/autonomous-loop-task-catalog.json" in approval_step
     assert "gh issue create" not in workflow
     assert "work_finder_ai" not in workflow
     assert "AUTO_APPLY_PATCH: 'false'" in workflow
@@ -47,3 +52,16 @@ def test_observation_workflow_is_scheduled_read_only_and_artifact_only():
         assert forbidden not in lowered
     assert "actions/upload-artifact" in workflow
     assert "READ_ONLY" in workflow
+
+
+
+def test_resume_is_blocked_until_its_own_approval_binding_exists():
+    workflow = EXECUTION.read_text(encoding="utf-8")
+    assert "Block held-task resume until task-bound resume approval is implemented" in workflow
+    assert "Resume one explicitly approved held task" not in workflow
+
+
+def test_observation_flattens_paginated_workflow_run_envelopes_without_exposing_instructions():
+    workflow = OBSERVATION.read_text(encoding="utf-8")
+    assert 'pages("/tmp/runs-pages.json", "workflow_runs")' in workflow
+    assert '"instruction": x.get("instruction")' not in workflow
