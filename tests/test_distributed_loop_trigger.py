@@ -640,6 +640,7 @@ def test_line_approval_dispatches_only_exact_preview_snapshot(monkeypatch):
     assert inputs["approval_instruction_sha256"] == digest
     assert inputs["approval_base_sha"] == client.base_sha
     assert inputs["approval_expires_at"] == str(expires)
+    assert inputs["approval_line_user_id"] == "u1"
     assert inputs["max_tasks"] == "1"
 
 
