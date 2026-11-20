@@ -43,12 +43,41 @@ _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 # LINE自動開発テスト
 
 
+_BOUNDED_EXECUTION_SCOPE = re.compile(
+    r"(?:実装|修正|追加|改善|開発).{0,80}(?:Draft\\s*PR|PR|テスト).{0,30}まで",
+    re.IGNORECASE | re.DOTALL,
+)
+# These are terminal actions intentionally excluded from a request whose
+# positive scope explicitly ends at implementation/testing/Draft PR creation.
+# Strip only those terminal prohibitions before the read-only guard; prohibitions
+# on code changes, execution, or the whole task remain fail-closed.
+_TERMINAL_ACTION_PROHIBITION = re.compile(
+    r"(?:マージ|デプロイ|HOLD解除|権限変更)"
+    r"(?:[、,・\\s]+(?:マージ|デプロイ|HOLD解除|権限変更))*"
+    r"\\s*(?:は|を)?\\s*(?:一切)?"
+    r"(?:行わないでください|行わないで|行わない|しないでください|しないで|しない|禁止)",
+    re.IGNORECASE,
+)
+
+
+def _is_read_only_development_request(text: str) -> bool:
+    """Keep read-only protection while allowing explicit bounded dev scopes."""
+    if not is_non_execution_request(text):
+        return False
+    if not _BOUNDED_EXECUTION_SCOPE.search(text):
+        return True
+    remaining = _TERMINAL_ACTION_PROHIBITION.sub("", text)
+    return is_non_execution_request(remaining)
+
+
 def extract_development_instruction(message: str) -> Optional[str]:
     """Return the explicit normal development instruction, or None."""
     text = str(message or "").strip()
-    # Safety constraints take precedence over both prefixed and natural-language
-    # commands. A "開発:" prefix must never override an explicit read-only request.
-    if is_non_execution_request(text):
+    # A bounded positive scope (e.g. implementation + tests + Draft PR) may
+    # explicitly exclude merge/deploy/HOLD/permission operations. Those
+    # terminal restrictions do not turn the whole request into read-only work.
+    # Explicit prohibitions on code changes or execution still take precedence.
+    if _is_read_only_development_request(text):
         return None
     match = _DEV_PREFIX.match(text)
     if match:
