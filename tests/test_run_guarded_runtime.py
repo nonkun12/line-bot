@@ -531,7 +531,7 @@ def test_write_summary_never_reports_publish_gate_pass_after_runtime_failure(tmp
 
 
 def test_execution_approval_binds_raw_catalog_instruction_and_short_expiry(monkeypatch, tmp_path):
-    task_instruction = "catalog instruction exactly as reviewed"
+    task_instruction = "  catalog instruction exactly as reviewed  "
     advisory_instruction = task_instruction + "\\n\\nUNTRUSTED advisory"
     task_id = "approved-test-task"
     paths = ["tests/test_example.py"]
