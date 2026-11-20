@@ -541,7 +541,7 @@ def test_write_summary_never_reports_publish_gate_pass_after_runtime_failure(tmp
     assert postgen["publish_gate_passed"] is False
 
 
-def test_execution_approval_accepts_workflow_prepared_line_dispatch(tmp_path, monkeypatch):
+def test_execution_approval_rejects_unsigned_legacy_workflow_dispatch(tmp_path, monkeypatch):
     instruction = "implement a safe bounded feature"
     base_sha = "9" * 40
     paths = ["tests/test_run_guarded_runtime.py"]
