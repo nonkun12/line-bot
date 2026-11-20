@@ -162,15 +162,18 @@ def test_continuation_stops_when_another_loop_is_queued_or_running(tmp_path):
     assert "next_depth=" not in output
 
 
-def test_distributed_loop_has_bounded_manual_and_scheduled_triggers():
-    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
-    source = path.read_text(encoding="utf-8")
-    assert "workflow_dispatch:" in source
-    assert "schedule:" in source
-    assert 'cron: "0,30 * * * *"' in source
-    assert "timezone: 'Asia/Tokyo'" not in source
-    assert "default: '1'" in source
-    assert "          - '4'" in source
+def test_distributed_loop_is_manual_approved_and_observation_is_scheduled():
+    root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    execution = (root / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    observation = (root / "distributed-autonomous-observation.yml").read_text(encoding="utf-8")
+    trigger_block = execution.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert "workflow_dispatch:" in trigger_block
+    assert "schedule:" not in trigger_block
+    assert "issue_comment:" not in trigger_block
+    assert "pull_request_target:" not in trigger_block
+    assert "execution_approval:" in trigger_block
+    assert "default: 'DENY'" in trigger_block
+    assert 'cron: "0,30 * * * *"' in observation
 
 
 def test_only_continuous_workflow_owns_automatic_dispatch():
