@@ -11,6 +11,34 @@ on:
         description: "LINE user ID"
         required: true
         type: string
+      execution_approval:
+        description: "Task-bound approval issued only by the allowlisted LINE dispatcher"
+        required: true
+        type: string
+      task_id:
+        description: "Unique task identity"
+        required: true
+        type: string
+      approval_task_id:
+        description: "Task identity bound to the approval"
+        required: true
+        type: string
+      approval_instruction_sha256:
+        description: "SHA-256 of the exact instruction"
+        required: true
+        type: string
+      approval_base_sha:
+        description: "Exact main commit SHA approved for this task"
+        required: true
+        type: string
+      allowed_paths:
+        description: "Exact bounded edit-path manifest"
+        required: true
+        type: string
+      approval_allowed_paths_sha256:
+        description: "SHA-256 of the canonical edit-path manifest"
+        required: true
+        type: string
       loop_count:
         description: "Sequential safe development passes (1-4)"
         required: false
@@ -51,8 +79,39 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Record development starting commit
-        run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Verify task-bound approval against checked-out base
+        env:
+          APPROVAL_BASE_SHA: ${{ github.event.inputs.approval_base_sha }}
+          TASK_ID: ${{ github.event.inputs.task_id }}
+          APPROVAL_TASK_ID: ${{ github.event.inputs.approval_task_id }}
+          INSTRUCTION: ${{ github.event.inputs.instruction }}
+          APPROVAL_INSTRUCTION_SHA256: ${{ github.event.inputs.approval_instruction_sha256 }}
+          ALLOWED_PATHS: ${{ github.event.inputs.allowed_paths }}
+          APPROVAL_ALLOWED_PATHS_SHA256: ${{ github.event.inputs.approval_allowed_paths_sha256 }}
+          EXECUTION_APPROVAL: ${{ github.event.inputs.execution_approval }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os, re, subprocess
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          instruction_hash = hashlib.sha256(os.environ["INSTRUCTION"].encode("utf-8")).hexdigest()
+          paths = json.loads(os.environ["ALLOWED_PATHS"])
+          canonical = json.dumps(paths, ensure_ascii=False, separators=(",", ":"))
+          paths_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+          if (
+              os.environ["EXECUTION_APPROVAL"] != "APPROVE_EXECUTION"
+              or not re.fullmatch(r"[0-9a-f]{32}", os.environ["TASK_ID"])
+              or os.environ["TASK_ID"] != os.environ["APPROVAL_TASK_ID"]
+              or head != os.environ["APPROVAL_BASE_SHA"]
+              or instruction_hash != os.environ["APPROVAL_INSTRUCTION_SHA256"]
+              or paths_hash != os.environ["APPROVAL_ALLOWED_PATHS_SHA256"]
+              or not isinstance(paths, list) or not paths
+              or len(paths) != len(set(paths))
+          ):
+              raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED")
+          print("TASK_BOUND_APPROVAL=PASS")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+              fh.write(f"AUTONOMOUS_START_SHA={head}\\n")
 
       - name: Run bounded multi-agent LINE development runtime
         id: development
@@ -62,6 +121,9 @@ jobs:
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          AUTONOMOUS_TASK_ID: ${{ github.event.inputs.task_id }}
+          AUTONOMOUS_ALLOWED_PATHS: ${{ github.event.inputs.allowed_paths }}
         run: |
           set -euo pipefail
           : > /tmp/line-development-loop.log
