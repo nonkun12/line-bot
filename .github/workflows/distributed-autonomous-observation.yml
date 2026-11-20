@@ -66,7 +66,7 @@ jobs:
           approved = [x for x in registered if isinstance(x, dict) and x.get("execution_approved") is True] if isinstance(registered, list) else []
           approval_candidates = [{
               "task_id": x.get("id"),
-              "instruction_sha256": hashlib.sha256(str(x.get("instruction", "")).encode("utf-8")).hexdigest(),
+              "instruction_sha256": hashlib.sha256(str(x.get("instruction", "")).strip()[:2000].encode("utf-8")).hexdigest(),
               "allowed_paths": sorted(x.get("allowed_paths", [])) if isinstance(x.get("allowed_paths"), list) else [],
               "allowed_paths_sha256": hashlib.sha256(json.dumps(sorted(x.get("allowed_paths", [])), ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest(),
           } for x in approved]
