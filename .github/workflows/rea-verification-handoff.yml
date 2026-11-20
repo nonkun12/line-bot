@@ -1,0 +1,227 @@
+name: REA Verification Handoff
+
+on:
+  workflow_run:
+    workflows: ["REA Independent Verification"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: rea-verification-handoff-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: startsWith(github.event.workflow_run.head_branch, 'rea-candidate/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Reconcile candidate and independent receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          VERIFY_RUN_ID: ${{ github.event.workflow_run.id }}
+          VERIFY_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
+          CANDIDATE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import io
+          import json
+          import os
+          import re
+          import urllib.request
+          import zipfile
+          from pathlib import Path
+
+          repo = os.environ["REPOSITORY"]
+          verify_run_id = int(os.environ["VERIFY_RUN_ID"])
+          candidate_sha = os.environ["CANDIDATE_SHA"]
+          branch = os.environ["CANDIDATE_BRANCH"]
+          conclusion = os.environ["VERIFY_CONCLUSION"]
+          token = os.environ["GH_TOKEN"]
+          result = {
+              "schema_version": 1,
+              "candidate_sha": candidate_sha,
+              "candidate_branch": branch,
+              "verification_run_id": verify_run_id,
+              "gate": "HOLD",
+              "reason_code": "verification_evidence_unavailable",
+              "test_outcome": "UNKNOWN",
+              "diff_scan": "UNKNOWN",
+              "stop_state": "UNKNOWN",
+              "hold_state": "UNKNOWN",
+              "risk": "UNKNOWN",
+              "execution_authorized": False,
+              "patch_authorized": False,
+              "hold_clear_authorized": False,
+              "merge_deploy_authorized": False,
+          }
+
+          def api(url, binary=False):
+              req = urllib.request.Request(url, headers={
+                  "Authorization": "Bearer " + token,
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              })
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  return response.read() if binary else json.loads(response.read())
+
+          def artifact_text(run_id, expected_name, member):
+              data = api(f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/artifacts")
+              matches = [
+                  item for item in data.get("artifacts", [])
+                  if item.get("name") == expected_name and not item.get("expired")
+              ]
+              if len(matches) != 1:
+                  raise ValueError("artifact_missing_or_ambiguous")
+              archive = api(matches[0]["archive_download_url"], binary=True)
+              with zipfile.ZipFile(io.BytesIO(archive)) as zf:
+                  names = [n for n in zf.namelist() if n.endswith(member)]
+                  if len(names) != 1:
+                      raise ValueError("artifact_member_missing_or_ambiguous")
+                  return zf.read(names[0]).decode("utf-8")
+
+          def artifact_json(run_id, expected_name, member):
+              return json.loads(artifact_text(run_id, expected_name, member))
+
+          try:
+              match = re.fullmatch(r"rea-candidate/([1-9][0-9]{0,19})", branch)
+              if not match or not re.fullmatch(r"[0-9a-f]{40}", candidate_sha):
+                  raise ValueError("candidate_identity_invalid")
+              source_run_id = int(match.group(1))
+              if conclusion != "success":
+                  result["reason_code"] = "independent_verification_run_failed"
+                  raise ValueError("verification_run_failed")
+
+              # Do not trust workflow_run payload fields or artifact names alone.
+              # Re-fetch both runs from the GitHub API and bind their identities.
+              verify_run = api(
+                  f"https://api.github.com/repos/{repo}/actions/runs/{verify_run_id}"
+              )
+              if (
+                  verify_run.get("id") != verify_run_id
+                  or verify_run.get("repository", {}).get("full_name") != repo
+                  or verify_run.get("path") != ".github/workflows/rea-independent-verification.yml"
+                  or verify_run.get("event") != "workflow_dispatch"
+                  or verify_run.get("head_branch") != branch
+                  or verify_run.get("head_sha") != candidate_sha
+                  or verify_run.get("status") != "completed"
+                  or verify_run.get("conclusion") != "success"
+              ):
+                  raise ValueError("trusted_verification_run_metadata_mismatch")
+
+              source_run = api(
+                  f"https://api.github.com/repos/{repo}/actions/runs/{source_run_id}"
+              )
+              if (
+                  source_run.get("id") != source_run_id
+                  or source_run.get("repository", {}).get("full_name") != repo
+                  or source_run.get("path") != ".github/workflows/distributed-autonomous-loop.yml"
+                  or source_run.get("status") != "completed"
+                  or source_run.get("conclusion") != "success"
+              ):
+                  raise ValueError("trusted_candidate_source_run_metadata_mismatch")
+
+              receipt = artifact_json(
+                  verify_run_id,
+                  f"rea-independent-verification-{verify_run_id}",
+                  "rea-independent-verification.json",
+              )
+              row_artifact = artifact_text(
+                  source_run_id,
+                  f"rea-candidate-evidence-{source_run_id}",
+                  "minimal-autonomous-loop.jsonl",
+              )
+              rows = [json.loads(line) for line in row_artifact.splitlines() if line.strip()]
+              if len(rows) != 1 or not isinstance(rows[0], dict):
+                  raise ValueError("candidate_evidence_not_single_task")
+              row = rows[0]
+
+              if (
+                  receipt.get("schema_version") != 1
+                  or receipt.get("verified_sha") != candidate_sha
+                  or receipt.get("run_id") != verify_run_id
+                  or receipt.get("identity_outcome") != "SUCCESS"
+                  or receipt.get("base_sha") != row.get("base_sha")
+              ):
+                  raise ValueError("verification_receipt_identity_invalid")
+              if (
+                  row.get("produced_sha") != candidate_sha
+                  or row.get("failure_reason") != "rea_artifact_hold"
+                  or row.get("rea_artifact", {}).get("reason_code") != "verification_incomplete"
+              ):
+                  raise ValueError("candidate_evidence_sha_or_state_mismatch")
+              if any(receipt.get(key) is not False for key in (
+                  "execution_authorized", "patch_authorized",
+                  "hold_clear_authorized", "merge_deploy_authorized"
+              )):
+                  raise ValueError("verification_authority_violation")
+
+              if (
+                  receipt.get("diff_scan") != "PASS"
+                  or not isinstance(receipt.get("changed_files"), list)
+                  or not receipt.get("diff_sha256")
+              ):
+                  raise ValueError("independent_diff_evidence_incomplete")
+
+              result.update({
+                  "source_run_id": source_run_id,
+                  "task_id": row.get("task_id"),
+                  "candidate_sha": candidate_sha,
+                  "verification_run_id": verify_run_id,
+                  "test_outcome": receipt.get("test_outcome", "UNKNOWN"),
+                  "diff_scan": receipt.get("diff_scan", "UNKNOWN"),
+                  "stop_state": receipt.get("stop_state", "UNKNOWN"),
+                  "hold_state": receipt.get("hold_state", "UNKNOWN"),
+                  "risk": receipt.get("risk", "UNKNOWN"),
+                  "candidate_evidence_sha256": hashlib.sha256(
+                      row_artifact.encode("utf-8")
+                  ).hexdigest(),
+                  "receipt_sha256": hashlib.sha256(
+                      json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+                  ).hexdigest(),
+              })
+              # Independent tests and diff scan are necessary but insufficient.
+              # STOP/HOLD must come from a trusted source-run adapter; UNKNOWN
+              # is intentionally non-promotable and remains HOLD.
+              if receipt.get("stop_state") != "INACTIVE":
+                  result.update(gate="HOLD", reason_code="stop_active_or_unverified")
+              elif receipt.get("hold_state") != "CLEAR":
+                  result.update(gate="HOLD", reason_code="hold_active_or_unverified")
+              elif receipt.get("test_outcome") != "SUCCESS":
+                  result.update(gate="BLOCKED", reason_code="independent_tests_not_passed")
+              elif receipt.get("diff_scan") != "PASS":
+                  result.update(gate="HOLD", reason_code="independent_diff_scan_unverified")
+              elif receipt.get("risk") in {"LOW", "MEDIUM"}:
+                  result.update(gate="REVIEW_REQUIRED", reason_code="independent_tests_pass_risk_requires_rea")
+              else:
+                  result.update(gate="HOLD", reason_code="risk_unknown_no_promotion")
+          except Exception as exc:
+              # Emit only a bounded reason code, never tokens, paths, or raw API errors.
+              if result["reason_code"] == "verification_evidence_unavailable":
+                  result["reason_code"] = re.sub(r"[^a-z0-9_]+", "_", str(exc).lower())[:80] or "reconciliation_failed"
+
+          Path("rea-verification-handoff.json").write_text(
+              json.dumps(result, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(result, sort_keys=True))
+          PY
+
+      - name: Upload reconciled decision
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-verification-handoff-${{ github.event.workflow_run.id }}
+          path: rea-verification-handoff.json
+          if-no-files-found: error
+          retention-days: 30
