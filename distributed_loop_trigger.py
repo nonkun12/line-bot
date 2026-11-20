@@ -18,6 +18,7 @@ import httpx
 from core.line_task_approval import (
     parse_approval_command,
     parse_approval_preview_command,
+    sign_approval_envelope,
     validate_approval_request,
 )
 
@@ -476,6 +477,11 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                 candidate=candidate,
             )
             request_id = uuid.uuid4().hex
+            approval_nonce = uuid.uuid4().hex
+            approval_secret = os.environ.get("LINE_TASK_APPROVAL_HMAC_SECRET", "")
+            approval_signature = sign_approval_envelope(
+                decision, nonce=approval_nonce, secret=approval_secret
+            )
             response = client.post(
                 f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW}/dispatches",
                 json={
@@ -488,6 +494,8 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                         "approval_base_sha": decision.base_sha,
                         "approval_expires_at": str(decision.expires_at),
                         "approval_line_user_id": decision.approver_user_id,
+                        "approval_nonce": approval_nonce,
+                        "approval_signature": approval_signature,
                         "max_tasks": "1",
                         "request_id": request_id,
                         "continuation_depth": "0",
