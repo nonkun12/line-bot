@@ -12,7 +12,7 @@ def test_rea_history_is_restored_appended_exported_and_read_back_separately():
     assert "scripts.rea_self_improvement_history export" in source
     assert "--history /tmp/line-bot-rea-self-improvement.jsonl" in source
     assert "--results /tmp/minimal-autonomous-loop.jsonl" in source
-    assert "--cycle-id "${GITHUB_RUN_ID}"" in source
+    assert '--cycle-id "${GITHUB_RUN_ID}"' in source
     assert "data['rea_observations'] = rea_observations" in source
     assert "durable.get('rea_observations', []) != local_state.get('rea_observations', [])" in source
 
