@@ -81,7 +81,7 @@ jobs:
             --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
           if [ "$active_loop" -gt 0 ] || [ "$active_observation" -gt 0 ]; then
             echo "dispatch=false" >> "$GITHUB_OUTPUT"
-            echo "CONTINUATION_STOP=another_loop_or_observation_is_active"
+            echo "CONTINUATION_STOP=another_loop_is_active"
           else
             echo "dispatch=true" >> "$GITHUB_OUTPUT"
             echo "next_depth=$((depth + 1))" >> "$GITHUB_OUTPUT"
