@@ -432,3 +432,34 @@ def test_bounded_development_scope_is_not_misclassified_as_read_only():
 )
 def test_bounded_scope_does_not_override_read_only_or_no_code_change(message):
     assert extract_development_instruction(message) is None
+
+
+def test_bounded_development_scope_dispatches_without_enabling_terminal_actions(monkeypatch):
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return FakeResponse()
+
+    monkeypatch.setattr("line_development.httpx.post", fake_post)
+    message = (
+        "開発: Core Vocabularyを実装し、テストとDraft PR作成まで行う。"
+        "マージ、デプロイ、HOLD解除、権限変更は行わない。"
+    )
+    instruction = extract_development_instruction(message)
+    assert instruction is not None
+
+    reply = dispatch_development_workflow(
+        instruction,
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert captured["url"].endswith(
+        "/actions/workflows/line-development-dispatch.yml/dispatches"
+    )
+    assert captured["json"]["inputs"]["instruction"] == instruction
+    assert "受け付けました" in reply
