@@ -157,3 +157,15 @@ def test_rea_history_replenishes_review_only_candidate_pool(tmp_path):
     assert stored[0]["execution_authorized"] is False
     assert "Queue / issue / PR creation: **not performed**" in summary.read_text(encoding="utf-8")
     assert "task-a" not in json.dumps(stored)
+
+
+def test_catalog_candidate_is_reserved_when_history_is_full():
+    history = [{
+        "source": "self_improvement", "source_id": f"old-{i}",
+        "title": f"Old candidate {i}", "rationale": "Historical review only",
+        "status": "proposed",
+    } for i in range(200)]
+    rows = merge_candidates(history, _report())
+    assert len(rows) == 200
+    assert rows[-1]["source_id"] == "catalog-exhaustion:review-coverage-gap-0123456789"
+    assert rows[-1]["status"] == "proposed"
