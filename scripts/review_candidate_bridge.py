@@ -102,7 +102,9 @@ def build_pool(input_path: Path, store_path: Path, summary_path: Path) -> dict[s
         if key not in existing:
             accepted += 1
         existing[key] = candidate
-    rows = sorted(existing.values(), key=lambda row: (row["source"], row["candidate_key"]))[-MAX_CANDIDATES:]
+    # Preserve insertion order so newly discovered review candidates are not
+    # starved by arbitrary hash ordering when the bounded pool is full.
+    rows = list(existing.values())[-MAX_CANDIDATES:]
 
     store_path.parent.mkdir(parents=True, exist_ok=True)
     temp = store_path.with_name(store_path.name + ".tmp")
