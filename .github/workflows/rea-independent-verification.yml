@@ -107,13 +107,13 @@ jobs:
               risk = "LOW"
           report["risk"] = risk
           Path("rea-diff-scan.json").write_text(
-              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\\n",
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
               encoding="utf-8",
           )
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write(f"risk={risk}\\n")
-              fh.write(f"finding_count={report.get('findings_count', 0)}\\n")
-              fh.write(f"diff_sha256={report.get('diff_sha256', '')}\\n")
+              fh.write(f"risk={risk}\n")
+              fh.write(f"finding_count={report.get('findings_count', 0)}\n")
+              fh.write(f"diff_sha256={report.get('diff_sha256', '')}\n")
           print(json.dumps({"status": report.get("status"), "risk": risk, "findings_count": report.get("findings_count")}, sort_keys=True))
           if risk in {"HIGH", "CRITICAL"}:
               raise SystemExit("REA_DIFF_SCAN=BLOCKED")
