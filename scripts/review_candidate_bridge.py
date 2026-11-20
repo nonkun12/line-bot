@@ -49,7 +49,7 @@ def normalize_candidate(row: object) -> dict[str, Any] | None:
     if not isinstance(source_id, str) or (source_id and not _ID.fullmatch(source_id)):
         return None
     key_material = json.dumps(
-        {"source": source, "title": title.casefold(), "rationale": rationale.casefold()},
+        {"source": source, "source_id": source_id, "title": title.casefold(), "rationale": rationale.casefold()},
         ensure_ascii=False, sort_keys=True, separators=(",", ":"),
     )
     candidate_key = hashlib.sha256(key_material.encode("utf-8")).hexdigest()[:24]
