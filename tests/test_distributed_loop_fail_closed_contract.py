@@ -48,8 +48,10 @@ def test_held_catalog_exhaustion_is_blocked_not_misreported_as_queue_empty():
     assert "action = 'review_held_tasks'" in workflow
 
 
-def test_held_task_resume_uses_reviewed_catalog_not_only_tracked_queue():
+def test_held_task_resume_fails_closed_until_task_bound_resume_approval_exists():
     workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    step = workflow.split("- name: Resume one explicitly approved held task", 1)[1].split("- name: Restore durable Recovery RAG history", 1)[0]
-    assert "--queue .github/autonomous-loop-task-catalog.json" in step
-    assert "--cause-fixed" in step
+    assert "Block held-task resume until task-bound resume approval is implemented" in workflow
+    block = workflow.split("Block held-task resume until task-bound resume approval is implemented", 1)[1].split("      - name:", 1)[0]
+    assert "if: success() && github.event.inputs.resume_task_id != ''" in block
+    assert "exit 1" in block
+    assert "Resume one explicitly approved held task" not in workflow
