@@ -78,7 +78,7 @@ def test_legacy_autonomous_worker_is_disabled_until_task_bound_approval_exists()
     trigger_block = workflow.split("\non:\n", 1)[1].split("\n# Legacy worker", 1)[0]
     assert "workflow_dispatch:" in trigger_block
     assert "schedule:" not in trigger_block
-    assert "if: false" in workflow
+    assert "github.event_name == 'workflow_dispatch' && false" in workflow
     assert "execution_approval" not in workflow
     assert "approval_task_id" not in workflow
     assert "approval_instruction_sha256" not in workflow
@@ -89,4 +89,3 @@ def test_legacy_autonomous_worker_is_disabled_until_task_bound_approval_exists()
     assert "pull-requests: read" in top_permissions
     assert "contents: write" not in workflow
     assert "pull-requests: write" not in workflow
-
