@@ -54,7 +54,7 @@ _BOUNDED_EXECUTION_SCOPE = re.compile(
 _TERMINAL_ACTION_PROHIBITION = re.compile(
     r"(?:マージ|デプロイ|HOLD解除|権限変更)"
     r"(?:[、,・\s]+(?:マージ|デプロイ|HOLD解除|権限変更))*"
-    r"\s*(?:は|を)?\s*(?:一切)?"
+    r"(?:等)?\s*(?:は|を)?\s*(?:一切)?"
     r"(?:行わないでください|行わないで|行わない|しないでください|しないで|しない|禁止)",
     re.IGNORECASE,
 )
