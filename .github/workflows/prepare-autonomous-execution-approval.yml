@@ -1,0 +1,101 @@
+name: Prepare Autonomous Task Execution Approval
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: "Exact task ID already registered and independently execution-approved in the catalog"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prepare-autonomous-execution-approval
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main' && github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout main without write credentials
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Load durable autonomous loop state
+        run: |
+          set -euo pipefail
+          git fetch --quiet --no-tags origin refs/heads/autonomous-loop-state:refs/remotes/origin/autonomous-loop-state
+          git show origin/autonomous-loop-state:.autonomous-loop-state.json > /tmp/autonomous-loop-state.json
+          python -m json.tool /tmp/autonomous-loop-state.json >/dev/null
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build one-task eligible queue without changing tracked state
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          source = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8"))
+          source["max_tasks_per_run"] = 1
+          Path("/tmp/autonomous-loop-one-task-queue.json").write_text(
+              json.dumps(source, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          python -m scripts.autonomous_task_refill \
+            --queue /tmp/autonomous-loop-one-task-queue.json \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --completed-state /tmp/autonomous-loop-state.json \
+            --output /tmp/autonomous-loop-runtime-queue.json
+
+      - name: Prepare read-only task-bound approval manifest
+        env:
+          TASK_ID: ${{ inputs.task_id }}
+          BASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python -m scripts.prepare_autonomous_execution_approval \
+            --queue /tmp/autonomous-loop-runtime-queue.json \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --state /tmp/autonomous-loop-state.json \
+            --task-id "$TASK_ID" \
+            --base-sha "$BASE_SHA" \
+            --output /tmp/autonomous-execution-approval-manifest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          row = json.loads(Path("/tmp/autonomous-execution-approval-manifest.json").read_text(encoding="utf-8"))
+          lines = [
+              "## Human execution approval — not yet granted",
+              "",
+              f"- Task ID: `{row['task_id']}`",
+              f"- Base SHA: `{row['base_sha']}`",
+              f"- Instruction SHA-256: `{row['instruction_sha256']}`",
+              f"- Allowed paths SHA-256: `{row['allowed_paths_sha256']}`",
+              f"- Allowed paths: `{', '.join(row['allowed_paths'])}`",
+              "- max_tasks: `1`",
+              "- execution_approval: `APPROVE_EXECUTION` (only if a human explicitly chooses to dispatch)",
+              "",
+              "**This workflow is read-only. It does not approve, queue, execute, merge, or deploy anything.**",
+          ]
+          with open(__import__("os").environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+              stream.write("\n".join(lines) + "\n")
+          PY
+
+      - name: Archive approval manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-execution-approval-manifest-${{ github.run_id }}
+          path: /tmp/autonomous-execution-approval-manifest.json
+          if-no-files-found: error
+          retention-days: 14
