@@ -1634,20 +1634,20 @@ jobs:
       - name: Checkout exact source revision
         uses: actions/checkout@v4
         with:
-          ref: \${{ github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Download review-only candidate evidence
         uses: actions/download-artifact@v4
         with:
-          name: self-improvement-review-candidates-\${{ github.run_id }}
+          name: self-improvement-review-candidates-${{ github.run_id }}
           path: /tmp/review-candidates
       - name: Fetch existing issues and pull requests
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api --paginate --jq '.[] | select(has("pull_request") | not)' "repos/\${GITHUB_REPOSITORY}/issues?state=all&per_page=100" > /tmp/issues.jsonl
-          gh api --paginate --jq '.[]' "repos/\${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" > /tmp/pulls.jsonl
+          gh api --paginate --jq '.[] | select(has("pull_request") | not)' "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" > /tmp/issues.jsonl
+          gh api --paginate --jq '.[]' "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" > /tmp/pulls.jsonl
           python - <<'PY'
           import json
           from pathlib import Path
@@ -1666,7 +1666,7 @@ jobs:
             --output /tmp/review-issue-drafts.json
       - name: Publish issues without granting execution authority
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python -m scripts.publish_autonomous_task_issue_drafts \
