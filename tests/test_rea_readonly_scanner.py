@@ -179,3 +179,33 @@ class ReadonlyScannerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_commit_diff_allows_only_explicitly_allowlisted_root_entrypoint(self) -> None:
+        base = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        self._write("line_development.py", "VALUE = 2\\n")
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["findings_count"], 0)
+
+    def test_commit_diff_keeps_unlisted_root_files_blocked(self) -> None:
+        base = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        self._write("unreviewed_root.py", "VALUE = 2\\n")
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        findings = report["findings"]
+        self.assertEqual(report["status"], "FINDINGS")
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["category"], "path_policy")
+        self.assertEqual(findings[0]["severity"], "CRITICAL")
