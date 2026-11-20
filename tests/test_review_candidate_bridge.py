@@ -134,3 +134,28 @@ def test_new_candidates_are_not_starved_when_bounded_pool_is_full(tmp_path):
     assert second["stored"] == 50
     assert any(row["source_id"] == "rea-observation:new" for row in stored)
     assert not any(row["source_id"] == "old-0" for row in stored)
+
+
+def test_legacy_candidate_store_keys_migrate_without_losing_rows(tmp_path):
+    import hashlib
+
+    source, store, summary = tmp_path / "input.json", tmp_path / "pool.jsonl", tmp_path / "summary.md"
+    candidate = {
+        "schema_version": 1, "source": "self_improvement", "source_id": "legacy-source",
+        "title": "Legacy candidate", "rationale": "Preserve existing review record",
+        "status": "proposed", "execution_authorized": False,
+    }
+    legacy_material = json.dumps({
+        "source": candidate["source"], "title": candidate["title"].casefold(),
+        "rationale": candidate["rationale"].casefold(),
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    candidate["candidate_key"] = hashlib.sha256(legacy_material.encode("utf-8")).hexdigest()[:24]
+    store.write_text(json.dumps(candidate) + "\n", encoding="utf-8")
+    source.write_text("[]", encoding="utf-8")
+
+    result = build_pool(source, store, summary)
+    migrated = json.loads(store.read_text(encoding="utf-8").splitlines()[0])
+    expected = normalize_candidate(candidate)
+    assert result == {"stored": 1, "added": 0, "rejected": 0}
+    assert expected is not None
+    assert migrated == expected
