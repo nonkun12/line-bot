@@ -120,6 +120,7 @@ def test_cli_requires_and_accepts_catalog_argument(tmp_path, monkeypatch):
     env = os.environ.copy()
     env.update({
         "GITHUB_OUTPUT": str(output_file),
+        "GITHUB_EVENT_PATH": str(event),
         "GITHUB_REF": "refs/heads/main",
         "GITHUB_ACTOR": "nonkun12",
         "GITHUB_REPOSITORY": "nonkun12/line-bot",
