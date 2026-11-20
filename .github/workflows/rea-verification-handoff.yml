@@ -93,6 +93,47 @@ jobs:
           def artifact_json(run_id, expected_name, member):
               return json.loads(artifact_text(run_id, expected_name, member))
 
+          def trusted_stop_state():
+              # Verify repository identity before treating a missing STOP ref as inactive.
+              repository = api(f"https://api.github.com/repos/{repo}")
+              if repository.get("full_name", "").casefold() != repo.casefold():
+                  raise ValueError("stop_repository_identity_unconfirmed")
+              try:
+                  stop_ref = api(
+                      f"https://api.github.com/repos/{repo}/git/ref/heads/control-tower-emergency-stop"
+                  )
+              except Exception as exc:
+                  # Only a confirmed GitHub 404 means the marker is absent.
+                  if getattr(exc, "code", None) == 404:
+                      return "INACTIVE"
+                  raise ValueError("stop_state_unavailable") from exc
+              if stop_ref.get("ref") == "refs/heads/control-tower-emergency-stop":
+                  return "ACTIVE"
+              raise ValueError("stop_state_unverified")
+
+          def trusted_hold_state(source_run_id, task_id):
+              # Use the durable state read back by the source run, not a caller claim
+              # or the mutable current branch tip.
+              snapshot = artifact_json(
+                  source_run_id,
+                  f"minimal-autonomous-loop-{source_run_id}",
+                  "recovery-ai-state-readback.json",
+              )
+              if (
+                  not isinstance(snapshot, dict)
+                  or snapshot.get("schema_version") != 1
+                  or not isinstance(snapshot.get("tasks"), dict)
+              ):
+                  raise ValueError("recovery_state_snapshot_invalid")
+              record = snapshot["tasks"].get(task_id, {})
+              if not isinstance(record, dict):
+                  raise ValueError("recovery_task_state_invalid")
+              held = record.get("held", False)
+              review = record.get("resume_requires_review", False)
+              if not isinstance(held, bool) or not isinstance(review, bool):
+                  raise ValueError("recovery_hold_state_unverified")
+              return "ACTIVE" if held or review else "CLEAR"
+
           try:
               match = re.fullmatch(r"rea-candidate/([1-9][0-9]{0,19})", branch)
               if not match or not re.fullmatch(r"[0-9a-f]{40}", candidate_sha):
@@ -145,6 +186,9 @@ jobs:
               if len(rows) != 1 or not isinstance(rows[0], dict):
                   raise ValueError("candidate_evidence_not_single_task")
               row = rows[0]
+              task_id = row.get("task_id")
+              stop_state = trusted_stop_state()
+              hold_state = trusted_hold_state(source_run_id, task_id)
 
               if (
                   receipt.get("schema_version") != 1
@@ -175,7 +219,9 @@ jobs:
 
               result.update({
                   "source_run_id": source_run_id,
-                  "task_id": row.get("task_id"),
+                  "task_id": task_id,
+                  "stop_state": stop_state,
+                  "hold_state": hold_state,
                   "candidate_sha": candidate_sha,
                   "verification_run_id": verify_run_id,
                   "test_outcome": receipt.get("test_outcome", "UNKNOWN"),
@@ -193,9 +239,9 @@ jobs:
               # Independent tests and diff scan are necessary but insufficient.
               # STOP/HOLD must come from a trusted source-run adapter; UNKNOWN
               # is intentionally non-promotable and remains HOLD.
-              if receipt.get("stop_state") != "INACTIVE":
+              if stop_state != "INACTIVE":
                   result.update(gate="HOLD", reason_code="stop_active_or_unverified")
-              elif receipt.get("hold_state") != "CLEAR":
+              elif hold_state != "CLEAR":
                   result.update(gate="HOLD", reason_code="hold_active_or_unverified")
               elif receipt.get("test_outcome") != "SUCCESS":
                   result.update(gate="BLOCKED", reason_code="independent_tests_not_passed")
