@@ -38,3 +38,10 @@ def test_handoff_does_not_use_receipt_stop_hold_claims_as_authority():
     assert 'receipt.get("hold_state")' not in workflow
     assert 'if stop_state != "INACTIVE"' in workflow
     assert 'elif hold_state != "CLEAR"' in workflow
+
+
+def test_handoff_blocks_high_risk_and_holds_unknown_risk():
+    workflow = (ROOT / ".github/workflows/rea-verification-handoff.yml").read_text()
+    assert 'receipt.get("risk") == "HIGH"' in workflow
+    assert 'gate="BLOCKED", reason_code="risk_high"' in workflow
+    assert 'gate="HOLD", reason_code="risk_unknown_no_promotion"' in workflow
