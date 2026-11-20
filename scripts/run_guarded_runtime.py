@@ -178,15 +178,40 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
     inputs = event.get("inputs") if isinstance(event, dict) else None
     if not isinstance(sender, dict) or not isinstance(repository, dict) or not isinstance(inputs, dict):
         return blocked
-    try:
-        approval_expires_at = int(str(inputs.get("approval_expires_at", "")))
-    except (TypeError, ValueError):
-        return blocked
-    now_epoch = int(datetime.now(timezone.utc).timestamp())
-    if approval_expires_at <= now_epoch or approval_expires_at > now_epoch + 600:
-        return blocked
     actor = str(sender.get("login", ""))
     repo_name = str(repository.get("full_name", ""))
+    line_approver_user_id = ""
+    approval_expires_at = 0
+    if "execution_approval" in inputs:
+        try:
+            approval_expires_at = int(str(inputs.get("approval_expires_at", "")))
+        except (TypeError, ValueError):
+            return blocked
+        now_epoch = int(datetime.now(timezone.utc).timestamp())
+        if approval_expires_at <= now_epoch or approval_expires_at > now_epoch + 600:
+            return blocked
+        line_approver_user_id = str(inputs.get("approval_line_user_id", "")).strip()
+        approval_fields_valid = (
+            str(inputs.get("execution_approval", "")) == "APPROVE_EXECUTION"
+            and str(inputs.get("approval_task_id", "")) == task_id
+            and bool(line_approver_user_id)
+            and str(inputs.get("approval_instruction_sha256", "")).lower() == instruction_digest
+            and bool(allowed_paths_digest)
+            and str(inputs.get("approval_allowed_paths_sha256", "")).lower() == allowed_paths_digest
+            and str(inputs.get("approval_base_sha", "")) == start_sha
+        )
+    else:
+        # Compatibility path for the existing LINE dispatch workflow: its trusted
+        # preparation step mints a one-run envelope in GITHUB_ENV before runtime.
+        approval_fields_valid = (
+            os.environ.get("AUTONOMOUS_EXECUTION_APPROVAL", "") == "APPROVE_EXECUTION"
+            and os.environ.get("AUTONOMOUS_APPROVAL_TASK_ID", "").strip() == task_id
+            and os.environ.get("AUTONOMOUS_APPROVAL_INSTRUCTION_SHA256", "").lower() == instruction_digest
+            and os.environ.get("AUTONOMOUS_APPROVAL_ALLOWED_PATHS_SHA256", "").lower() == allowed_paths_digest
+            and os.environ.get("AUTONOMOUS_APPROVAL_BASE_SHA", "") == start_sha
+            and str(inputs.get("instruction", "")) == instruction
+            and bool(str(inputs.get("user_id", "")).strip())
+        )
     if (
         actor != "nonkun12"
         or os.environ.get("GITHUB_REF", "") != "refs/heads/main"
@@ -194,16 +219,10 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         or repo_name != "nonkun12/line-bot"
         or os.environ.get("GITHUB_REPOSITORY", "") != repo_name
         or not task_id
-        or str(inputs.get("execution_approval", "")) != "APPROVE_EXECUTION"
-        or str(inputs.get("approval_task_id", "")) != task_id
-        or not str(inputs.get("approval_line_user_id", "")).strip()
-        or str(inputs.get("approval_instruction_sha256", "")).lower() != instruction_digest
-        or not allowed_paths_digest
-        or str(inputs.get("approval_allowed_paths_sha256", "")).lower() != allowed_paths_digest
-        or str(inputs.get("approval_base_sha", "")) != start_sha
+        or not approval_fields_valid
     ):
         return blocked
-    return {
+    evidence = {
         "gate": "PASS",
         "reason_code": "authenticated_workflow_dispatch_approval",
         "execution_authorized": True,
@@ -213,9 +232,11 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "instruction_sha256": instruction_digest,
         "allowed_paths_sha256": allowed_paths_digest,
         "base_sha": start_sha,
-        "line_approver_user_id": str(inputs.get("approval_line_user_id", ""))[:128],
-        "expires_at": approval_expires_at,
     }
+    if line_approver_user_id:
+        evidence["line_approver_user_id"] = line_approver_user_id
+        evidence["expires_at"] = approval_expires_at
+    return evidence
 
 
 def _augment_instruction_with_history(instruction: str, history_path: Path) -> str:

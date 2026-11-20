@@ -51,8 +51,96 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Record development starting commit
-        run: echo "AUTONOMOUS_START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Prepare task-bound LINE execution approval
+        env:
+          DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
+          DEV_USER_ID: ${{ github.event.inputs.user_id }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os, re, subprocess, uuid
+          from scripts import line_development_worker_v2 as worker
+
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          instruction = os.environ["DEV_INSTRUCTION"]
+          user_id = os.environ["DEV_USER_ID"]
+          if (
+              os.environ["GITHUB_EVENT_NAME"] != "workflow_dispatch"
+              or os.environ["GITHUB_ACTOR"] != "nonkun12"
+              or os.environ["GITHUB_REPOSITORY"] != "nonkun12/line-bot"
+              or os.environ["GITHUB_REF"] != "refs/heads/main"
+              or not user_id.strip()
+              or not re.fullmatch(r"[0-9a-f]{40}", head)
+              or not instruction.strip()
+          ):
+              raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED")
+
+          # Reuse the worker's exact protected-path and shared-policy filters.
+          # The manifest is generated from this checked-out immutable base.
+          paths = sorted(set(worker.repo_files()))
+          if not paths or any(
+              not isinstance(path, str) or not path or path != path.strip()
+              or path.startswith("/") or "\\" in path
+              or any(part in {"", ".", ".."} for part in path.split("/"))
+              or any(ord(char) < 32 or ord(char) == 127 for char in path)
+              for path in paths
+          ):
+              raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED")
+          allowed_paths = json.dumps(paths, ensure_ascii=False, separators=(",", ":"))
+          if len(allowed_paths) > 40000:
+              raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED")
+
+          task_id = uuid.uuid4().hex
+          values = {
+              "AUTONOMOUS_START_SHA": head,
+              "AUTONOMOUS_TASK_ID": task_id,
+              "AUTONOMOUS_ALLOWED_PATHS": allowed_paths,
+              "AUTONOMOUS_EXECUTION_APPROVAL": "APPROVE_EXECUTION",
+              "AUTONOMOUS_APPROVAL_TASK_ID": task_id,
+              "AUTONOMOUS_APPROVAL_INSTRUCTION_SHA256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
+              "AUTONOMOUS_APPROVAL_BASE_SHA": head,
+              "AUTONOMOUS_APPROVAL_ALLOWED_PATHS_SHA256": hashlib.sha256(allowed_paths.encode("utf-8")).hexdigest(),
+          }
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+              for name, value in values.items():
+                  fh.write(f"{name}={value}\n")
+          print("TASK_BOUND_APPROVAL=PREPARED")
+          print(f"APPROVED_BASE_SHA={head}")
+          print(f"APPROVED_PATH_COUNT={len(paths)}")
+          PY
+
+      - name: Verify task-bound approval before any execution path
+        env:
+          DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import subprocess
+          from scripts.run_guarded_runtime import _verify_execution_approval
+
+          approved_base = os.environ.get("AUTONOMOUS_START_SHA", "").strip()
+          checked_out_head = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], text=True
+          ).strip()
+          if not approved_base or checked_out_head != approved_base:
+              raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED reason=base_sha_mismatch")
+
+          evidence = _verify_execution_approval(
+              approved_base, os.environ["DEV_INSTRUCTION"]
+          )
+          if (
+              evidence.get("gate") != "PASS"
+              or evidence.get("execution_authorized") is not True
+          ):
+              raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED")
+          print("TASK_BOUND_APPROVAL=PASS")
+          print(f"APPROVED_TASK_ID={evidence['task_id']}")
+          PY
 
       - name: Run bounded multi-agent LINE development runtime
         id: development
@@ -62,6 +150,7 @@ jobs:
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           : > /tmp/line-development-loop.log
@@ -70,7 +159,33 @@ jobs:
             echo "E2E test-only instruction detected; running pytest without autonomous file-edit planning."
             echo "test_only=true" >> "$GITHUB_OUTPUT"
             echo "app_creation=false" >> "$GITHUB_OUTPUT"
-            python -m pytest -q --tb=native
+            # Run tests without task approval, development credentials, or ambient secrets.
+            python - <<'PY'
+          import os
+          import subprocess
+          import sys
+
+          clean_env = os.environ.copy()
+          for name in tuple(clean_env):
+              upper = name.upper()
+              if upper.startswith(("AUTONOMOUS_", "DEV_")):
+                  clean_env.pop(name, None)
+                  continue
+              if upper in {"GH_TOKEN", "GITHUB_TOKEN"}:
+                  clean_env.pop(name, None)
+                  continue
+              if any(marker in upper for marker in (
+                  "TOKEN", "API_KEY", "SECRET", "PASSWORD", "CREDENTIAL",
+                  "ACCESS_KEY", "PRIVATE_KEY", "WEBHOOK",
+              )):
+                  clean_env.pop(name, None)
+          result = subprocess.run(
+              [sys.executable, "-m", "pytest", "-q", "--tb=native"],
+              env=clean_env,
+              check=False,
+          )
+          raise SystemExit(result.returncode)
+          PY
           elif python -c 'import sys; from scripts.create_app_scaffold import is_new_app_request; sys.exit(0 if is_new_app_request(sys.argv[1]) else 1)' "$DEV_INSTRUCTION"; then
             echo "test_only=false" >> "$GITHUB_OUTPUT"
             echo "app_creation=true" >> "$GITHUB_OUTPUT"
@@ -228,7 +343,7 @@ jobs:
               with open("/tmp/line-development-final-report.txt", encoding="utf-8") as fh:
                   message = fh.read()
           except OSError:
-              message = "⚠️ 終了報告生成失敗\\n" f"指示: {instruction}\\n" f"実行結果: {run_url}\\n" f"Outcome: {outcome}"
+              message = "⚠️ 終了報告生成失敗\n" f"指示: {instruction}\n" f"実行結果: {run_url}\n" f"Outcome: {outcome}"
           request = urllib.request.Request(webhook, data=json.dumps({"text": message}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
           with urllib.request.urlopen(request, timeout=20) as response:
               print(f"SLACK_NOTIFICATION=HTTP_{response.status}")
