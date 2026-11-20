@@ -37,6 +37,47 @@ jobs:
           gh api --paginate --slurp "repos/${REPOSITORY}/issues?state=all&per_page=100" > /tmp/issues-pages.json
           gh api --paginate --slurp "repos/${REPOSITORY}/pulls?state=open&per_page=100" > /tmp/pulls-pages.json
           gh api --paginate --slurp "repos/${REPOSITORY}/actions/runs?per_page=50" > /tmp/runs-pages.json
+          # Durable state is stored on its dedicated branch; fetch it through the
+          # read-only Contents API because checkout intentionally persists no credentials.
+          gh api "repos/${REPOSITORY}/contents/.autonomous-loop-state.json?ref=autonomous-loop-state" > /tmp/state-content.json
+          python - <<'PY'
+          import base64
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("/tmp/state-content.json").read_text(encoding="utf-8"))
+          encoded = payload.get("content")
+          if not isinstance(encoded, str) or not encoded.strip():
+              raise SystemExit("durable_state_content_missing")
+          state_bytes = base64.b64decode(encoded, validate=True)
+          state = json.loads(state_bytes.decode("utf-8"))
+          recovery = state.get("recovery_ai") if isinstance(state, dict) else None
+          if (
+              not isinstance(state, dict)
+              or not isinstance(state.get("completed"), list)
+              or not isinstance(recovery, dict)
+              or type(recovery.get("schema_version")) is not int
+              or recovery.get("schema_version") != 1
+              or not isinstance(recovery.get("tasks"), dict)
+              or "checkpoint" not in recovery
+          ):
+              raise SystemExit("durable_state_invalid")
+          Path("/tmp/autonomous-loop-state.json").write_text(
+              json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+
+          raw_pages = json.loads(Path("/tmp/issues-pages.json").read_text(encoding="utf-8"))
+          issues = []
+          for page in raw_pages:
+              if isinstance(page, list):
+                  issues.extend(
+                      item for item in page
+                      if isinstance(item, dict) and "pull_request" not in item
+                  )
+          Path("/tmp/autonomous-loop-all-issues.json").write_text(
+              json.dumps(issues, ensure_ascii=False) + "\n", encoding="utf-8"
+          )
+          PY
           python - <<'PY'
           import json
           import hashlib
@@ -95,13 +136,50 @@ jobs:
           )
           print(json.dumps(report, ensure_ascii=False, indent=2))
           PY
+
+      - name: Set up Python for Work Finder AI
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Run Work Finder AI in read-only mode
+        run: |
+          set -euo pipefail
+          python -m scripts.work_finder_ai \
+            --repo-root . \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --queue .github/autonomous-loop-tasks.json \
+            --state /tmp/autonomous-loop-state.json \
+            --runtime core/line_development_runtime.py \
+            --existing-issues /tmp/autonomous-loop-all-issues.json \
+            --output /tmp/work-finder-report.json \
+            | tee /tmp/work-finder-summary.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          observation_path = Path("/tmp/distributed-observation.json")
+          observation = json.loads(observation_path.read_text(encoding="utf-8"))
+          work_finder = json.loads(Path("/tmp/work-finder-report.json").read_text(encoding="utf-8"))
+          observation["work_finder"] = work_finder.get("work_finder", {})
+          observation["work_finder_status"] = work_finder.get("status")
+          observation["work_finder_candidate_count"] = work_finder.get("candidate_count")
+          observation_path.write_text(
+              json.dumps(observation, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(observation["work_finder"], ensure_ascii=False, indent=2))
+          PY
+          cat /tmp/work-finder-report.json >> "$GITHUB_STEP_SUMMARY"
           cat /tmp/distributed-observation.json >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload observation evidence
+      - name: Upload observation and Work Finder evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: distributed-observation-${{ github.run_id }}
-          path: /tmp/distributed-observation.json
+          path: |
+            /tmp/distributed-observation.json
+            /tmp/work-finder-report.json
           if-no-files-found: warn
           retention-days: 30
