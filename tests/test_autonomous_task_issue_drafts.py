@@ -64,42 +64,27 @@ def test_main_writes_drafts(tmp_path):
     assert main(["--report", str(report), "--issues", str(issues), "--output", str(output)]) == 0
     assert len(json.loads(output.read_text(encoding="utf-8"))) == 1
 
-def test_distributed_workflow_creates_only_review_candidate_issues():
+def test_observation_workflow_does_not_create_candidate_issues():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
-    workflow = (root / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    start = workflow.index("- name: Create bounded review-only task issues from analyzer findings")
-    end = workflow.index("- name: Run one bounded autonomous task", start)
-    step = workflow[start:end]
-    assert "scripts.autonomous_task_issue_drafts" in step
-    assert "gh issue create" in step
-    assert "--label autonomous-task-candidate" in step
-    assert "autonomous-task-approved" not in step
-    assert "no execution approval was granted" in step
+    workflow = (root / ".github" / "workflows" / "distributed-autonomous-observation.yml").read_text(encoding="utf-8")
+    assert "gh issue create" not in workflow
+    assert "gh pr create" not in workflow
+    assert "READ_ONLY" in workflow
+    assert "actions/upload-artifact" in workflow
 
 
-
-def test_distributed_workflow_loads_existing_issues_before_candidate_analysis():
+def test_observation_workflow_reads_issue_and_pr_signals_without_writes():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
-    workflow = (root / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    load_start = workflow.index("- name: Load all existing issues for candidate deduplication")
-    analyze_start = workflow.index("- name: Analyze catalog exhaustion without changing execution state", load_start)
-    create_start = workflow.index("- name: Create bounded review-only task issues from analyzer findings", analyze_start)
-    create_end = workflow.index("- name: Run one bounded autonomous task", create_start)
-    load_step = workflow[load_start:analyze_start]
-    analyze_step = workflow[analyze_start:create_start]
-    create_step = workflow[create_start:create_end]
-    assert "gh api --paginate" in load_step
-    assert "state=all&per_page=100" in load_step
-    assert "pull_request" in load_step
-    assert "pulls?state=open&per_page=100" in load_step
-    assert "--existing-issues /tmp/autonomous-loop-all-issues.json" in analyze_step
-    assert "--issues /tmp/autonomous-loop-all-issues.json" in create_step
-    assert "--pull-requests /tmp/autonomous-loop-open-pulls.json" in create_step
-    assert "gh api --paginate" not in create_step
+    workflow = (root / ".github" / "workflows" / "distributed-autonomous-observation.yml").read_text(encoding="utf-8")
+    assert 'repos/${REPOSITORY}/issues?state=all&per_page=100' in workflow
+    assert 'repos/${REPOSITORY}/pulls?state=open&per_page=100' in workflow
+    assert "issues: read" in workflow
+    assert "pull-requests: read" in workflow
+    assert "git push" not in workflow
 
 
 def _open_review_issue(task_id="review-coverage-gap-0123456789", approved=False):
@@ -195,18 +180,15 @@ def test_main_reports_review_backlog_limit_and_deduplication(tmp_path, capsys):
     assert summary["execution_approval_granted"] is False
 
 
-def test_workflow_publishes_candidate_backlog_diagnostics():
+def test_observation_artifact_contains_read_only_approval_preflight():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
-    workflow = (root / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    start = workflow.index("- name: Create bounded review-only task issues from analyzer findings")
-    end = workflow.index("- name: Run one bounded autonomous task", start)
-    step = workflow[start:end]
-    assert "autonomous-loop-task-issue-draft-summary.json" in step
-    assert "GITHUB_STEP_SUMMARY" in step
-    assert "backlog diagnostics" in step
-
+    workflow = (root / ".github" / "workflows" / "distributed-autonomous-observation.yml").read_text(encoding="utf-8")
+    assert "approval_candidates" in workflow
+    assert "instruction_sha256" in workflow
+    assert "allowed_paths_sha256" in workflow
+    assert "safety_boundary" in workflow
 
 
 def test_review_only_issue_with_misapplied_execution_label_still_consumes_backlog_capacity():
