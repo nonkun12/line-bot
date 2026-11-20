@@ -16,6 +16,12 @@ from pathlib import Path
 from typing import Any
 
 ALLOWED_ROOTS = (".github/workflows/", "core/", "scripts/", "tests/", "docs/rea/")
+ALLOWED_ROOT_FILES = frozenset({"distributed_loop_trigger.py"})
+
+
+def _path_is_allowlisted(relative: str) -> bool:
+    """Allow reviewed repository roots plus the one explicit root-level LINE entrypoint."""
+    return relative in ALLOWED_ROOT_FILES or relative.startswith(ALLOWED_ROOTS)
 ALLOWED_SUFFIXES = frozenset({".py", ".json", ".yml", ".yaml", ".md", ".txt"})
 MAX_FILE_BYTES = 512 * 1024
 MAX_FILES = 5000
@@ -113,7 +119,7 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
         # Skip symlinks, submodules, and paths outside the explicit allowlist.
         if mode != "100644" and mode != "100755":
             continue
-        if not path.startswith(ALLOWED_ROOTS):
+        if not _path_is_allowlisted(path):
             continue
         if Path(path).suffix.lower() not in ALLOWED_SUFFIXES:
             continue
@@ -266,7 +272,7 @@ def scan_commit_diff(
     findings: list[dict[str, Any]] = []
     scanned = 0
     for relative in sorted(changed):
-        if not relative.startswith(ALLOWED_ROOTS):
+        if not _path_is_allowlisted(relative):
             findings.append(_finding(
                 category="path_policy", severity="CRITICAL", confidence="HIGH",
                 target_sha=target_sha, path=relative, line=None,
