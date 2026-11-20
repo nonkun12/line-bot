@@ -21,6 +21,7 @@ def _digest(value: str) -> str:
 def authorize_one_task(
     queue_path: Path,
     event_path: Path,
+    catalog_path: Path,
     *,
     base_sha: str,
     ref: str,
@@ -51,6 +52,10 @@ def authorize_one_task(
         raise ValueError("approval_base_sha_invalid")
     if inputs.get("approval_base_sha") != base_sha:
         raise ValueError("approval_base_sha_mismatch")
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog_tasks = catalog.get("tasks") if isinstance(catalog, dict) else None
+    if not isinstance(catalog_tasks, list):
+        raise ValueError("approval_catalog_invalid")
     tasks = queue.get("tasks")
     if not isinstance(tasks, list) or not tasks:
         raise ValueError("approved_runtime_queue_empty")
@@ -61,6 +66,11 @@ def authorize_one_task(
     if len(matches) != 1:
         raise ValueError("approval_must_bind_exactly_one_queued_task")
     task = matches[0]
+    registered = [item for item in catalog_tasks if isinstance(item, dict) and item.get("id") == task_id]
+    if len(registered) != 1 or registered[0].get("execution_approved") is not True:
+        raise ValueError("approval_task_not_registered_or_not_approved")
+    if any(task.get(key) != registered[0].get(key) for key in ("id", "instruction", "allowed_paths")):
+        raise ValueError("approval_task_definition_mismatch")
     instruction, paths = task.get("instruction"), task.get("allowed_paths")
     if not isinstance(instruction, str) or not instruction.strip():
         raise ValueError("approved_instruction_invalid")
@@ -92,11 +102,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--queue", type=Path, required=True)
     parser.add_argument("--event", type=Path, required=True)
+    parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--base-sha", required=True)
     args = parser.parse_args()
     try:
         result = authorize_one_task(
-            args.queue, args.event, base_sha=args.base_sha,
+            args.queue, args.event, args.catalog, base_sha=args.base_sha,
             ref=os.environ.get("GITHUB_REF", ""),
             actor=os.environ.get("GITHUB_ACTOR", ""),
             repository=os.environ.get("GITHUB_REPOSITORY", ""),
@@ -104,6 +115,21 @@ def main() -> int:
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
         print(f"EXECUTION_APPROVAL=BLOCKED reason={type(exc).__name__}:{exc}")
         return 1
+    os.environ["AUTONOMOUS_TASK_ID"] = str(result["task_id"])
+    task_rows = json.loads(args.queue.read_text(encoding="utf-8"))["tasks"]
+    os.environ["AUTONOMOUS_ALLOWED_PATHS"] = json.dumps(task_rows[0]["allowed_paths"], ensure_ascii=False)
+    try:
+        from scripts.run_guarded_runtime import _consume_execution_approval, _verify_execution_approval
+        evidence = _verify_execution_approval(args.base_sha, task_rows[0]["instruction"])
+        if evidence.get("execution_authorized") is not True:
+            raise ValueError("independent_execution_approval_verification_failed")
+        consumption = _consume_execution_approval(evidence, args.base_sha)
+        if consumption.get("gate") != "PASS":
+            raise ValueError(str(consumption.get("reason_code", "approval_consumption_blocked")))
+    except Exception as exc:
+        print(f"EXECUTION_APPROVAL=BLOCKED reason={type(exc).__name__}")
+        return 1
+    result["consumption"] = "PASS"
     print("EXECUTION_APPROVAL=" + json.dumps(result, sort_keys=True))
     return 0
 
