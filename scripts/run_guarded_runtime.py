@@ -177,6 +177,28 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         return blocked
     actor = str(sender.get("login", ""))
     repo_name = str(repository.get("full_name", ""))
+    # Preferred path: the trusted LINE workflow creates a fresh approval
+    # envelope only after authenticating the workflow actor, repository, ref,
+    # instruction, and exact safe-path manifest. Legacy task-bound event inputs
+    # remain supported for existing callers and regression coverage.
+    if str(inputs.get("execution_approval", "")) == "APPROVE_EXECUTION":
+        approval_fields_valid = (
+            str(inputs.get("approval_task_id", "")) == task_id
+            and str(inputs.get("approval_instruction_sha256", "")).lower() == instruction_digest
+            and bool(allowed_paths_digest)
+            and str(inputs.get("approval_allowed_paths_sha256", "")).lower() == allowed_paths_digest
+            and str(inputs.get("approval_base_sha", "")) == start_sha
+        )
+    else:
+        approval_fields_valid = (
+            os.environ.get("AUTONOMOUS_EXECUTION_APPROVAL", "") == "APPROVE_EXECUTION"
+            and os.environ.get("AUTONOMOUS_APPROVAL_TASK_ID", "").strip() == task_id
+            and os.environ.get("AUTONOMOUS_APPROVAL_INSTRUCTION_SHA256", "").lower() == instruction_digest
+            and os.environ.get("AUTONOMOUS_APPROVAL_ALLOWED_PATHS_SHA256", "").lower() == allowed_paths_digest
+            and os.environ.get("AUTONOMOUS_APPROVAL_BASE_SHA", "") == start_sha
+            and str(inputs.get("instruction", "")) == instruction
+            and bool(str(inputs.get("user_id", "")).strip())
+        )
     if (
         actor != "nonkun12"
         or os.environ.get("GITHUB_REF", "") != "refs/heads/main"
@@ -184,12 +206,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         or repo_name != "nonkun12/line-bot"
         or os.environ.get("GITHUB_REPOSITORY", "") != repo_name
         or not task_id
-        or str(inputs.get("execution_approval", "")) != "APPROVE_EXECUTION"
-        or str(inputs.get("approval_task_id", "")) != task_id
-        or str(inputs.get("approval_instruction_sha256", "")).lower() != instruction_digest
-        or not allowed_paths_digest
-        or str(inputs.get("approval_allowed_paths_sha256", "")).lower() != allowed_paths_digest
-        or str(inputs.get("approval_base_sha", "")) != start_sha
+        or not approval_fields_valid
     ):
         return blocked
     return {
