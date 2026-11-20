@@ -113,7 +113,7 @@ class ReadonlyScannerTests(unittest.TestCase):
         base = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
         ).strip()
-        self._write("app.py", "VALUE = 2\\n")
+        self._write("app.py", "VALUE = 2\n")
         self._commit()
         target = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
@@ -121,7 +121,10 @@ class ReadonlyScannerTests(unittest.TestCase):
 
         report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
         self.assertEqual(report["status"], "FINDINGS")
-        finding = report["findings"][0]
+        finding = next(
+            item for item in report["findings"]
+            if item["category"] == "path_policy"
+        )
         self.assertEqual(finding["category"], "path_policy")
         self.assertEqual(finding["evidence"]["path"], "app.py")
         self.assertEqual(finding["severity"], "CRITICAL")
