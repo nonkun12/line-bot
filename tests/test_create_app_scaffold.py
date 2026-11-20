@@ -74,3 +74,13 @@ def test_symlinked_generated_root_cannot_escape_repository(tmp_path):
         create_app("TODO管理Webアプリを作って", root=root, run_id="42")
     assert not list(outside.iterdir())
 
+def test_main_returns_blocked_for_invalid_app_instruction(monkeypatch, capsys):
+    import scripts.create_app_scaffold as scaffold
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["create_app_scaffold", "--instruction", "既存アプリの通知機能を改善して"],
+    )
+
+    assert scaffold.main() == 1
+    assert "APP_SCAFFOLD=BLOCKED" in capsys.readouterr().out
