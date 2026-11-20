@@ -139,7 +139,7 @@ def main() -> int:
     output_path = os.environ.get("GITHUB_OUTPUT", "")
     if output_path:
         with open(output_path, "a", encoding="utf-8") as output:
-            output.write("task_id=" + str(result["task_id"]) + "\\n")
+            output.write("task_id=" + str(result["task_id"]) + "\n")
     print("EXECUTION_APPROVAL=" + json.dumps(result, sort_keys=True))
     return 0
 
