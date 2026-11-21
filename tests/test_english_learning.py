@@ -1,3 +1,5 @@
+import pytest
+
 from agents.english.intents import classify_english_mode, is_english_learning_intent
 from agents.english.node import EnglishLearningAgent
 from core.agents import AgentRequest
@@ -293,3 +295,75 @@ def test_unknown_core_image_word_fails_closed_without_guessing():
 def test_core_image_command_is_classified_as_english_learning_intent():
     assert is_english_learning_intent("interesting コアイメージ")
     assert is_english_learning_intent("コアイメージ interesting")
+
+def test_side5_core_vocabulary_worker_reports_registered_and_independent_counts(monkeypatch, tmp_path):
+    from agents.english import progress, quiz_state
+    from agents.english.core_vocabulary import SIDE_ID, TARGET_WORDS, run_core_vocabulary
+    from agents.english.core_image import _ENTRIES
+
+    db = str(tmp_path / "side5.sqlite3")
+    monkeypatch.setattr(progress, "DB_PATH", db)
+    monkeypatch.setattr(quiz_state, "DB_PATH", db)
+
+    result = run_core_vocabulary("learner-a", "daily")
+
+    assert result.side_id == SIDE_ID == "side_5_english_core_vocabulary"
+    assert result.action == "daily"
+    assert result.status == "READY"
+    assert result.registered_word_count == len(_ENTRIES)
+    assert result.target_word_count == TARGET_WORDS == 1000
+    assert result.independently_verified_word_count == 0
+    assert result.registered_word_count < result.target_word_count
+    assert "確認済みローカル辞書" in result.text
+
+
+def test_side5_core_vocabulary_worker_rejects_anonymous_unknown_and_overlong_inputs():
+    from agents.english.core_vocabulary import run_core_vocabulary
+
+    with pytest.raises(ValueError, match="non-empty user_id"):
+        run_core_vocabulary("", "daily")
+    with pytest.raises(ValueError, match="unsupported Side 5 action"):
+        run_core_vocabulary("learner-a", "generate-unreviewed")
+    with pytest.raises(ValueError, match="exceeds maximum length"):
+        run_core_vocabulary("x" * 201, "daily")
+
+
+def test_english_agent_routes_vocabulary_to_side5(monkeypatch, tmp_path):
+    from agents.english import node, progress, quiz_state
+
+    db = str(tmp_path / "side5-route.sqlite3")
+    monkeypatch.setattr(progress, "DB_PATH", db)
+    monkeypatch.setattr(quiz_state, "DB_PATH", db)
+    monkeypatch.setattr(
+        node,
+        "run_core_vocabulary",
+        lambda user_id, action, **kwargs: type("Result", (), {
+            "text": f"{user_id}:{action}",
+            "side_id": "side_5_english_core_vocabulary",
+            "registered_word_count": 137,
+            "independently_verified_word_count": 0,
+            "target_word_count": 1000,
+        })(),
+    )
+    response = node.EnglishLearningAgent().handle(_request("単語"))
+
+    assert response.text == "test-user:daily"
+    assert response.metadata["side_id"] == "side_5_english_core_vocabulary"
+    assert response.metadata["registered_word_count"] == 137
+    assert response.metadata["independently_verified_word_count"] == 0
+    assert response.metadata["target_word_count"] == 1000
+
+
+def test_side5_review_action_preserves_review_prompt(monkeypatch, tmp_path):
+    from agents.english import progress, quiz_state
+    from agents.english.core_vocabulary import run_core_vocabulary
+
+    db = str(tmp_path / "side5-review.sqlite3")
+    monkeypatch.setattr(progress, "DB_PATH", db)
+    monkeypatch.setattr(quiz_state, "DB_PATH", db)
+
+    result = run_core_vocabulary("learner-review", "review")
+
+    assert "英語復習モードです" in result.text
+    assert "今回の復習語:" in result.text
+    assert "英文を1つ作ってください" in result.text
