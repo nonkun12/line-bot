@@ -87,7 +87,7 @@ jobs:
           PY
           python -m scripts.orca_status_publisher --input /tmp/english-core-vocabulary-orca.json
       - name: Open or update review PR
-        if: ${{ false }} # Phase 0: no automated PR publication.
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/phase0/explicit-approval-required' # Phase 0: remain disabled on main and scheduled runs.
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
