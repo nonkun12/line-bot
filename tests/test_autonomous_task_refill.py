@@ -707,3 +707,29 @@ def test_read_json_rejects_non_object_json_root(tmp_path: Path):
 
     with pytest.raises(ValueError, match="JSON root must be an object"):
         read_json(source)
+
+def test_main_adds_execution_approved_catalog_task_on_success(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[{**_task("task-cli-new"), "execution_approved": True}],
+    )
+    output = tmp_path / "runtime.json"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "autonomous_task_refill",
+            "--queue", str(queue),
+            "--catalog", str(catalog),
+            "--completed-state", str(completed),
+            "--output", str(output),
+        ],
+    )
+
+    assert main() == 0
+    report = json.loads(capsys.readouterr().out.strip())
+    assert report["added_ids"] == ["task-cli-new"]
+    assert report["added"] == 1
+    runtime = json.loads(output.read_text(encoding="utf-8"))
+    assert any(task["id"] == "task-cli-new" for task in runtime["tasks"])
