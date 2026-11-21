@@ -211,3 +211,27 @@ def test_provider_error_holds_immediately_without_repair_retry(tmp_path):
     assert decision.action == "HOLD"
     assert decision.reason == "non_repairable_failure"
     assert decision.requires_human is True
+
+
+def test_recovery_failure_state_is_isolated_per_task(tmp_path):
+    store = RecoveryStore(tmp_path / "state.json")
+
+    task_a = store.record_failure(
+        "task-a", "test_regression", ["tests/test_a.py::test_failure"]
+    )
+    task_b = store.record_failure(
+        "task-b", "test_regression", ["tests/test_b.py::test_failure"]
+    )
+
+    status_a = store.task_status("task-a")
+    status_b = store.task_status("task-b")
+
+    assert task_a.action == "REPAIR_ONCE"
+    assert task_b.action == "REPAIR_ONCE"
+    assert status_a["consecutive_failures"] == 1
+    assert status_b["consecutive_failures"] == 1
+    assert status_a["same_fingerprint_attempts"] == 1
+    assert status_b["same_fingerprint_attempts"] == 1
+    assert status_a["last_fingerprint"] != status_b["last_fingerprint"]
+    assert status_a["held"] is False
+    assert status_b["held"] is False
