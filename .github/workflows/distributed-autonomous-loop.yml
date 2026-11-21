@@ -586,6 +586,7 @@ jobs:
               output.write("authorized=" + ("true" if authorized_count else "false") + "\n")
               output.write("needed=" + ("true" if needs_model else "false") + "\n")
           if not authorized_count:
+              Path("/tmp/minimal-autonomous-loop.jsonl").write_text("", encoding="utf-8")
               reason = "no_explicitly_approved_tasks"
               if held_count:
                   reason = "all_remaining_tasks_held_or_review_pending"
