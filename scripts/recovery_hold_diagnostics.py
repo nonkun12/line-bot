@@ -63,8 +63,6 @@ def analyze_recovery_holds(
     completed_set = set(completed)
     records = recovery["tasks"]
     diagnostics = []
-    eligible_count = 0
-
     for task_id, record in sorted(records.items()):
         if not isinstance(task_id, str) or not task_id or not isinstance(record, dict):
             raise ValueError("Recovery AI task record invalid")
@@ -76,9 +74,6 @@ def analyze_recovery_holds(
         catalog_task = catalog_by_id.get(task_id)
         approved = catalog_task.get("execution_approved") is True if catalog_task else False
         is_completed = task_id in completed_set
-        if approved and not held and not review_pending and not is_completed:
-            eligible_count += 1
-
         if not held and not review_pending:
             continue
 
@@ -137,6 +132,23 @@ def analyze_recovery_holds(
             "next_step": next_step,
             "required_evidence": required_evidence,
         })
+
+    eligible_count = 0
+    for task_id, catalog_task in catalog_by_id.items():
+        if catalog_task.get("execution_approved") is not True or task_id in completed_set:
+            continue
+        record = records.get(task_id)
+        if record is None:
+            eligible_count += 1
+            continue
+        if not isinstance(record, dict):
+            raise ValueError("Recovery AI task record invalid")
+        held = record.get("held")
+        review_pending = record.get("resume_requires_review", False)
+        if not isinstance(held, bool) or not isinstance(review_pending, bool):
+            raise ValueError("Recovery AI hold/review flags ambiguous")
+        if not held and not review_pending:
+            eligible_count += 1
 
     checkpoint = recovery.get("checkpoint")
     if checkpoint is not None and (
