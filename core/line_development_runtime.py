@@ -170,10 +170,16 @@ def _is_provider_free_autonomous_task(task_id: str) -> bool:
 
 
 def _provider_block_reason(task_id: str) -> str | None:
-    """Reject metered/external model use until a verified local adapter exists."""
+    """Allow non-deterministic work only when a validated loopback model is configured."""
     if _is_provider_free_autonomous_task(task_id):
         return None
-    return "external_model_provider_disabled_local_adapter_unavailable"
+    try:
+        worker.create_local_model_client_from_env()
+    except worker.LocalModelError as exc:
+        return str(exc)
+    except Exception as exc:
+        return f"local_model_configuration_invalid:{type(exc).__name__}"
+    return None
 
 
 def _self_improvement_history_path() -> Path:
@@ -2747,11 +2753,10 @@ def execute(instruction: str) -> int:
         return 1
     if idea_task_id:
         os.environ["AUTONOMOUS_TASK_ID"] = idea_task_id
-    # Deterministic queue tasks must run with no provider client and no API key.
-    # If a deterministic plan unexpectedly needs a model, the guarded executor
-    # fails closed instead of falling back to an external service.
+    # Deterministic tasks need no model. All other tasks use the validated
+    # loopback-only adapter; there is deliberately no cloud-provider fallback.
     provider_free_task = _is_provider_free_autonomous_task(autonomous_task_id)
-    client = None if provider_free_task else worker.Groq(api_key=os.environ["GROQ_API_KEY"])
+    client = None if provider_free_task else worker.create_local_model_client_from_env()
     state = DevelopmentState(
         client=client,
         instruction=instruction,
