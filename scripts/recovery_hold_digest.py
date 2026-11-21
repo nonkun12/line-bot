@@ -1,4 +1,4 @@
-"""Read-only Markdown digest of durable Recovery AI HOLD records."""
+"""Read-only Markdown digest of durable Recovery AI BLOCKED and FAILED records."""
 from __future__ import annotations
 
 import argparse
@@ -39,18 +39,38 @@ def build_digest(state: dict) -> str:
         str(record.get("last_category") or "missing")
         for _, record in held
     )
+    # Recovery records are evidence, not authorization. A non-held task with a
+    # persisted failure decision is reported as FAILED backlog; a held task or
+    # a task awaiting post-resume review is reported as BLOCKED.
+    failed = [
+        (task_id, record) for task_id, record in tasks.items()
+        if not record.get("held", False)
+        and int(record.get("consecutive_failures", 0) or 0) > 0
+        and record.get("last_category")
+    ]
+    review_required = [
+        (task_id, record) for task_id, record in tasks.items()
+        if record.get("resume_requires_review") is True
+    ]
+    recovery_decisions = Counter(
+        str(record.get("last_decision_action") or "missing")
+        for _, record in tasks.items()
+        if record.get("last_decision_action")
+    )
     missing_decision = sum(
         not record.get("last_decision_action") or not record.get("last_decision_reason")
         for _, record in held
     )
 
     lines = [
-        "# Recovery AI HOLD digest",
+        "# Recovery AI BLOCKED / FAILED digest",
         "",
         "> Read-only report. No HOLD state, queue, approval, or task record is modified.",
         "",
         f"- Registered Recovery AI task records: **{len(tasks)}**",
-        f"- Currently held tasks: **{len(held)}**",
+        f"- Currently held tasks (BLOCKED / human review): **{len(held)}**",
+        f"- Failed tasks awaiting bounded recovery or review: **{len(failed)}**",
+        f"- Tasks awaiting post-resume human review: **{len(review_required)}**",
         f"- Held tasks missing decision action/reason: **{missing_decision}**",
         "",
         "## HOLD reasons",
@@ -79,11 +99,32 @@ def build_digest(state: dict) -> str:
         )
     if not held:
         lines.append("| — | — | — | — | — |")
+    lines.extend(["", "## BLOCKED / FAILED inventory", "",
+        "| State | Task ID | Updated at | Failures | Category | Decision | Reason |",
+        "|---|---|---|---:|---|---|---|"])
+    inventory = [("BLOCKED", task_id, record) for task_id, record in held]
+    inventory.extend(("FAILED", task_id, record) for task_id, record in failed)
+    inventory.extend(("REVIEW_REQUIRED", task_id, record) for task_id, record in review_required if not record.get("held"))
+    for state, task_id, record in sorted(inventory, key=lambda item: (item[0], item[1])):
+        values = [
+            state, task_id, str(record.get("updated_at") or "unknown"),
+            str(record.get("consecutive_failures", 0)),
+            str(record.get("last_category") or "unknown"),
+            str(record.get("last_decision_action") or "missing"),
+            str(record.get("last_decision_reason") or record.get("hold_reason") or "missing"),
+        ]
+        lines.append("| " + " | ".join(value.replace("|", "\\|") for value in values) + " |")
+    if not inventory:
+        lines.append("| — | — | — | — | — | — | — |")
+    lines.extend(["", "## Last recovery decisions", "", "| Decision | Count |", "|---|---:|"])
+    lines.extend(f"| {action} | {count} |" for action, count in sorted(recovery_decisions.items()))
     lines.extend([
         "",
         "## Safety interpretation",
         "",
         f"- {reasons.get(LEGACY_REASON, 0)} held records have no persisted original HOLD reason; their historical cause is unknown.",
+        "- RETRY / REPAIR_ONCE are persisted Recovery AI decisions, not permission to execute; the runtime must still enforce cooldowns, attempt bounds, preflight, and catalog approval.",
+        "- BLOCKED / REVIEW_REQUIRED items are not automatically retried. Explicit prerequisites and human review remain mandatory.",
         "- This report does not infer historical causes, clear HOLD, approve execution, or resume tasks.",
         "- Resume remains subject to the existing explicit human-approval and review gates.",
         "",
