@@ -140,3 +140,33 @@ def test_partial_workflow_failure_does_not_durably_complete_unpublished_prior_ta
     goal = json.loads(goal_output.read_text())
     statuses = {task["task_id"]: task["status"] for task in goal["tasks"]}
     assert statuses == {"approved-test-task": "PENDING", "approved-test-task-2": "HELD"}
+
+
+
+@pytest.mark.parametrize("sentinel", [78, 79])
+def test_guarded_runner_sentinel_outcome_is_preserved_without_synthetic_failure(
+    tmp_path, monkeypatch, sentinel
+):
+    queue, catalog, state, results, stop = _inputs(tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+
+    def fake_run(command, *, cwd, env, check):
+        return SimpleNamespace(returncode=sentinel)
+
+    monkeypatch.setattr(bridge.subprocess, "run", fake_run)
+    goal_output = tmp_path / "goal-pending.json"
+    args = SimpleNamespace(
+        catalog=catalog,
+        state=state,
+        results=results,
+        stop_file=stop,
+        goal_state_output=goal_output,
+        max_tasks=1,
+    )
+
+    assert bridge.run(args) == sentinel
+    assert not results.exists()
+    goal = json.loads(goal_output.read_text())
+    assert goal["tasks"][0]["status"] == "HELD"
+    assert goal["tasks"][0]["hold_reason"] == "guarded_runtime_or_evidence_gate_failed"
