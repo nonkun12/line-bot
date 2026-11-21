@@ -27,6 +27,14 @@ def test_recovery_ai_durable_write_refreshes_freshness_timestamp():
     assert "data['recovery_ai'] = recovery" in text
 
 
+def test_no_eligible_task_is_reported_blocked_without_launching_runtime():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert 'Path("/tmp/minimal-autonomous-loop.jsonl").write_text("", encoding="utf-8")' in text
+    assert 'Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\\n", encoding="utf-8")' in text
+    assert "if: steps.local_model_preflight.outputs.authorized == 'true'" in text
+    assert "No task was executed and no HOLD or approval state was changed." in text
+
+
 def test_scheduled_loop_uses_local_model_only_for_approved_model_tasks():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "id: local_model_preflight" in text
