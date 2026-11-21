@@ -155,3 +155,33 @@ def test_cli_returns_blocked_for_malformed_state_without_mutation(tmp_path, monk
     assert output["status"] == "BLOCKED"
     assert output["execution_authorized"] is False
     assert state_path.read_bytes() == state_before
+
+def test_diagnostics_expose_legacy_hold_provenance_gaps():
+    state = _state()
+    state["recovery_ai"]["tasks"]["task-legacy"] = {
+        "held": True,
+        "last_category": "unknown",
+        "same_fingerprint_attempts": 1,
+    }
+    state["recovery_ai"]["tasks"]["task-partial"] = {
+        "held": True,
+        "hold_reason": "repair_budget_exhausted",
+        "last_category": "timeout",
+    }
+
+    result = analyze_recovery_holds(state, _catalog())
+
+    assert result["hold_provenance_counts"] == {
+        "COMPLETE": 2,
+        "PARTIAL": 1,
+        "LEGACY_INCOMPLETE": 1,
+    }
+    assert result["hold_reason_counts"]["legacy_hold_reason_unavailable"] == 1
+    assert result["hold_reason_counts"]["repair_budget_exhausted"] == 2
+    by_id = {item["task_id"]: item for item in result["diagnostics"]}
+    assert by_id["task-legacy"]["hold_provenance_status"] == "LEGACY_INCOMPLETE"
+    assert by_id["task-partial"]["hold_provenance_status"] == "PARTIAL"
+    assert by_id["task-nonrepairable"]["hold_provenance_status"] == "COMPLETE"
+    assert result["execution_authorized"] is False
+    assert result["hold_clear_authorized"] is False
+    assert result["task_resume_authorized"] is False
