@@ -121,3 +121,46 @@ def test_queue_ids_are_unique_and_all_targets_match_the_registry() -> None:
         allowed_paths = item["allowed_paths"]
         assert len(allowed_paths) == 1
         assert runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[item["id"]] == allowed_paths[0]
+
+
+def test_cycle_memory_task_has_one_exact_allowed_target() -> None:
+    task_id = "loop-cycle-memory-invalid-cycle-id-regression-20261121"
+    assert runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[task_id] == "tests/test_self_improvement_state.py"
+
+
+def test_cycle_memory_task_plan_is_bounded_valid_and_idempotent(monkeypatch, tmp_path) -> None:
+    task_id = "loop-cycle-memory-invalid-cycle-id-regression-20261121"
+    target = "tests/test_self_improvement_state.py"
+    target_path = tmp_path / target
+    target_path.parent.mkdir(parents=True)
+    anchor = "def test_sanitizer_discards_raw_error_text_and_unknown_fields():\\n"
+    original = anchor + "    pass\\n"
+    target_path.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_autonomous_test_plan(target, task_id=task_id)
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == target
+    assert change["old"] == anchor
+    assert "test_cycle_memory_invalid_cycle_id_is_sanitized_and_rejected" in change["new"]
+    assert "@pytest.mark.parametrize" in change["new"]
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, target, "exec")
+
+    target_path.write_text(candidate, encoding="utf-8")
+    repeated, repeated_error = runtime._deterministic_autonomous_test_plan(target, task_id=task_id)
+    assert repeated_error is None
+    assert repeated == {"no_change": True, "source": "deterministic_autonomous_task"}
+
+
+def test_cycle_memory_task_plan_rejects_an_unapproved_target() -> None:
+    task_id = "loop-cycle-memory-invalid-cycle-id-regression-20261121"
+    plan, error = runtime._deterministic_autonomous_test_plan("tests/test_unrelated.py", task_id=task_id)
+    assert plan is None
+    assert error == "deterministic_target_mismatch"
