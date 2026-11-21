@@ -91,7 +91,11 @@ jobs:
         run: |
           set -uo pipefail
           STOP_FILE=/tmp/line-bot-autonomous-loop.stop
-          rm -f "$STOP_FILE"
+          # Never remove a STOP marker. Existing or unverifiable local STOP is a hard stop.
+          if ! python -c 'from core.emergency_stop import local_stop_active; raise SystemExit(1 if local_stop_active() else 0)'; then
+            echo "LOCAL_EMERGENCY_STOP=ACTIVE_OR_UNVERIFIABLE; refusing to start guarded runtime."
+            exit 1
+          fi
           # Check before launching any task; unknown remote state is a hard stop.
           python -c 'from core.emergency_stop import get_status; import os; raise SystemExit(1 if get_status(os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"), os.environ["GITHUB_TOKEN"]) else 0)' || {
             touch "$STOP_FILE"
