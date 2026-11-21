@@ -1702,7 +1702,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: minimal-autonomous-loop-${{ github.run_id }}
+          name: minimal-autonomous-loop-${{ github.run_id }}-attempt-${{ github.run_attempt }}
           retention-days: 30
           path: |
             /tmp/minimal-autonomous-loop.jsonl

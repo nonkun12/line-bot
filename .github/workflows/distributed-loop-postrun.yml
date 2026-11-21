@@ -38,12 +38,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           mkdir -p evidence
           gh run download "$RUN_ID" --repo "$REPOSITORY" \
-            --name "minimal-autonomous-loop-$RUN_ID" --dir evidence
+            --name "minimal-autonomous-loop-$RUN_ID-attempt-$RUN_ATTEMPT" --dir evidence
           find evidence -maxdepth 3 -type f -print
           echo "downloaded=true" >> "$GITHUB_OUTPUT"
 
@@ -123,7 +124,10 @@ jobs:
                       )
                       rea_states.append("INVALID")
                   else:
-                      rea_states.append("PASS")
+                      # This workflow checks source-run attestations only. The separate
+                      # REA Independent Test Collector + Post-Run chain performs the
+                      # trusted isolated test verification for this exact run attempt.
+                      rea_states.append("DEFERRED_TO_TRUSTED_INDEPENDENT_COLLECTOR")
               elif task_status == "PASS":
                   # Legacy/malformed PASS rows without immutable SHA identity
                   # cannot establish whether post-generation scanning was needed.
@@ -247,6 +251,11 @@ jobs:
             exit 0
           }
 
+      - name: Fail closed when post-run evidence has findings
+        if: steps.verify.outputs.issues != '0'
+        run: |
+          echo "::error::Post-run evidence verification found ${{ steps.verify.outputs.issues }} finding(s). See the step summary and follow-up issue."
+          exit 1
       # The source loop sends the canonical one-per-run LINE report.
       # Post-run verification records discrepancies as GitHub issues; it must
       # not send a second success/queue/blocked message for the same Run ID.
