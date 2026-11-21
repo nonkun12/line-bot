@@ -167,7 +167,7 @@ def test_empty_runtime_queue_with_not_run_evidence_reports_zero_progress(tmp_pat
                 "failure_reason": "queue_empty",
             }
         )
-        + "\\n",
++ "\n",
         encoding="utf-8",
     )
 
