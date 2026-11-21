@@ -57,12 +57,10 @@ def _isolate_traceback_block(text: str) -> str:
         return text
 
     start = text.find(_TRACEBACK_MARKER)
-
     if start == -1:
         return text
 
     summary_match = _TRACEBACK_SUMMARY_LINE_PATTERN.search(text, start)
-
     if summary_match:
         return text[start:summary_match.end()]
 
