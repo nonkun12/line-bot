@@ -134,7 +134,7 @@ def main() -> int:
         )
     except (OSError, json.JSONDecodeError, ApprovalError) as exc:
         raise SystemExit(f"task_bound_approval_blocked:{type(exc).__name__}:{exc}") from exc
-    args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"ONE_TIME_APPROVAL=PASS task_id={args.task_id} scope=single_task")
     return 0
 
