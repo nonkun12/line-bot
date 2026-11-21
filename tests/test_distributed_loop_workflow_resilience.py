@@ -27,3 +27,11 @@ def test_candidate_pool_distinguishes_skipped_task_from_missing_task_evidence():
     assert '!= "skipped"' in step
     assert "missing after an attempted task" in step
     assert "loading the existing durable state branch read-only" in step
+
+
+def test_goal_runtime_bridge_sets_pythonpath_for_scripts_package_imports():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "PYTHONPATH=. python scripts/goal_runtime_bridge.py" in text
+    assert "python scripts/goal_runtime_bridge.py" not in text.replace(
+        "PYTHONPATH=. python scripts/goal_runtime_bridge.py", ""
+    )
