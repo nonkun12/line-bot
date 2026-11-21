@@ -55,7 +55,7 @@ def test_recovery_readback_task_plan_is_bounded_and_idempotent(monkeypatch, tmp_
     target_path = tmp_path / target
     target_path.parent.mkdir(parents=True)
     anchor = "def test_invalid_evidence_holds_for_human_review(tmp_path):\n"
-        original = anchor + "    pass\n"
+    original = anchor + "    pass\n"
     target_path.write_text(original, encoding="utf-8")
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
 
@@ -133,7 +133,7 @@ def test_cycle_memory_task_plan_is_bounded_valid_and_idempotent(monkeypatch, tmp
     target = "tests/test_self_improvement_state.py"
     target_path = tmp_path / target
     target_path.parent.mkdir(parents=True)
-        anchor = "def test_sanitizer_discards_raw_error_text_and_unknown_fields():\n"
+    anchor = "def test_sanitizer_discards_raw_error_text_and_unknown_fields():\n"
     original = anchor + "    pass\\n"
     target_path.write_text(original, encoding="utf-8")
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
