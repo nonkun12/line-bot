@@ -547,7 +547,7 @@ jobs:
           set -euo pipefail
           current_base_sha="$(git rev-parse HEAD)"
           python -m scripts.validate_task_bound_approval \
-            --queue "${AUTONOMOUS_LOOP_TASK_QUEUE:-.github/autonomous-loop-tasks.json}" \
+            --queue .github/autonomous-loop-tasks.json \
             --catalog .github/autonomous-loop-task-catalog.json \
             --state /tmp/autonomous-loop-state.json \
             --output /tmp/approved-autonomous-loop-task-catalog.json \
@@ -558,6 +558,22 @@ jobs:
             --approval-base-sha "$APPROVAL_BASE_SHA" \
             --current-base-sha "$current_base_sha"
           echo "APPROVAL_CATALOG_PATH=/tmp/approved-autonomous-loop-task-catalog.json" >> "$GITHUB_ENV"
+
+      - name: Rebuild run-local queue from the one-time approved catalog
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.execution_approval == 'APPROVE_EXECUTION'
+        env:
+          APPROVAL_CATALOG_PATH: /tmp/approved-autonomous-loop-task-catalog.json
+        run: |
+          set -euo pipefail
+          python -m scripts.autonomous_task_refill \
+            --queue .github/autonomous-loop-tasks.json \
+            --catalog "$APPROVAL_CATALOG_PATH" \
+            --completed-state /tmp/autonomous-loop-state.json \
+            --output /tmp/autonomous-loop-runtime-queue.json \
+            --history /tmp/line-bot-self-improvement.jsonl \
+            | tee /tmp/autonomous-loop-approved-refill-report.json
+          echo "One-time approval applied to a run-local queue only; tracked queue and durable state remain unchanged."
+
       - name: Detect approved model-backed work
         id: local_model_preflight
         env:
@@ -627,8 +643,11 @@ jobs:
           # Publish exact, read-only inputs needed for a later one-task approval.
           # This manifest grants no approval and excludes completed/HOLD/review tasks.
           base_sha = os.environ.get("AUTONOMOUS_START_SHA", "")
+          manifest_queue = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8")).get("tasks", [])
+          if not isinstance(manifest_queue, list):
+              raise SystemExit("approval_manifest_queue_invalid")
           manifest = []
-          for item in queued:
+          for item in manifest_queue:
               task_id = item.get("id")
               trusted = by_id.get(task_id)
               if not isinstance(trusted, dict) or task_id in completed:
