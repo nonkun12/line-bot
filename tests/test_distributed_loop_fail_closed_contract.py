@@ -53,3 +53,9 @@ def test_held_task_resume_uses_reviewed_catalog_not_only_tracked_queue():
     step = workflow.split("- name: Resume one explicitly approved held task", 1)[1].split("- name: Restore durable Recovery RAG history", 1)[0]
     assert "--queue .github/autonomous-loop-task-catalog.json" in step
     assert "--cause-fixed" in step
+
+
+def test_postrun_does_not_require_sheets_evidence_when_no_task_was_run():
+    workflow = (ROOT / ".github/workflows/distributed-loop-postrun.yml").read_text(encoding="utf-8")
+    assert "expected_no_task = queue_empty or catalog_blocked" in workflow
+    assert 'if not expected_no_task and sheets_result not in {"RECORDED", "ALREADY_RECORDED"}:' in workflow
