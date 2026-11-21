@@ -185,7 +185,7 @@ jobs:
                   issues.append("No-task report conflicts with task result evidence.")
           if not tasks and not expected_no_task:
               issues.append("Task result evidence is missing or empty.")
-          if not catalog_blocked and any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
+          if not expected_no_task and any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
               issues.append("One or more task results are not PASS/NO_CHANGE: " + ", ".join(statuses))
           # A no-task/held outcome has no Sheets row by design; require Sheets
           # evidence only when task execution was expected or attempted.
