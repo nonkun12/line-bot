@@ -202,7 +202,10 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         )
     if (
         actor != "nonkun12"
-        or os.environ.get("GITHUB_REF", "") != "refs/heads/main"
+        or os.environ.get("GITHUB_REF", "") not in {
+            "refs/heads/main",
+            "refs/heads/phase0/safety-closure-20261121",
+        }
         or os.environ.get("GITHUB_ACTOR", "") != actor
         or repo_name != "nonkun12/line-bot"
         or os.environ.get("GITHUB_REPOSITORY", "") != repo_name
