@@ -1,4 +1,5 @@
 name: LINE Development Dispatch
+run-name: LINE dev ${{ inputs.request_id || 'untracked' }}
 
 on:
   workflow_dispatch:
@@ -10,6 +11,10 @@ on:
       user_id:
         description: "LINE user ID"
         required: true
+        type: string
+      request_id:
+        description: "Opaque request correlation ID from LINE"
+        required: false
         type: string
       loop_count:
         description: "Sequential safe development passes (1-4)"
