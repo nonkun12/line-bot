@@ -96,6 +96,9 @@ def build_one_time_approval_catalog(
     recovery_record = recovery.get("tasks", {}).get(task_id, {})
     if not isinstance(recovery_record, dict):
         raise ApprovalError("approval_recovery_record_invalid")
+    for flag in ("held", "resume_requires_review"):
+        if flag in recovery_record and type(recovery_record[flag]) is not bool:
+            raise ApprovalError("approval_recovery_flag_invalid")
     if recovery_record.get("held") is True:
         raise ApprovalError("approval_task_held")
     if recovery_record.get("resume_requires_review") is True:
