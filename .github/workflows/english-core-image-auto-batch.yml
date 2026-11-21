@@ -36,7 +36,7 @@ jobs:
           python-version: "3.12"
       - name: Add next reviewed batch
         id: batch
-        if: ${{ false }} # Phase 0: pause automated dictionary writes.
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/phase0/explicit-approval-required' # Phase 0: remain disabled on main and scheduled runs.
         env:
           BATCH_SIZE: ${{ inputs.batch_size || '20' }}
         run: |
