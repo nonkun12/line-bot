@@ -51,5 +51,5 @@ def test_scheduled_loop_uses_local_model_only_for_approved_model_tasks():
     assert "RSI_LOCAL_MODEL_BASE_URL=http://127.0.0.1:11434/v1" in text
     assert "RSI_LOCAL_MODEL_PROTOCOL=openai-compatible" in text
     assert "ollama/ollama:latest" not in text
-    assert "no cloud fallback is permitted" in text
+    assert "no remote inference fallback is permitted" in text
     assert 'Path("/tmp/minimal-autonomous-loop.jsonl").write_text("", encoding="utf-8")' in text
