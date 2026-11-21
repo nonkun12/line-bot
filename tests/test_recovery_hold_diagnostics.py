@@ -185,4 +185,3 @@ def test_diagnostics_expose_legacy_hold_provenance_gaps():
     assert result["execution_authorized"] is False
     assert result["hold_clear_authorized"] is False
     assert result["task_resume_authorized"] is False
-
