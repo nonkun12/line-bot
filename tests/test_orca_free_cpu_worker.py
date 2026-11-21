@@ -1,0 +1,800 @@
+from pathlib import Path
+
+from scripts.orca_free_cpu_worker import (
+    safe_app_path,
+    oldest_queued_task,
+    unwrap_task_list,
+    validate_patch,
+    verify_task_fingerprint,
+)
+
+
+def test_safe_app_path_allows_only_new_app_files():
+    assert safe_app_path("apps/demo/app.py")
+    assert safe_app_path("apps/demo/tests/test_app.py")
+    assert not safe_app_path("docs/proposals/demo.md")
+    assert not safe_app_path("core/example.py")
+    assert not safe_app_path("tests/test_example.py")
+    assert not safe_app_path("apps/demo/my app.py")
+
+
+def test_safe_app_path_rejects_sensitive_and_traversal_paths():
+    for path in (
+        "../secrets/token.txt",
+        ".github/workflows/unsafe.yml",
+        "config.py",
+        "requirements.txt",
+        "apps/demo/.env",
+        "apps/demo/../secrets/key.txt",
+        "apps/demo\\..\\secrets\\key.txt",
+    ):
+        assert not safe_app_path(path)
+
+
+def test_safe_context_path_rejects_sensitive_file_names():
+    from scripts.orca_free_cpu_worker import safe_context_path
+
+    for path in (
+        "docs/api_token_reference.md",
+        "fixtures/credentials.json",
+        "config/private_key.txt",
+        "data/passwords.txt",
+        "secrets.txt",
+    ):
+        assert not safe_context_path(path)
+
+
+def test_tracked_context_skips_symlink_files(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "public.md").write_text("safe context", encoding="utf-8")
+    (tmp_path / "private.md").symlink_to(tmp_path / "secret.txt")
+    (tmp_path / "secret.txt").write_text("DO_NOT_EXPOSE", encoding="utf-8")
+    monkeypatch.setattr(
+        worker, "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0, stdout="public.md\nprivate.md\n", stderr=""
+        ),
+    )
+
+    context = worker.tracked_context()
+    assert "safe context" in context
+    assert "DO_NOT_EXPOSE" not in context
+    assert "private.md" not in context
+
+
+def test_unwrap_task_list_accepts_supported_container_shapes():
+    task = {"task_id": "line-123", "request_text": "hello", "status": "queued"}
+    assert unwrap_task_list({"tasks": [task]}) == [task]
+    assert unwrap_task_list([task]) == [task]
+    assert unwrap_task_list({"items": [task]}) == [task]
+
+
+def test_validate_patch_accepts_only_new_files_with_required_tests():
+    patch = (
+        "diff --git a/apps/demo/app.py b/apps/demo/app.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/apps/demo/app.py\n"
+        "@@ -0,0 +1 @@\n"
+        "+print('hello')\n"
+        "diff --git a/apps/demo/tests/test_app.py b/apps/demo/tests/test_app.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/apps/demo/tests/test_app.py\n"
+        "@@ -0,0 +1 @@\n"
+        "+def test_demo():\n"
+        "+    assert True\n"
+    )
+    assert validate_patch(patch) == ["apps/demo/app.py", "apps/demo/tests/test_app.py"]
+
+
+def test_validate_patch_rejects_existing_file_modification():
+    patch = (
+        "diff --git a/apps/demo/app.py b/apps/demo/app.py\n"
+        "--- a/apps/demo/app.py\n"
+        "+++ b/apps/demo/app.py\n"
+        "@@ -1 +1 @@\n-old\n+new\n"
+    )
+    try:
+        validate_patch(patch)
+    except RuntimeError as exc:
+        assert "existing files" in str(exc)
+    else:
+        raise AssertionError("existing file modification should be rejected")
+
+
+def test_validate_patch_rejects_workflow_changes():
+    patch = (
+        "diff --git a/.github/workflows/unsafe.yml b/.github/workflows/unsafe.yml\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/.github/workflows/unsafe.yml\n"
+    )
+    try:
+        validate_patch(patch)
+    except RuntimeError as exc:
+        assert "forbidden output path" in str(exc)
+    else:
+        raise AssertionError("workflow patch should be rejected")
+
+
+
+def test_create_or_reuse_pr_returns_existing_open_pr(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    calls = []
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        calls.append(command)
+        return SimpleNamespace(
+            returncode=0,
+            stdout='[{"url":"https://github.com/nonkun12/line-bot/pull/77","headRefName":"orca/task-77","baseRefName":"main","state":"OPEN","body":"Task ID: line-77"}]',
+            stderr="",
+        )
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    url = worker.create_or_reuse_pr("orca/task-77", "title", "body")
+    assert url == "https://github.com/nonkun12/line-bot/pull/77"
+    assert len(calls) == 1
+    assert calls[0][:3] == ["gh", "pr", "list"]
+
+
+def test_create_or_reuse_pr_creates_when_none_exists(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    calls = []
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        calls.append(command)
+        if command[:3] == ["gh", "pr", "list"]:
+            return SimpleNamespace(returncode=0, stdout="[]", stderr="")
+        return SimpleNamespace(
+            returncode=0,
+            stdout="https://github.com/nonkun12/line-bot/pull/88",
+            stderr="",
+        )
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    monkeypatch.setattr(worker, "assert_global_hold_clear", lambda: None)
+    url = worker.create_or_reuse_pr("orca/task-88", "title", "body")
+    assert url == "https://github.com/nonkun12/line-bot/pull/88"
+    assert len(calls) == 2
+    assert calls[1][:3] == ["gh", "pr", "create"]
+
+def test_isolated_test_runner_mounts_only_read_only_app_copy(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.chdir(tmp_path)
+    app = tmp_path / "apps" / "demo"
+    tests_dir = app / "tests"
+    tests_dir.mkdir(parents=True)
+    (app / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (tests_dir / "test_app.py").write_text("def test_value():\n    assert True\n", encoding="utf-8")
+    observed = {}
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        observed["command"] = command
+        mount = next(item for item in command if ":/workspace:ro" in item)
+        staged = Path(mount.split(":/workspace:ro")[0])
+        observed["files"] = sorted(str(p.relative_to(staged)) for p in staged.rglob("*") if p.is_file())
+        observed["content"] = (staged / "apps/demo/app.py").read_text(encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    result = worker.run_isolated_tests(
+        ["apps/demo/app.py", "apps/demo/tests/test_app.py"], "demo"
+    )
+    assert result.returncode == 0
+    command = observed["command"]
+    assert "--network" in command and command[command.index("--network") + 1] == "none"
+    assert "--read-only" in command
+    assert "orca-app-test:local" in command
+    assert "--user" in command and command[command.index("--user") + 1] == "65534:65534"
+    assert observed["files"] == ["apps/demo/app.py", "apps/demo/tests/test_app.py"]
+    assert observed["content"] == "VALUE = 1\n"
+
+
+def test_task_fingerprint_matches_exact_reviewed_request():
+    import hashlib
+
+    request = "アプリ開発: 小さな計算アプリ"
+    fingerprint = hashlib.sha256(request.encode("utf-8")).hexdigest()
+    assert verify_task_fingerprint(request, fingerprint)
+    assert not verify_task_fingerprint(request + "改ざん", fingerprint)
+    assert not verify_task_fingerprint(request, "")
+    assert not verify_task_fingerprint(request, "A" * 64)
+
+
+def test_oldest_eligible_task_is_selected_first():
+    tasks = [
+        {"task_id": "new", "request_text": "アプリ開発: new", "status": "queued", "approved": True, "created_at": "2026-11-11T02:00:00Z"},
+        {"task_id": "unapproved", "request_text": "アプリ開発: wait", "status": "queued", "approved": False, "created_at": "2026-11-10T20:00:00Z"},
+        {"task_id": "chat", "request_text": "普通の相談", "status": "queued", "approved": True, "created_at": "2026-11-11T00:00:00Z"},
+        {"task_id": "old", "request_text": "アプリ開発: old", "status": "running", "approved": True, "created_at": "2026-11-10T23:00:00Z", "lease_until": "2000-01-01T00:00:00Z"},
+    ]
+    assert oldest_queued_task(tasks)["task_id"] == "old"
+    assert oldest_queued_task([]) is None
+
+
+
+def test_sensitive_content_detector_rejects_common_credentials():
+    from scripts.orca_free_cpu_worker import contains_sensitive_content
+
+    fake_github_token = "ghp_" + "a" * 36
+    fake_slack_token = "xox" + "b-" + "a" * 24
+    assert contains_sensitive_content(f'API_TOKEN = "{fake_github_token}"')
+    assert contains_sensitive_content('password = "correct-horse-battery-staple"')
+    assert contains_sensitive_content("-----BEGIN RSA PRIVATE KEY-----")
+    assert contains_sensitive_content(f'token: "{fake_slack_token}"')
+    assert not contains_sensitive_content("This document explains API token rotation.")
+
+
+def test_tracked_context_skips_files_with_embedded_credentials(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "public.md").write_text("safe context", encoding="utf-8")
+    fake_github_token = "ghp_" + "a" * 36
+    (tmp_path / "sample.py").write_text(
+        f'API_TOKEN = "{fake_github_token}"\n'
+        "def app():\n    return 'hello'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        worker, "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0, stdout="public.md\nsample.py\n", stderr=""
+        ),
+    )
+
+    context = worker.tracked_context()
+    assert "safe context" in context
+    assert "sample.py" not in context
+    assert "ghp_" not in context
+
+def test_task_text_is_not_written_to_action_summary_or_pr_body():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "orca_free_cpu_worker.py"
+    ).read_text(encoding="utf-8")
+
+    assert "Request text is intentionally omitted from the run summary." in source
+    assert "Request SHA-256:" in source
+    assert "Exact submitted request (HTML-escaped)" not in source
+    assert "<pre>{html.escape(request_text)}</pre>" not in source
+    assert '"Request:\\n{instruction[:MAX_INSTRUCTION]}"' not in source
+    assert "Request text is omitted from this PR body;" in source
+
+def test_existing_task_pr_can_be_found_for_retry_reconciliation(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    calls = []
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        calls.append(command)
+        return SimpleNamespace(
+            returncode=0,
+            stdout='[{"url":"https://github.com/nonkun12/line-bot/pull/99","headRefName":"orca/task-line-99","baseRefName":"main","state":"OPEN","body":"Task ID: line-99"}]',
+            stderr="",
+        )
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    assert worker.find_existing_pr("orca/task-line-99") == (
+        "https://github.com/nonkun12/line-bot/pull/99"
+    )
+    assert calls[0][:3] == ["gh", "pr", "list"]
+
+
+def test_worker_reconciles_existing_pr_before_creating_or_pushing_branch():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "orca_free_cpu_worker.py"
+    ).read_text(encoding="utf-8")
+    process = source.split("def process(", 1)[1]
+    assert process.index("existing_pr = find_existing_pr(") < process.index(
+        'run(["git", "switch", "-c", branch]'
+    )
+    existing_branch = process.split("if existing_pr:", 1)[1].split(
+        'if run(["git", "switch", "-c", branch]', 1
+    )[0]
+    assert "reconcile_existing_pr(" in existing_branch
+    assert '"status": "blocked"' in existing_branch
+    assert '"status": "pass"' in existing_branch
+    assert '"/complete"' in existing_branch
+    assert "Verified existing PR and reconciled task" in existing_branch
+
+
+def test_reconcile_existing_pr_verifies_exact_head_and_reruns_isolated_tests(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import json
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.chdir(tmp_path)
+    head = "a" * 40
+    main_sha = "c" * 40
+    task_id = "line-99"
+    request_hash = "b" * 64
+    patch = (
+        "diff --git a/apps/demo/app.py b/apps/demo/app.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/apps/demo/app.py\n"
+        "@@ -0,0 +1 @@\n+VALUE = 1\n"
+        "diff --git a/apps/demo/tests/test_app.py b/apps/demo/tests/test_app.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/apps/demo/tests/test_app.py\n"
+        "@@ -0,0 +1 @@\n+def test_value():\n+    assert True\n"
+    )
+    calls = []
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        calls.append(command)
+        if command[:3] == ["gh", "pr", "view"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps({
+                "url": "https://github.com/nonkun12/line-bot/pull/99",
+                "headRefName": "orca/task-line-99",
+                "baseRefName": "main",
+                "body": f"Task ID: {task_id}\nRequest SHA-256: {request_hash}",
+                "state": "OPEN",
+                "headRefOid": head,
+            }), stderr="")
+        if command[:2] == ["git", "rev-parse"]:
+            value = main_sha if command[2] in {"origin/main", f"{head}^"} else head
+            return SimpleNamespace(returncode=0, stdout=value + "\n", stderr="")
+        if command[:4] == ["git", "show", "-s", "--format=%B"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"feat: ORCA task\n\nORCA-Task-ID: {task_id}\nORCA-Request-SHA256: {request_hash}\n",
+                stderr="",
+            )
+        if command[:2] == ["git", "ls-remote"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"{head}\trefs/heads/orca/task-{task_id}\n",
+                stderr="",
+            )
+        if command[:3] == ["git", "diff", "--no-ext-diff"]:
+            return SimpleNamespace(returncode=0, stdout=patch, stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    monkeypatch.setattr(
+        worker, "run_isolated_tests",
+        lambda paths, slug: SimpleNamespace(returncode=0, stdout="1 passed", stderr=""),
+    )
+    url, paths = worker.reconcile_existing_pr(
+        "orca/task-line-99", task_id, request_hash
+    )
+    assert url.endswith("/pull/99")
+    assert paths == ["apps/demo/app.py", "apps/demo/tests/test_app.py"]
+    assert any(command[:3] == ["git", "switch", "--detach"] for command in calls)
+
+
+def test_reconcile_existing_pr_rejects_wrong_task_fingerprint(monkeypatch):
+    from types import SimpleNamespace
+    import json
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.setattr(
+        worker, "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({
+                "url": "https://github.com/nonkun12/line-bot/pull/100",
+                "headRefName": "orca/task-line-100",
+                "baseRefName": "main",
+                "body": "Task ID: line-100\nRequest SHA-256: wrong",
+                "state": "OPEN",
+                "headRefOid": "a" * 40,
+            }),
+            stderr="",
+        ),
+    )
+    try:
+        worker.reconcile_existing_pr("orca/task-line-100", "line-100", "b" * 64)
+    except worker.WorkerError as exc:
+        assert "metadata does not match" in str(exc)
+    else:
+        raise AssertionError("mismatched PR metadata must not be reconciled")
+
+
+def test_reconcile_existing_pr_requires_isolated_tests_to_pass(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import json
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.chdir(tmp_path)
+    head = "c" * 40
+    main_sha = "e" * 40
+    patch = (
+        "diff --git a/apps/demo/app.py b/apps/demo/app.py\n"
+        "new file mode 100644\n--- /dev/null\n+++ b/apps/demo/app.py\n"
+        "@@ -0,0 +1 @@\n+VALUE = 1\n"
+        "diff --git a/apps/demo/tests/test_app.py b/apps/demo/tests/test_app.py\n"
+        "new file mode 100644\n--- /dev/null\n+++ b/apps/demo/tests/test_app.py\n"
+        "@@ -0,0 +1 @@\n+def test_value():\n+    assert True\n"
+    )
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        if command[:3] == ["gh", "pr", "view"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps({
+                "url": "https://github.com/nonkun12/line-bot/pull/101",
+                "headRefName": "orca/task-line-101",
+                "baseRefName": "main",
+                "body": f"Task ID: line-101\nRequest SHA-256: {'d' * 64}",
+                "state": "OPEN",
+                "headRefOid": head,
+            }), stderr="")
+        if command[:2] == ["git", "rev-parse"]:
+            value = main_sha if command[2] in {"origin/main", f"{head}^"} else head
+            return SimpleNamespace(returncode=0, stdout=value + "\n", stderr="")
+        if command[:4] == ["git", "show", "-s", "--format=%B"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"feat: ORCA task\n\nORCA-Task-ID: line-101\nORCA-Request-SHA256: {'d' * 64}\n",
+                stderr="",
+            )
+        if command[:2] == ["git", "ls-remote"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"{head}\trefs/heads/orca/task-line-101\n",
+                stderr="",
+            )
+        if command[:3] == ["git", "diff", "--no-ext-diff"]:
+            return SimpleNamespace(returncode=0, stdout=patch, stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    monkeypatch.setattr(
+        worker, "run_isolated_tests",
+        lambda *args: SimpleNamespace(returncode=1, stdout="", stderr="failed"),
+    )
+    try:
+        worker.reconcile_existing_pr("orca/task-line-101", "line-101", "d" * 64)
+    except worker.WorkerError as exc:
+        assert "isolated tests failed" in str(exc)
+    else:
+        raise AssertionError("an untested PR must not be reconciled as PASS")
+
+def test_workflow_passes_only_task_id_between_jobs():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "orca-free-cpu-task-worker.yml"
+    ).read_text(encoding="utf-8")
+    assert "task_id: ${{ steps.poll.outputs.task_id }}" in workflow
+    assert "task_payload" not in workflow
+    assert "ORCA_TASK_PAYLOAD" not in workflow
+    assert "ORCA_TASK_ID: ${{ needs.poll.outputs.task_id }}" in workflow
+
+
+def test_worker_reloads_request_inside_protected_execution_job():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "orca_free_cpu_worker.py"
+    ).read_text(encoding="utf-8")
+    assert 'api_request("GET", "/tasks/" + encoded_id)' in source
+    assert 'handle.write(f"task_id=' in source
+    assert "task_payload=" not in source
+    assert "ORCA_TASK_PAYLOAD" not in source
+
+def test_existing_pr_reconciliation_rejects_wrong_request_fingerprint(monkeypatch):
+    from types import SimpleNamespace
+    import json
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.setattr(
+        worker, "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps([{
+                "url": "https://github.com/nonkun12/line-bot/pull/100",
+                "headRefName": "orca/task-line-100",
+                "baseRefName": "main",
+                "state": "OPEN",
+                "body": "Task ID: line-100\\nRequest SHA-256: wrong",
+            }]),
+            stderr="",
+        ),
+    )
+    try:
+        worker.find_existing_pr(
+            "orca/task-line-100",
+            expected_task_id="line-100",
+            expected_request_hash="a" * 64,
+        )
+    except worker.WorkerError as exc:
+        assert "fingerprint does not match" in str(exc)
+    else:
+        raise AssertionError("a mismatched task PR must not be reconciled")
+
+
+
+def test_subprocess_secrets_are_scoped_to_github_operations(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    observed = {}
+
+    def fake_subprocess_run(command, **kwargs):
+        observed["command"] = command
+        observed["env"] = kwargs["env"]
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_subprocess_run)
+    monkeypatch.setenv("ORCA_TASK_API_TOKEN", "api-secret")
+    monkeypatch.setenv("ORCA_TASK_APPROVAL_GATE", "approval-secret")
+    monkeypatch.setenv("GH_TOKEN", "github-secret")
+    monkeypatch.setenv("GITHUB_TOKEN", "fallback-secret")
+
+    worker.run(["ollama", "run", "qwen2.5-coder:1.5b"])
+    assert "ORCA_TASK_API_TOKEN" not in observed["env"]
+    assert "ORCA_TASK_APPROVAL_GATE" not in observed["env"]
+    assert "GH_TOKEN" not in observed["env"]
+    assert "GITHUB_TOKEN" not in observed["env"]
+
+    worker.run(["gh", "pr", "list"])
+    assert observed["env"]["GH_TOKEN"] == "github-secret"
+    assert "ORCA_TASK_API_TOKEN" not in observed["env"]
+    assert "ORCA_TASK_APPROVAL_GATE" not in observed["env"]
+    assert "GITHUB_TOKEN" not in observed["env"]
+
+    worker.run(["git", "fetch", "--no-tags", "origin", "main"])
+    assert observed["env"]["GH_TOKEN"] == "github-secret"
+    assert "ORCA_TASK_API_TOKEN" not in observed["env"]
+    assert "ORCA_TASK_APPROVAL_GATE" not in observed["env"]
+    assert "GITHUB_TOKEN" not in observed["env"]
+
+    worker.run(["git", "push", "--set-upstream", "origin", "branch"])
+    assert observed["env"]["GH_TOKEN"] == "github-secret"
+    assert "ORCA_TASK_API_TOKEN" not in observed["env"]
+    assert "ORCA_TASK_APPROVAL_GATE" not in observed["env"]
+
+
+def test_global_hold_gate_fails_closed_when_active_or_unavailable(monkeypatch):
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.setattr(worker, "api_request", lambda method, path: {"clear": False})
+    try:
+        worker.assert_global_hold_clear()
+    except worker.GlobalHoldError as exc:
+        assert "Global HOLD" in str(exc)
+    else:
+        raise AssertionError("active Global HOLD must block the worker")
+
+    monkeypatch.setattr(worker, "api_request", lambda method, path: {})
+    try:
+        worker.assert_global_hold_clear()
+    except worker.GlobalHoldError:
+        pass
+    else:
+        raise AssertionError("missing D1 hold evidence must fail closed")
+
+
+def test_worker_checks_global_hold_before_commit_push_and_pr():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "orca_free_cpu_worker.py"
+    ).read_text(encoding="utf-8")
+    process = source.split("def process(", 1)[1]
+    assert process.count("assert_global_hold_clear()") >= 6
+    assert process.index("assert_global_hold_clear()") < process.index('claim_result = api_request(')
+    assert '"/tasks/" + encoded_id + "/claim"' in process
+    assert process.index('assert_global_hold_clear()\n        if run(["git", "commit"') < process.index('run(["git", "commit"')
+    assert process.index('assert_global_hold_clear()\n        pushed = run(["git", "push"') < process.index('run(["git", "push"')
+    assert '        assert_global_hold_clear()\n        pr_url = create_or_reuse_pr(' in process
+
+
+def test_scheduled_poll_is_idle_not_failed_during_global_hold(monkeypatch, capsys):
+    import scripts.orca_free_cpu_worker as worker
+
+    def held():
+        raise worker.GlobalHoldError("Global HOLD active")
+
+    monkeypatch.setattr(worker, "assert_global_hold_clear", held)
+    assert worker.poll() == 0
+    assert "ORCA_CPU_WORKER_IDLE" in capsys.readouterr().out
+
+
+def test_worker_jobs_are_restricted_to_main_branch():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "orca-free-cpu-task-worker.yml"
+    ).read_text(encoding="utf-8")
+    assert workflow.count("github.ref == 'refs/heads/main'") == 2
+
+
+def test_orphan_branch_recovery_requires_exact_provenance_and_rechecks_remote(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.chdir(tmp_path)
+    sha = "a" * 40
+    main_sha = "b" * 40
+    task_id = "line-202"
+    request_hash = "c" * 64
+    patch = (
+        "diff --git a/apps/demo/app.py b/apps/demo/app.py\n"
+        "new file mode 100644\n--- /dev/null\n+++ b/apps/demo/app.py\n"
+        "@@ -0,0 +1 @@\n+VALUE = 1\n"
+        "diff --git a/apps/demo/tests/test_app.py b/apps/demo/tests/test_app.py\n"
+        "new file mode 100644\n--- /dev/null\n+++ b/apps/demo/tests/test_app.py\n"
+        "@@ -0,0 +1 @@\n+def test_value():\n+    assert True\n"
+    )
+    commands = []
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        commands.append(command)
+        if command[:2] == ["git", "ls-remote"]:
+            return SimpleNamespace(returncode=0, stdout=f"{sha}\trefs/heads/orca/task-{task_id}\n", stderr="")
+        if command[:3] == ["git", "fetch", "--no-tags"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if command[:2] == ["git", "rev-parse"]:
+            value = sha if command[2] in {"FETCH_HEAD", "HEAD"} else main_sha
+            return SimpleNamespace(returncode=0, stdout=value + "\n", stderr="")
+        if command[:3] == ["git", "show", "-s"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"feat: task\n\nORCA-Task-ID: {task_id}\nORCA-Request-SHA256: {request_hash}\n",
+                stderr="",
+            )
+        if command[:3] == ["git", "diff", "--no-ext-diff"]:
+            return SimpleNamespace(returncode=0, stdout=patch, stderr="")
+        if command[:3] == ["git", "status", "--porcelain"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if command[:3] == ["git", "switch", "--detach"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    monkeypatch.setattr(
+        worker, "run_isolated_tests",
+        lambda *args: SimpleNamespace(returncode=0, stdout="2 passed", stderr=""),
+    )
+    monkeypatch.setattr(worker, "assert_global_hold_clear", lambda: None)
+    result = worker.reconcile_orphan_branch(f"orca/task-{task_id}", task_id, request_hash)
+    assert result == (sha, ["apps/demo/app.py", "apps/demo/tests/test_app.py"])
+    assert len([c for c in commands if c[:2] == ["git", "ls-remote"]]) == 2
+
+
+def test_orphan_branch_without_provenance_is_blocked(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    sha = "d" * 40
+    def fake_run(command, *, timeout=120, input_text=None):
+        if command[:2] == ["git", "ls-remote"]:
+            return SimpleNamespace(returncode=0, stdout=f"{sha}\trefs/heads/orca/task-line-203\n", stderr="")
+        if command[:3] == ["git", "fetch", "--no-tags"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if command[:2] == ["git", "rev-parse"]:
+            value = sha if command[2] == "FETCH_HEAD" else "e" * 40
+            return SimpleNamespace(returncode=0, stdout=value + "\n", stderr="")
+        if command[:3] == ["git", "show", "-s"]:
+            return SimpleNamespace(returncode=0, stdout="legacy commit without trailers\n", stderr="")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    try:
+        worker.reconcile_orphan_branch("orca/task-line-203", "line-203", "f" * 64)
+    except worker.WorkerError as exc:
+        assert "provenance" in str(exc)
+    else:
+        raise AssertionError("unverifiable orphan branch must be blocked")
+
+
+def test_orphan_branch_absence_allows_fresh_branch(monkeypatch):
+    from types import SimpleNamespace
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.setattr(
+        worker, "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+    assert worker.reconcile_orphan_branch("orca/task-line-204", "line-204", "a" * 64) is None
+
+
+def test_worker_preserves_lease_after_push_until_orphan_pr_retry():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "orca_free_cpu_worker.py"
+    ).read_text(encoding="utf-8")
+    process = source.split("def process(", 1)[1]
+    assert "branch_pushed = True" in process
+    assert "if not pr_url and not branch_pushed:" in process
+    assert "ORCA_CPU_WORKER_ORPHAN_BRANCH_PENDING" in process
+    assert "ORCA-Task-ID:" in source
+    assert "ORCA-Request-SHA256:" in source
+
+
+def test_reconcile_existing_pr_rejects_head_changed_after_orphan_verification(monkeypatch):
+    from types import SimpleNamespace
+    import json
+    import scripts.orca_free_cpu_worker as worker
+
+    monkeypatch.setattr(
+        worker, "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({
+                "url": "https://github.com/nonkun12/line-bot/pull/105",
+                "headRefName": "orca/task-line-105",
+                "baseRefName": "main",
+                "body": "Task ID: line-105\nRequest SHA-256: " + "b" * 64,
+                "state": "OPEN",
+                "headRefOid": "c" * 40,
+            }),
+            stderr="",
+        ),
+    )
+    try:
+        worker.reconcile_existing_pr(
+            "orca/task-line-105", "line-105", "b" * 64,
+            expected_head_sha="a" * 40,
+        )
+    except worker.WorkerError as exc:
+        assert "metadata does not match" in str(exc)
+    else:
+        raise AssertionError("PR head changed after orphan verification must be blocked")
+
+
+def test_orphan_recovery_rechecks_created_pr_head_before_task_completion():
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "orca_free_cpu_worker.py"
+    ).read_text(encoding="utf-8")
+    process = source.split("def process(", 1)[1]
+    assert "expected_head_sha=orphan[0]" in process
+    assert "verified_url, _ = reconcile_existing_pr(" in process
+
+
+def test_reconcile_existing_pr_rejects_commit_without_task_trailers(monkeypatch):
+    from types import SimpleNamespace
+    import json
+    import scripts.orca_free_cpu_worker as worker
+
+    head = "a" * 40
+    main_sha = "b" * 40
+
+    def fake_run(command, *, timeout=120, input_text=None):
+        if command[:3] == ["gh", "pr", "view"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps({
+                "url": "https://github.com/nonkun12/line-bot/pull/106",
+                "headRefName": "orca/task-line-106",
+                "baseRefName": "main",
+                "body": "Task ID: line-106\nRequest SHA-256: " + "c" * 64,
+                "state": "OPEN",
+                "headRefOid": head,
+            }), stderr="")
+        if command[:2] == ["git", "rev-parse"]:
+            value = main_sha if command[2] in {"origin/main", f"{head}^"} else head
+            return SimpleNamespace(returncode=0, stdout=value + "\n", stderr="")
+        if command[:4] == ["git", "show", "-s", "--format=%B"]:
+            return SimpleNamespace(returncode=0, stdout="unrelated commit without ORCA trailers\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "run", fake_run)
+    try:
+        worker.reconcile_existing_pr("orca/task-line-106", "line-106", "c" * 64)
+    except worker.WorkerError as exc:
+        assert "commit provenance" in str(exc)
+    else:
+        raise AssertionError("existing PR without exact task trailers must be blocked")
