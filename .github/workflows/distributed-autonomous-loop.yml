@@ -556,6 +556,9 @@ jobs:
               raise SystemExit("model_preflight_state_invalid")
           from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
           needs_model = False
+          authorized_count = 0
+          unapproved_count = 0
+          held_count = 0
           for item in queued:
               if not isinstance(item, dict):
                   raise SystemExit("model_preflight_task_invalid")
@@ -563,8 +566,6 @@ jobs:
               trusted = by_id.get(task_id)
               if not isinstance(task_id, str) or not isinstance(trusted, dict):
                   raise SystemExit("model_preflight_unregistered_task")
-              if trusted.get("execution_approved") is not True:
-                  continue
               if any(item.get(key) != trusted.get(key) for key in ("id", "instruction", "allowed_paths")):
                   raise SystemExit("model_preflight_definition_mismatch")
               if task_id in completed:
@@ -573,12 +574,27 @@ jobs:
               if isinstance(recovery, dict) and (
                   recovery.get("held") is True or recovery.get("resume_requires_review") is True
               ):
+                  held_count += 1
                   continue
+              if trusted.get("execution_approved") is not True:
+                  unapproved_count += 1
+                  continue
+              authorized_count += 1
               if task_id not in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS:
                   needs_model = True
-                  break
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("authorized=" + ("true" if authorized_count else "false") + "\n")
               output.write("needed=" + ("true" if needs_model else "false") + "\n")
+          if not authorized_count:
+              reason = "no_explicitly_approved_tasks"
+              if held_count:
+                  reason = "all_remaining_tasks_held_or_review_pending"
+              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\n", encoding="utf-8")
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+                  summary.write("## Loop status: BLOCKED\n\nNo explicitly approved, non-held task is available. No task was executed and no HOLD or approval state was changed.\n")
+          print("AUTHORIZED_TASKS=" + str(authorized_count))
+          print("UNAPPROVED_TASKS=" + str(unapproved_count))
+          print("HELD_OR_REVIEW_TASKS=" + str(held_count))
           print("LOCAL_MODEL_REQUIRED=" + str(needs_model).lower())
           PY
 
@@ -619,6 +635,7 @@ jobs:
 
       - name: Run one bounded autonomous task
         id: run_task
+        if: steps.local_model_preflight.outputs.authorized == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SELF_IMPROVEMENT_HISTORY_PATH: /tmp/line-bot-self-improvement.jsonl
