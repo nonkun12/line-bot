@@ -13,4 +13,4 @@ uvicorn[standard]
 
 google-auth
 google-api-python-client
-
+cryptography>=42.0.0

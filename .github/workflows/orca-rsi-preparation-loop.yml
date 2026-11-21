@@ -1,0 +1,69 @@
+name: ORCA RSI Preparation Loop (Read Only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orca-rsi-preparation-loop
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'nonkun12/line-bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout selected code revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Read existing ORCA durable state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPOSITORY/contents/state/queue.json?ref=orca-state" \
+            --jq '.content' | base64 --decode > /tmp/orca-rsi-queue.json
+          python -m json.tool /tmp/orca-rsi-queue.json >/dev/null
+
+      - name: Discover and prepare candidates without dispatch
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/orca-rsi
+          python -m scripts.orca_rsi_preparation_loop \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --state /tmp/orca-rsi-queue.json \
+            --output artifacts/orca-rsi/preparation-report.json
+
+      - name: Publish preparation result
+        if: always()
+        run: |
+          if [ -s artifacts/orca-rsi/preparation-report.json ]; then
+            python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          report = json.loads(Path("artifacts/orca-rsi/preparation-report.json").read_text(encoding="utf-8"))
+          print("# ORCA RSI Preparation Loop")
+          print(f"- Status: **{report['status']}**")
+          print(f"- Candidates: {report.get('candidate_count', 0)}")
+          print(f"- Blockers: {', '.join(report.get('blockers', [])) or 'none'}")
+          print("- Queue/state/source unchanged; no worker, merge, or deployment started.")
+          PY
+          else
+            echo "Preparation report was not produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Preserve preparation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orca-rsi-preparation-${{ github.run_id }}
+          path: artifacts/orca-rsi/preparation-report.json
+          if-no-files-found: error
+          retention-days: 14
