@@ -532,6 +532,53 @@ def test_apply_plan_with_bounded_anchor_repair_retries_non_unique_anchor(monkeyp
     assert target.read_text(encoding="utf-8") == "x\nx\nreplacement\n"
 
 
+def test_anchor_repair_invalid_change_counts_fail_closed_with_diagnostics(monkeypatch, tmp_path):
+    target = tmp_path / "app.py"
+    original = "x\nx\nexact\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+
+    rejected = {
+        "no_change": False,
+        "changes": [{"file": "app.py", "old": "missing", "new": "replacement"}],
+    }
+    invalid_repairs = [
+        {"no_change": False},
+        {"no_change": False, "changes": []},
+        {
+            "no_change": False,
+            "changes": [
+                {"file": "app.py", "old": "x", "new": "y"},
+                {"file": "app.py", "old": "exact", "new": "replacement"},
+            ],
+        },
+    ]
+    expected_counts = ["invalid", 0, 2]
+
+    for repair_plan, expected_count in zip(invalid_repairs, expected_counts):
+        target.write_text(original, encoding="utf-8")
+        monkeypatch.setattr(
+            worker, "repair_anchor_plan", lambda *args, _plan=repair_plan: _plan
+        )
+
+        plan, ok, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+            FakeClient([]),
+            "app.py を最小修正",
+            "app.py",
+            rejected,
+            original,
+        )
+
+        assert not ok
+        assert detail.startswith("anchor_repair_invalid_change_count:")
+        assert "initial_apply=anchor_count_app.py:0" in detail
+        assert "repair_validation=invalid_change_count" in detail
+        assert f"changes_count={expected_count}" in detail
+        assert touched == []
+        assert plan == repair_plan
+        assert target.read_text(encoding="utf-8") == original
+
+
 
 def test_apply_plan_requires_unique_anchor(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "ROOT", tmp_path)
