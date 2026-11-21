@@ -142,6 +142,7 @@ def test_partial_workflow_failure_does_not_durably_complete_unpublished_prior_ta
     assert statuses == {"approved-test-task": "PENDING", "approved-test-task-2": "HELD"}
 
 
+
 @pytest.mark.parametrize("sentinel", [78, 79])
 def test_guarded_runner_sentinel_outcome_is_preserved_without_synthetic_failure(
     tmp_path, monkeypatch, sentinel

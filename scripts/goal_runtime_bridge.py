@@ -262,10 +262,8 @@ def run(args: argparse.Namespace) -> int:
             else:
                 store.record_result(GOAL_ID, selected["task_id"], status="HELD")
                 _reconcile_claimed_tasks(store, claimed_this_run, goal_output, selected["task_id"])
-                # Preserve the guarded runner's sentinel exit codes. The parent
-                # workflow maps 78 to queue-exhaustion diagnostics and 79 to a
-                # held-task marker. Converting either to 80 bypasses that path
-                # and leaves an empty result file classified as missing evidence.
+                # Preserve guarded runner sentinels: the parent workflow maps
+                # 78 to queue exhaustion and 79 to a held-task marker.
                 if child.returncode in {78, 79}:
                     return child.returncode
                 if row is None:
