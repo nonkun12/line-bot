@@ -653,11 +653,21 @@ jobs:
               if not isinstance(trusted, dict) or task_id in completed:
                   continue
               recovery = recovery_tasks.get(task_id, {})
-              if not isinstance(recovery, dict) or recovery.get("held") is True or recovery.get("resume_requires_review") is True:
+              if not isinstance(recovery, dict):
+                  continue
+              if any(flag in recovery and type(recovery[flag]) is not bool for flag in ("held", "resume_requires_review")):
+                  continue
+              if recovery.get("held") is True or recovery.get("resume_requires_review") is True:
                   continue
               instruction = trusted.get("instruction")
               paths = trusted.get("allowed_paths")
-              if not isinstance(instruction, str) or not isinstance(paths, list) or not paths:
+              if (
+                  not isinstance(instruction, str)
+                  or not isinstance(paths, list)
+                  or not paths
+                  or item.get("instruction") != instruction
+                  or item.get("allowed_paths") != paths
+              ):
                   continue
               canonical_paths = json.dumps(sorted(paths), ensure_ascii=False, separators=(",", ":"))
               paths_sha = hashlib.sha256(canonical_paths.encode("utf-8")).hexdigest()
