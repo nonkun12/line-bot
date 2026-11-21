@@ -181,7 +181,9 @@ jobs:
               issues.append("Task result evidence is missing or empty.")
           if not catalog_blocked and any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
               issues.append("One or more task results are not PASS/NO_CHANGE: " + ", ".join(statuses))
-          if sheets_result not in {"RECORDED", "ALREADY_RECORDED"}:
+          # A no-task/held outcome has no Sheets row by design; require Sheets
+          # evidence only when task execution was expected or attempted.
+          if not expected_no_task and sheets_result not in {"RECORDED", "ALREADY_RECORDED"}:
               issues.append("Google Sheets evidence is not confirmed: " + sheets_result)
           report = [
               "# Distributed Loop Post-Run Verification",
