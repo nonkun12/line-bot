@@ -1,0 +1,14 @@
+name = "orca-test-api"
+main = "src/index.js"
+compatibility_date = "2026-11-11"
+
+# Copy this file to wrangler.toml only after reviewing the deployment plan.
+# Replace the placeholder with the existing orca-test-ledger D1 database ID.
+[[d1_databases]]
+binding = "DB"
+database_name = "orca-test-ledger"
+database_id = "REPLACE_WITH_EXISTING_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[triggers]
+crons = ["* * * * *"]
