@@ -17,11 +17,12 @@ from typing import Any
 
 ALLOWED_ROOTS = (".github/workflows/", "core/", "scripts/", "tests/", "docs/rea/")
 ALLOWED_ROOT_FILES = frozenset({"line_development.py"})
+ALLOWED_EXACT_PATHS = frozenset({".github/autonomous-loop-task-catalog.json"})
 
 
 def _is_allowed_path(path: str) -> bool:
-    """Allow reviewed root entrypoints explicitly; keep other root files blocked."""
-    return path in ALLOWED_ROOT_FILES or path.startswith(ALLOWED_ROOTS)
+    """Allow reviewed entrypoints and one exact catalog path; block sibling paths."""
+    return path in ALLOWED_ROOT_FILES or path in ALLOWED_EXACT_PATHS or path.startswith(ALLOWED_ROOTS)
 ALLOWED_SUFFIXES = frozenset({".py", ".json", ".yml", ".yaml", ".md", ".txt"})
 MAX_FILE_BYTES = 512 * 1024
 MAX_FILES = 5000
