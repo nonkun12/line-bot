@@ -67,3 +67,8 @@ def test_postrun_treats_missing_task_bound_approval_as_expected_no_task_block():
     assert '"all_remaining_tasks_held_or_review_pending"' in workflow
     assert "expected_no_task = queue_empty or catalog_blocked or approval_blocked" in workflow
     assert "APPROVAL_BLOCKED (task-bound approval required; no task executed)" in workflow
+
+
+def test_postrun_does_not_flag_synthetic_not_run_status_for_approval_block():
+    workflow = (ROOT / ".github/workflows/distributed-loop-postrun.yml").read_text(encoding="utf-8")
+    assert 'if not expected_no_task and any(s not in {"PASS", "NO_CHANGE"} for s in statuses):' in workflow
