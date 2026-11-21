@@ -26,6 +26,14 @@ def test_publish_gate_uses_the_same_runtime_queue_as_task_execution():
     assert 'queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", ".github/autonomous-loop-tasks.json"))' in workflow
 
 
+def test_preflight_fails_closed_for_malformed_recovery_records_and_flags():
+    workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    assert 'if not isinstance(recovery, dict):' in workflow
+    assert 'raise SystemExit("model_preflight_recovery_record_invalid")' in workflow
+    assert 'type(recovery[flag]) is not bool' in workflow
+    assert 'raise SystemExit("model_preflight_recovery_flag_invalid")' in workflow
+
+
 
 def test_queue_progress_failure_reports_only_safe_diagnostic_class():
     workflow = (ROOT / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
