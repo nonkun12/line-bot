@@ -71,3 +71,9 @@ def test_preserves_market_priority_over_jobs_for_mixed_request() -> None:
     assert decision.specialist is Specialist.MARKET
     assert decision.metadata["matched_specialists"] == ["market", "jobs"]
     assert decision.metadata["routing_priority"] == 4
+
+
+def test_preserves_metadata_without_channel() -> None:
+    request = ManagementRequest("u", "株価を教えて", metadata={"foo": "bar"})
+    decision = route(request)
+    assert decision.metadata["request_metadata"]["foo"] == "bar"
