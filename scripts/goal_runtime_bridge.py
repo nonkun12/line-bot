@@ -4,11 +4,15 @@ import argparse, hashlib, json, os, subprocess, sys, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from scripts.autonomous_task_refill import read_json, _validate_task
 from scripts.goal_autopilot import evaluate_goal
 from scripts.goal_state_store import GoalStateStore
 
-ROOT = Path(__file__).resolve().parents[1]
 GOAL_ID = "distributed-loop-main-goal-v1"
 
 def _write_state(path: Path, state: dict[str, Any]) -> None:
