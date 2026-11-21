@@ -89,3 +89,10 @@ def test_queue_and_catalog_definition_must_match():
     kwargs["queue"]["tasks"][0]["instruction"] = "Changed instruction."
     with pytest.raises(ApprovalError, match="approval_task_definition_mismatch"):
         build_one_time_approval_catalog(**kwargs)
+
+
+def test_ambiguous_recovery_flags_fail_closed():
+    kwargs = _inputs()
+    kwargs["state"]["recovery_ai"]["tasks"][TASK_ID] = {"held": "false"}
+    with pytest.raises(ApprovalError, match="approval_recovery_flag_invalid"):
+        build_one_time_approval_catalog(**kwargs)
