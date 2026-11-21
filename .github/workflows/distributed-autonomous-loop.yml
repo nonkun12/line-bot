@@ -851,7 +851,7 @@ jobs:
           if [ "$TRIGGER_MODE" = "obsidian_incident" ]; then
             python scripts/run_minimal_autonomous_loop.py "${loop_args[@]}"
           else
-            python scripts/goal_runtime_bridge.py \
+            PYTHONPATH=. python scripts/goal_runtime_bridge.py \
               --catalog "$APPROVAL_CATALOG_PATH" \
               --state /tmp/autonomous-loop-state.json \
               --results /tmp/minimal-autonomous-loop.jsonl \

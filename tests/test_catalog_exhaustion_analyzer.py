@@ -379,3 +379,63 @@ def test_main_reports_blocked_on_invalid_catalog_without_writing_output(tmp_path
     assert catalog_exhaustion_analyzer.main() == 2
     assert capsys.readouterr().out.strip() == "CATALOG_EXHAUSTION_ANALYZER_BLOCKED: ValueError"
     assert output.read_text(encoding="utf-8") == "preserve-existing-output\\n"
+
+def test_main_blocks_invalid_recovery_state_without_creating_report(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    import argparse
+
+    from scripts import catalog_exhaustion_analyzer
+
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    state.write_text(
+        json.dumps({
+            "completed": [],
+            "recovery_ai": {"schema_version": 99, "tasks": {}, "checkpoint": None},
+        }),
+        encoding="utf-8",
+    )
+    output = tmp_path / "report.json"
+    namespace = argparse.Namespace(
+        repo_root=root,
+        catalog=catalog,
+        queue=queue,
+        state=state,
+        runtime=runtime,
+        existing_issues=None,
+        output=output,
+    )
+    monkeypatch.setattr(argparse.ArgumentParser, "parse_args", lambda _self: namespace)
+
+    assert catalog_exhaustion_analyzer.main() == 2
+    assert capsys.readouterr().out.strip() == "CATALOG_EXHAUSTION_ANALYZER_BLOCKED: ValueError"
+    assert not output.exists()
+
+def test_main_writes_review_only_candidate_report_on_success(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    import sys
+
+    from scripts import catalog_exhaustion_analyzer
+
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    output = tmp_path / "report.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "catalog_exhaustion_analyzer",
+            "--repo-root", str(root),
+            "--catalog", str(catalog),
+            "--queue", str(queue),
+            "--state", str(state),
+            "--runtime", str(runtime),
+            "--output", str(output),
+        ],
+    )
+
+    assert catalog_exhaustion_analyzer.main() == 0
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["status"] == "REVIEW_REQUIRED"
+    assert report["candidate_count"] == 1
+    assert report["catalog_ids_without_runtime_plan"] == []

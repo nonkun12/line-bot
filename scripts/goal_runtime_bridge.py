@@ -265,12 +265,16 @@ def run(args: argparse.Namespace) -> int:
                     return child.returncode
             else:
                 store.record_result(GOAL_ID, selected["task_id"], status="HELD")
+                _reconcile_claimed_tasks(store, claimed_this_run, goal_output, selected["task_id"])
+                # Preserve guarded runner sentinels: the parent workflow maps
+                # 78 to queue exhaustion and 79 to a held-task marker.
+                if child.returncode in {78, 79}:
+                    return child.returncode
                 if row is None:
                     _append_blocked(results_path, selected["task_id"], "goal_runtime_result_missing_or_ambiguous")
                 elif child.returncode == 0:
                     _append_blocked(results_path, selected["task_id"], "goal_runtime_independent_evidence_gate_failed")
-                _reconcile_claimed_tasks(store, claimed_this_run, goal_output, selected["task_id"])
-                return 80 if child.returncode in {78, 79} else (child.returncode or 80)
+                return child.returncode or 80
         latest = store.read(GOAL_ID)
         if latest:
             _write_state(goal_output, latest[1])
