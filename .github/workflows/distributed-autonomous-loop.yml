@@ -612,9 +612,12 @@ jobs:
               if task_id in completed:
                   continue
               recovery = recovery_tasks.get(task_id, {})
-              if isinstance(recovery, dict) and (
-                  recovery.get("held") is True or recovery.get("resume_requires_review") is True
-              ):
+              if not isinstance(recovery, dict):
+                  raise SystemExit("model_preflight_recovery_record_invalid")
+              for flag in ("held", "resume_requires_review"):
+                  if flag in recovery and type(recovery[flag]) is not bool:
+                      raise SystemExit("model_preflight_recovery_flag_invalid")
+              if recovery.get("held") is True or recovery.get("resume_requires_review") is True:
                   held_count += 1
                   continue
               if trusted.get("execution_approved") is not True:
