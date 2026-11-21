@@ -43,8 +43,13 @@ def test_scheduled_loop_uses_local_model_only_for_approved_model_tasks():
     assert 'recovery.get("resume_requires_review") is True' in text
     assert "id: run_task" in text
     assert "if: steps.local_model_preflight.outputs.authorized == 'true'" in text
-    assert "ollama/ollama:latest" in text
-    assert "qwen2.5-coder:3b" in text
-    assert "RSI_LOCAL_MODEL_BASE_URL=http://127.0.0.1:11434" in text
+    assert "llama.cpp" in text
+    assert "llama-server" in text
+    assert "Qwen2.5-Coder-1.5B-Instruct-GGUF" in text
+    assert "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046" in text
+    assert "--host 127.0.0.1" in text
+    assert "RSI_LOCAL_MODEL_BASE_URL=http://127.0.0.1:11434/v1" in text
+    assert "RSI_LOCAL_MODEL_PROTOCOL=openai-compatible" in text
+    assert "ollama/ollama:latest" not in text
     assert "no cloud fallback is permitted" in text
     assert 'Path("/tmp/minimal-autonomous-loop.jsonl").write_text("", encoding="utf-8")' in text
