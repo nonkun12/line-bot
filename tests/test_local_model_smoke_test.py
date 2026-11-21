@@ -9,7 +9,7 @@ from scripts import local_model_smoke_test
 def test_smoke_test_reports_pass_without_exposing_response(monkeypatch, capsys):
     class FakeClient:
         model = "test-local"
-        protocol = "ollama"
+        protocol = "openai-compatible"
 
         class _Completions:
             def create(self, **kwargs):
@@ -25,7 +25,7 @@ def test_smoke_test_reports_pass_without_exposing_response(monkeypatch, capsys):
 
     assert local_model_smoke_test.main() == 0
     output = capsys.readouterr().out
-    assert "LOCAL_MODEL=PASS protocol=ollama model=test-local" in output
+    assert "LOCAL_MODEL=PASS protocol=openai-compatible model=test-local" in output
     assert "LOCAL_MODEL_OK" not in output
 
 
