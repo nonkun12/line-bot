@@ -1,8 +1,8 @@
 """Cloud-only, dependency-light STAR-NIGHT candidate builder.
 
-Uses Python standard library only. Produces editable story artifacts and
-original MIDI/WAV previews. It does not call external APIs, use a Mac worker,
-render character animation, publish, or modify story canon.
+Uses Python standard library for story/music assets and optional Pillow/FFmpeg
+for a private procedural-motion animatic. It does not call external APIs, use
+a Mac worker, publish, or modify story canon.
 """
 from __future__ import annotations
 
@@ -386,25 +386,87 @@ def _render_animatic(destination: Path) -> Path:
         draw.text((1190, 92), titles[index], font=font(22), fill=(190, 222, 245, 230), anchor="ra")
         image.save(frame_dir / f"cut_{index + 1:02d}.png", optimize=True)
 
-    concat_file = frame_dir / "frames.txt"
-    lines = []
-    for index, duration in enumerate(durations, start=1):
-        lines.extend([f"file 'cut_{index:02d}.png'", f"duration {duration}"])
-    lines.append(f"file 'cut_{len(durations):02d}.png'")
-    concat_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Render actual character/light motion over the illustrated backgrounds.
+    # 12fps source frames are encoded at 24fps with frame duplication; this keeps
+    # the cloud candidate lightweight while making motion visible and testable.
     output = destination / "star-night-episode-01-animatic.mp4"
-    command = [
+    fps = 12
+    width_out, height_out = 640, 360
+    ffmpeg_command = [
         ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-        "-f", "concat", "-safe", "0", "-i", str(concat_file),
+        "-f", "rawvideo", "-pix_fmt", "rgb24",
+        "-s", f"{width_out}x{height_out}", "-r", str(fps), "-i", "-",
         "-i", str(destination / "original_music.wav"),
-        "-vf", "fps=24,format=yuv420p", "-t", "15",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
-        "-c:a", "aac", "-b:a", "160k", "-shortest",
+        "-vf", "fps=24,scale=1280:720:flags=lanczos,format=yuv420p",
+        "-t", "15", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
+        "-c:a", "aac", "-b:a", "192k", "-shortest",
         "-movflags", "+faststart", str(output),
     ]
-    subprocess.run(command, cwd=frame_dir, check=True, capture_output=True, text=True)
+    process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.PIPE)
+    assert process.stdin is not None
+    try:
+        frame_number = 0
+        for scene_index, duration in enumerate(durations):
+            background = Image.open(frame_dir / f"cut_{scene_index + 1:02d}.png").convert("RGB")
+            background = background.resize((width_out, height_out), Image.Resampling.LANCZOS)
+            robot_x = (475 if scene_index < 3 else 560) * width_out // width
+            robot_y = 478 * height_out // height
+            lumina_x = [700, 700, 625, 820, 820][scene_index] * width_out // width
+            lumina_y = [530, 525, 420, 320, 245][scene_index] * height_out // height
+            scene_frames = round(duration * fps)
+            for local_frame in range(scene_frames):
+                t = (frame_number + local_frame) / fps
+                phase = 2 * math.pi * (local_frame / max(scene_frames, 1))
+                bob = round(2.5 * math.sin(phase * 2))
+                swing = math.sin(phase * 2) * 7
+                frame = background.copy()
+                draw = ImageDraw.Draw(frame, "RGBA")
+                # Arms swing gently; legs alternate to suggest a small step forward.
+                shoulder_y = robot_y - 5 + bob
+                left_shoulder = (robot_x - 26, shoulder_y)
+                right_shoulder = (robot_x + 26, shoulder_y)
+                left_hand = (robot_x - 48 - round(swing), robot_y + 27 + bob)
+                right_hand = (robot_x + 48 + round(swing), robot_y + 27 + bob)
+                draw.line((left_shoulder, left_hand), fill=(177, 211, 224, 255), width=7)
+                draw.line((right_shoulder, right_hand), fill=(177, 211, 224, 255), width=7)
+                for hx, hy in (left_hand, right_hand):
+                    draw.ellipse((hx - 5, hy - 5, hx + 5, hy + 5), fill=(207, 231, 239, 255))
+                hip_y = robot_y + 76 + bob
+                stride = round(8 * math.sin(phase))
+                draw.line((robot_x - 22, hip_y, robot_x - 27 - stride, hip_y + 22),
+                          fill=(150, 187, 205, 255), width=8)
+                draw.line((robot_x + 22, hip_y, robot_x + 27 + stride, hip_y + 22),
+                          fill=(150, 187, 205, 255), width=8)
+                # Eyes blink briefly; the star fragment pulses and shimmers.
+                blink = (frame_number + local_frame) % (fps * 3) in (0, 1)
+                eye_y = robot_y - 70 + bob
+                if blink:
+                    draw.line((robot_x - 10, eye_y, robot_x - 3, eye_y), fill=(125, 226, 255, 255), width=3)
+                    draw.line((robot_x + 3, eye_y, robot_x + 10, eye_y), fill=(125, 226, 255, 255), width=3)
+                pulse = 1.0 + 0.18 * math.sin(phase * 3 + scene_index)
+                radius = max(8, round(13 * pulse))
+                draw.ellipse((lumina_x - radius * 2, lumina_y - radius * 2,
+                              lumina_x + radius * 2, lumina_y + radius * 2),
+                             fill=(78, 190, 255, 24))
+                draw.ellipse((lumina_x - radius, lumina_y - radius,
+                              lumina_x + radius, lumina_y + radius),
+                             fill=(112, 218, 255, 115), outline=(225, 250, 255, 240), width=2)
+                draw.text((lumina_x, lumina_y), "✦", font=font(28, True),
+                          fill=(255, 250, 210, 255), anchor="mm")
+                process.stdin.write(frame.tobytes())
+            frame_number += scene_frames
+        process.stdin.close()
+        stderr = process.stderr.read() if process.stderr else b""
+        return_code = process.wait()
+        if return_code:
+            raise RuntimeError(f"ffmpeg motion render failed: {stderr.decode('utf-8', 'replace')[-1200:]}")
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
     if not output.is_file() or output.stat().st_size < 10_000:
-        raise RuntimeError("ffmpeg did not produce a valid animatic")
+        raise RuntimeError("ffmpeg did not produce a valid character-motion animatic")
     return output
 
 
@@ -490,7 +552,9 @@ def build_candidate(output_dir: str | Path, *, now: datetime | None = None, rend
         manifest = {"schema_version": "star-night-candidate-manifest.v1", "created_at": moment.isoformat(),
                     "project_id": PROJECT, "episode_id": "SN-E001", "status": "draft",
                     "cloud_execution": True, "mac_required": False, "paid_api_used": False,
-                    "video_render_status": "animatic_rendered" if video_path else "not_rendered", "publication_authorized": False,
+                    "video_render_status": "character_motion_animatic_rendered" if video_path else "not_rendered",
+                    "motion_profile": {"source_fps": 12, "output_fps": 24, "character_motion": ["arm_swing", "alternating_steps", "body_bob", "eye_blink"], "lumina_motion": "pulsing_glow", "full_character_animation": False},
+                    "publication_authorized": False,
                     "canon_modified": False, "hourly_task": task, "sha256": hashes}
         (destination / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return {"status": "candidate_created", "directory": str(destination), "artifact_count": len(hashes) + 1,
