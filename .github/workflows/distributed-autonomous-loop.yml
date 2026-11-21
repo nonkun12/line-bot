@@ -728,7 +728,8 @@ jobs:
               -DGGML_NATIVE=OFF \
               -DLLAMA_CURL=OFF \
               -DLLAMA_BUILD_TESTS=OFF \
-              -DLLAMA_BUILD_EXAMPLES=OFF
+              -DLLAMA_BUILD_EXAMPLES=OFF \
+              -DLLAMA_BUILD_SERVER=ON
             cmake --build /tmp/llama.cpp-build --config Release --target llama-server -j 2
           fi
           test -x "$SERVER"
