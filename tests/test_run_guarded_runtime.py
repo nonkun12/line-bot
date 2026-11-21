@@ -200,7 +200,11 @@ def test_common_runtime_rea_adapter_exception_blocks_development_execution(monke
     assert summary["rea"]["execution_authorized"] is False
 
 
-def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    "github_ref",
+    ["refs/heads/main", "refs/heads/phase0/safety-closure-20261121"],
+)
+def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path, github_ref):
     sha = "b" * 40
     rea = {
         "gate": "PASS",
@@ -236,7 +240,7 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-test-task")
     monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
-    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_REF", github_ref)
     monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
     event_path = tmp_path / "event.json"

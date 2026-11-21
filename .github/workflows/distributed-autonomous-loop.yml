@@ -2,8 +2,6 @@ name: Distributed Autonomous Development Loop
 run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || '0' }}, request_id=${{ inputs.request_id || 'scheduled' }})
 
 on:
-  schedule:
-    - cron: "0,30 * * * *"
   issue_comment:
     types: [created]
   workflow_dispatch:
@@ -533,8 +531,269 @@ jobs:
           done < <(jq -c '.[]' /tmp/autonomous-loop-task-issue-drafts.json)
           echo "Created $count review-only task candidate issue(s); no execution approval was granted."
 
+      - name: Set default task catalog for this run
+        run: echo "APPROVAL_CATALOG_PATH=.github/autonomous-loop-task-catalog.json" >> "$GITHUB_ENV"
+
+      - name: Validate one-time task-bound execution approval
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.execution_approval == 'APPROVE_EXECUTION'
+        env:
+          APPROVAL_TASK_ID: ${{ github.event.inputs.approval_task_id || '' }}
+          APPROVAL_ALLOWED_PATHS_SHA256: ${{ github.event.inputs.approval_allowed_paths_sha256 || '' }}
+          APPROVAL_INSTRUCTION_SHA256: ${{ github.event.inputs.approval_instruction_sha256 || '' }}
+          APPROVAL_BASE_SHA: ${{ github.event.inputs.approval_base_sha || '' }}
+        run: |
+          set -euo pipefail
+          current_base_sha="$(git rev-parse HEAD)"
+          python -m scripts.validate_task_bound_approval \
+            --queue .github/autonomous-loop-tasks.json \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --state /tmp/autonomous-loop-state.json \
+            --output /tmp/approved-autonomous-loop-task-catalog.json \
+            --approval APPROVE_EXECUTION \
+            --task-id "$APPROVAL_TASK_ID" \
+            --allowed-paths-sha256 "$APPROVAL_ALLOWED_PATHS_SHA256" \
+            --instruction-sha256 "$APPROVAL_INSTRUCTION_SHA256" \
+            --approval-base-sha "$APPROVAL_BASE_SHA" \
+            --current-base-sha "$current_base_sha"
+          echo "APPROVAL_CATALOG_PATH=/tmp/approved-autonomous-loop-task-catalog.json" >> "$GITHUB_ENV"
+
+      - name: Rebuild run-local queue from the one-time approved catalog
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.execution_approval == 'APPROVE_EXECUTION'
+        env:
+          APPROVAL_CATALOG_PATH: /tmp/approved-autonomous-loop-task-catalog.json
+        run: |
+          set -euo pipefail
+          python -m scripts.autonomous_task_refill \
+            --queue .github/autonomous-loop-tasks.json \
+            --catalog "$APPROVAL_CATALOG_PATH" \
+            --completed-state /tmp/autonomous-loop-state.json \
+            --output /tmp/autonomous-loop-runtime-queue.json \
+            --history /tmp/line-bot-self-improvement.jsonl \
+            | tee /tmp/autonomous-loop-approved-refill-report.json
+          echo "One-time approval applied to a run-local queue only; tracked queue and durable state remain unchanged."
+
+      - name: Detect approved model-backed work
+        id: local_model_preflight
+        env:
+          APPROVAL_CATALOG_PATH: ${{ env.APPROVAL_CATALOG_PATH || '.github/autonomous-loop-task-catalog.json' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", ".github/autonomous-loop-tasks.json"))
+          catalog_path = Path(os.environ.get("APPROVAL_CATALOG_PATH", ".github/autonomous-loop-task-catalog.json"))
+          state_path = Path("/tmp/autonomous-loop-state.json")
+          queue = json.loads(queue_path.read_text(encoding="utf-8"))
+          catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+          state = json.loads(state_path.read_text(encoding="utf-8"))
+          queued, registered = queue.get("tasks"), catalog.get("tasks")
+          if not isinstance(queued, list) or not isinstance(registered, list):
+              raise SystemExit("model_preflight_queue_or_catalog_invalid")
+          by_id = {item.get("id"): item for item in registered if isinstance(item, dict)}
+          completed = state.get("completed", [])
+          recovery_tasks = state.get("recovery_ai", {}).get("tasks", {})
+          if not isinstance(completed, list) or not isinstance(recovery_tasks, dict):
+              raise SystemExit("model_preflight_state_invalid")
+          from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+          needs_model = False
+          authorized_count = 0
+          unapproved_count = 0
+          held_count = 0
+          for item in queued:
+              if not isinstance(item, dict):
+                  raise SystemExit("model_preflight_task_invalid")
+              task_id = item.get("id")
+              trusted = by_id.get(task_id)
+              if not isinstance(task_id, str) or not isinstance(trusted, dict):
+                  raise SystemExit("model_preflight_unregistered_task")
+              if any(item.get(key) != trusted.get(key) for key in ("id", "instruction", "allowed_paths")):
+                  raise SystemExit("model_preflight_definition_mismatch")
+              if task_id in completed:
+                  continue
+              recovery = recovery_tasks.get(task_id, {})
+              if not isinstance(recovery, dict):
+                  raise SystemExit("model_preflight_recovery_record_invalid")
+              for flag in ("held", "resume_requires_review"):
+                  if flag in recovery and type(recovery[flag]) is not bool:
+                      raise SystemExit("model_preflight_recovery_flag_invalid")
+              if recovery.get("held") is True or recovery.get("resume_requires_review") is True:
+                  held_count += 1
+                  continue
+              if trusted.get("execution_approved") is not True:
+                  unapproved_count += 1
+                  continue
+              authorized_count += 1
+              if task_id not in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS:
+                  needs_model = True
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("authorized=" + ("true" if authorized_count else "false") + "\n")
+              output.write("needed=" + ("true" if needs_model else "false") + "\n")
+          if not authorized_count:
+              Path("/tmp/minimal-autonomous-loop.jsonl").write_text("", encoding="utf-8")
+              reason = "no_explicitly_approved_tasks"
+              if held_count:
+                  reason = "all_remaining_tasks_held_or_review_pending"
+              Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\n", encoding="utf-8")
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+                  summary.write("## Loop status: BLOCKED\n\nNo explicitly approved, non-held task is available. No task was executed and no HOLD or approval state was changed.\n")
+          print("AUTHORIZED_TASKS=" + str(authorized_count))
+          print("UNAPPROVED_TASKS=" + str(unapproved_count))
+          print("HELD_OR_REVIEW_TASKS=" + str(held_count))
+          print("LOCAL_MODEL_REQUIRED=" + str(needs_model).lower())
+          # Publish exact, read-only inputs needed for a later one-task approval.
+          # This manifest grants no approval and excludes completed/HOLD/review tasks.
+          base_sha = os.environ.get("AUTONOMOUS_START_SHA", "")
+          manifest_queue = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8")).get("tasks", [])
+          if not isinstance(manifest_queue, list):
+              raise SystemExit("approval_manifest_queue_invalid")
+          manifest = []
+          for item in manifest_queue:
+              task_id = item.get("id")
+              trusted = by_id.get(task_id)
+              if not isinstance(trusted, dict) or task_id in completed:
+                  continue
+              recovery = recovery_tasks.get(task_id, {})
+              if not isinstance(recovery, dict):
+                  continue
+              if any(flag in recovery and type(recovery[flag]) is not bool for flag in ("held", "resume_requires_review")):
+                  continue
+              if recovery.get("held") is True or recovery.get("resume_requires_review") is True:
+                  continue
+              instruction = trusted.get("instruction")
+              paths = trusted.get("allowed_paths")
+              if (
+                  not isinstance(instruction, str)
+                  or not isinstance(paths, list)
+                  or not paths
+                  or item.get("instruction") != instruction
+                  or item.get("allowed_paths") != paths
+              ):
+                  continue
+              canonical_paths = json.dumps(sorted(paths), ensure_ascii=False, separators=(",", ":"))
+              paths_sha = hashlib.sha256(canonical_paths.encode("utf-8")).hexdigest()
+              instruction_sha = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
+              manifest.append((str(task_id), paths_sha, instruction_sha))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("\n## One-time approval manifest (read-only; no approval granted)\n\n")
+              summary.write(f"Base SHA: `{base_sha}`\n\n")
+              if manifest:
+                  summary.write("| Task ID | Allowed paths SHA-256 | Instruction SHA-256 |\n|---|---|---|\n")
+                  for task_id, paths_sha, instruction_sha in manifest[:20]:
+                      summary.write(f"| `{task_id}` | `{paths_sha}` | `{instruction_sha}` |\n")
+              else:
+                  summary.write("No eligible queued task is available for one-time approval.\n")
+          PY
+
+      - name: Restore cached GGUF model
+        if: steps.local_model_preflight.outputs.needed == 'true'
+        uses: actions/cache@v4
+        with:
+          path: /tmp/llama-model
+          key: qwen2.5-coder-1.5b-instruct-q4km-sha256-cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046
+
+      - name: Restore pinned llama.cpp CPU server
+        if: steps.local_model_preflight.outputs.needed == 'true'
+        uses: actions/cache@v4
+        with:
+          path: /tmp/llama.cpp-build
+          key: llama-cpp-v1.0.0-2d8a32502909ca065c41c4cf5f2fb1c427c047fc-ubuntu-cpu
+
+      - name: Build pinned llama.cpp and verify GGUF model
+        if: steps.local_model_preflight.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/llama-model
+          MODEL=/tmp/llama-model/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+          EXPECTED_SHA256=cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046
+          if [ ! -s "$MODEL" ]; then
+            curl --fail --location --retry 3 --retry-all-errors \
+              "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf" \
+              --output "$MODEL"
+          fi
+          printf '%s  %s\n' "$EXPECTED_SHA256" "$MODEL" | sha256sum --check --status || {
+            echo "::error::GGUF model SHA-256 mismatch; refusing to start inference."
+            exit 1
+          }
+
+          SERVER=/tmp/llama.cpp-build/bin/llama-server
+          if [ ! -x "$SERVER" ]; then
+            rm -rf /tmp/llama.cpp-src
+            git init /tmp/llama.cpp-src
+            git -C /tmp/llama.cpp-src remote add origin https://github.com/ggml-org/llama.cpp.git
+            git -C /tmp/llama.cpp-src fetch --depth 1 origin 2d8a32502909ca065c41c4cf5f2fb1c427c047fc
+            git -C /tmp/llama.cpp-src checkout --detach FETCH_HEAD
+            test "$(git -C /tmp/llama.cpp-src rev-parse HEAD)" = "2d8a32502909ca065c41c4cf5f2fb1c427c047fc"
+            cmake -S /tmp/llama.cpp-src -B /tmp/llama.cpp-build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DGGML_NATIVE=OFF \
+              -DLLAMA_CURL=OFF \
+              -DLLAMA_BUILD_TESTS=OFF \
+              -DLLAMA_BUILD_EXAMPLES=OFF \
+              -DLLAMA_BUILD_SERVER=ON
+            cmake --build /tmp/llama.cpp-build --config Release --target llama-server -j 2
+          fi
+          test -x "$SERVER"
+
+      - name: Start llama.cpp and verify real local inference
+        if: steps.local_model_preflight.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          MODEL=/tmp/llama-model/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+          SERVER=/tmp/llama.cpp-build/bin/llama-server
+          nohup "$SERVER" \
+            --model "$MODEL" \
+            --host 127.0.0.1 \
+            --port 11434 \
+            --ctx-size 4096 \
+            --threads 2 \
+            --parallel 1 \
+            --alias qwen2.5-coder-1.5b-instruct \
+            > /tmp/llama-server.log 2>&1 &
+          echo "$!" > /tmp/llama-server.pid
+          ready=0
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent http://127.0.0.1:11434/health >/dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$(cat /tmp/llama-server.pid)" 2>/dev/null; then
+              cat /tmp/llama-server.log
+              echo "::error::llama.cpp exited before becoming ready."
+              exit 1
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/llama-server.log
+            echo "::error::llama.cpp did not become ready; no remote inference fallback is permitted."
+            exit 1
+          fi
+
+          # Prove the exact OpenAI-compatible interface used by LocalModelClient.
+          response=$(curl --fail --silent --show-error \
+            http://127.0.0.1:11434/v1/chat/completions \
+            -H 'Content-Type: application/json' \
+            -d '{"model":"qwen2.5-coder-1.5b-instruct","messages":[{"role":"user","content":"Reply with exactly LOCAL_INFERENCE_OK"}],"temperature":0,"max_tokens":24,"stream":false}')
+          RESPONSE="$response" python - <<'PY'
+          import json, os
+          payload = json.loads(os.environ["RESPONSE"])
+          content = payload["choices"][0]["message"]["content"]
+          if not isinstance(content, str) or "LOCAL_INFERENCE_OK" not in content:
+              raise SystemExit("llama_cpp_inference_smoke_test_failed")
+          print("LLAMA_CPP_LOCAL_INFERENCE=PASS")
+          PY
+          {
+            echo "RSI_LOCAL_MODEL_BASE_URL=http://127.0.0.1:11434/v1"
+            echo "RSI_LOCAL_MODEL_NAME=qwen2.5-coder-1.5b-instruct"
+            echo "RSI_LOCAL_MODEL_PROTOCOL=openai-compatible"
+            echo "RSI_LOCAL_MODEL_TIMEOUT=120"
+          } >> "$GITHUB_ENV"
+          echo "LOCAL_MODEL_PROVIDER=llama_cpp_loopback_only" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run one bounded autonomous task
         id: run_task
+        if: steps.local_model_preflight.outputs.authorized == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SELF_IMPROVEMENT_HISTORY_PATH: /tmp/line-bot-self-improvement.jsonl
@@ -548,6 +807,7 @@ jobs:
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
           # Populated only after cause-fixed and post-resume-review confirmations pass.
           GOAL_RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id || '' }}
+          APPROVAL_CATALOG_PATH: ${{ env.APPROVAL_CATALOG_PATH || '.github/autonomous-loop-task-catalog.json' }}
         run: |
           set -euo pipefail
           : > /tmp/minimal-autonomous-loop.jsonl
@@ -592,7 +852,7 @@ jobs:
             python scripts/run_minimal_autonomous_loop.py "${loop_args[@]}"
           else
             python scripts/goal_runtime_bridge.py \
-              --catalog .github/autonomous-loop-task-catalog.json \
+              --catalog "$APPROVAL_CATALOG_PATH" \
               --state /tmp/autonomous-loop-state.json \
               --results /tmp/minimal-autonomous-loop.jsonl \
               --stop-file "$STOP_FILE" \

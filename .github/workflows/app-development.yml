@@ -61,31 +61,11 @@ jobs:
             echo "forwarded=false" >> "${GITHUB_OUTPUT}"
           fi
 
-      - name: Run independent-repository app builder
+      - name: Block independent-repository app generation during Phase 0
         id: app_development
         if: ${{ steps.forward_e2e.outputs.forwarded != 'true' }}
-        env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          APP_GITHUB_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
-          APP_GITHUB_OWNER: nonkun12
-          APP_REQUIREMENT: ${{ github.event.inputs.requirement }}
-          APP_USER_ID: ${{ github.event.inputs.user_id }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          DEV_AI_MODEL: openai/gpt-oss-20b
         run: |
-          set +e
-          for attempt in 1 2 3; do
-            python scripts/empty_repo_app_builder.py 2>&1 | tee ai-app-builder-${attempt}.log
-            status=${PIPESTATUS[0]}
-            if [ "$status" -eq 0 ]; then
-              exit 0
-            fi
-            if grep -q "AI planning failed: ValueError: AI response is empty" "ai-app-builder-${attempt}.log" && [ "$attempt" -lt 3 ]; then
-              echo "Initial AI planning returned an empty response; retrying (attempt $((attempt + 1))/3)."
-              continue
-            fi
-            exit "$status"
-          done
+          echo "PHASE0_BLOCKED: independent-repository app generation is paused pending safety verification."
           exit 1
 
       - name: Notify LINE of app development result

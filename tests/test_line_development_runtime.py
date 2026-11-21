@@ -1470,13 +1470,29 @@ def test_new_refill_cli_tasks_use_bounded_deterministic_plans(monkeypatch, tmp_p
         assert runtime.worker.validate_plan(plan, chosen) == (True, chosen)
 
 
-def test_provider_block_reason_rejects_external_model_for_manual_rsi(monkeypatch):
+def test_provider_block_reason_fails_closed_without_local_model(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "manual")
-    assert runtime._provider_block_reason("") == "external_model_provider_disabled_local_adapter_unavailable"
+    monkeypatch.delenv("RSI_LOCAL_MODEL_BASE_URL", raising=False)
+    monkeypatch.delenv("RSI_LOCAL_MODEL_NAME", raising=False)
+    monkeypatch.delenv("RSI_LOCAL_MODEL_PROTOCOL", raising=False)
+    assert runtime._provider_block_reason("") == "local_model_configuration_missing"
 
 
-def test_provider_block_reason_allows_only_declared_provider_free_task(monkeypatch):
+def test_provider_block_reason_accepts_only_validated_loopback_model(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "manual")
+    monkeypatch.setenv("RSI_LOCAL_MODEL_BASE_URL", "http://127.0.0.1:11434")
+    monkeypatch.setenv("RSI_LOCAL_MODEL_NAME", "qwen2.5-coder:3b")
+    monkeypatch.setenv("RSI_LOCAL_MODEL_PROTOCOL", "ollama")
+    assert runtime._provider_block_reason("") is None
+
+    monkeypatch.setenv("RSI_LOCAL_MODEL_BASE_URL", "https://api.example.com")
+    assert runtime._provider_block_reason("") == "local_model_endpoint_not_allowed"
+
+
+def test_provider_block_reason_allows_deterministic_task_without_model(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
-    task_id = "uhip-confidence-out-of-range-rejection"
-    assert runtime._provider_block_reason(task_id) is None
-    assert runtime._provider_block_reason("review-coverage-gap-703fa3c06b") == "external_model_provider_disabled_local_adapter_unavailable"
+    monkeypatch.delenv("RSI_LOCAL_MODEL_BASE_URL", raising=False)
+    monkeypatch.delenv("RSI_LOCAL_MODEL_NAME", raising=False)
+    monkeypatch.delenv("RSI_LOCAL_MODEL_PROTOCOL", raising=False)
+    assert runtime._provider_block_reason("uhip-confidence-out-of-range-rejection") is None
+    assert runtime._provider_block_reason("review-coverage-gap-703fa3c06b") == "local_model_configuration_missing"

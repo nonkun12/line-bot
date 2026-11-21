@@ -166,11 +166,20 @@ def test_distributed_loop_has_bounded_manual_and_scheduled_triggers():
     path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
     source = path.read_text(encoding="utf-8")
     assert "workflow_dispatch:" in source
-    assert "schedule:" in source
-    assert 'cron: "0,30 * * * *"' in source
-    assert "timezone: 'Asia/Tokyo'" not in source
+    assert "schedule:" not in source
     assert "default: '1'" in source
     assert "          - '4'" in source
+
+    scheduler = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-loop-30m-scheduler.yml"
+    ).read_text(encoding="utf-8")
+    assert 'cron: "19,49 * * * *"' in scheduler
+    assert "gh workflow run distributed-autonomous-loop.yml" in scheduler
+    assert "--ref main -f max_tasks=1" in scheduler
+    assert "timezone: 'Asia/Tokyo'" not in scheduler
 
 
 def test_only_continuous_workflow_owns_automatic_dispatch():

@@ -75,13 +75,17 @@ class _Completions:
             if include_reasoning is False:
                 payload["think"] = False
             if response_format is not None:
-                if response_format.get("type") != "json_schema":
+                format_type = response_format.get("type")
+                if format_type == "json_object":
+                    payload["format"] = "json"
+                elif format_type == "json_schema":
+                    schema_wrapper = response_format.get("json_schema")
+                    schema = schema_wrapper.get("schema") if isinstance(schema_wrapper, dict) else None
+                    if not isinstance(schema, dict):
+                        raise LocalModelError("local_model_response_schema_invalid")
+                    payload["format"] = schema
+                else:
                     raise LocalModelError("local_model_response_format_unsupported")
-                schema_wrapper = response_format.get("json_schema")
-                schema = schema_wrapper.get("schema") if isinstance(schema_wrapper, dict) else None
-                if not isinstance(schema, dict):
-                    raise LocalModelError("local_model_response_schema_invalid")
-                payload["format"] = schema
         else:
             url = self._client.base_url + "/chat/completions"
             payload = {

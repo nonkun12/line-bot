@@ -3,18 +3,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "distributed-autonomous-loop.yml"
+SCHEDULER = ROOT / ".github" / "workflows" / "distributed-loop-30m-scheduler.yml"
 
 
 def test_distributed_loop_runs_every_30_minutes():
     text = WORKFLOW.read_text(encoding="utf-8")
     event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
-    assert "schedule:" in event_block
-    assert 'cron: "0,30 * * * *"' in event_block
+    scheduler = SCHEDULER.read_text(encoding="utf-8")
+    scheduler_events = scheduler.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert "schedule:" not in event_block
+    assert "workflow_dispatch:" in event_block
+    assert "schedule:" in scheduler_events
+    assert 'cron: "19,49 * * * *"' in scheduler_events
+    assert "gh workflow run distributed-autonomous-loop.yml" in scheduler
+    assert "--ref main -f max_tasks=1" in scheduler
 
 
 def test_scheduled_loop_is_bounded_to_one_task_and_serialized():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "github.event_name == 'schedule' && '1'" in text
+    scheduler = SCHEDULER.read_text(encoding="utf-8")
+    assert "default: '1'" in text
+    assert "--ref main -f max_tasks=1" in scheduler
     assert "group: distributed-autonomous-loop" in text
     assert "cancel-in-progress: false" in text
     assert "AUTO_APPLY_PATCH: 'false'" in text
@@ -25,3 +34,31 @@ def test_recovery_ai_durable_write_refreshes_freshness_timestamp():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "recovery['state_updated_at'] = datetime.now(timezone.utc).isoformat()" in text
     assert "data['recovery_ai'] = recovery" in text
+
+
+def test_no_eligible_task_is_reported_blocked_without_launching_runtime():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert 'Path("/tmp/minimal-autonomous-loop.jsonl").write_text("", encoding="utf-8")' in text
+    assert 'Path("/tmp/autonomous-loop-held-tasks").write_text(reason + "\\n", encoding="utf-8")' in text
+    assert "if: steps.local_model_preflight.outputs.authorized == 'true'" in text
+    assert "No task was executed and no HOLD or approval state was changed." in text
+
+
+def test_scheduled_loop_uses_local_model_only_for_approved_model_tasks():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "id: local_model_preflight" in text
+    assert 'trusted.get("execution_approved") is not True' in text
+    assert 'recovery.get("held") is True' in text
+    assert 'recovery.get("resume_requires_review") is True' in text
+    assert "id: run_task" in text
+    assert "if: steps.local_model_preflight.outputs.authorized == 'true'" in text
+    assert "llama.cpp" in text
+    assert "llama-server" in text
+    assert "Qwen2.5-Coder-1.5B-Instruct-GGUF" in text
+    assert "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046" in text
+    assert "--host 127.0.0.1" in text
+    assert "RSI_LOCAL_MODEL_BASE_URL=http://127.0.0.1:11434/v1" in text
+    assert "RSI_LOCAL_MODEL_PROTOCOL=openai-compatible" in text
+    assert "ollama/ollama:latest" not in text
+    assert "no remote inference fallback is permitted" in text
+    assert 'Path("/tmp/minimal-autonomous-loop.jsonl").write_text("", encoding="utf-8")' in text

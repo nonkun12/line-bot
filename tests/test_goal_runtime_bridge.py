@@ -1,8 +1,24 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 import pytest
 import scripts.goal_runtime_bridge as bridge
+
+def test_script_entrypoint_resolves_repository_root_before_package_import():
+    root = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        [sys.executable, str(root / "scripts" / "goal_runtime_bridge.py"), "--help"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "usage:" in completed.stdout.lower()
+
 
 def _inputs(tmp_path: Path):
     task = {"id":"approved-test-task","instruction":"Run one bounded test-only task",
