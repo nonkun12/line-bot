@@ -259,3 +259,72 @@ def test_task_hash_is_stable_sha256_and_handles_missing_task() -> None:
         priority=task.priority,
     )
     assert task_hash(changed_task) != digest
+
+
+
+def test_task_hash_covers_every_task_field_and_canonicalizes_resources() -> None:
+    task = AgentTask(
+        task_id="hash-fields",
+        role=AgentRole.IMPLEMENTER,
+        instruction="verify every hashed field",
+        resources=frozenset({"resource-b", "resource-a"}),
+        depends_on=("dependency-a", "dependency-b"),
+        priority=3,
+    )
+    digest = task_hash(task)
+    assert digest is not None
+
+    # Resource order is intentionally canonicalized because resources are a set.
+    reordered_resources = AgentTask(
+        task_id=task.task_id,
+        role=task.role,
+        instruction=task.instruction,
+        resources=frozenset({"resource-a", "resource-b"}),
+        depends_on=task.depends_on,
+        priority=task.priority,
+    )
+    assert task_hash(reordered_resources) == digest
+
+    changed_fields = (
+        AgentTask(
+            task_id="different-id",
+            role=task.role,
+            instruction=task.instruction,
+            resources=task.resources,
+            depends_on=task.depends_on,
+            priority=task.priority,
+        ),
+        AgentTask(
+            task_id=task.task_id,
+            role=AgentRole.TESTER,
+            instruction=task.instruction,
+            resources=task.resources,
+            depends_on=task.depends_on,
+            priority=task.priority,
+        ),
+        AgentTask(
+            task_id=task.task_id,
+            role=task.role,
+            instruction=task.instruction,
+            resources=frozenset({"resource-a", "resource-c"}),
+            depends_on=task.depends_on,
+            priority=task.priority,
+        ),
+        AgentTask(
+            task_id=task.task_id,
+            role=task.role,
+            instruction=task.instruction,
+            resources=task.resources,
+            depends_on=("dependency-b", "dependency-a"),
+            priority=task.priority,
+        ),
+        AgentTask(
+            task_id=task.task_id,
+            role=task.role,
+            instruction=task.instruction,
+            resources=task.resources,
+            depends_on=task.depends_on,
+            priority=task.priority + 1,
+        ),
+    )
+    assert all(task_hash(changed) != digest for changed in changed_fields)
