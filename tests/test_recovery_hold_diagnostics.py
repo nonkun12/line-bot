@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import copy
+import json
+import sys
 
 import pytest
 
-from scripts.recovery_hold_diagnostics import analyze_recovery_holds
+from scripts.recovery_hold_diagnostics import analyze_recovery_holds, main
 
 
 def _state():
@@ -112,3 +114,44 @@ def test_diagnostics_fail_closed_on_invalid_catalog_approval_type():
     catalog["tasks"][0]["execution_approved"] = "true"
     with pytest.raises(ValueError, match="approval must be boolean"):
         analyze_recovery_holds(_state(), catalog)
+
+
+def test_cli_emits_read_only_diagnostics_without_mutating_inputs(tmp_path, monkeypatch, capsys):
+    state_path = tmp_path / "state.json"
+    catalog_path = tmp_path / "catalog.json"
+    state_path.write_text(json.dumps(_state()), encoding="utf-8")
+    catalog_path.write_text(json.dumps(_catalog()), encoding="utf-8")
+    state_before = state_path.read_bytes()
+    catalog_before = catalog_path.read_bytes()
+    monkeypatch.setattr(sys, "argv", [
+        "recovery_hold_diagnostics.py",
+        "--state-file", str(state_path),
+        "--catalog", str(catalog_path),
+    ])
+
+    assert main() == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["mode"] == "READ_ONLY"
+    assert output["status"] == "REVIEW_REQUIRED"
+    assert output["task_resume_authorized"] is False
+    assert state_path.read_bytes() == state_before
+    assert catalog_path.read_bytes() == catalog_before
+
+
+def test_cli_returns_blocked_for_malformed_state_without_mutation(tmp_path, monkeypatch, capsys):
+    state_path = tmp_path / "state.json"
+    catalog_path = tmp_path / "catalog.json"
+    state_path.write_text("{broken", encoding="utf-8")
+    catalog_path.write_text(json.dumps(_catalog()), encoding="utf-8")
+    state_before = state_path.read_bytes()
+    monkeypatch.setattr(sys, "argv", [
+        "recovery_hold_diagnostics.py",
+        "--state-file", str(state_path),
+        "--catalog", str(catalog_path),
+    ])
+
+    assert main() == 2
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "BLOCKED"
+    assert output["execution_authorized"] is False
+    assert state_path.read_bytes() == state_before
