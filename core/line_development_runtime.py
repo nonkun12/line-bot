@@ -620,7 +620,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             "        },",
             "    })",
             "    output = tmp_path / \"runtime.json\"",
-            "    with pytest.raises(ValueError, match=\"Recovery AI state is invalid\"):",
+                        "    with pytest.raises(ValueError, match='^cycle memory ID is invalid
             "        build_queue(queue, catalog, state, output)",
             "    assert not output.exists()"
             "",
@@ -753,14 +753,2405 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_cycle_memory_invalid_cycle_id_is_sanitized_and_rejected"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = "def test_sanitizer_discards_raw_error_text_and_unknown_fields():\\n"
+        anchor = "def test_sanitizer_discards_raw_error_text_and_unknown_fields():\n"
         if text.count(anchor) != 1:
             return None, f"anchor_count_{chosen}:{text.count(anchor)}"
         newline = chr(10)
         addition = newline.join([
             "import pytest",
             "",
-            "@pytest.mark.parametrize(\\"cycle_id\\", [123, True, \\"not-a-run-id\\", \\"1\\" * 21])",
+                        "@pytest.mark.parametrize('cycle_id', [123, True, 'not-a-run-id', '1' * 21])",
+            "def test_cycle_memory_invalid_cycle_id_is_sanitized_and_rejected(cycle_id):",
+            "    from scripts.self_improvement_state import validate_durable_history",
+            "    valid = sanitize_records([{\"record_type\": \"cycle_memory\", \"outcome\": \"PASS\", \"cycle_id\": \"1\"}])[0]",
+            "    invalid = {**valid, \"cycle_id\": cycle_id}",
+            "    assert sanitize_records([invalid]) == []",
+            "    with pytest.raises(ValueError, match=\\"^cycle memory ID is invalid$\\"):",
+            "        validate_durable_history([invalid])",
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+    if task_id == "self-improvement-history-malformed-jsonl-regression" and chosen == "tests/test_self_improvement_state.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_read_jsonl_skips_malformed_rows_and_preserves_valid_order"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_sanitizer_discards_raw_error_text_and_unknown_fields():\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            "def test_read_jsonl_skips_malformed_rows_and_preserves_valid_order(tmp_path):",
+            "    from scripts.self_improvement_state import read_jsonl",
+            "    history = tmp_path / \"history.jsonl\"",
+            "    history.write_text(",
+            "        '{\"kind\": \"success\", \"task_id\": \"task-a\"}\\n'",
+            "        '{malformed json}\\n'",
+            "        '{\"kind\": \"failure\", \"task_id\": \"task-b\"}\\n',",
+            "        encoding=\"utf-8\",",
+            "    )",
+            "    assert read_jsonl(history) == [",
+            "        {\"kind\": \"success\", \"task_id\": \"task-a\"},",
+            "        {\"kind\": \"failure\", \"task_id\": \"task-b\"},",
+            "    ]",
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "distributed-loop-queue-progress-empty-queue-regression" and chosen == "tests/test_distributed_loop_queue_progress.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_empty_runtime_queue_reports_zero_progress_for_not_run"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        newline = chr(10)
+        anchor = "def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):" + newline
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = newline.join([
+            "def test_empty_runtime_queue_reports_zero_progress_for_not_run(tmp_path: Path):",
+            "    queue = tmp_path / \"runtime-queue.json\"",
+            "    state = tmp_path / \"state.json\"",
+            "    results = tmp_path / \"results.jsonl\"",
+            "    queue.write_text(json.dumps({\"tasks\": []}), encoding=\"utf-8\")",
+            "    state.write_text(json.dumps({\"completed\": [\"prior-task\"]}), encoding=\"utf-8\")",
+            "    results.write_text(json.dumps({\"task_id\": \"\", \"status\": \"NOT_RUN\", \"failure_reason\": \"queue_empty\"}), encoding=\"utf-8\")",
+            "    assert calculate_progress(queue, state, results) == {\"queue_total\": 0, \"queue_completed\": 0}",
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "distributed-loop-queue-progress-empty-queue-regression-v2" and chosen == "tests/test_distributed_loop_queue_progress.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_empty_runtime_queue_reports_zero_progress_for_not_run_v2"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        newline = chr(10)
+        anchor = "def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):" + newline
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = newline.join([
+            "def test_empty_runtime_queue_reports_zero_progress_for_not_run_v2(tmp_path: Path):",
+            "    queue = tmp_path / \"runtime-queue.json\"",
+            "    state = tmp_path / \"state.json\"",
+            "    results = tmp_path / \"results.jsonl\"",
+            "    queue.write_text(json.dumps({\"tasks\": []}), encoding=\"utf-8\")",
+            "    state.write_text(json.dumps({\"completed\": [\"prior-task\"]}), encoding=\"utf-8\")",
+            "    results.write_text(json.dumps({\"task_id\": \"\", \"status\": \"NOT_RUN\", \"failure_reason\": \"queue_empty\"}), encoding=\"utf-8\")",
+            "    assert calculate_progress(queue, state, results) == {\"queue_total\": 0, \"queue_completed\": 0}",
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id in {"queue-progress-excludes-not-run-results-regression", "queue-progress-excludes-not-run-results-regression-v2"} and chosen == "tests/test_distributed_loop_queue_progress.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_progress_does_not_count_not_run_result_as_completion"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        newline = chr(10)
+        anchor = "def test_progress_uses_runtime_queue_and_counts_refill_tasks(tmp_path: Path):" + newline
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = newline.join([
+            "def test_progress_does_not_count_not_run_result_as_completion(tmp_path: Path):",
+            "    queue = tmp_path / \"runtime-queue.json\"",
+            "    state = tmp_path / \"state.json\"",
+            "    results = tmp_path / \"results.jsonl\"",
+            "    queue.write_text(json.dumps({\"tasks\": [{\"id\": \"task-1\"}]}), encoding=\"utf-8\")",
+            "    state.write_text(json.dumps({\"completed\": []}), encoding=\"utf-8\")",
+            "    results.write_text(json.dumps({\"task_id\": \"task-1\", \"status\": \"NOT_RUN\", \"failure_reason\": \"queue_empty\"}) + \"\\n\", encoding=\"utf-8\")",
+            "    assert calculate_progress(queue, state, results) == {\"queue_total\": 1, \"queue_completed\": 0}",
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "loop-deterministic-nochange-focused-test" and chosen == "tests/test_line_development_worker_v2.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        test_name = "def test_run_tests_can_verify_only_allowlisted_target_for_no_change("
+        if test_name in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_worker_entrypoint_is_executable():\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        test = (
+            "def test_run_tests_can_verify_only_allowlisted_target_for_no_change(monkeypatch, tmp_path):\n"
+            "    calls = []\n\n"
+            "    def fake_run(cmd, timeout=900, input_text=None):\n"
+            "        calls.append(cmd)\n"
+            "        return subprocess.CompletedProcess(cmd, 0, stdout='1 passed', stderr='')\n\n"
+            "    monkeypatch.setattr(worker, 'ROOT', tmp_path)\n"
+            "    monkeypatch.setattr(worker, 'run', fake_run)\n"
+            "    passed, output = worker.run_tests(['tests/test_ai_speaker.py'], full_suite=False)\n"
+            "    assert passed\n"
+            "    pytest_call = next(cmd for cmd in calls if cmd[2:] and cmd[2] == 'pytest')\n"
+            "    assert pytest_call == [worker.sys.executable, '-m', 'pytest', '-q', '--tb=native', 'tests/test_ai_speaker.py']\n"
+            "    assert 'targeted pytest:' in output\n\n\n"
+        )
+        if len(anchor) > 1200 or len(test + anchor) > 1800:
+            return None, "deterministic_plan_too_large"
+        candidate = text.replace(anchor, test + anchor, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": test + anchor}],
+        }, None
+
+    if task_id == "ai-speaker-empty-transcript-no-brain-call" and chosen == "tests/test_ai_speaker.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        function_start = text.find("def test_ai_speaker_rejects_empty_transcript(")
+        if function_start < 0:
+            return None, f"existing_test_missing:{chosen}"
+        next_function = text.find("\ndef ", function_start + 1)
+        function_end = next_function if next_function >= 0 else len(text)
+        existing_test = text[function_start:function_end]
+        if "assert brain.requests == []" in existing_test:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        # Match a stable body line, not the exact function signature: existing
+        # tests may use annotations or omit them. Strengthen the existing test
+        # instead of inserting a duplicate test function.
+        anchor = '        raise AssertionError("empty transcript must fail closed")\n'
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        new = anchor + "    assert brain.requests == []\n"
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "recovery-ai-state-isolation" and chosen == "tests/test_recovery_ai.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_recovery_ai_state_isolation_between_task_ids"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = "def test_same_deterministic_failure_is_not_repaired_repeatedly(tmp_path):\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "def test_recovery_ai_state_isolation_between_task_ids(tmp_path):\n"
+            '    store = RecoveryStore(tmp_path / "state.json")\n'
+            '    first = store.record_failure("task-a", "timeout", ["tests/test_x.py::test_y"])\n'
+            '    second = store.record_failure("task-b", "timeout", ["tests/test_x.py::test_y"])\n'
+            '    assert first.task_id == "task-a"\n'
+            '    assert second.task_id == "task-b"\n'
+            '    assert first.fingerprint != second.fingerprint\n'
+            '    assert first.action == "REPAIR_ONCE"\n'
+            '    assert second.action == "REPAIR_ONCE"\n'
+            '    assert store.task_status("task-a")["consecutive_failures"] == 1\n'
+            '    assert store.task_status("task-b")["consecutive_failures"] == 1\n'
+            '    assert store.task_status("task-a")["last_category"] == "timeout"\n'
+            '    assert store.task_status("task-b")["last_category"] == "timeout"\n'
+        )
+        new = addition + "\n\n" + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "hand-sign-uhip-contract-phase-start" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_hand_event_with_phase_start"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = "    validate(event, EVENT_SCHEMA)\n\n\ndef test_universal_event_rejects_application_specific_command():\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            "\n\ndef test_universal_event_accepts_hand_event_with_phase_start():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f17",\n'
+            '        "session_id": "session-phase-start",\n'
+            '        "device_id": "device-1",\n'
+            '        "seq": 2,\n'
+            '        "t_mono_ns": 200,\n'
+            '        "t_wall": "2026-09-28T01:00:01Z",\n'
+            '        "source": {\n'
+            '            "device_kind": "mac",\n'
+            '            "sensor": "camera",\n'
+            '            "engine": "mediapipe",\n'
+            '            "engine_version": "0.1",\n'
+            '            "model_sha256": "a" * 64,\n'
+            "        },\n"
+            '        "modality": "hand",\n'
+            '        "payload": {\n'
+            '            "gesture": "thumb_up",\n'
+            '            "phase": "start",\n'
+            '            "value": None,\n'
+            '            "hand": {\n'
+            '                "label": "right",\n'
+            '                "track_id": 3,\n'
+            '                "mirrored": True,\n'
+            "            },\n"
+            '            "confidence": {\n'
+            '                "raw": 0.99,\n'
+            '                "calibrated": 0.97,\n'
+            "            },\n"
+            "        },\n"
+            '        "gate": {\n'
+            '            "recognition_passed": True,\n'
+            '            "rule_version": "phase0-1",\n'
+            "        },\n"
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n"
+        )
+        new = "    validate(event, EVENT_SCHEMA)\n" + addition + "\n\ndef test_universal_event_rejects_application_specific_command():\n"
+        candidate = text.replace(anchor, new, 1)
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "hand-sign-uhip-contract-left-hand" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_hand_event_with_left_hand"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = "def test_universal_event_rejects_application_specific_command():\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            "\n\ndef test_universal_event_accepts_hand_event_with_left_hand():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f18",\n'
+            '        "session_id": "session-left-hand",\n'
+            '        "device_id": "device-1",\n'
+            '        "seq": 3,\n'
+            '        "t_mono_ns": 300,\n'
+            '        "t_wall": "2026-09-28T01:00:02Z",\n'
+            '        "source": {\n'
+            '            "device_kind": "mac",\n'
+            '            "sensor": "camera",\n'
+            '            "engine": "mediapipe",\n'
+            '            "engine_version": "0.1",\n'
+            '            "model_sha256": "a" * 64,\n'
+            "        },\n"
+            '        "modality": "hand",\n'
+            '        "payload": {\n'
+            '            "gesture": "open_palm",\n'
+            '            "phase": "end",\n'
+            '            "value": None,\n'
+            '            "hand": {\n'
+            '                "label": "left",\n'
+            '                "track_id": 5,\n'
+            '                "mirrored": False,\n'
+            "            },\n"
+            '            "confidence": {\n'
+            '                "raw": 0.96,\n'
+            '                "calibrated": 0.94,\n'
+            "            },\n"
+            "        },\n"
+            '        "gate": {\n'
+            '            "recognition_passed": True,\n'
+            '            "rule_version": "phase0-1",\n'
+            "        },\n"
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n"
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-jobs-market-metadata" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_routes_jobs_and_market_request_with_market_priority_metadata"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = "def test_preserves_multi_specialist_candidates_and_priority() -> None:\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            "\n\ndef test_routes_jobs_and_market_request_with_market_priority_metadata() -> None:\n"
+            '    decision = route(ManagementRequest("u", "JobsとNYダウの情報を一緒に教えて"))\n'
+            '    assert decision.specialist is Specialist.MARKET\n'
+            '    assert decision.metadata["matched_specialists"] == ["market", "jobs"]\n'
+            '    assert decision.metadata["routing_priority"] == 4\n'
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-english-casefold" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_routes_mixed_case_english_request_for_distributed_loop"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = "def test_preserves_multi_specialist_candidates_and_priority() -> None:\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            "\n\ndef test_routes_mixed_case_english_request_for_distributed_loop() -> None:\n"
+            '    assert route(ManagementRequest("u", "eNgLiShで会話したい")).specialist is Specialist.ENGLISH\n'
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "hand-sign-uhip-contract-test" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_hand_event_with_recognition_failure"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = "    with pytest.raises(jsonschema.ValidationError):\n        validate(adapter, ADAPTER_SCHEMA)\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            "\n\ndef test_universal_event_accepts_hand_event_with_recognition_failure():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f13",\n'
+            '        "session_id": "session-1",\n'
+            '        "device_id": "device-1",\n'
+            '        "seq": 2,\n'
+            '        "t_mono_ns": 200,\n'
+            '        "t_wall": "2026-09-28T01:00:01Z",\n'
+            '        "source": {\n'
+            '            "device_kind": "mac",\n'
+            '            "sensor": "camera",\n'
+            '            "engine": "mediapipe",\n'
+            '            "engine_version": "0.1",\n'
+            '            "model_sha256": "a" * 64,\n'
+            "        },\n"
+            '        "modality": "hand",\n'
+            '        "payload": {\n'
+            '            "gesture": "thumb_up",\n'
+            '            "phase": "end",\n'
+            '            "value": None,\n'
+            '            "hand": {\n'
+            '                "label": "right",\n'
+            '                "track_id": 3,\n'
+            '                "mirrored": True,\n'
+            "            },\n"
+            '            "confidence": {\n'
+            '                "raw": 0.99,\n'
+            '                "calibrated": 0.97,\n'
+            "            },\n"
+            '            "stability": {\n'
+            '                "frames": 8,\n'
+            '                "duration_ms": 160,\n'
+            "            },\n"
+            "        },\n"
+            '        "gate": {\n'
+            '            "recognition_passed": False,\n'
+            '            "rule_version": "phase0-1",\n'
+            "        },\n"
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n"
+        )
+        new = anchor + addition
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "hand-sign-uhip-contract-negative-confidence" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_zero_confidence_hand_event"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = 'def test_adapter_schema_rejects_unknown_risk():\n'
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        before = text.split(anchor, 1)[0]
+        if before and not before.endswith("\n\n"):
+            return None, "deterministic_plan_invalid:anchor_not_standalone_def"
+        prefix = before.rstrip("\n")
+        prior_nonblank = prefix.splitlines()[-1].strip() if prefix.splitlines() else ""
+        if prior_nonblank.startswith("@") or prior_nonblank.startswith("#"):
+            return None, "deterministic_plan_invalid:anchor_not_standalone_def"
+
+        addition = (
+            "\n\ndef test_universal_event_accepts_zero_confidence_hand_event():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f14",\n'
+            '        "session_id": "session-1",\n'
+            '        "device_id": "device-1",\n'
+            '        "seq": 3,\n'
+            '        "t_mono_ns": 300,\n'
+            '        "source": {\n'
+            '            "device_kind": "mac",\n'
+            '            "sensor": "camera",\n'
+            '            "engine": "mediapipe",\n'
+            '            "engine_version": "0.1",\n'
+            '            "model_sha256": "a" * 64,\n'
+            "        },\n"
+            '        "modality": "hand",\n'
+            '        "payload": {\n'
+            '            "gesture": "thumb_up",\n'
+            '            "phase": "end",\n'
+            '            "value": None,\n'
+            '            "hand": {\n'
+            '                "label": "right",\n'
+            '                "track_id": 4,\n'
+            '                "mirrored": True,\n'
+            "            },\n"
+            '            "confidence": {\n'
+            '                "raw": 0.0,\n'
+            '                "calibrated": 0.0,\n'
+            "            },\n"
+            "        },\n"
+            '        "gate": {\n'
+            '            "recognition_passed": False,\n'
+            '            "rule_version": "phase0-1",\n'
+            "        },\n"
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n"
+        )
+        new_test = addition.lstrip("\n")
+        new = new_test + "\n\n" + anchor
+        candidate = text.replace(anchor, new, 1)
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-whitespace" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_routes_jobs_request_with_surrounding_whitespace"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = '    assert decision.metadata["request_metadata"]["source"] == "parallel-dev-test"\n'
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            "\n\ndef test_routes_jobs_request_with_surrounding_whitespace() -> None:\n"
+            '    assert route(ManagementRequest("u", "  求人を探して  ")).specialist is Specialist.JOBS\n'
+        )
+        new = anchor + addition
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-fullwidth-market" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_routes_fullwidth_market_request_after_normalization"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+        anchor = '    assert decision.metadata["request_metadata"]["source"] == "parallel-dev-test"\n'
+        if "test_routes_jobs_request_with_surrounding_whitespace" in text:
+            anchor = '    assert route(ManagementRequest("u", "  求人を探して  ")).specialist is Specialist.JOBS\n'
+
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+
+        addition = (
+            "\n\ndef test_routes_fullwidth_market_request_after_normalization() -> None:\n"
+            '    assert route(ManagementRequest("u", "ＮＹダウを教えて")).specialist is Specialist.MARKET\n'
+        )
+        new = anchor + addition
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "hand-sign-uhip-contract-iphone-camera" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_iphone_camera_hand_event"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "    validate(event, EVENT_SCHEMA)\n\n\ndef test_universal_event_rejects_application_specific_command():\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "\n\ndef test_universal_event_accepts_iphone_camera_hand_event():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f15",\n'
+            '        "session_id": "session-iphone",\n'
+            '        "device_id": "iphone-1",\n'
+            '        "seq": 2,\n'
+            '        "t_mono_ns": 200,\n'
+            '        "source": {\n'
+            '            "device_kind": "iphone",\n'
+            '            "sensor": "camera",\n'
+            '            "engine": "mediapipe",\n'
+            '            "engine_version": "0.1",\n'
+            '            "model_sha256": "a" * 64,\n'
+            "        },\n"
+            '        "modality": "hand",\n'
+            '        "payload": {\n'
+            '            "gesture": "thumb_up",\n'
+            '            "phase": "end",\n'
+            '            "value": None,\n'
+            '            "hand": {"label": "right", "track_id": 3, "mirrored": True},\n'
+            '            "confidence": {"raw": 0.99, "calibrated": 0.97},\n'
+            "        },\n"
+            '        "gate": {"recognition_passed": True, "rule_version": "phase0-1"},\n'
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n"
+        )
+        new = "    validate(event, EVENT_SCHEMA)\n" + addition + "\n\ndef test_universal_event_rejects_application_specific_command():\n"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "hand-sign-uhip-contract-unknown-hand-label" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_unknown_hand_label"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "    validate(event, EVENT_SCHEMA)\n\n\ndef test_universal_event_rejects_application_specific_command():\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "\n\ndef test_universal_event_accepts_unknown_hand_label():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "0192f0f8-7d4a-7c1b-9d4e-7d9d3c7c9f16",\n'
+            '        "session_id": "session-unknown-hand",\n'
+            '        "device_id": "iphone-1",\n'
+            '        "seq": 3,\n'
+            '        "t_mono_ns": 300,\n'
+            '        "source": {"device_kind": "iphone", "sensor": "camera", "engine": "mediapipe", "engine_version": "0.1", "model_sha256": "a" * 64},\n'
+            '        "modality": "hand",\n'
+            '        "payload": {\n'
+            '            "gesture": "open_palm",\n'
+            '            "phase": "end",\n'
+            '            "value": None,\n'
+            '            "hand": {"label": "unknown", "track_id": 4, "mirrored": False},\n'
+            '            "confidence": {"raw": 0.80, "calibrated": 0.78},\n'
+            "        },\n"
+            '        "gate": {"recognition_passed": True, "rule_version": "phase0-1"},\n'
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n"
+        )
+        new = "    validate(event, EVENT_SCHEMA)\n" + addition + "\n\ndef test_universal_event_rejects_application_specific_command():\n"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-casefold-english" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_routes_mixed_case_english_request"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = '    assert decision.confidence == 0.95\n\n\ndef test_preserves_multi_specialist_candidates_and_priority() -> None:\n'
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "\n\ndef test_routes_mixed_case_english_request() -> None:\n"
+            '    assert route(ManagementRequest("u", "eNgLiShで会話したい")).specialist is Specialist.ENGLISH\n'
+        )
+        new = '    assert decision.confidence == 0.95\n' + addition + "\n\ndef test_preserves_multi_specialist_candidates_and_priority() -> None:\n"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-mixed-specialists" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_preserves_market_priority_over_jobs_for_mixed_request"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = '    assert decision.metadata["request_metadata"]["source"] == "parallel-dev-test"\n'
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "\n\ndef test_preserves_market_priority_over_jobs_for_mixed_request() -> None:\n"
+            '    decision = route(ManagementRequest("u", "求人とNYダウについて教えて"))\n'
+            '    assert decision.specialist is Specialist.MARKET\n'
+            '    assert decision.metadata["matched_specialists"] == ["market", "jobs"]\n'
+            '    assert decision.metadata["routing_priority"] == 4\n'
+        )
+        new = anchor + addition
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "uhip-confidence-boundary-acceptance" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_accepts_confidence_boundary_values"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_universal_event_rejects_application_specific_command():\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "def test_universal_event_accepts_confidence_boundary_values():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "confidence-boundary-acceptance-20261009",\n'
+            '        "session_id": "confidence-boundary-session-20261009",\n'
+            '        "device_id": "device-1",\n'
+            '        "seq": 1,\n'
+            '        "t_mono_ns": 100,\n'
+            '        "source": {"device_kind": "mac", "sensor": "camera", "engine": "mediapipe", "engine_version": "0.1", "model_sha256": "a" * 64},\n'
+            '        "modality": "hand",\n'
+            '        "payload": {"confidence": {"raw": 1.0, "calibrated": 0.0}},\n'
+            '        "gate": {"recognition_passed": True, "rule_version": "phase0-1"},\n'
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    validate(event, EVENT_SCHEMA)\n\n\n"
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "uhip-confidence-out-of-range-rejection" and chosen == "uhip/tests/test_schema_contracts.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_universal_event_rejects_out_of_range_calibrated_confidence"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_universal_event_rejects_application_specific_command():\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "def test_universal_event_rejects_out_of_range_calibrated_confidence():\n"
+            "    event = {\n"
+            '        "schema_version": "0.3",\n'
+            '        "event_id": "confidence-range-rejection-20261009",\n'
+            '        "session_id": "confidence-range-session-20261009",\n'
+            '        "device_id": "device-1",\n'
+            '        "seq": 4,\n'
+            '        "t_mono_ns": 400,\n'
+            '        "t_wall": "2026-09-28T01:00:04Z",\n'
+            '        "source": {"device_kind": "mac", "sensor": "camera", "engine": "mediapipe", "engine_version": "0.1", "model_sha256": "a" * 64},\n'
+            '        "modality": "hand",\n'
+            '        "payload": {"gesture": "thumb_up", "phase": "end", "value": None, "hand": {"label": "right", "track_id": 3, "mirrored": True}, "confidence": {"raw": 0.99, "calibrated": 1.01}},\n'
+            '        "gate": {"recognition_passed": True, "rule_version": "phase0-1"},\n'
+            '        "ttl_ms": 500,\n'
+            "    }\n"
+            "    with pytest.raises(jsonschema.ValidationError):\n"
+            "        validate(event, EVENT_SCHEMA)\n\n\n"
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-stock-jobs-priority" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_router_regression_stock_jobs_priority_distributed_loop"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_preserves_market_priority_over_jobs_for_mixed_request() -> None:\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+        addition = (
+            "\n\ndef test_router_regression_stock_jobs_priority_distributed_loop() -> None:\n"
+            '    decision = route(ManagementRequest("u", "Find stock prices and job opportunities"))\n'
+            "    assert decision.specialist is Specialist.STOCKS\n"
+            '    assert decision.metadata["matched_specialists"] == ["stocks", "jobs"]\n'
+            '    assert decision.metadata["routing_priority"] == 5\n'
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "proposal-generator-deduplicates-approved-task-ids-20261027" and chosen == "tests/test_autonomous_task_proposals.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_duplicate_approved_issues_with_same_registered_task_id_are_queued_once"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = (
+            "\ndef test_duplicate_approved_issues_with_same_registered_task_id_are_queued_once(tmp_path):\n"
+            '    task_id = "approved-duplicate"\n'
+            '    first = issue(task_id, labels=("autonomous-task-approved",))\n'
+            '    second = issue(task_id, labels=("autonomous-task-approved",))\n'
+            '    second["number"] = 18\n'
+            '    result, qp = run(tmp_path, [first, second], state(), registered_tasks=[registered(task_id)])\n'
+            '    queued = json.loads(qp.read_text(encoding="utf-8"))["tasks"]\n'
+            '    assert result["status"] == "QUEUED_APPROVED"\n'
+            '    assert result["approved_count"] == 1\n'
+            '    assert result["approved_task_ids"] == [task_id]\n'
+            '    assert result["diagnostics"]["excluded_task_count"] == 1\n'
+            '    assert [task["id"] for task in queued] == [task_id]\n'
+            '    assert queued[0]["source_issue"] == 17\n'
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "router-regression-market-channel-metadata" and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_router_regression_market_channel_metadata_distributed_loop"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_normalizes_full_width_input_and_preserves_channel_metadata() -> None:\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+        addition = (
+            "\n\ndef test_router_regression_market_channel_metadata_distributed_loop() -> None:\n"
+            '    request = ManagementRequest("u", "Explain FOREX exchange rates", channel="line", metadata={"source": "distributed-loop-regression"})\n'
+            "    decision = route(request)\n"
+            "    assert decision.specialist is Specialist.MARKET\n"
+            '    assert decision.metadata["matched_specialists"] == ["market"]\n'
+            '    assert decision.metadata["routing_priority"] == 4\n'
+            '    assert decision.metadata["channel"] == "line"\n'
+            '    assert decision.metadata["request_metadata"]["source"] == "distributed-loop-regression"\n'
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "macos-readiness-audit-no-secret-leak" and chosen == "tests/test_macos_kanban_obsidian_readiness.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_readiness_report_never_exposes_bridge_key"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_load_env_file_ignores_comments_and_strips_quotes(tmp_path: Path):\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+        addition = (
+            "\n\ndef test_readiness_report_never_exposes_bridge_key(monkeypatch, tmp_path: Path):\n"
+            "    vault = tmp_path / \"vault\"\n"
+            "    vault.mkdir()\n"
+            '    monkeypatch.setenv("OBSIDIAN_BRIDGE_SERVER_URL", "https://example.invalid")\n'
+            '    monkeypatch.setenv("OBSIDIAN_BRIDGE_KEY", "secret-canary-never-logged")\n'
+            '    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(vault))\n'
+            '    monkeypatch.delenv("HERMES_KANBAN_HOME", raising=False)\n'
+            '    monkeypatch.delenv("HERMES_KANBAN_DB", raising=False)\n'
+            "\n"
+            "    report = readiness.collect_checks(home=tmp_path)\n"
+            "    rendered = repr(report)\n"
+            "\n"
+            '    assert "secret-canary-never-logged" not in rendered\n'
+            '    assert report["external_requests"] == 0\n'
+            '    assert report["project_writes"] == 0\n'
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id in {"router-regression-general-request-metadata", "router-regression-general-request-metadata-refresh-20261015"} and chosen == "tests/test_management_router.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_router_regression_general_request_keeps_channel_and_request_metadata"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_unresolved_request_records_empty_candidates() -> None:\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+        addition = (
+            "def test_router_regression_general_request_keeps_channel_and_request_metadata() -> None:\n"
+            '    request = ManagementRequest("u", "今日は何をしよう？", channel="line", metadata={"source": "distributed-loop-general-metadata"})\n'
+            "    decision = route(request)\n"
+            "    assert decision.specialist is Specialist.GENERAL\n"
+            '    assert decision.metadata["routing"] == "deterministic"\n'
+            '    assert decision.metadata["matched_specialists"] == []\n'
+            '    assert decision.metadata["routing_priority"] is None\n'
+            '    assert decision.metadata["channel"] == "line"\n'
+            '    assert decision.metadata["request_metadata"]["source"] == "distributed-loop-general-metadata"\n'
+            "\n\n"
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "recovery-ai-loop-adapter-durable-state-readback" and chosen == "tests/test_recovery_ai_loop_adapter.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_failure_record_survives_new_store_readback"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_invalid_evidence_holds_for_human_review(tmp_path):\n"
+        count = text.count(anchor)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+        addition = (
+            "def test_failure_record_survives_new_store_readback(tmp_path):\n"
+            '    path = tmp_path / "recovery.json"\n'
+            "    result = record_loop_outcome(path, {\n"
+            '        "task_id": "recovery-readback-task", "status": "FAIL", "exit_code": 1,\n'
+            '        "failure_reason": "task_timeout",\n'
+            "    })\n"
+            '    assert result["decision"]["action"] == "REPAIR_ONCE"\n'
+            "    reopened = RecoveryStore(path)\n"
+            '    status = reopened.task_status("recovery-readback-task")\n'
+            '    assert status["consecutive_failures"] == 1\n'
+            '    assert status["last_category"] == "timeout"\n'
+            '    assert status["same_fingerprint_attempts"] == 1\n'
+            "\n\n"
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "loop-test-recovery-state-isolation" and chosen == "tests/test_minimal_autonomous_loop.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        marker = 'RecoveryStore(tmp_path / "recovery-ai-state.json")'
+        if marker in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        old = '    assert json.loads(lines[0])["task_id"] == "t1"\n'
+        count = text.count(old)
+        if count != 1:
+            return None, f"anchor_count_{chosen}:{count}"
+        new = (
+            old
+            + '    from scripts.recovery_ai import RecoveryStore\n'
+            + '    recovery = RecoveryStore(tmp_path / "recovery-ai-state.json")\n'
+            + '    status = recovery.task_status("t1")\n'
+            + '    assert status["consecutive_failures"] == 1\n'
+            + '    assert status["last_category"] == "unknown"\n'
+        )
+        candidate = text.replace(old, new, 1)
+        if len(old) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(old)}, new={len(new)}"
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": old, "new": new}],
+        }, None
+
+    if task_id == "loop-refill-empty-catalog-next-safe-test-20261023" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_selects_only_incomplete_unheld_unreviewed_catalog_tasks_within_cap"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        addition = "\n".join([
+            f"def {name}(tmp_path: Path):",
+            "    queue, catalog, _ = _inputs(",
+            "        tmp_path,",
+            "        max_tasks=2,",
+            '        existing=[_task("task-existing")],',
+            '        candidates=[_task("task-done"), _task("task-held"), _task("task-review"), _task("task-ready-one"), _task("task-ready-two")],',
+            "    )",
+            "    state = _write(",
+            '        tmp_path / "state.json",',
+            "        {",
+            '            "version": 1,',
+            '            "completed": ["task-done"],',
+            '            "recovery_ai": {"schema_version": 1, "tasks": {',
+            '                "task-held": {"held": True},',
+            '                "task-review": {"resume_requires_review": True},',
+            '            }, "checkpoint": None},',
+            "        },",
+            "    )",
+            '    output = tmp_path / "runtime.json"',
+            "    report = build_queue(queue, catalog, state, output)",
+            '    result = json.loads(output.read_text(encoding="utf-8"))',
+            '    assert [task["id"] for task in result["tasks"]] == ["task-existing", "task-ready-one"]',
+            '    assert report["added_ids"] == ["task-ready-one"]',
+            '    assert report["skipped_catalog_completed_ids"] == ["task-done"]',
+            '    assert report["skipped_catalog_held_ids"] == ["task-held"]',
+            '    assert report["skipped_catalog_review_ids"] == ["task-review"]',
+            "",
+            "",
+        ]) + "\n"
+        new = addition + "\n" + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "refill-all-catalog-candidates-ineligible-regression" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_reports_catalog_exhaustion_by_durable_state"
+        if f"def {name}(" not in text:
+            return None, "required_regression_test_missing"
+        return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+
+    if task_id == "distributed-loop-dispatch-duplicate-active-run-guard-regression" and chosen == "tests/test_distributed_loop_trigger.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_dispatch_does_not_post_when_run_is_already_active_distributed_loop"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_dispatch_acknowledges_only_after_run_is_visible(monkeypatch):" + chr(10)
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            f"def {name}(monkeypatch):",
+            '    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")',
+            '    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")',
+            "    client = _Client([])",
+            '    active = _Response(200, {"workflow_runs": [{"run_number": 90, "status": "in_progress"}]})',
+            '    empty = _Response(200, {"workflow_runs": []})',
+            "    from unittest.mock import patch",
+            '    with patch.object(trigger.httpx, "Client", return_value=client):',
+            '        with patch.object(client, "get", side_effect=[active, empty]):',
+            '            with patch.object(client, "post", side_effect=AssertionError("active run must suppress dispatch")):',
+            '                handled, reply = request_distributed_loop("u1", "分散Loopを4回、安全確認付きで実行")',
+            "    assert handled is True",
+            '    assert "すでに実行中" in reply',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "proposal-generator-resume-review-exclusion-regression" and chosen == "tests/test_autonomous_task_proposals.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_approved_registered_task_is_not_queued_when_resume_requires_review"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_approved_tasks_respect_remaining_queue_capacity(tmp_path):" + chr(10)
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            f"def {name}(tmp_path):",
+            '    task_id = "resume-review-task"',
+            "    result, queue_path = run(",
+            "        tmp_path,",
+            '        [issue(task_id, labels=("autonomous-task-approved",))],',
+            '        state(tasks={task_id: {"held": False, "resume_requires_review": True}}),',
+            "        registered_tasks=[registered(task_id)],",
+            "    )",
+            '    assert result["approved_count"] == 0',
+            '    assert json.loads(queue_path.read_text(encoding="utf-8"))["tasks"] == []',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "queue-progress-ignores-unrelated-pass-results-regression" and chosen == "tests/test_distributed_loop_queue_progress.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_progress_ignores_pass_and_no_change_results_outside_runtime_queue"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_progress_rejects_duplicate_queue_ids(tmp_path: Path):" + chr(10)
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            f"def {name}(tmp_path: Path):",
+            '    queue = tmp_path / "runtime-queue.json"',
+            '    state = tmp_path / "state.json"',
+            '    results = tmp_path / "results.jsonl"',
+            '    queue.write_text(json.dumps({"tasks": [{"id": "task-in-queue"}]}), encoding="utf-8")',
+            '    state.write_text(json.dumps({"completed": []}), encoding="utf-8")',
+            '    results.write_text(json.dumps({"task_id": "task-outside-queue-pass", "status": "PASS"}) + "\\n" + json.dumps({"task_id": "task-outside-queue-no-change", "status": "NO_CHANGE"}) + "\\n", encoding="utf-8")',
+            '    assert calculate_progress(queue, state, results) == {"queue_total": 1, "queue_completed": 0}',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "proposal-generator-conflicting-catalog-definitions-regression" and chosen == "tests/test_autonomous_task_proposals.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_conflicting_duplicate_catalog_definitions_fail_closed"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_fails_closed_on_missing_recovery_state(tmp_path):" + chr(10)
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            f"def {name}(tmp_path):",
+            '    queue_path = tmp_path / "queue.json"',
+            '    with pytest.raises(ValueError, match="conflicting registered task definitions"):',
+            "        run(",
+            "            tmp_path,",
+            '            [issue("conflicting-catalog-task", labels=("autonomous-task-approved",))],',
+            "            state(),",
+            "            registered_tasks=[",
+            '                registered("conflicting-catalog-task"),',
+            '                registered("conflicting-catalog-task", instruction="Different reviewed instruction."),',
+            "            ],",
+            "        )",
+            '    assert json.loads(queue_path.read_text(encoding="utf-8"))["tasks"] == []',
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+
+    if task_id == "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261031" and chosen == "tests/test_catalog_exhaustion_candidate_adapter.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_duplicate_catalog_candidates_are_deduplicated_within_report"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_distributed_workflow_wires_analyzer_adapter_before_review_pool(tmp_path):\n"
+        if text.count(anchor) != 1:
+            return None, f"deterministic_anchor_not_unique:{chosen}:{text.count(anchor)}"
+        addition = (
+            "def test_duplicate_catalog_candidates_are_deduplicated_within_report():\n"
+            "    report = _report()\n"
+            '    candidate = report["candidates"][0]\n'
+            '    report["candidates"] = [dict(candidate), dict(candidate)]\n'
+            '    report["candidate_count"] = 2\n'
+            "    rows = merge_candidates([], report)\n"
+            "    assert len(rows) == 1\n"
+            '    assert rows[0]["source_id"] == "catalog-exhaustion:review-coverage-gap-0123456789"\n'
+            "\n\n"
+        )
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate_source = text.replace(anchor, new, 1)
+        try:
+            compile(candidate_source, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "review-coverage-gap-703fa3c06b" and chosen == "tests/test_project_registry.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_list_projects_returns_ordered_snapshot_without_exposing_registry"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = (
+            '    assert serialized["supported_agents"] == ["implementer", "tester"]\n'
+            '    assert isinstance(serialized["supported_agents"], list)\n'
+        )
+        if text.count(anchor) != 1:
+            return None, f"deterministic_anchor_not_unique:project_registry_list_projects:{text.count(anchor)}"
+        addition = (
+            "\n\n"
+            "def test_list_projects_returns_ordered_snapshot_without_exposing_registry():\n"
+            "    first = DEFAULT_PROJECT\n"
+            "    second = ProjectRecord(name=\"sample-app\", repository=\"nonkun12/sample-app\")\n"
+            "    registry = ProjectRegistry([first, second])\n"
+            "\n"
+            "    projects = registry.list_projects()\n"
+            "\n"
+            "    assert projects == [first, second]\n"
+            "    projects.clear()\n"
+            "    assert registry.list_projects() == [first, second]\n"
+            "    assert ProjectRegistry([]).list_projects() == []\n"
+        )
+        replacement = anchor + addition
+        if len(anchor) > 1200 or len(replacement) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(replacement)}"
+        candidate = text.replace(anchor, replacement, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": replacement}],
+        }, None
+
+
+    if task_id in {"task-refill-cli-test-20261102", "task-refill-read-json-test-20261102"} and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        cli_name = "test_refill_main_cli_adds_one_approved_task"
+        read_json_name = "test_read_json_rejects_non_object_root"
+        cli_end = '    assert [task["id"] for task in runtime_queue["tasks"]] == ["task-cli-new"]'
+        eof_anchor = '    assert queue.read_text(encoding="utf-8") == queue_before'
+
+        cli_body = (
+            "def test_refill_main_cli_adds_one_approved_task(tmp_path: Path, monkeypatch, capsys):\n"
+            "    import sys\n"
+            "    from scripts.autonomous_task_refill import main\n"
+            "    queue, catalog, completed = _inputs(\n"
+            "        tmp_path, candidates=[{**_task(\"task-cli-new\"), \"execution_approved\": True}]\n"
+            "    )\n"
+            "    output = tmp_path / \"runtime.json\"\n"
+            "    monkeypatch.setattr(sys, \"argv\", [\"autonomous_task_refill\", \"--queue\", str(queue), \"--catalog\", str(catalog), \"--completed-state\", str(completed), \"--output\", str(output)])\n"
+            "    assert main() == 0\n"
+            "    report = json.loads(capsys.readouterr().out.strip())\n"
+            "    assert report[\"added_ids\"] == [\"task-cli-new\"]\n"
+            "    assert report[\"added\"] == 1\n"
+            "    runtime_queue = json.loads(output.read_text(encoding=\"utf-8\"))\n"
+            "    assert [task[\"id\"] for task in runtime_queue[\"tasks\"]] == [\"task-cli-new\"]\n"
+        )
+        read_json_body = (
+            "def test_read_json_rejects_non_object_root(tmp_path: Path):\n"
+            "    from scripts.autonomous_task_refill import read_json\n"
+            "    path = tmp_path / \"array.json\"\n"
+            "    path.write_text(\"[]\", encoding=\"utf-8\")\n"
+            "    with pytest.raises(ValueError, match=\"JSON root must be an object\"):\n"
+            "        read_json(path)\n"
+        )
+
+        if task_id == "task-refill-cli-test-20261102":
+            if f"def {cli_name}(" in text:
+                return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+            read_json_def = f"def {read_json_name}("
+            if read_json_def in text:
+                # Normalize the gap and insert CLI immediately before read_json.
+                pos = text.index(read_json_def)
+                prefix = text[:pos]
+                anchor_pos = prefix.rfind(eof_anchor)
+                if anchor_pos < 0:
+                    return None, "deterministic_anchor_not_unique:refill_cli"
+                # Only whitespace may separate the anchor and read_json.
+                # Refuse to replace intervening tests or helpers.
+                gap = text[anchor_pos + len(eof_anchor):pos]
+                if gap.strip():
+                    return None, "deterministic_anchor_intervening_content:refill_cli"
+                old = eof_anchor + gap
+                new = eof_anchor + "\n\n" + cli_body + "\n"
+            else:
+                if text.count(eof_anchor) != 1:
+                    return None, f"deterministic_anchor_not_unique:refill_cli:{text.count(eof_anchor)}"
+                old = eof_anchor
+                new = eof_anchor + "\n\n" + cli_body
+        else:
+            if f"def {read_json_name}(" in text:
+                return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+            if f"def {cli_name}(" in text:
+                if text.count(cli_end) != 1:
+                    return None, f"deterministic_anchor_not_unique:refill_read_json:{text.count(cli_end)}"
+                # Normalize only the separator after the CLI test. Keep
+                # all source following that separator, including unrelated tests.
+                pos = text.index(cli_end) + len(cli_end)
+                separator_start = pos + (1 if text.startswith("\n", pos) else 0)
+                suffix_end = separator_start
+                while suffix_end < len(text) and text[suffix_end] in "\r\n \t":
+                    suffix_end += 1
+                old = cli_end + text[pos:suffix_end]
+                new = cli_end + "\n\n" + read_json_body + text[separator_start:suffix_end]
+            else:
+                if text.count(eof_anchor) != 1:
+                    return None, f"deterministic_anchor_not_unique:refill_read_json:{text.count(eof_anchor)}"
+                old = eof_anchor
+                new = eof_anchor + "\n\n" + read_json_body
+
+        if len(old) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(old)}, new={len(new)}"
+        candidate = text.replace(old, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": old, "new": new}],
+        }, None
+
+    if task_id == "catalog-exhaustion-analyzer-main-fail-closed-20261105" and chosen == "tests/test_catalog_exhaustion_analyzer.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_main_fails_closed_on_malformed_recovery_state"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_public_function_discovery_skips_protocol_and_abstract_stubs():"
+        addition = (
+            "def test_main_fails_closed_on_malformed_recovery_state(tmp_path, monkeypatch, capsys):\n"
+            "    root, catalog, queue, state, runtime = _fixture(tmp_path)\n"
+            "    _write(state, {\"completed\": [], \"recovery_ai\": {\"schema_version\": 999, \"tasks\": {}, \"checkpoint\": None}})\n"
+            "    from types import SimpleNamespace\n"
+            "    monkeypatch.setattr(\"scripts.catalog_exhaustion_analyzer.argparse.parse_args\", lambda: SimpleNamespace(repo_root=root, catalog=catalog, queue=queue, state=state, runtime=runtime, existing_issues=None, output=tmp_path / \"report.json\"))\n"
+            "    from scripts.catalog_exhaustion_analyzer import main\n"
+            "    assert main() == 2\n"
+            "    assert capsys.readouterr().out.strip() == \"CATALOG_EXHAUSTION_ANALYZER_BLOCKED: ValueError\"\n"
+            "    assert not (tmp_path / \"report.json\").exists()\n"
+            "\n\n"
+        )
+        if text.count(anchor) != 1:
+            return None, "deterministic_anchor_not_unique:catalog_exhaustion_fail_closed"
+        replacement = addition + anchor
+        if len(anchor) > 1200 or len(replacement) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(replacement)}"
+        candidate = text.replace(anchor, replacement, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": replacement}],
+        }, None
+
+    return None, None
+
+class DevelopmentExecutor:
+    """Execute concrete development roles against one guarded worktree."""
+
+    def __init__(self, state: DevelopmentState) -> None:
+        self.state = state
+
+    def execute(self, task: AgentTask) -> AgentResult:
+        try:
+            if task.role is AgentRole.MANAGER:
+                autonomous_task_id = self.state.autonomous_task_id.strip() or os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+                expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(autonomous_task_id)
+                files = worker.repo_files()
+                if expected_target is not None:
+                    # Deterministic queue tasks use their declared target directly;
+                    # never call the model-backed file selector for these tasks.
+                    if expected_target not in files:
+                        return AgentResult(
+                            task.task_id,
+                            False,
+                            f"deterministic target unavailable or disallowed: {expected_target}",
+                        )
+                    chosen = expected_target
+                else:
+                    chosen = worker.choose_file(self.state.client, self.state.instruction, files)
+                    if not chosen:
+                        chosen = _fallback_safe_target(files)
+                if not chosen:
+                    return AgentResult(task.task_id, False, "manager could not select a safe target")
+                self.state.chosen = chosen
+                if expected_target is not None and chosen != expected_target:
+                    self.state.chosen = None
+                    return AgentResult(
+                        task.task_id,
+                        False,
+                        f"deterministic target mismatch: expected {expected_target}, got {chosen}",
+                    )
+                return AgentResult(task.task_id, True, f"selected {chosen}", frozenset({chosen}))
+            if self.state.chosen is None:
+                return AgentResult(task.task_id, False, "manager selection missing")
+            if task.role is AgentRole.IMPLEMENTER:
+                task_id = _autonomous_task_id_for_state(self.state)
+                # Exact instruction fallback is bounded to the known queued task and target.
+                if (
+                    not task_id
+                    and self.state.chosen == "uhip/tests/test_schema_contracts.py"
+                    and "confidence=0.0" in self.state.instruction
+                    and "recognition_passed=false" in self.state.instruction
+                ):
+                    task_id = "hand-sign-uhip-contract-negative-confidence"
+                deterministic_plan, deterministic_err = _deterministic_autonomous_test_plan(
+                    self.state.chosen,
+                    task_id,
+                )
+                if deterministic_err:
+                    return AgentResult(task.task_id, False, f"deterministic plan generation failed: {deterministic_err}")
+                if deterministic_plan is not None:
+                    ok, detail = worker.validate_plan(deterministic_plan, self.state.chosen)
+                    if not ok:
+                        return AgentResult(task.task_id, False, f"deterministic plan rejected: {detail}")
+                    if detail == "no_change":
+                        self.state.plan = deterministic_plan
+                        self.state.touched = []
+                        return AgentResult(task.task_id, True, "no safe change required")
+                    applied, detail, touched = worker.apply_plan(deterministic_plan)
+                    if not applied:
+                        worker.restore(touched)
+                        return AgentResult(task.task_id, False, f"apply failed: {detail}")
+                    self.state.plan = deterministic_plan
+                    self.state.touched = touched
+                    return AgentResult(task.task_id, True, "guarded change applied", frozenset(touched))
+
+                if _is_review_coverage_gap_task(self.state, task_id):
+                    context = worker.context_for(self.state.chosen)
+                    append_plan, append_error = worker.build_append_only_test_plan(
+                        self.state.client,
+                        self.state.instruction,
+                        self.state.chosen,
+                        context,
+                    )
+                    if append_error:
+                        return AgentResult(
+                            task.task_id,
+                            False,
+                            f"append-only test plan rejected: {append_error}",
+                        )
+                    if append_plan is None:
+                        return AgentResult(task.task_id, False, "append-only test plan unavailable")
+                    if append_plan.get("no_change") is True:
+                        self.state.plan = append_plan
+                        self.state.touched = []
+                        return AgentResult(task.task_id, True, "no additional regression test required")
+                    ok, detail = worker.validate_plan(append_plan, self.state.chosen)
+                    if not ok:
+                        return AgentResult(task.task_id, False, f"append-only test plan rejected: {detail}")
+                    applied, detail, touched = worker.apply_plan(append_plan)
+                    if not applied:
+                        worker.restore(touched)
+                        return AgentResult(task.task_id, False, f"append-only test apply failed: {detail}")
+                    self.state.plan = append_plan
+                    self.state.touched = touched
+                    return AgentResult(
+                        task.task_id,
+                        True,
+                        "guarded append-only regression test applied",
+                        frozenset(touched),
+                    )
+
+                operational_plan, operational_error = _deterministic_operational_validation_plan(
+                    self.state.instruction,
+                    self.state.chosen,
+                )
+                if operational_error:
+                    return AgentResult(
+                        task.task_id,
+                        False,
+                        f"operational validation plan rejected: {operational_error}",
+                    )
+                if operational_plan is not None:
+                    ok, detail = worker.validate_plan(operational_plan, self.state.chosen)
+                    if not ok:
+                        return AgentResult(
+                            task.task_id,
+                            False,
+                            f"operational validation plan rejected: {detail}",
+                        )
+                    if detail == "no_change":
+                        self.state.plan = operational_plan
+                        self.state.touched = []
+                        return AgentResult(task.task_id, True, "operational E2E regression already present")
+                    applied, detail, touched = worker.apply_plan(operational_plan)
+                    if not applied:
+                        worker.restore(touched)
+                        return AgentResult(task.task_id, False, f"operational validation apply failed: {detail}")
+                    self.state.plan = operational_plan
+                    self.state.touched = touched
+                    return AgentResult(
+                        task.task_id,
+                        True,
+                        "guarded additive operational E2E regression test applied",
+                        frozenset(touched),
+                    )
+
+                explicit_comment_plan = _explicit_comment_plan(self.state.instruction, self.state.chosen)
+                comment_plan = None if explicit_comment_plan is not None else worker.build_comment_test_plan(self.state.instruction, self.state.chosen)
+                context = worker.context_for(self.state.chosen)
+                plan = (
+                    explicit_comment_plan
+                    if explicit_comment_plan is not None
+                    else comment_plan
+                    if comment_plan is not None
+                    else worker.build_plan(
+                        self.state.client,
+                        self.state.instruction,
+                        self.state.chosen,
+                        context,
+                    )
+                )
+                plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    context,
+                )
+                if not ok:
+                    return AgentResult(task.task_id, False, f"implementation plan rejected: {detail}")
+                if detail == "no_change":
+                    self.state.plan = plan; self.state.touched = []
+                    return AgentResult(task.task_id, True, "no safe change required")
+                plan, applied, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    context,
+                )
+                if not applied:
+                    worker.restore(touched)
+                    return AgentResult(task.task_id, False, f"apply failed: {detail}")
+                self.state.plan = plan; self.state.touched = touched
+                return AgentResult(task.task_id, True, "guarded change applied", frozenset(touched))
+            if task.role is AgentRole.TESTER:
+                task_id = _autonomous_task_id_for_state(self.state)
+                deterministic_no_change = (
+                    isinstance(self.state.plan, dict)
+                    and self.state.plan.get("source") == "deterministic_autonomous_task"
+                    and self.state.plan.get("no_change") is True
+                    and not self.state.touched
+                )
+                if deterministic_no_change:
+                    target = self.state.chosen
+                    if not _is_deterministic_autonomous_task(task_id, target):
+                        return AgentResult(task.task_id, False, "deterministic no-change target identity mismatch")
+                    passed, output = worker.run_tests([target], full_suite=False)
+                else:
+                    passed, output = worker.run_tests(self.state.touched or [])
+                self.state.tests_passed = passed; self.state.test_output = output
+                return AgentResult(task.task_id, passed, output[-4000:], frozenset(self.state.touched or []))
+            if task.role is AgentRole.DEBUGGER:
+                task_id = _autonomous_task_id_for_state(self.state)
+                if _is_deterministic_autonomous_task(task_id, self.state.chosen):
+                    return AgentResult(task.task_id, False, "deterministic test failure; schema and test must not be mutated by LLM")
+                if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
+                    return AgentResult(task.task_id, True, "deterministic debug retry; no LLM JSON parsing")
+                worker.restore(self.state.touched or [])
+                failure_context = task.instruction
+                if self.state.test_output:
+                    failure_context = f"{failure_context}\nPrevious test output:\n{self.state.test_output[-4000:]}"
+                context = worker.context_for(self.state.chosen)
+                plan = worker.build_plan(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    context,
+                    failure_context,
+                )
+                plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    context,
+                )
+                if not ok or detail == "no_change":
+                    return AgentResult(task.task_id, False, f"debug plan rejected: {detail}")
+                plan, applied, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    context,
+                )
+                if not applied:
+                    worker.restore(touched)
+                    return AgentResult(task.task_id, False, f"debug apply failed: {detail}")
+                self.state.plan = plan; self.state.touched = touched
+                return AgentResult(task.task_id, True, "debug fix applied", frozenset(touched))
+            if task.role is AgentRole.REFACTORER:
+                task_id = _autonomous_task_id_for_state(self.state)
+                if _is_deterministic_autonomous_task(task_id, self.state.chosen):
+                    return AgentResult(task.task_id, True, "no refactor needed for deterministic test task")
+                if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
+                    return AgentResult(task.task_id, True, "no refactor needed for deterministic comment change")
+                refactor_instruction = (
+                    "Refactor the current implementation for clarity, maintainability, "
+                    "and duplication reduction. Preserve behavior and satisfy the original request. "
+                    f"Original request: {self.state.instruction} "
+                    f"Current repair task context: {task.instruction}"
+                )
+                refactor_context = self.state.test_output
+                if task.instruction:
+                    refactor_context = (
+                        f"{refactor_context}\n\nCurrent repair task context:\n{task.instruction}"
+                        if refactor_context
+                        else f"Current repair task context:\n{task.instruction}"
+                    )
+                plan = worker.build_plan(
+                    self.state.client,
+                    refactor_instruction,
+                    self.state.chosen,
+                    worker.context_for(self.state.chosen),
+                    refactor_context,
+                )
+                plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    worker.context_for(self.state.chosen),
+                )
+                if not ok:
+                    # Refactoring is an optional quality pass. A malformed or oversized
+                    # refactor proposal must not discard an already-applied implementation
+                    # or debug fix; keep all safety violations fail-closed.
+                    if detail in {
+                        "invalid_change_count_repair_failed",
+                        "invalid_old_new",
+                        "diff_marker_in_replacement",
+                        "change_too_large",
+                    }:
+                        return AgentResult(
+                            task.task_id,
+                            True,
+                            f"refactor skipped after bounded plan repair: {detail}",
+                        )
+                    return AgentResult(task.task_id, False, f"refactor plan rejected: {detail}")
+                if detail == "no_change":
+                    return AgentResult(task.task_id, True, "no refactor change required")
+                plan, applied, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    worker.context_for(self.state.chosen),
+                )
+                if not applied:
+                    worker.restore(touched)
+                    return AgentResult(task.task_id, False, f"refactor apply failed: {detail}")
+                self.state.plan = plan; self.state.touched = touched
+                return AgentResult(task.task_id, True, "refactor applied", frozenset(touched))
+            if task.role is AgentRole.REVIEWER:
+                status = worker.run(["git", "diff", "--check"])
+                if status.returncode != 0:
+                    return AgentResult(task.task_id, False, f"git diff --check failed: {status.stderr[-3000:]}")
+                diff = worker.run(["git", "diff", "--", *(self.state.touched or [])])
+                if diff.returncode != 0:
+                    return AgentResult(task.task_id, False, f"git diff failed: {diff.stderr[-3000:]}")
+                if not diff.stdout.strip() and self.state.touched:
+                    return AgentResult(task.task_id, False, "reviewer found no resulting diff")
+                return AgentResult(task.task_id, True, "review gate passed", frozenset(self.state.touched or []))
+            if task.role is AgentRole.REPAIRER:
+                task_id = _autonomous_task_id_for_state(self.state)
+                if _is_deterministic_autonomous_task(task_id, self.state.chosen):
+                    return AgentResult(
+                        task.task_id,
+                        False,
+                        "deterministic test failure; no LLM repair",
+                    )
+                if _is_deterministic_comment_request(self.state.instruction, self.state.chosen):
+                    return AgentResult(task.task_id, True, "deterministic repair retry; no LLM JSON parsing")
+                plan = worker.build_plan(self.state.client, self.state.instruction, self.state.chosen, worker.context_for(self.state.chosen), self.state.test_output)
+                plan, ok, detail = worker.validate_plan_with_bounded_repairs(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    worker.context_for(self.state.chosen),
+                )
+                if not ok or detail == "no_change":
+                    return AgentResult(task.task_id, False, f"repair plan rejected: {detail}")
+                worker.restore(self.state.touched or [])
+                plan, applied, detail, touched = worker.apply_plan_with_bounded_anchor_repair(
+                    self.state.client,
+                    self.state.instruction,
+                    self.state.chosen,
+                    plan,
+                    worker.context_for(self.state.chosen),
+                )
+                if not applied:
+                    worker.restore(touched)
+                    return AgentResult(task.task_id, False, f"repair apply failed: {detail}")
+                self.state.plan = plan; self.state.touched = touched
+                return AgentResult(task.task_id, True, "repair applied", frozenset(touched))
+            if task.role is AgentRole.INTEGRATOR:
+                status = worker.run(["git", "status", "--short"])
+                if status.returncode != 0:
+                    return AgentResult(task.task_id, False, status.stderr[-3000:])
+                if self.state.touched and not status.stdout.strip():
+                    return AgentResult(task.task_id, False, "integration gate found no working-tree change")
+                return AgentResult(task.task_id, True, "integration gate passed", frozenset(self.state.touched or []))
+            return AgentResult(task.task_id, False, f"unsupported role: {task.role.value}")
+        except Exception as exc:
+            return AgentResult(task.task_id, False, f"{type(exc).__name__}: {exc}")
+
+
+class DevelopmentRepairPlanner(RepairPlanner):
+    def __init__(self, state: DevelopmentState) -> None:
+        self.state = state
+    def repair_task(self, failed_task: AgentTask, result: AgentResult, attempt: int) -> AgentTask:
+        mode = "Use deterministic retry; do not call an LLM or parse JSON." if _is_deterministic_comment_request(self.state.instruction, self.state.chosen) else "Use the normal guarded repair planner."
+        return AgentTask(task_id=f"repair:{attempt}:{failed_task.task_id}", role=AgentRole.REPAIRER, instruction=f"{mode} Repair after {failed_task.role.value} failure: {result.summary[-1500:]}", resources=failed_task.resources)
+
+
+def _write_development_audit_to_google_sheets(*, instruction: str, status: str, target_path: str | None, branch: str | None, exit_detail: str, base_sha: str | None, produced_sha: str | None) -> None:
+    """Best-effort append of autonomous-development audit data to Google Sheets."""
+    if os.environ.get("GOOGLE_SHEETS_AUDIT_ENABLED", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return
+    try:
+        from .google_sheets_writer import GoogleSheetsWriter
+        writer = GoogleSheetsWriter.from_environment()
+        if writer is None:
+            print("[GOOGLE-SHEETS] audit skipped: configuration incomplete", flush=True)
+            return
+        writer.append_development_result(instruction=instruction, status=status, target_path=target_path, branch=branch, detail=exit_detail, base_sha=base_sha, produced_sha=produced_sha)
+        print("[GOOGLE-SHEETS] audit appended", flush=True)
+    except Exception as exc:
+        print(f"[GOOGLE-SHEETS] audit write failed (non-blocking): {type(exc).__name__}: {exc}", flush=True)
+
+
+
+def _prepare_idea_stage(instruction: str) -> tuple[str, str | None, str | None]:
+    """Optionally run the bounded IDEA stage before implementation.
+    
+    IDEA_MODE is opt-in. Without explicit acceptance, the loop stops before
+    any implementation task is created. This preserves human-on-the-loop.
+    """
+    if os.environ.get("IDEA_MODE", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return instruction, None, None
+
+    ideas = IdeaAgent().propose(instruction, limit=5)
+    requested_id = os.environ.get("IDEA_ACCEPTED_ID", "").strip()
+    accepted = next((idea for idea in ideas if idea.idea_id == requested_id), None)
+    if accepted is None:
+        print(
+            "[IDEA] proposals generated; no explicit acceptance. "
+            "Implementation blocked closed.",
+            flush=True,
+        )
+        for idea in ideas:
+            print(f"[IDEA] {idea.idea_id}: {idea.title}", flush=True)
+        return instruction, None, "IDEA acceptance required"
+
+    acceptance_reason = os.environ.get(
+        "IDEA_ACCEPTANCE_REASON",
+        "explicit human-on-the-loop acceptance",
+    ).strip()[:500]
+    handoff = handoff_idea(
+        accepted,
+        IdeaAcceptance(accepted=True, reason=acceptance_reason),
+    )
+    if handoff is None:
+        return instruction, None, "IDEA handoff rejected"
+
+    print(
+        f"[IDEA] accepted={accepted.idea_id}; handoff={handoff.task_id}; "
+        "implementation remains behind normal quality/safety gates",
+        flush=True,
+    )
+    return handoff.instruction, handoff.task_id, None
+
+def _shared_stop_is_active() -> bool:
+    """Poll the shared STOP ref at every runtime safety checkpoint."""
+    from core.emergency_stop import get_status
+
+    repository = (
+        os.environ.get("AI_REPORT_GITHUB_REPO")
+        or os.environ.get("GITHUB_REPOSITORY")
+        or "nonkun12/line-bot"
+    ).strip()
+    token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
+    if not repository or not token:
+        raise RuntimeError("shared_stop_credentials_missing")
+    return get_status(repository, token)
+
+
+def execute(instruction: str) -> int:
+    """Run one real guarded development request through the quality pipeline."""
+    stop_controller = ImmediateStopController(shared_status_checker=_shared_stop_is_active)
+    try:
+        stop_controller.assert_can_execute()
+    except ImmediateStop as exc:
+        print(f"IMMEDIATE STOP: {exc}", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=None, branch=None, exit_detail=str(exc), base_sha=None, produced_sha=None)
+        return 1
+    autonomous_task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    provider_block_reason = _provider_block_reason(autonomous_task_id)
+    if provider_block_reason is not None:
+        print("MODEL_PROVIDER=BLOCKED reason=local_adapter_unavailable; external or metered APIs are disabled", flush=True)
+        _write_development_audit_to_google_sheets(
+            instruction=instruction, status="BLOCKED", target_path=None, branch=None,
+            exit_detail=provider_block_reason, base_sha=None, produced_sha=None,
+        )
+        return 1
+    deterministic_task = autonomous_task_id in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+    review_coverage_gap_task = _is_review_coverage_gap_task_id(autonomous_task_id)
+    if deterministic_task or review_coverage_gap_task:
+        # Queued test tasks must preserve their task identity and exact instruction.
+        instruction, idea_task_id, idea_block_reason = instruction, None, None
+    else:
+        instruction, idea_task_id, idea_block_reason = _prepare_idea_stage(instruction)
+    if idea_block_reason is not None:
+        _write_development_audit_to_google_sheets(
+            instruction=instruction,
+            status="BLOCKED",
+            target_path=None,
+            branch=None,
+            exit_detail=idea_block_reason,
+            base_sha=None,
+            produced_sha=None,
+        )
+        return 1
+    if idea_task_id:
+        os.environ["AUTONOMOUS_TASK_ID"] = idea_task_id
+    # Deterministic tasks need no model. All other tasks use the validated
+    # loopback-only adapter; there is deliberately no cloud-provider fallback.
+    provider_free_task = _is_provider_free_autonomous_task(autonomous_task_id)
+    client = None if provider_free_task else worker.create_local_model_client_from_env()
+    state = DevelopmentState(
+        client=client,
+        instruction=instruction,
+        autonomous_task_id=os.environ.get("AUTONOMOUS_TASK_ID", "").strip(),
+    )
+    executor = DevelopmentExecutor(state)
+    tasks = (
+        AgentTask("manager", AgentRole.MANAGER, "Select one safe implementation target.", resources=frozenset({"target-selection"})),
+        AgentTask("implementer", AgentRole.IMPLEMENTER, "Implement the explicit LINE development request.", resources=frozenset({"working-tree"}), depends_on=("manager",)),
+        AgentTask("tester", AgentRole.TESTER, "Run guarded compile and full pytest checks.", resources=frozenset({"working-tree"}), depends_on=("implementer",)),
+        AgentTask("reviewer", AgentRole.REVIEWER, "Review the resulting diff and gate the change.", resources=frozenset({"working-tree"}), depends_on=("tester",)),
+        AgentTask("integrator", AgentRole.INTEGRATOR, "Run the final integration gate.", resources=frozenset({"working-tree"}), depends_on=("reviewer",)),
+    )
+    # Manager is read-only target selection. Establish a clean baseline immediately
+    # before any file-changing role so pre-existing dirty state cannot be mistaken
+    # for autonomous work.
+    try:
+        stop_controller.assert_can_execute()
+        manager_result = executor.execute(tasks[0])
+    except ImmediateStop as exc:
+        print(f"IMMEDIATE STOP: {exc}", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=None, branch=None, exit_detail=str(exc), base_sha=None, produced_sha=None)
+        return 1
+    if not manager_result.success:
+        print(f"Manager selection failed: {manager_result.summary}", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=None, branch=None, exit_detail=manager_result.summary, base_sha=None, produced_sha=None)
+        return 1
+    if state.chosen is None:
+        print("Manager produced no target.", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=None, branch=None, exit_detail="manager produced no target", base_sha=None, produced_sha=None)
+        return 1
+    if os.environ.get("SELF_IMPROVEMENT_POLICY_ENFORCED", "").strip().lower() in {"1", "true", "yes", "on"}:
+        assessment = assess_self_improvement((state.chosen,))
+        if assessment.decision is not SelfImprovementDecision.AUTONOMOUS_REVIEW:
+            detail = "; ".join(assessment.reasons)
+            print(f"Self-improvement policy blocked autonomous target {state.chosen}: {detail}", flush=True)
+            _write_development_audit_to_google_sheets(
+                instruction=instruction,
+                status="BLOCKED",
+                target_path=state.chosen,
+                branch=None,
+                exit_detail=detail,
+                base_sha=None,
+                produced_sha=None,
+            )
+            return 1
+    baseline = worker.run(["git", "status", "--porcelain=v1", "--untracked-files=all"])
+    if baseline.returncode != 0:
+        print(f"Baseline status failed: {baseline.stderr[-2000:]}", flush=True)
+        return 1
+    state.baseline_status = baseline.stdout
+    if baseline.stdout.strip():
+        print("Worktree is not clean before autonomous execution; refusing to proceed.", flush=True)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="BLOCKED", target_path=state.chosen, branch=None, exit_detail="worktree is not clean", base_sha=None, produced_sha=None)
+        return 1
+    head = worker.run(["git", "rev-parse", "HEAD"])
+    if head.returncode != 0 or not head.stdout.strip():
+        print(f"Baseline SHA capture failed: {head.stderr[-2000:]}", flush=True)
+        return 1
+    baseline_sha = head.stdout.strip()
+    safety_gate = GitWorktreeSafetyGate(worker.ROOT, baseline_sha, (state.chosen,))
+    runtime = QualityRuntime(
+        {
+            AgentRole.IMPLEMENTER: executor,
+            AgentRole.TESTER: executor,
+            AgentRole.DEBUGGER: executor,
+            AgentRole.REFACTORER: executor,
+            AgentRole.REVIEWER: executor,
+            AgentRole.REPAIRER: executor,
+            AgentRole.INTEGRATOR: executor,
+        },
+        max_rounds=3,
+        execution_safety_gate=safety_gate,
+        allowed_paths=(state.chosen,),
+        immediate_stop_controller=stop_controller,
+    )
+    try:
+        report = runtime.run(tasks[1:])
+    except Exception as exc:
+        _rollback_to_clean_baseline(baseline_sha)
+        detail = f"{type(exc).__name__}: {exc}"
+        print(f"Multi-agent development failed closed: {detail}", flush=True)
+        stopped = stop_controller.is_stopped()
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP" if stopped else "FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)
+        return 1
+    print(f"[manager] {tasks[0].task_id}: {manager_result.summary[-1500:]}", flush=True)
+    for item in report.completed:
+        print(f"[{item.task.role.value}] {item.task.task_id}: {item.result.summary[-1500:]}", flush=True)
+    improvement_result = observe_self_improvement(
+        report,
+        state.chosen,
+        allow_external_ai=not deterministic_task,
+    )
+    if not report.success or not report.integration_ready:
+        _rollback_to_clean_baseline(baseline_sha)
+        detail = report.error or report.failed_task_id or "quality runtime failed"
+        # Every failed guarded runtime must carry a canonical, non-repairable
+        # code. Unknown diagnostics are invalid task evidence, never "unknown"
+        # (which would authorize a bounded retry).
+        failure_code = extract_safe_failure_code(detail) or "invalid_task"
+        os.environ["AUTONOMOUS_FAILURE_CODE"] = failure_code
+        print(f"Multi-agent development failed: {detail}", flush=True)
+        stopped = stop_controller.is_stopped()
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP" if stopped else "FAIL", target_path=state.chosen, branch=None, exit_detail=detail, base_sha=baseline_sha, produced_sha=None)
+        return 1
+    touched = state.touched or []
+    if not touched:
+        _rollback_to_clean_baseline(baseline_sha)
+        print("Multi-agent development produced no file change; treating as a safe no-op.", flush=True)
+        _write_development_audit_to_google_sheets(
+            instruction=instruction,
+            status="NO_CHANGE",
+            target_path=state.chosen,
+            branch=None,
+            exit_detail="no file change",
+            base_sha=baseline_sha,
+            produced_sha=baseline_sha,
+        )
+        return 0
+    try:
+        stop_controller.assert_can_execute()
+    except ImmediateStop as exc:
+        _rollback_to_clean_baseline(baseline_sha)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=state.chosen, branch=None, exit_detail=str(exc), base_sha=baseline_sha, produced_sha=None)
+        return 1
+    branch = f"line-dev/{os.environ.get('GITHUB_RUN_ID', 'manual')}"
+    identity = ["-c", "user.name=github-actions[bot]", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com"]
+    add = worker.run(["git", "add", "--", *touched])
+    if add.returncode != 0:
+        worker.restore(touched); print(add.stderr[-2000:], flush=True); return 1
+    status = worker.run(["git", "status", "--short"])
+    if status.returncode != 0 or not status.stdout.strip():
+        worker.restore(touched); print("No changes to commit.", flush=True); return 1
+    try:
+        stop_controller.assert_can_execute()
+    except ImmediateStop as exc:
+        _rollback_to_clean_baseline(baseline_sha)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=state.chosen, branch=None, exit_detail=str(exc), base_sha=baseline_sha, produced_sha=None)
+        return 1
+    commit = worker.run(["git", *identity, "commit", "-m", "feat: LINE development request"])
+    if commit.returncode != 0:
+        worker.restore(touched); print(commit.stderr[-2000:], flush=True); return 1
+
+    # Post-generation REA must inspect the immutable commit before any push.
+    try:
+        from scripts.rea_post_generation_gate import verify_generated_commit
+        produced = worker.run(["git", "rev-parse", "HEAD"])
+        if produced.returncode != 0 or not produced.stdout.strip():
+            raise RuntimeError("produced_commit_sha_unavailable")
+        produced_sha = produced.stdout.strip()
+        raw_allowed_paths = os.environ.get("AUTONOMOUS_ALLOWED_PATHS", "")
+        allowed_paths = json.loads(raw_allowed_paths)
+        postgen_report = verify_generated_commit(
+            worker.ROOT,
+            base_sha=baseline_sha,
+            target_sha=produced_sha,
+            allowed_paths=allowed_paths,
+        )
+    except Exception as exc:
+        os.environ["AUTONOMOUS_POSTGEN_REA_STATUS"] = "BLOCKED"
+        rollback_ok = _rollback_to_clean_baseline(baseline_sha)
+        print(
+            f"POST_GENERATION_REA=BLOCKED reason={type(exc).__name__} "
+            f"rollback={'PASS' if rollback_ok else 'FAIL'}",
+            flush=True,
+        )
+        return 1
+
+    os.environ["AUTONOMOUS_POSTGEN_REA_STATUS"] = "PASS"
+    os.environ["AUTONOMOUS_POSTGEN_REA_BASE_SHA"] = baseline_sha
+    os.environ["AUTONOMOUS_POSTGEN_REA_TARGET_SHA"] = produced_sha
+    os.environ["AUTONOMOUS_POSTGEN_REA_DIFF_SHA256"] = postgen_report["diff_sha256"]
+    print(
+        f"POST_GENERATION_REA=PASS base={baseline_sha[:12]} "
+        f"target={produced_sha[:12]} diff_sha256={postgen_report['diff_sha256']}",
+        flush=True,
+    )
+
+    checkout = worker.run(["git", "checkout", "-B", branch])
+    if checkout.returncode != 0:
+        print(checkout.stderr[-2000:], flush=True); return 1
+    try:
+        stop_controller.assert_can_execute()
+    except ImmediateStop as exc:
+        _rollback_to_clean_baseline(baseline_sha)
+        _write_development_audit_to_google_sheets(instruction=instruction, status="STOP", target_path=state.chosen, branch=branch, exit_detail=str(exc), base_sha=baseline_sha, produced_sha=None)
+        return 1
+    pushed, publish_detail = _push_development_branch(branch)
+    if not pushed:
+        print(publish_detail[-2000:], flush=True)
+        return 1
+    produced = worker.run(["git", "rev-parse", "HEAD"])
+    produced_sha = produced.stdout.strip() if produced.returncode == 0 else None
+    deferred = publish_detail == "deferred_to_authenticated_workflow_publisher"
+    audit_status = "PREPARED" if deferred else "PASS"
+    audit_detail = (
+        "local branch prepared; authenticated workflow publisher must verify remote push"
+        if deferred else "development branch pushed"
+    )
+    _write_development_audit_to_google_sheets(
+        instruction=instruction,
+        status=audit_status,
+        target_path=state.chosen,
+        branch=branch,
+        exit_detail=audit_detail,
+        base_sha=baseline_sha,
+        produced_sha=produced_sha,
+    )
+    if deferred:
+        print(f"Development branch prepared for authenticated workflow publisher: {branch}", flush=True)
+    else:
+        print(f"Development branch pushed: {branch}", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(execute(os.environ.get("DEV_INSTRUCTION", "").strip()[:worker.MAX_INSTRUCTION_LENGTH]))):",
+            "        build_queue(queue, catalog, state, output)",
+            "    assert not output.exists()"
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "refill-rejects-boolean-catalog-addition-cap" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_rejects_boolean_catalog_addition_cap"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_refill_rejects_duplicate_catalog_ids(tmp_path: Path):"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            "def test_refill_rejects_boolean_catalog_addition_cap(tmp_path: Path):",
+            "    queue, catalog, completed = _inputs(tmp_path, candidates=[_task(\"task-ready-one\")])",
+            "    catalog_data = json.loads(catalog.read_text(encoding=\"utf-8\"))",
+            "    catalog_data[\"max_additions_per_run\"] = True",
+            "    catalog.write_text(json.dumps(catalog_data), encoding=\"utf-8\")",
+            "    output = tmp_path / \"runtime.json\"",
+            "    with pytest.raises(ValueError, match=\"catalog cap must be between 1 and 4\"):",
+            "        build_queue(queue, catalog, completed, output)",
+            "    assert not output.exists()"
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "refill-preserves-catalog-order-within-addition-cap" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_preserves_catalog_order_within_addition_cap"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_refill_reports_catalog_exhaustion_by_durable_state(tmp_path: Path):"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            "def test_refill_preserves_catalog_order_within_addition_cap(tmp_path: Path):",
+            "    queue, catalog, completed = _inputs(tmp_path, candidates=[_task(\"task-zeta\"), _task(\"task-alpha\"), _task(\"task-middle\")])",
+            "    output = tmp_path / \"runtime.json\"",
+            "    report = build_queue(queue, catalog, completed, output)",
+            "    result = json.loads(output.read_text(encoding=\"utf-8\"))",
+            "    assert report[\"added_ids\"] == [\"task-zeta\", \"task-alpha\"]",
+            "    assert report[\"eligible_catalog_ids\"] == [\"task-alpha\", \"task-middle\", \"task-zeta\"]",
+            "    assert [task[\"id\"] for task in result[\"tasks\"]] == [\"task-zeta\", \"task-alpha\"]",
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "refill-rejects-non-ascii-task-id" and chosen == "tests/test_autonomous_task_refill.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_refill_rejects_non_ascii_task_id"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_refill_rejects_duplicate_existing_queue_ids(tmp_path: Path):"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            "def test_refill_rejects_non_ascii_task_id(tmp_path: Path):",
+            "    queue, catalog, completed = _inputs(tmp_path, candidates=[_task(\"タスク-a\")])",
+            "    output = tmp_path / \"runtime.json\"",
+            "    with pytest.raises(ValueError, match=\"invalid task ID\"):",
+            "        build_queue(queue, catalog, completed, output)",
+            "    assert not output.exists()"
+            "",
+            "",
+        ]) + newline
+        new = addition + anchor
+        if len(anchor) > 1200 or len(new) > 1800:
+            return None, f"deterministic_plan_too_large: old={len(anchor)}, new={len(new)}"
+        candidate = text.replace(anchor, new, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": new}],
+        }, None
+
+    if task_id == "loop-cycle-memory-invalid-cycle-id-regression-20261121" and chosen == "tests/test_self_improvement_state.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_cycle_memory_invalid_cycle_id_is_sanitized_and_rejected"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_sanitizer_discards_raw_error_text_and_unknown_fields():\n"
+        if text.count(anchor) != 1:
+            return None, f"anchor_count_{chosen}:{text.count(anchor)}"
+        newline = chr(10)
+        addition = newline.join([
+            "import pytest",
+            "",
+                        "@pytest.mark.parametrize('cycle_id', [123, True, 'not-a-run-id', '1' * 21])",
             "def test_cycle_memory_invalid_cycle_id_is_sanitized_and_rejected(cycle_id):",
             "    from scripts.self_improvement_state import validate_durable_history",
             "    valid = sanitize_records([{\"record_type\": \"cycle_memory\", \"outcome\": \"PASS\", \"cycle_id\": \"1\"}])[0]",
