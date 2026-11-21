@@ -684,40 +684,110 @@ jobs:
                   summary.write("No eligible queued task is available for one-time approval.\n")
           PY
 
-      - name: Restore cached local Ollama model
+      - name: Restore cached GGUF model
         if: steps.local_model_preflight.outputs.needed == 'true'
         uses: actions/cache@v4
         with:
-          path: /tmp/ollama-models
-          key: ollama-qwen2.5-coder-3b-v1
+          path: /tmp/llama-model
+          key: qwen2.5-coder-1.5b-instruct-q4km-sha256-cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046
 
-      - name: Start free local Ollama inference
+      - name: Restore pinned llama.cpp CPU server
+        if: steps.local_model_preflight.outputs.needed == 'true'
+        uses: actions/cache@v4
+        with:
+          path: /tmp/llama.cpp-build
+          key: llama-cpp-v1.0.0-2d8a32502909ca065c41c4cf5f2fb1c427c047fc-ubuntu-cpu
+
+      - name: Build pinned llama.cpp and verify GGUF model
         if: steps.local_model_preflight.outputs.needed == 'true'
         run: |
           set -euo pipefail
-          mkdir -p /tmp/ollama-models
-          docker run -d --name line-bot-ollama -p 127.0.0.1:11434:11434 \
-            -v /tmp/ollama-models:/root/.ollama ollama/ollama:latest
+          mkdir -p /tmp/llama-model
+          MODEL=/tmp/llama-model/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+          EXPECTED_SHA256=cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046
+          if [ ! -s "$MODEL" ]; then
+            curl --fail --location --retry 3 --retry-all-errors \
+              "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf" \
+              --output "$MODEL"
+          fi
+          printf '%s  %s\n' "$EXPECTED_SHA256" "$MODEL" | sha256sum --check --status || {
+            echo "::error::GGUF model SHA-256 mismatch; refusing to start inference."
+            exit 1
+          }
+
+          SERVER=/tmp/llama.cpp-build/bin/llama-server
+          if [ ! -x "$SERVER" ]; then
+            rm -rf /tmp/llama.cpp-src
+            git init /tmp/llama.cpp-src
+            git -C /tmp/llama.cpp-src remote add origin https://github.com/ggml-org/llama.cpp.git
+            git -C /tmp/llama.cpp-src fetch --depth 1 origin 2d8a32502909ca065c41c4cf5f2fb1c427c047fc
+            git -C /tmp/llama.cpp-src checkout --detach FETCH_HEAD
+            test "$(git -C /tmp/llama.cpp-src rev-parse HEAD)" = "2d8a32502909ca065c41c4cf5f2fb1c427c047fc"
+            cmake -S /tmp/llama.cpp-src -B /tmp/llama.cpp-build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DGGML_NATIVE=OFF \
+              -DLLAMA_CURL=OFF \
+              -DLLAMA_BUILD_TESTS=OFF \
+              -DLLAMA_BUILD_EXAMPLES=OFF
+            cmake --build /tmp/llama.cpp-build --config Release --target llama-server -j 2
+          fi
+          test -x "$SERVER"
+
+      - name: Start llama.cpp and verify real local inference
+        if: steps.local_model_preflight.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          MODEL=/tmp/llama-model/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+          SERVER=/tmp/llama.cpp-build/bin/llama-server
+          nohup "$SERVER" \
+            --model "$MODEL" \
+            --host 127.0.0.1 \
+            --port 11434 \
+            --ctx-size 4096 \
+            --threads 2 \
+            --parallel 1 \
+            --alias qwen2.5-coder-1.5b-instruct \
+            > /tmp/llama-server.log 2>&1 &
+          echo "$!" > /tmp/llama-server.pid
           ready=0
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent http://127.0.0.1:11434/api/tags >/dev/null; then
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent http://127.0.0.1:11434/health >/dev/null; then
               ready=1
               break
+            fi
+            if ! kill -0 "$(cat /tmp/llama-server.pid)" 2>/dev/null; then
+              cat /tmp/llama-server.log
+              echo "::error::llama.cpp exited before becoming ready."
+              exit 1
             fi
             sleep 2
           done
           if [ "$ready" -ne 1 ]; then
-            echo "::error::Local Ollama did not become ready; no cloud fallback is permitted."
+            cat /tmp/llama-server.log
+            echo "::error::llama.cpp did not become ready; no remote inference fallback is permitted."
             exit 1
           fi
-          docker exec line-bot-ollama ollama pull qwen2.5-coder:3b
+
+          # Prove the exact OpenAI-compatible interface used by LocalModelClient.
+          response=$(curl --fail --silent --show-error \
+            http://127.0.0.1:11434/v1/chat/completions \
+            -H 'Content-Type: application/json' \
+            -d '{"model":"qwen2.5-coder-1.5b-instruct","messages":[{"role":"user","content":"Reply with exactly LOCAL_INFERENCE_OK"}],"temperature":0,"max_tokens":24,"stream":false}')
+          RESPONSE="$response" python - <<'PY'
+          import json, os
+          payload = json.loads(os.environ["RESPONSE"])
+          content = payload["choices"][0]["message"]["content"]
+          if not isinstance(content, str) or "LOCAL_INFERENCE_OK" not in content:
+              raise SystemExit("llama_cpp_inference_smoke_test_failed")
+          print("LLAMA_CPP_LOCAL_INFERENCE=PASS")
+          PY
           {
-            echo "RSI_LOCAL_MODEL_BASE_URL=http://127.0.0.1:11434"
-            echo "RSI_LOCAL_MODEL_NAME=qwen2.5-coder:3b"
-            echo "RSI_LOCAL_MODEL_PROTOCOL=ollama"
+            echo "RSI_LOCAL_MODEL_BASE_URL=http://127.0.0.1:11434/v1"
+            echo "RSI_LOCAL_MODEL_NAME=qwen2.5-coder-1.5b-instruct"
+            echo "RSI_LOCAL_MODEL_PROTOCOL=openai-compatible"
             echo "RSI_LOCAL_MODEL_TIMEOUT=120"
           } >> "$GITHUB_ENV"
-          echo "LOCAL_MODEL_PROVIDER=ollama_loopback_only" >> "$GITHUB_STEP_SUMMARY"
+          echo "LOCAL_MODEL_PROVIDER=llama_cpp_loopback_only" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run one bounded autonomous task
         id: run_task
