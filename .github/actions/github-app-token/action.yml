@@ -1,0 +1,83 @@
+name: GitHub App token (staged migration)
+description: Mint a repository-scoped GitHub App token, with a temporary GITHUB_TOKEN fallback until the App is installed.
+inputs:
+  app-id:
+    description: GitHub App ID (repository secret GH_APP_ID)
+    required: false
+  private-key:
+    description: GitHub App private key (repository secret GH_APP_PRIVATE_KEY)
+    required: false
+  fallback-token:
+    description: Short-lived GITHUB_TOKEN used only before App credentials are configured
+    required: true
+  require-app:
+    description: Fail unless GitHub App credentials are configured
+    required: false
+    default: 'false'
+  permission-contents:
+    description: Contents permission for the installation token
+    required: false
+    default: read
+  permission-pull-requests:
+    description: Pull requests permission for the installation token
+    required: false
+    default: read
+  permission-issues:
+    description: Issues permission for the installation token
+    required: false
+    default: read
+outputs:
+  token:
+    description: Short-lived GitHub App token or temporary legacy fallback
+    value: ${{ steps.expose.outputs.token }}
+  mode:
+    description: github_app or legacy_github_token
+    value: ${{ steps.validate.outputs.mode }}
+runs:
+  using: composite
+  steps:
+    - id: validate
+      shell: bash
+      env:
+        APP_ID: ${{ inputs.app-id }}
+        PRIVATE_KEY: ${{ inputs.private-key }}
+        REQUIRE_APP: ${{ inputs.require-app }}
+      run: |
+        set -euo pipefail
+        if [[ -n "$APP_ID" && -n "$PRIVATE_KEY" ]]; then
+          echo "mode=github_app" >> "$GITHUB_OUTPUT"
+        elif [[ -n "$APP_ID" || -n "$PRIVATE_KEY" ]]; then
+          echo "::error::Configure both GH_APP_ID and GH_APP_PRIVATE_KEY, or neither."
+          exit 1
+        elif [[ "$REQUIRE_APP" == "true" ]]; then
+          echo "::error::GitHub App authentication is required but its repository secrets are missing."
+          exit 1
+        else
+          echo "mode=legacy_github_token" >> "$GITHUB_OUTPUT"
+          echo "::warning::GitHub App secrets are not configured; using the temporary GITHUB_TOKEN fallback."
+        fi
+    - id: app-token
+      if: steps.validate.outputs.mode == 'github_app'
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: line-bot
+        permission-contents: ${{ inputs.permission-contents }}
+        permission-pull-requests: ${{ inputs.permission-pull-requests }}
+        permission-issues: ${{ inputs.permission-issues }}
+    - id: expose
+      shell: bash
+      env:
+        APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        FALLBACK_TOKEN: ${{ inputs.fallback-token }}
+      run: |
+        set -euo pipefail
+        token="$APP_TOKEN"
+        if [[ -z "$token" ]]; then token="$FALLBACK_TOKEN"; fi
+        if [[ -z "$token" ]]; then
+          echo "::error::No GitHub token is available."
+          exit 1
+        fi
+        echo "token=$token" >> "$GITHUB_OUTPUT"
