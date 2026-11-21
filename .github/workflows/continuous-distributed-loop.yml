@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   continue-after-verified-pass:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: ${{ github.event.workflow_run.conclusion == 'success' && contains(fromJSON('[]'), github.event_name) }} # TEMPORARY FAIL-CLOSED HOLD: prevent chained dispatch until signed task-bound approval is implemented.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

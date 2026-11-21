@@ -22,6 +22,7 @@ concurrency:
 
 jobs:
   develop:
+    if: ${{ contains(fromJSON('[]'), github.event_name) }} # TEMPORARY FAIL-CLOSED HOLD: empty allowlist; do not enable before signed task-bound approval is implemented.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
