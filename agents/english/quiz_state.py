@@ -15,6 +15,7 @@ DB_PATH = os.environ.get(
 
 
 def _connect() -> sqlite3.Connection:
+    """Connect to the SQLite database and ensure tables exist."""
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.execute(
         """CREATE TABLE IF NOT EXISTS english_word_history (
