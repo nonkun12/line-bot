@@ -233,7 +233,7 @@ def test_ollama_rejects_unrecognized_structured_response_format():
         client.chat.completions.create(
             model="lfm3:local",
             messages=[{"role": "user", "content": "json"}],
-            response_format={"type": "json_object"},
+            response_format={"type": "text"},
         )
 
 
