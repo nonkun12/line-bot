@@ -235,3 +235,31 @@ def test_ollama_rejects_unrecognized_structured_response_format():
             messages=[{"role": "user", "content": "json"}],
             response_format={"type": "json_object"},
         )
+
+
+def test_ollama_json_object_mode_is_adapted():
+    client = LocalModelClient("http://127.0.0.1:11434", "qwen2.5-coder:3b", "ollama")
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+        def read(self, _limit):
+            return json.dumps({"message": {"content": '{"file":"core/example.py"}'}}).encode()
+
+    class Opener:
+        def open(self, req, timeout):
+            captured["payload"] = json.loads(req.data)
+            return Response()
+
+    client.opener = Opener()
+    response = client.chat.completions.create(
+        model="qwen2.5-coder:3b",
+        messages=[{"role": "user", "content": "return JSON"}],
+        response_format={"type": "json_object"},
+    )
+
+    assert captured["payload"]["format"] == "json"
+    assert response.choices[0].message.content == '{"file":"core/example.py"}'
