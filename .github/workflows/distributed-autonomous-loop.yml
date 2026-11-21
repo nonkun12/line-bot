@@ -645,14 +645,14 @@ jobs:
               instruction_sha = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
               manifest.append((str(task_id), paths_sha, instruction_sha))
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-              summary.write("\\n## One-time approval manifest (read-only; no approval granted)\\n\\n")
-              summary.write(f"Base SHA: `{base_sha}`\\n\\n")
+              summary.write("\n## One-time approval manifest (read-only; no approval granted)\n\n")
+              summary.write(f"Base SHA: `{base_sha}`\n\n")
               if manifest:
-                  summary.write("| Task ID | Allowed paths SHA-256 | Instruction SHA-256 |\\n|---|---|---|\\n")
+                  summary.write("| Task ID | Allowed paths SHA-256 | Instruction SHA-256 |\n|---|---|---|\n")
                   for task_id, paths_sha, instruction_sha in manifest[:20]:
-                      summary.write(f"| `{task_id}` | `{paths_sha}` | `{instruction_sha}` |\\n")
+                      summary.write(f"| `{task_id}` | `{paths_sha}` | `{instruction_sha}` |\n")
               else:
-                  summary.write("No eligible queued task is available for one-time approval.\\n")
+                  summary.write("No eligible queued task is available for one-time approval.\n")
           PY
 
       - name: Restore cached local Ollama model
