@@ -414,7 +414,7 @@ jobs:
           set -euo pipefail
           python -m scripts.autonomous_task_refill \
             --queue .github/autonomous-loop-tasks.json \
-            --catalog .github/autonomous-loop-task-catalog.json \
+            --catalog "$APPROVAL_CATALOG_PATH" \
             --completed-state /tmp/autonomous-loop-state.json \
             --output /tmp/autonomous-loop-runtime-queue.json \
             --history /tmp/line-bot-self-improvement.jsonl \
@@ -533,15 +533,42 @@ jobs:
           done < <(jq -c '.[]' /tmp/autonomous-loop-task-issue-drafts.json)
           echo "Created $count review-only task candidate issue(s); no execution approval was granted."
 
+      - name: Set default task catalog for this run
+        run: echo "APPROVAL_CATALOG_PATH=.github/autonomous-loop-task-catalog.json" >> "$GITHUB_ENV"
+
+      - name: Validate one-time task-bound execution approval
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.execution_approval == 'APPROVE_EXECUTION'
+        env:
+          APPROVAL_TASK_ID: ${{ github.event.inputs.approval_task_id || '' }}
+          APPROVAL_ALLOWED_PATHS_SHA256: ${{ github.event.inputs.approval_allowed_paths_sha256 || '' }}
+          APPROVAL_INSTRUCTION_SHA256: ${{ github.event.inputs.approval_instruction_sha256 || '' }}
+          APPROVAL_BASE_SHA: ${{ github.event.inputs.approval_base_sha || '' }}
+        run: |
+          set -euo pipefail
+          current_base_sha="$(git rev-parse HEAD)"
+          python -m scripts.validate_task_bound_approval \
+            --queue "${AUTONOMOUS_LOOP_TASK_QUEUE:-.github/autonomous-loop-tasks.json}" \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --state /tmp/autonomous-loop-state.json \
+            --output /tmp/approved-autonomous-loop-task-catalog.json \
+            --approval APPROVE_EXECUTION \
+            --task-id "$APPROVAL_TASK_ID" \
+            --allowed-paths-sha256 "$APPROVAL_ALLOWED_PATHS_SHA256" \
+            --instruction-sha256 "$APPROVAL_INSTRUCTION_SHA256" \
+            --approval-base-sha "$APPROVAL_BASE_SHA" \
+            --current-base-sha "$current_base_sha"
+          echo "APPROVAL_CATALOG_PATH=/tmp/approved-autonomous-loop-task-catalog.json" >> "$GITHUB_ENV"
       - name: Detect approved model-backed work
         id: local_model_preflight
+        env:
+          APPROVAL_CATALOG_PATH: ${{ env.APPROVAL_CATALOG_PATH || '.github/autonomous-loop-task-catalog.json' }}
         run: |
           set -euo pipefail
           python - <<'PY'
           import json, os
           from pathlib import Path
           queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", ".github/autonomous-loop-tasks.json"))
-          catalog_path = Path(".github/autonomous-loop-task-catalog.json")
+          catalog_path = Path(os.environ.get("APPROVAL_CATALOG_PATH", ".github/autonomous-loop-task-catalog.json"))
           state_path = Path("/tmp/autonomous-loop-state.json")
           queue = json.loads(queue_path.read_text(encoding="utf-8"))
           catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
@@ -650,6 +677,7 @@ jobs:
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
           # Populated only after cause-fixed and post-resume-review confirmations pass.
           GOAL_RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id || '' }}
+          APPROVAL_CATALOG_PATH: ${{ env.APPROVAL_CATALOG_PATH || '.github/autonomous-loop-task-catalog.json' }}
         run: |
           set -euo pipefail
           : > /tmp/minimal-autonomous-loop.jsonl
