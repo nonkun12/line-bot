@@ -351,6 +351,50 @@ def test_analyzer_round_robins_targets_before_applying_candidate_cap(tmp_path: P
     assert all(item["status"] == "REVIEW_REQUIRED" for item in report["candidates"])
     assert report["discovery_diagnostics"]["candidate_pool_count_before_global_cap"] == 7
     assert report["discovery_diagnostics"]["global_candidate_cap_reached"] is True
+    assert report["discovery_diagnostics"]["candidate_pool_counts_by_target"] == {
+        "tests/test_agent_events.py": 6,
+        "tests/test_github_integration_status.py": 1,
+    }
+    assert report["discovery_diagnostics"]["selected_candidate_counts_by_target"] == {
+        "tests/test_agent_events.py": 3,
+        "tests/test_github_integration_status.py": 1,
+    }
+    assert report["safety"]["candidates_executable"] is False
+
+
+
+def test_analyzer_prioritizes_structurally_complex_candidates_within_target(tmp_path: Path):
+    root, catalog, queue, state, runtime = _fixture(tmp_path)
+    (root / "core" / "agent_runtime.py").write_text(
+        "def simple_gap(value):\n"
+        "    return value\n\n"
+        "def complex_gap(values):\n"
+        "    try:\n"
+        "        for value in values:\n"
+        "            if value and value > 0:\n"
+        "                return value\n"
+        "    except (TypeError, ValueError):\n"
+        "        return None\n"
+        "    return None\n",
+        encoding="utf-8",
+    )
+
+    report = analyze(root, catalog, queue, state, runtime)
+
+    assert report["candidate_count"] == 2
+    assert [item["source_function"] for item in report["candidates"]] == [
+        "complex_gap",
+        "simple_gap",
+    ]
+    complex_candidate, simple_candidate = report["candidates"]
+    assert complex_candidate["priority_score"] > simple_candidate["priority_score"]
+    assert complex_candidate["priority_signals"]["conditionals"] == 1
+    assert complex_candidate["priority_signals"]["loops"] == 1
+    assert complex_candidate["priority_signals"]["exception_paths"] >= 1
+    assert "review ordering only" in complex_candidate["priority_note"]
+    assert report["discovery_diagnostics"]["priority_strategy"].startswith(
+        "per-target structural complexity"
+    )
     assert report["safety"]["candidates_executable"] is False
 
 
