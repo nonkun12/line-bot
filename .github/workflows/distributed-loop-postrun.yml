@@ -157,10 +157,16 @@ jobs:
               "catalog_exhausted_review_pending:",
               "catalog_exhausted_mixed:",
           ))
-          expected_no_task = queue_empty or catalog_blocked
-          # Other BLOCKED outcomes still require investigation; catalog exhaustion
-          # is an explicit human-review gate and must retain its exact reason.
-          if source_blocked and not catalog_blocked:
+          # The source preflight can also block safely when every queued item
+          # lacks task-bound execution approval, before catalog exhaustion runs.
+          approval_blocked = source_blocked and result_reason in {
+              "no_explicitly_approved_tasks",
+              "all_remaining_tasks_held_or_review_pending",
+          }
+          expected_no_task = queue_empty or catalog_blocked or approval_blocked
+          # Other BLOCKED outcomes still require investigation; recognized
+          # catalog and approval gates are explicit human-review outcomes.
+          if source_blocked and not (catalog_blocked or approval_blocked):
               issues.append(f"Source workflow final report is BLOCKED: {result_reason or 'reason_missing'}.")
           if conclusion != "success":
               issues.append(f"Loop workflow conclusion is {conclusion}.")
@@ -179,9 +185,11 @@ jobs:
                   issues.append("No-task report conflicts with task result evidence.")
           if not tasks and not expected_no_task:
               issues.append("Task result evidence is missing or empty.")
-          if not catalog_blocked and any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
+          if not expected_no_task and any(s not in {"PASS", "NO_CHANGE"} for s in statuses):
               issues.append("One or more task results are not PASS/NO_CHANGE: " + ", ".join(statuses))
-          if sheets_result not in {"RECORDED", "ALREADY_RECORDED"}:
+          # A no-task/held outcome has no Sheets row by design; require Sheets
+          # evidence only when task execution was expected or attempted.
+          if not expected_no_task and sheets_result not in {"RECORDED", "ALREADY_RECORDED"}:
               issues.append("Google Sheets evidence is not confirmed: " + sheets_result)
           report = [
               "# Distributed Loop Post-Run Verification",
@@ -193,7 +201,7 @@ jobs:
               f"- Task count in evidence: {len(tasks)}",
               f"- Task statuses: {', '.join(statuses) if statuses else 'NO EVIDENCE'}",
               f"- Post-generation REA: {', '.join(rea_states) if rea_states else 'NO TASK REA EVIDENCE'}",
-              f"- Queue state: {'CATALOG_BLOCKED (human review required; no task executed)' if catalog_blocked else ('QUEUE_EMPTY (no task executed)' if queue_empty else ('TASK_RESULTS_PRESENT' if tasks else 'UNKNOWN'))}",
+              f"- Queue state: {'CATALOG_BLOCKED (human review required; no task executed)' if catalog_blocked else ('APPROVAL_BLOCKED (task-bound approval required; no task executed)' if approval_blocked else ('QUEUE_EMPTY (no task executed)' if queue_empty else ('TASK_RESULTS_PRESENT' if tasks else 'UNKNOWN')))}",
               f"- Google Sheets artifact result: {sheets_result}",
               f"- Sheets artifact task ID: {sheets.get('task_id', 'unknown')}",
               "",

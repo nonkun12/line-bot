@@ -9,7 +9,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: distributed-autonomous-loop
@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   confirm-resume-review:
+    if: github.event_name == 'workflow_dispatch' && inputs.task_id == '__phase0_disabled__' # Valid task IDs cannot match this sentinel.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

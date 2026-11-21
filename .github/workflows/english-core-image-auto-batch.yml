@@ -13,8 +13,7 @@ on:
         type: string
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: english-core-image-auto-batch
@@ -37,6 +36,7 @@ jobs:
           python-version: "3.12"
       - name: Add next reviewed batch
         id: batch
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/phase0/explicit-approval-required' # Phase 0: remain disabled on main and scheduled runs.
         env:
           BATCH_SIZE: ${{ inputs.batch_size || '20' }}
         run: |
@@ -64,7 +64,9 @@ jobs:
           outcome = os.environ.get("BATCH_OUTCOME", "failure")
           log = Path("/tmp/english-core-image-batch.log")
           output = log.read_text(encoding="utf-8", errors="replace") if log.exists() else ""
-          if outcome != "success":
+          if outcome == "skipped":
+              status = "BLOCKED"
+          elif outcome != "success":
               status = "FAIL"
           elif "NO_CHANGE:" in output:
               status = "NO_CHANGE"
@@ -85,6 +87,7 @@ jobs:
           PY
           python -m scripts.orca_status_publisher --input /tmp/english-core-vocabulary-orca.json
       - name: Open or update review PR
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/phase0/explicit-approval-required' # Phase 0: remain disabled on main and scheduled runs.
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

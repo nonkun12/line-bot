@@ -81,7 +81,7 @@ class ReadonlyScannerTests(unittest.TestCase):
 
     def test_commit_diff_scans_generated_output_and_binds_hashes(self) -> None:
         base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.root, text=True).strip()
-        self._write("scripts/generated.py", "def broken(:\\n  pass\\n")
+        self._write("scripts/generated.py", "def broken(:\n  pass\n")
         self._commit()
         target = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.root, text=True).strip()
 
@@ -129,6 +129,45 @@ class ReadonlyScannerTests(unittest.TestCase):
         self.assertEqual(finding["evidence"]["path"], "app.py")
         self.assertEqual(finding["severity"], "CRITICAL")
 
+
+    def test_commit_diff_allows_only_exact_autonomous_loop_catalog_path(self) -> None:
+        base = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        self._write(".github/autonomous-loop-task-catalog.json", '{"tasks": []}\n')
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["findings_count"], 0)
+        self.assertEqual(
+            report["changed_paths"], [".github/autonomous-loop-task-catalog.json"]
+        )
+
+    def test_commit_diff_blocks_other_github_root_json_paths(self) -> None:
+        base = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        self._write(".github/other-policy.json", '{"unsafe": false}\n')
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(report["status"], "FINDINGS")
+        finding = next(
+            item for item in report["findings"]
+            if item["category"] == "path_policy"
+        )
+        self.assertEqual(
+            finding["evidence"]["path"], ".github/other-policy.json"
+        )
+        self.assertEqual(finding["severity"], "CRITICAL")
+
     def test_commit_diff_blocks_invalid_sha(self) -> None:
         with self.assertRaises(ScanBlocked):
             scan_commit_diff(self.root, base_sha="not-a-sha", target_sha="0" * 40)
@@ -159,7 +198,7 @@ class ReadonlyScannerTests(unittest.TestCase):
             ["git", "rm", "-rf", "."], cwd=self.root, check=True,
             capture_output=True,
         )
-        self._write("scripts/unrelated.py", "VALUE = 9\\n")
+        self._write("scripts/unrelated.py", "VALUE = 9\n")
         self._commit()
         target = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True

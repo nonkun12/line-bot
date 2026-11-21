@@ -514,6 +514,14 @@
         "tests/test_autonomous_task_issue_drafts.py"
       ],
       "execution_approved": false
+    },
+    {
+      "id": "loop-cycle-memory-invalid-cycle-id-regression-20261121",
+      "instruction": "tests/test_self_improvement_state.py のみに、新しい固有名の回帰テストを1件追加してください。cycle_memory レコードの cycle_id が不正（整数、bool、数字以外の文字列、21桁超の数字文字列）の場合、sanitize_records() はそのレコードを除外し、validate_durable_history() は ValueError('cycle memory ID is invalid') で拒否することを、1つのパラメータ化テストで確認してください。有効な cycle_memory の必須フィールドは既存仕様どおりに構築し、既存テストを変更せず、変更は指定テストファイル1つだけにしてください。外部通信、シークレット参照、OS操作は禁止。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_self_improvement_state.py"
+      ],
+      "execution_approved": false
     }
   ]
 }

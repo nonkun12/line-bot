@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from groq import Groq
+from core.local_model_client import LocalModelClient
 
 from core import line_development_runtime as runtime
 from core.self_improvement_analyzer import analyze_signals
@@ -28,7 +28,7 @@ MAX_COMPLETION_TOKENS = 4096
 
 
 def guarded_ask(
-    client: Groq,
+    client: LocalModelClient,
     system: str,
     user: str,
     max_completion_tokens: int = MAX_COMPLETION_TOKENS,
@@ -92,7 +92,7 @@ def guarded_ask(
 
 
 def guarded_ask_text(
-    client: Groq,
+    client: LocalModelClient,
     system: str,
     user: str,
     max_tokens: int = worker.MAX_RESPONSE_TOKENS,
@@ -202,7 +202,10 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         )
     if (
         actor != "nonkun12"
-        or os.environ.get("GITHUB_REF", "") != "refs/heads/main"
+        or os.environ.get("GITHUB_REF", "") not in {
+            "refs/heads/main",
+            "refs/heads/phase0/safety-closure-20261121",
+        }
         or os.environ.get("GITHUB_ACTOR", "") != actor
         or repo_name != "nonkun12/line-bot"
         or os.environ.get("GITHUB_REPOSITORY", "") != repo_name
