@@ -84,12 +84,27 @@ def analyze_recovery_holds(
         else:
             catalog_status = "NOT_APPROVED"
 
-        reason = record.get("hold_reason")
-        category = record.get("hold_category") or record.get("last_category")
+        explicit_reason = record.get("hold_reason")
+        explicit_category = record.get("hold_category")
+        reason = explicit_reason
+        category = explicit_category or record.get("last_category")
         if not isinstance(reason, str) or not reason:
             reason = "legacy_hold_reason_unavailable" if held else "post_resume_review_pending"
         if not isinstance(category, str) or not category:
             category = "legacy_hold_category_unavailable" if held else "unknown"
+        provenance_complete = (
+            isinstance(explicit_reason, str) and bool(explicit_reason)
+            and isinstance(explicit_category, str) and bool(explicit_category)
+        )
+        provenance_partial = (
+            (isinstance(explicit_reason, str) and bool(explicit_reason))
+            != (isinstance(explicit_category, str) and bool(explicit_category))
+        )
+        provenance_status = (
+            "COMPLETE" if provenance_complete
+            else "PARTIAL" if provenance_partial
+            else "LEGACY_INCOMPLETE"
+        )
 
         if review_pending:
             required_evidence = ["independent_post_resume_review", "explicit_review_confirmation"]
@@ -123,6 +138,7 @@ def analyze_recovery_holds(
             "resume_review_pending": review_pending,
             "hold_reason": reason,
             "hold_category": category,
+            "hold_provenance_status": provenance_status,
             "consecutive_failures": record.get("consecutive_failures"),
             "same_fingerprint_attempts": record.get("same_fingerprint_attempts"),
             "updated_at": record.get("updated_at"),
@@ -163,6 +179,16 @@ def analyze_recovery_holds(
         item["held"] and item["catalog_status"] == "APPROVED"
         for item in diagnostics
     )
+    held_diagnostics = [item for item in diagnostics if item["held"]]
+    provenance_counts = {
+        status: sum(item["hold_provenance_status"] == status for item in held_diagnostics)
+        for status in ("COMPLETE", "PARTIAL", "LEGACY_INCOMPLETE")
+    }
+    hold_reason_counts: dict[str, int] = {}
+    hold_category_counts: dict[str, int] = {}
+    for item in held_diagnostics:
+        hold_reason_counts[item["hold_reason"]] = hold_reason_counts.get(item["hold_reason"], 0) + 1
+        hold_category_counts[item["hold_category"]] = hold_category_counts.get(item["hold_category"], 0) + 1
     return {
         "schema_version": 1,
         "status": "REVIEW_REQUIRED" if diagnostics else "CLEAR",
@@ -170,6 +196,9 @@ def analyze_recovery_holds(
         "held_count": held_count,
         "resume_review_pending_count": review_count,
         "approved_held_count": approved_held_count,
+        "hold_provenance_counts": provenance_counts,
+        "hold_reason_counts": dict(sorted(hold_reason_counts.items())),
+        "hold_category_counts": dict(sorted(hold_category_counts.items())),
         "eligible_approved_task_count": eligible_count,
         "checkpoint_available": isinstance(checkpoint, dict),
         "execution_authorized": False,
