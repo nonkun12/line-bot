@@ -9,6 +9,7 @@ from scripts.validate_task_bound_approval import (
     allowed_paths_digest,
     build_one_time_approval_catalog,
 )
+from scripts.autonomous_task_refill import build_queue
 
 
 TASK_ID = "test-task-one"
@@ -96,3 +97,30 @@ def test_ambiguous_recovery_flags_fail_closed():
     kwargs["state"]["recovery_ai"]["tasks"][TASK_ID] = {"held": "false"}
     with pytest.raises(ApprovalError, match="approval_recovery_flag_invalid"):
         build_one_time_approval_catalog(**kwargs)
+
+
+def test_one_time_approval_flows_into_exactly_one_run_local_queue(tmp_path):
+    kwargs = _inputs()
+    approved_catalog = build_one_time_approval_catalog(**kwargs)
+    queue_path = tmp_path / "queue.json"
+    catalog_path = tmp_path / "catalog.json"
+    state_path = tmp_path / "state.json"
+    output_path = tmp_path / "runtime-queue.json"
+    queue_path.write_text(json.dumps(kwargs["queue"]), encoding="utf-8")
+    approved_catalog["max_additions_per_run"] = 4
+    catalog_path.write_text(json.dumps(approved_catalog), encoding="utf-8")
+    state_path.write_text(json.dumps({
+        "completed": [],
+        "recovery_ai": {
+            "schema_version": 1,
+            "tasks": {},
+            "checkpoint": {},
+        },
+    }), encoding="utf-8")
+
+    report = build_queue(queue_path, catalog_path, state_path, output_path)
+    runtime_queue = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert [task["id"] for task in runtime_queue["tasks"]] == [TASK_ID]
+    assert report["retained_existing"] == 1
+    assert report["skipped_catalog_unapproved_ids"] == ["other-task"]
