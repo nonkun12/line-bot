@@ -533,6 +533,90 @@ jobs:
           done < <(jq -c '.[]' /tmp/autonomous-loop-task-issue-drafts.json)
           echo "Created $count review-only task candidate issue(s); no execution approval was granted."
 
+      - name: Detect approved model-backed work
+        id: local_model_preflight
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", ".github/autonomous-loop-tasks.json"))
+          catalog_path = Path(".github/autonomous-loop-task-catalog.json")
+          state_path = Path("/tmp/autonomous-loop-state.json")
+          queue = json.loads(queue_path.read_text(encoding="utf-8"))
+          catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+          state = json.loads(state_path.read_text(encoding="utf-8"))
+          queued, registered = queue.get("tasks"), catalog.get("tasks")
+          if not isinstance(queued, list) or not isinstance(registered, list):
+              raise SystemExit("model_preflight_queue_or_catalog_invalid")
+          by_id = {item.get("id"): item for item in registered if isinstance(item, dict)}
+          completed = state.get("completed", [])
+          recovery_tasks = state.get("recovery_ai", {}).get("tasks", {})
+          if not isinstance(completed, list) or not isinstance(recovery_tasks, dict):
+              raise SystemExit("model_preflight_state_invalid")
+          from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+          needs_model = False
+          for item in queued:
+              if not isinstance(item, dict):
+                  raise SystemExit("model_preflight_task_invalid")
+              task_id = item.get("id")
+              trusted = by_id.get(task_id)
+              if not isinstance(task_id, str) or not isinstance(trusted, dict):
+                  raise SystemExit("model_preflight_unregistered_task")
+              if trusted.get("execution_approved") is not True:
+                  continue
+              if any(item.get(key) != trusted.get(key) for key in ("id", "instruction", "allowed_paths")):
+                  raise SystemExit("model_preflight_definition_mismatch")
+              if task_id in completed:
+                  continue
+              recovery = recovery_tasks.get(task_id, {})
+              if isinstance(recovery, dict) and (
+                  recovery.get("held") is True or recovery.get("resume_requires_review") is True
+              ):
+                  continue
+              if task_id not in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS:
+                  needs_model = True
+                  break
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("needed=" + ("true" if needs_model else "false") + "\\n")
+          print("LOCAL_MODEL_REQUIRED=" + str(needs_model).lower())
+          PY
+
+      - name: Restore cached local Ollama model
+        if: steps.local_model_preflight.outputs.needed == 'true'
+        uses: actions/cache@v4
+        with:
+          path: /tmp/ollama-models
+          key: ollama-qwen2.5-coder-3b-v1
+
+      - name: Start free local Ollama inference
+        if: steps.local_model_preflight.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ollama-models
+          docker run -d --name line-bot-ollama -p 127.0.0.1:11434:11434 \\
+            -v /tmp/ollama-models:/root/.ollama ollama/ollama:latest
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:11434/api/tags >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "::error::Local Ollama did not become ready; no cloud fallback is permitted."
+            exit 1
+          fi
+          docker exec line-bot-ollama ollama pull qwen2.5-coder:3b
+          {
+            echo "RSI_LOCAL_MODEL_BASE_URL=http://127.0.0.1:11434"
+            echo "RSI_LOCAL_MODEL_NAME=qwen2.5-coder:3b"
+            echo "RSI_LOCAL_MODEL_PROTOCOL=ollama"
+            echo "RSI_LOCAL_MODEL_TIMEOUT=120"
+          } >> "$GITHUB_ENV"
+          echo "LOCAL_MODEL_PROVIDER=ollama_loopback_only" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run one bounded autonomous task
         id: run_task
         env:
