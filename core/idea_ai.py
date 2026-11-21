@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from .multi_agent import AgentRole, AgentTask
+from .idea_learning import IdeaOutcome, rank_idea_styles
 
 _MAX_IDEAS = 5
 _MAX_CHARS = 4000
@@ -37,6 +38,7 @@ class IdeaAgent:
         *,
         context: tuple[str, ...] = (),
         limit: int = _MAX_IDEAS,
+        outcomes: tuple[IdeaOutcome, ...] = (),
     ) -> tuple[Idea, ...]:
         focus = focus.strip()
         if not focus:
@@ -66,8 +68,11 @@ class IdeaAgent:
              "無料経路とfail-closed境界を先に定義して案を具体化する",
              "他AIが安全性を保ったまま創造的に改善できる余地を増やす"),
         )
+        template_by_style = {item[0]: item for item in templates}
+        ranked_styles = rank_idea_styles(template_by_style, outcomes)
+        selected_templates = tuple(template_by_style[style] for style in ranked_styles[:limit])
         ideas: list[Idea] = []
-        for index, (style, novelty, rationale, next_step, impact) in enumerate(templates[:limit], 1):
+        for index, (style, novelty, rationale, next_step, impact) in enumerate(selected_templates, 1):
             task = AgentTask(
                 task_id=f"idea-{style}-{index}",
                 role=AgentRole.IDEA,
