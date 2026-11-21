@@ -578,7 +578,7 @@ jobs:
                   needs_model = True
                   break
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write("needed=" + ("true" if needs_model else "false") + "\\n")
+              output.write("needed=" + ("true" if needs_model else "false") + "\n")
           print("LOCAL_MODEL_REQUIRED=" + str(needs_model).lower())
           PY
 
@@ -594,7 +594,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/ollama-models
-          docker run -d --name line-bot-ollama -p 127.0.0.1:11434:11434 \\
+          docker run -d --name line-bot-ollama -p 127.0.0.1:11434:11434 \
             -v /tmp/ollama-models:/root/.ollama ollama/ollama:latest
           ready=0
           for attempt in $(seq 1 60); do
