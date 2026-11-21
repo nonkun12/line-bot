@@ -59,3 +59,11 @@ def test_postrun_does_not_require_sheets_evidence_when_no_task_was_run():
     workflow = (ROOT / ".github/workflows/distributed-loop-postrun.yml").read_text(encoding="utf-8")
     assert "expected_no_task = queue_empty or catalog_blocked" in workflow
     assert 'if not expected_no_task and sheets_result not in {"RECORDED", "ALREADY_RECORDED"}:' in workflow
+
+
+def test_postrun_treats_missing_task_bound_approval_as_expected_no_task_block():
+    workflow = (ROOT / ".github/workflows/distributed-loop-postrun.yml").read_text(encoding="utf-8")
+    assert '"no_explicitly_approved_tasks"' in workflow
+    assert '"all_remaining_tasks_held_or_review_pending"' in workflow
+    assert "expected_no_task = queue_empty or catalog_blocked or approval_blocked" in workflow
+    assert "APPROVAL_BLOCKED (task-bound approval required; no task executed)" in workflow
