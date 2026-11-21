@@ -25,3 +25,17 @@ def test_recovery_ai_durable_write_refreshes_freshness_timestamp():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "recovery['state_updated_at'] = datetime.now(timezone.utc).isoformat()" in text
     assert "data['recovery_ai'] = recovery" in text
+
+
+def test_scheduled_loop_uses_local_model_only_for_approved_model_tasks():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "id: local_model_preflight" in text
+    assert 'trusted.get("execution_approved") is not True' in text
+    assert 'recovery.get("held") is True' in text
+    assert 'recovery.get("resume_requires_review") is True' in text
+    assert "id: run_task" in text
+    assert "if: steps.local_model_preflight.outputs.authorized == 'true'" in text
+    assert "ollama/ollama:latest" in text
+    assert "qwen2.5-coder:3b" in text
+    assert "RSI_LOCAL_MODEL_BASE_URL=http://127.0.0.1:11434" in text
+    assert "no cloud fallback is permitted" in text
