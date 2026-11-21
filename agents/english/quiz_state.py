@@ -152,3 +152,13 @@ def grade_pending_quiz(user_id: str, answer: str) -> str | None:
     if value == correct:
         return f"✅ 正解！\n\n{word}\nコアイメージ: {explanation}\n\n次は「クイズ」または「単語」と送ってください。"
     return f"❌ 惜しい！正解は {correct.upper()}. {word} です。\n\nコアイメージ: {explanation}\n\n「クイズ」で再挑戦できます。"
+
+
+def clear_pending_quiz(user_id: str) -> bool:
+    """Delete any pending quiz for the given user. Returns True if a quiz was deleted."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM english_pending_quiz WHERE user_id=?",
+            (_user_key(user_id),),
+        )
+        return cur.rowcount > 0
