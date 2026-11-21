@@ -121,6 +121,10 @@ def _diagnose(row: dict[str, Any]) -> dict[str, Any]:
         category = "invalid_evidence"
         recommendation = "The failure evidence is invalid. Keep the hold and inspect the source evidence; do not retry automatically."
         requires_human = True
+    elif failure_code_category_value == "provider_error":
+        category = "provider_error"
+        recommendation = "The AI provider rejected the request. Inspect the recorded provider error and request parameters; keep the hold and do not retry automatically."
+        requires_human = True
     elif recovery_action == "HOLD" or decision.get("requires_human") is True:
         category = "recovery_hold"
         recommendation = "Inspect the exact failed step and prepare a reviewed repair proposal; keep the hold."
