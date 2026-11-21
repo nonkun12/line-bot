@@ -420,14 +420,33 @@ def diagnose_mcp_connection(timeout=12.0):
         "Connection": "close",
     }
     request_timeout = httpx.Timeout(timeout, connect=min(5.0, timeout))
+    hibernate_retry_used = False
+
+    def request_with_hibernate_retry(request_fn, url, **kwargs):
+        nonlocal hibernate_retry_used
+        response = request_fn(url, **kwargs)
+        if _is_hibernate_rate_limited(response) and not hibernate_retry_used:
+            hibernate_retry_used = True
+            response.close()
+            # One delayed retry per diagnostic run; never retry generic 429s.
+            time.sleep(65.0)
+            response = request_fn(url, **kwargs)
+        return response
+
     try:
-        health = httpx.get(health_url, timeout=request_timeout, follow_redirects=False)
+        health = request_with_hibernate_retry(
+            httpx.get, health_url,
+            timeout=request_timeout, follow_redirects=False,
+        )
         result["health"] = "PASS" if health.status_code == 200 and health.json().get("ok") is True else f"FAIL ({health.status_code})"
         health.close()
         if result["health"] != "PASS":
             return _finish_mcp_diagnostic(result, started)
 
-        ready = httpx.get(ready_url, timeout=request_timeout, follow_redirects=False)
+        ready = request_with_hibernate_retry(
+            httpx.get, ready_url,
+            timeout=request_timeout, follow_redirects=False,
+        )
         result["ready"] = "PASS" if ready.status_code == 200 and ready.json().get("ok") is True else f"FAIL ({ready.status_code})"
         ready.close()
         if result["ready"] != "PASS":
@@ -442,8 +461,8 @@ def diagnose_mcp_connection(timeout=12.0):
             "method": "tools/list",
             "params": {},
         }
-        tools_response = httpx.post(
-            MCP_SERVER_URL,
+        tools_response = request_with_hibernate_retry(
+            httpx.post, MCP_SERVER_URL,
             json=tools_payload,
             headers=headers,
             timeout=request_timeout,

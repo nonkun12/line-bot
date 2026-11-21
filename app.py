@@ -55,6 +55,7 @@ from mcp_client import (
     parse_mcp_json_list as _parse_mcp_json_list_impl,
     diagnose_mcp_connection,
 )
+from mcp_diagnostic_runner import McpDiagnosticRunner
 from ai_client import (
     generate_chat_completion,
     generate_secretary_report,
@@ -148,6 +149,8 @@ def camera_test():
 
 client = _ai_client_client
 generate_ai_secretary_report = generate_secretary_report
+
+_mcp_diagnostic_runner = McpDiagnosticRunner()
 
 # Count UTF-16 code units so supplementary-plane characters (including emoji)
 # cannot exceed LINE's per-message text limit.
@@ -354,7 +357,8 @@ def _handle_ai_gateway_request(ai_request):
     message = str(ai_request.message)
     user_id = str(ai_request.user_id)
 
-    # Explicit, read-only MCP diagnostics are restricted to configured operators.
+    # Run the potentially slow Render wake/retry outside the LINE webhook.
+    # The immediate reply acknowledges enqueue; the final report is pushed later.
     if message.strip() == "MCP診断":
         allowed_ids = {
             item.strip()
@@ -363,17 +367,15 @@ def _handle_ai_gateway_request(ai_request):
         }
         if not allowed_ids or user_id not in allowed_ids:
             return "MCP診断は許可された管理者アカウントからのみ実行できます。"
-        report = diagnose_mcp_connection()
-        return (
-            "MCP接続診断（読み取り専用）\n"
-            f"HTTP health: {report['health']}\n"
-            f"Database ready: {report['ready']}\n"
-            f"MCP認証: {report['mcp_auth']}\n"
-            f"tools/list: {report['tools_list']}\n"
-            f"ツール数: {report['tool_count']}\n"
-            f"所要時間: {report['elapsed_ms']} ms\n"
-            f"総合判定: {report['status']}"
-        )
+        try:
+            accepted = _mcp_diagnostic_runner.submit(
+                user_id, diagnose_mcp_connection, _line_push
+            )
+        except Exception:
+            return "MCP診断を開始できませんでした。サーバー状態を確認してください。"
+        if not accepted:
+            return "MCP診断はすでに実行中です。完了後に結果をLINEへ通知します。"
+        return "MCP診断を受け付けました（読み取り専用）。完了後に結果を通知しようとします。届かない場合は再度お試しください。"
 
     # Report deployment configuration deterministically; never ask the chat model
     # to guess whether GitHub integration is enabled, and never dispatch Actions here.
