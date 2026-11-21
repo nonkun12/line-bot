@@ -150,3 +150,28 @@ def test_parse_progress_output_accepts_empty_runtime_queue():
 def test_parse_progress_output_rejects_invalid_payload(output: str):
     with pytest.raises(ValueError):
         parse_progress_output(output)
+
+
+
+def test_empty_runtime_queue_with_not_run_evidence_reports_zero_progress(tmp_path: Path):
+    queue = tmp_path / "runtime-queue.json"
+    state = tmp_path / "state.json"
+    results = tmp_path / "results.jsonl"
+    queue.write_text(json.dumps({"tasks": []}), encoding="utf-8")
+    state.write_text(json.dumps({"completed": ["previously-completed-task"]}), encoding="utf-8")
+    results.write_text(
+        json.dumps(
+            {
+                "task_id": "not-run-task",
+                "status": "NOT_RUN",
+                "failure_reason": "queue_empty",
+            }
+        )
++ "\n",
+        encoding="utf-8",
+    )
+
+    assert calculate_progress(queue, state, results) == {
+        "queue_total": 0,
+        "queue_completed": 0,
+    }
