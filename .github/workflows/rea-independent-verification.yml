@@ -13,6 +13,8 @@ permissions:
   contents: read
   pull-requests: read
   issues: read
+  pull-requests: read
+  issues: read
 
 concurrency:
   group: rea-independent-verification-${{ github.event.pull_request.head.sha || github.sha }}
@@ -99,12 +101,12 @@ jobs:
           if report.get("complete") is not True:
               raise SystemExit("REA_DIFF_SCAN=BLOCKED")
           Path("rea-diff-scan.json").write_text(
-              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\\n",
               encoding="utf-8",
           )
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write(f"diff_sha256={report.get('diff_sha256', '')}\n")
-              fh.write(f"finding_count={report.get('findings_count', 0)}\n")
+              fh.write(f"diff_sha256={report.get('diff_sha256', '')}\\n")
+              fh.write(f"finding_count={report.get('findings_count', 0)}\\n")
           print(json.dumps({
               "status": report.get("status"),
               "findings_count": report.get("findings_count"),
@@ -151,10 +153,10 @@ jobs:
             }
 
             const authorLogin = pr.user?.login;
-            const shaLine = /^HEAD_SHA:\s*([0-9a-f]{40})$/;
+            const shaLine = /^HEAD_SHA:\\s*([0-9a-f]{40})$/;
             const candidates = comments.filter(comment => {
               if (comment.user?.login !== authorLogin || !comment.created_at) return false;
-              const lines = (comment.body || "").split(/\r?\n/).map(line => line.trim());
+              const lines = (comment.body || "").split(/\\r?\\n/).map(line => line.trim());
               const hasDecision = lines.some(line =>
                 line === "REA-HUMAN-REVIEW: APPROVED" ||
                 line === "REA-HUMAN-REVIEW: REJECTED"
@@ -168,7 +170,7 @@ jobs:
               return;
             }
             const comment = candidates[0];
-            const lines = (comment.body || "").split(/\r?\n/).map(line => line.trim());
+            const lines = (comment.body || "").split(/\\r?\\n/).map(line => line.trim());
             if (!lines.includes("REA-HUMAN-REVIEW: APPROVED")) {
               core.setOutput("decision", "REJECTED");
               core.info("The latest matching human-review comment rejects this revision.");
@@ -230,22 +232,22 @@ jobs:
           report["risk"] = risk
           report["blocking_findings_count"] = len(blocking)
           Path("rea-diff-scan.json").write_text(
-              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\\n",
               encoding="utf-8",
           )
           Path("rea-human-review-attestation.json").write_text(
               json.dumps(report["human_review_attestation"], ensure_ascii=False,
-                         sort_keys=True, indent=2) + "\n",
+                         sort_keys=True, indent=2) + "\\n",
               encoding="utf-8",
           )
           att = report["human_review_attestation"]
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write(f"risk={risk}\n")
-              fh.write(f"finding_count={len(blocking)}\n")
-              fh.write(f"review_status={att.get('status', 'NOT_PROVIDED')}\n")
-              fh.write(f"reviewer={att.get('reviewer_login', '')}\n")
-              fh.write(f"comment_id={att.get('comment_id', '')}\n")
-              fh.write(f"diff_sha256={report.get('diff_sha256', '')}\n")
+              fh.write(f"risk={risk}\\n")
+              fh.write(f"finding_count={len(blocking)}\\n")
+              fh.write(f"review_status={att.get('status', 'NOT_PROVIDED')}\\n")
+              fh.write(f"reviewer={att.get('reviewer_login', '')}\\n")
+              fh.write(f"comment_id={att.get('comment_id', '')}\\n")
+              fh.write(f"diff_sha256={report.get('diff_sha256', '')}\\n")
           print(json.dumps({
               "risk": risk,
               "blocking_findings_count": len(blocking),
@@ -287,6 +289,10 @@ jobs:
               "human_reviewer": os.environ.get("HUMAN_REVIEWER", ""),
               "human_review_comment_id": os.environ.get("HUMAN_REVIEW_COMMENT_ID", ""),
               "risk_basis": "deterministic_read_only_commit_diff_scan_with_authenticated_human_review",
+              "human_review_status": os.environ.get("HUMAN_REVIEW_STATUS", "NOT_PROVIDED"),
+              "human_reviewer": os.environ.get("HUMAN_REVIEWER", ""),
+              "human_review_comment_id": os.environ.get("HUMAN_REVIEW_COMMENT_ID", ""),
+              "risk_basis": "deterministic_read_only_commit_diff_scan_with_authenticated_human_review",
               "execution_authorized": False,
               "patch_authorized": False,
               "hold_clear_authorized": False,
@@ -307,6 +313,7 @@ jobs:
           path: |
             rea-independent-verification.json
             rea-diff-scan.json
+            rea-human-review-attestation.json
             rea-human-review-attestation.json
           if-no-files-found: error
           retention-days: 30
