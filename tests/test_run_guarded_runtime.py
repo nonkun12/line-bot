@@ -2,6 +2,8 @@ import hashlib
 import json
 import os
 import time
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -839,3 +841,53 @@ def test_approval_consumption_marker_rejects_replay_and_allows_fresh_preview(mon
     assert fresh_preview["gate"] == "PASS"
     assert refs[0] == refs[1]
     assert refs[2] != refs[0]
+
+
+def test_line_approval_secret_is_scoped_to_guarded_runtime_handoff(monkeypatch):
+    from scripts import goal_runtime_bridge
+
+    secret = "test-only-line-approval-secret-at-least-32-bytes"
+    monkeypatch.setenv("LINE_TASK_APPROVAL_HMAC_SECRET", secret)
+    monkeypatch.setattr(sys, "argv", [
+        "goal_runtime_bridge.py",
+        "--catalog", "catalog.json",
+        "--state", "state.json",
+        "--results", "results.jsonl",
+        "--stop-file", "stop",
+        "--goal-state-output", "goal.json",
+    ])
+    captured = {}
+
+    def capture_run(args, *, approval_hmac_secret=""):
+        assert "LINE_TASK_APPROVAL_HMAC_SECRET" not in os.environ
+        captured["secret"] = approval_hmac_secret
+        return 0
+
+    monkeypatch.setattr(goal_runtime_bridge, "run", capture_run)
+
+    assert goal_runtime_bridge.main() == 0
+    assert captured["secret"] == secret
+    assert "LINE_TASK_APPROVAL_HMAC_SECRET" not in os.environ
+
+
+def test_line_approval_secret_handoff_is_narrow_in_workflow_and_runners():
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github/workflows/distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    bridge = (root / "scripts/goal_runtime_bridge.py").read_text(encoding="utf-8")
+    loop = (root / "scripts/run_minimal_autonomous_loop.py").read_text(encoding="utf-8")
+
+    # The workflow shell captures then unsets its step-level input before any
+    # STOP poller or setup subprocess; only the goal bridge receives the key.
+    assert "APPROVAL_HMAC_SECRET: ${{ secrets.LINE_TASK_APPROVAL_HMAC_SECRET }}" in workflow
+    assert "LINE_TASK_APPROVAL_HMAC_SECRET: ${{ secrets.LINE_TASK_APPROVAL_HMAC_SECRET }}" not in workflow
+    assert 'approval_hmac_secret="${APPROVAL_HMAC_SECRET:-}"' in workflow
+    assert "unset APPROVAL_HMAC_SECRET" in workflow
+    assert 'LINE_TASK_APPROVAL_HMAC_SECRET="$approval_hmac_secret" PYTHONPATH=. python scripts/goal_runtime_bridge.py' in workflow
+
+    # Each intermediary removes the key from its own environment and forwards
+    # it explicitly to exactly the next required process.
+    assert 'os.environ.pop("LINE_TASK_APPROVAL_HMAC_SECRET", "")' in bridge
+    assert 'env.pop("LINE_TASK_APPROVAL_HMAC_SECRET", None)' in bridge
+    assert 'os.environ.pop("LINE_TASK_APPROVAL_HMAC_SECRET", "")' in loop
+    assert 'env.pop("LINE_TASK_APPROVAL_HMAC_SECRET", None)' in loop
+    assert 'env["LINE_TASK_APPROVAL_HMAC_SECRET"] = approval_hmac_secret' in loop
