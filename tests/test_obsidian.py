@@ -73,3 +73,9 @@ def test_search_notes_rejects_invalid_keyword_and_limit(
 
     with pytest.raises(ObsidianError):
         vault.search_notes(keyword, limit=limit)
+
+def test_search_notes_uses_unicode_casefold_for_matching(tmp_path: Path) -> None:
+    vault = ObsidianVault(tmp_path)
+    vault.write_note("unicode.md", "The German word is Straße.")
+
+    assert vault.search_notes("STRASSE") == ["unicode.md"]
