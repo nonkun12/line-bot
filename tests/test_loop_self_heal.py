@@ -61,3 +61,40 @@ def test_unknown_failure_fails_closed():
 
 def test_invalid_identity_fails_closed():
     assert decide(base(fingerprint="not-a-fingerprint")).action == "HOLD"
+
+def test_rejects_malformed_transient_retry_counter():
+    evidence = base(
+        category="transient",
+        failure_code="provider_network_transient",
+        base_sha="d" * 40,
+        produced_sha="d" * 40,
+        working_tree_clean=True,
+    )
+    for value in ("0", -1, 2, True, None):
+        assert decide({**evidence, "retry_count": value}).action == "HOLD"
+
+
+def test_repair_requires_independent_pre_repair_rea_pass():
+    assert decide(base(rea_status="NOT_REQUIRED")).action == "HOLD"
+    assert decide(base(rea_status="FAIL")).action == "HOLD"
+
+
+def test_rejects_unsafe_or_ambiguous_allowed_paths():
+    for path in (
+        "/etc/passwd",
+        r"..\\outside.py",
+        "tests/../outside.py",
+        "tests\\test_example.py",
+        "tests/*.py",
+        "tests/[a].py",
+        "tests//test.py",
+        "./tests/test.py",
+    ):
+        assert decide(base(allowed_paths=[path])).action == "HOLD"
+    assert decide(base(allowed_paths=["tests/a.py", "tests/a.py"])).action == "HOLD"
+    assert decide(base(allowed_paths=["tests/" + "a" * 241])).action == "HOLD"
+
+
+def test_rejects_non_string_and_excessive_allowed_paths():
+    assert decide(base(allowed_paths=[None])).action == "HOLD"
+    assert decide(base(allowed_paths=["tests/a.py"] * 21)).action == "HOLD"
