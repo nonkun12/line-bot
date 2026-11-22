@@ -100,6 +100,76 @@ def test_resume_cannot_reopen_task_outside_approved_queue(tmp_path):
         bridge._load_goal(store, {"goal_autopilot": held_goal}, [], set(), "approved-test-task")
 
 
+
+def test_approval_dispatch_claims_only_the_bound_task(tmp_path, monkeypatch):
+    queue, catalog, state, results, stop = _inputs(tmp_path)
+    queue_data = json.loads(queue.read_text())
+    catalog_data = json.loads(catalog.read_text())
+    second = {
+        "id": "approved-test-task-2",
+        "instruction": "Run the second bounded test-only task",
+        "allowed_paths": ["tests/test_second.py"],
+    }
+    queue_data["tasks"].append(second)
+    catalog_data["tasks"].append({**second, "execution_approved": True})
+    queue.write_text(json.dumps(queue_data))
+    catalog.write_text(json.dumps(catalog_data))
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+    monkeypatch.setattr(bridge, "_valid_success", lambda row, task_id: row.get("task_id") == task_id)
+
+    def fake_run(command, *, cwd, env, check):
+        child_queue = json.loads(Path(env["AUTONOMOUS_LOOP_TASK_QUEUE"]).read_text())
+        selected_id = child_queue["tasks"][0]["id"]
+        assert selected_id == "approved-test-task-2"
+        results.write_text(json.dumps({
+            "task_id": selected_id, "status": "PASS", "exit_code": 0,
+            "base_sha": "a" * 40, "produced_sha": "b" * 40, "run_nonce": "nonce-2",
+        }) + "\\n")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(bridge.subprocess, "run", fake_run)
+    args = SimpleNamespace(
+        catalog=catalog, state=state, results=results, stop_file=stop,
+        goal_state_output=tmp_path / "goal-pending.json", max_tasks=1,
+    )
+
+    assert bridge.run(
+        args,
+        approval_hmac_secret="test-only-line-approval-secret-at-least-32-bytes",
+        approval_required=True,
+        approval_task_id="approved-test-task-2",
+    ) == 0
+
+    goal = json.loads(args.goal_state_output.read_text())
+    statuses = {task["task_id"]: task["status"] for task in goal["tasks"]}
+    assert statuses == {
+        "approved-test-task": "PENDING",
+        "approved-test-task-2": "COMPLETED",
+    }
+
+
+def test_approval_dispatch_without_task_binding_fails_before_claim(tmp_path, monkeypatch):
+    queue, catalog, state, results, stop = _inputs(tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        bridge.subprocess, "run",
+        lambda *args, **kwargs: pytest.fail("must not launch an unbound approval"),
+    )
+    args = SimpleNamespace(
+        catalog=catalog, state=state, results=results, stop_file=stop,
+        goal_state_output=tmp_path / "goal-pending.json", max_tasks=1,
+    )
+
+    assert bridge.run(
+        args,
+        approval_hmac_secret="test-only-line-approval-secret-at-least-32-bytes",
+        approval_required=True,
+        approval_task_id="",
+    ) == 80
+    assert not results.exists()
+
 def test_partial_workflow_failure_does_not_durably_complete_unpublished_prior_task(tmp_path, monkeypatch):
     queue, catalog, state, results, stop = _inputs(tmp_path)
     queue_data = json.loads(queue.read_text())
