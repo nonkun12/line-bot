@@ -132,6 +132,84 @@ def _shared_stop_active() -> bool:
     return get_status(repository, token)
 
 
+def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict[str, object]:
+    """Authorize a scheduled task only from the exact reviewed catalog at this HEAD.
+
+    This is a separate preapproval path; it does not accept workflow inputs or
+    environment claims as authority and does not weaken human-dispatch checks.
+    """
+    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    blocked = {
+        "gate": "BLOCKED",
+        "reason_code": "catalog_execution_preapproval_missing_or_invalid",
+        "execution_authorized": False,
+        "task_id": task_id,
+        "base_sha": start_sha,
+    }
+    if (
+        os.environ.get("GITHUB_EVENT_NAME") != "schedule"
+        or os.environ.get("GITHUB_REPOSITORY") != "nonkun12/line-bot"
+        or os.environ.get("GITHUB_REF") != "refs/heads/main"
+        or os.environ.get("GITHUB_ACTOR") != "nonkun12"
+        or not task_id
+        or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", task_id)
+    ):
+        return blocked
+
+    raw_paths = os.environ.get("AUTONOMOUS_ALLOWED_PATHS", "")
+    try:
+        paths = json.loads(raw_paths)
+    except (TypeError, ValueError):
+        return blocked
+    if (
+        not isinstance(paths, list) or not paths
+        or not all(isinstance(path, str) and path and path == path.strip() for path in paths)
+        or len(set(paths)) != len(paths)
+    ):
+        return blocked
+    canonical_paths = sorted(paths)
+    paths_digest = hashlib.sha256(
+        json.dumps(canonical_paths, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+    raw_catalog = _git("show", f"{start_sha}:.github/autonomous-loop-task-catalog.json")
+    try:
+        catalog = json.loads(raw_catalog)
+    except (TypeError, ValueError):
+        return blocked
+    definitions = catalog.get("tasks") if isinstance(catalog, dict) else None
+    if not isinstance(definitions, list):
+        return blocked
+    matches = [
+        item for item in definitions
+        if isinstance(item, dict) and item.get("id") == task_id
+    ]
+    if len(matches) != 1:
+        return blocked
+    definition = matches[0]
+    catalog_paths = definition.get("allowed_paths")
+    if (
+        definition.get("execution_approved") is not True
+        or definition.get("instruction") != instruction
+        or not isinstance(catalog_paths, list)
+        or not all(isinstance(path, str) for path in catalog_paths)
+        or sorted(catalog_paths) != canonical_paths
+    ):
+        return blocked
+    return {
+        "gate": "PASS",
+        "reason_code": "reviewed_catalog_preapproval",
+        "execution_authorized": True,
+        "scope": "catalog_preapproved_execution",
+        "actor": "catalog-preapproved",
+        "task_id": task_id,
+        "instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
+        "allowed_paths_sha256": paths_digest,
+        "base_sha": start_sha,
+        "catalog_sha": start_sha,
+    }
+
+
 def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, object]:
     """Verify approval against the exact task, instruction, base, and path scope."""
     instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
@@ -163,6 +241,8 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "expected_base_sha": start_sha,
     }
     event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+    if event_name == "schedule":
+        return _verify_catalog_execution_approval(start_sha, instruction)
     if event_name not in {"workflow_dispatch", "issue_comment"}:
         return blocked
     event_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
