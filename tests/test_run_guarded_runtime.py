@@ -388,6 +388,68 @@ def test_execution_approval_rejects_mismatched_binding(tmp_path, monkeypatch, fi
     assert evidence["execution_authorized"] is False
 
 
+@pytest.mark.parametrize(
+    ("comment_body", "is_pull_request"),
+    [
+        (
+            "/distributed-loop resume_task_id=bound-task confirm_cause_fixed=true reviewed=true",
+            True,
+        ),
+        (
+            "/distributed-loop resume_task_id=other-task confirm_cause_fixed=true reviewed=true",
+            True,
+        ),
+        (
+            "/distributed-loop resume_task_id=bound-task confirm_cause_fixed=true",
+            True,
+        ),
+        (
+            "/distributed-loop resume_task_id=bound-task confirm_cause_fixed=true reviewed=true",
+            False,
+        ),
+    ],
+)
+def test_single_comment_execution_approval_is_task_bound_and_requires_exact_pr_command(
+    tmp_path, monkeypatch, comment_body, is_pull_request
+):
+    instruction = "bound task instruction"
+    base_sha = "e" * 40
+    event = {
+        "sender": {"login": "nonkun12"},
+        "repository": {"full_name": "nonkun12/line-bot"},
+        "issue": (
+            {"pull_request": {"url": "https://api.github.com/repos/nonkun12/line-bot/pulls/1557"}}
+            if is_pull_request
+            else {}
+        ),
+        "comment": {"body": comment_body},
+    }
+    event_path = tmp_path / "event.json"
+    event_path.write_text(json.dumps(event), encoding="utf-8")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "issue_comment")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "bound-task")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
+
+    evidence = guarded_runtime._verify_execution_approval(base_sha, instruction)
+
+    if comment_body.endswith("reviewed=true") and is_pull_request and "resume_task_id=bound-task " in comment_body:
+        assert evidence["gate"] == "PASS"
+        assert evidence["execution_authorized"] is True
+        assert evidence["task_id"] == "bound-task"
+        assert evidence["instruction_sha256"] == hashlib.sha256(instruction.encode("utf-8")).hexdigest()
+        assert evidence["allowed_paths_sha256"] == hashlib.sha256(
+            json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        assert evidence["base_sha"] == base_sha
+    else:
+        assert evidence["gate"] == "BLOCKED"
+        assert evidence["execution_authorized"] is False
+
+
 def test_execution_approval_rejects_actor_environment_mismatch(tmp_path, monkeypatch):
     instruction = "bound task instruction"
     base_sha = "f" * 40
