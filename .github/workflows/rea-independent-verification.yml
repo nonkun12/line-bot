@@ -11,6 +11,8 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+  issues: read
 
 concurrency:
   group: rea-independent-verification-${{ github.event.pull_request.head.sha || github.sha }}
@@ -78,7 +80,7 @@ jobs:
         run: python -m pytest -q
 
       - name: Run deterministic REA diff scan
-        id: rea
+        id: rea_scan
         env:
           BASE_SHA: ${{ steps.identity.outputs.base_sha }}
           TARGET_SHA: ${{ steps.identity.outputs.verified_sha }}
@@ -96,7 +98,126 @@ jobs:
           )
           if report.get("complete") is not True:
               raise SystemExit("REA_DIFF_SCAN=BLOCKED")
-          severities = [item.get("severity") for item in report.get("findings", [])]
+          Path("rea-diff-scan.json").write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"diff_sha256={report.get('diff_sha256', '')}\n")
+              fh.write(f"finding_count={report.get('findings_count', 0)}\n")
+          print(json.dumps({
+              "status": report.get("status"),
+              "findings_count": report.get("findings_count"),
+              "diff_sha256": report.get("diff_sha256"),
+          }, sort_keys=True))
+          PY
+
+      - name: Verify SHA-bound human review comment
+        id: human_review
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_SHA: ${{ steps.identity.outputs.verified_sha }}
+          DIFF_SHA256: ${{ steps.rea_scan.outputs.diff_sha256 }}
+        with:
+          script: |
+            const core = require("@actions/core");
+            const { owner, repo } = context.repo;
+            core.setOutput("attestation_json", "{}");
+            if (context.eventName !== "pull_request" || !context.payload.pull_request) {
+              core.info("No pull request context; human review remains required.");
+              return;
+            }
+
+            const pr = context.payload.pull_request;
+            const expectedSha = process.env.EXPECTED_SHA;
+            const diffSha256 = process.env.DIFF_SHA256;
+            if (!expectedSha || pr.head.sha !== expectedSha || !diffSha256) {
+              core.info("PR head or diff identity did not match the scanned revision.");
+              return;
+            }
+
+            const [headCommit, comments] = await Promise.all([
+              github.rest.repos.getCommit({ owner, repo, ref: expectedSha }),
+              github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: pr.number, per_page: 100
+              })
+            ]);
+            const headCommitAt =
+              headCommit.data.commit.committer?.date ||
+              headCommit.data.commit.author?.date;
+            if (!headCommitAt) {
+              core.info("Unable to establish the head commit timestamp.");
+              return;
+            }
+
+            const authorLogin = pr.user?.login;
+            const shaLine = /^HEAD_SHA:\s*([0-9a-f]{40})$/;
+            const candidates = comments.filter(comment => {
+              if (comment.user?.login !== authorLogin || !comment.created_at) return false;
+              const lines = (comment.body || "").split(/\r?\n/).map(line => line.trim());
+              const hasDecision = lines.some(line =>
+                line === "REA-HUMAN-REVIEW: APPROVED" ||
+                line === "REA-HUMAN-REVIEW: REJECTED"
+              );
+              const shaValues = lines.map(line => line.match(shaLine)).filter(Boolean);
+              return hasDecision && shaValues.length === 1 && shaValues[0][1] === expectedSha;
+            }).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+
+            if (!candidates.length) {
+              core.info("No authenticated human-review comment matches this exact HEAD SHA.");
+              return;
+            }
+            const comment = candidates[0];
+            const lines = (comment.body || "").split(/\r?\n/).map(line => line.trim());
+            if (!lines.includes("REA-HUMAN-REVIEW: APPROVED")) {
+              core.setOutput("decision", "REJECTED");
+              core.info("The latest matching human-review comment rejects this revision.");
+              return;
+            }
+            if (Date.parse(comment.created_at) < Date.parse(headCommitAt)) {
+              core.info("The review comment predates the reviewed commit.");
+              return;
+            }
+            const attestation = {
+              expected_head_sha: expectedSha,
+              expected_diff_sha256: diffSha256,
+              reviewer_login: comment.user.login,
+              pr_author_login: authorLogin,
+              comment_id: comment.id,
+              comment_url: comment.html_url,
+              comment_body: comment.body,
+              comment_created_at: comment.created_at,
+              head_commit_at: headCommitAt,
+              repo_full_name: owner + "/" + repo,
+              pr_number: pr.number
+            };
+            core.setOutput("attestation_json", JSON.stringify(attestation));
+            core.setOutput("verified", "true");
+            core.info("Verified PR-author review comment for the exact scanned HEAD and diff.");
+
+      - name: Apply verified review and evaluate remaining REA risk
+        id: evaluate
+        env:
+          HUMAN_REVIEW_ATTESTATION_JSON: ${{ steps.human_review.outputs.attestation_json || '{}' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from scripts.rea_human_review import apply_human_review_attestation
+
+          report = json.loads(Path("rea-diff-scan.json").read_text(encoding="utf-8"))
+          attestation = json.loads(os.environ.get("HUMAN_REVIEW_ATTESTATION_JSON", "{}"))
+          if attestation:
+              report = apply_human_review_attestation(report, attestation)
+          else:
+              report["human_review_attestation"] = {"status": "NOT_PROVIDED"}
+
+          blocking = [
+              item for item in report.get("findings", [])
+              if item.get("status") != "HUMAN_REVIEWED"
+          ]
+          severities = [item.get("severity") for item in blocking]
           if any(value == "CRITICAL" for value in severities):
               risk = "CRITICAL"
           elif any(value == "HIGH" for value in severities):
@@ -105,19 +226,34 @@ jobs:
               risk = "MEDIUM"
           else:
               risk = "LOW"
+
           report["risk"] = risk
+          report["blocking_findings_count"] = len(blocking)
           Path("rea-diff-scan.json").write_text(
               json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
               encoding="utf-8",
           )
+          Path("rea-human-review-attestation.json").write_text(
+              json.dumps(report["human_review_attestation"], ensure_ascii=False,
+                         sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          att = report["human_review_attestation"]
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"risk={risk}\n")
-              fh.write(f"finding_count={report.get('findings_count', 0)}\n")
+              fh.write(f"finding_count={len(blocking)}\n")
+              fh.write(f"review_status={att.get('status', 'NOT_PROVIDED')}\n")
+              fh.write(f"reviewer={att.get('reviewer_login', '')}\n")
+              fh.write(f"comment_id={att.get('comment_id', '')}\n")
               fh.write(f"diff_sha256={report.get('diff_sha256', '')}\n")
-          print(json.dumps({"status": report.get("status"), "risk": risk, "findings_count": report.get("findings_count")}, sort_keys=True))
+          print(json.dumps({
+              "risk": risk,
+              "blocking_findings_count": len(blocking),
+              "human_review": att.get("status", "NOT_PROVIDED"),
+              "reviewer": att.get("reviewer_login"),
+          }, sort_keys=True))
           if risk in {"HIGH", "CRITICAL"}:
               raise SystemExit("REA_DIFF_SCAN=BLOCKED")
-          PY
 
       - name: Write SHA-bound verification receipt
         if: always()
@@ -126,9 +262,12 @@ jobs:
           BASE_SHA: ${{ steps.identity.outputs.base_sha }}
           TEST_OUTCOME: ${{ steps.tests.outcome }}
           IDENTITY_OUTCOME: ${{ steps.identity.outcome }}
-          REA_RISK: ${{ steps.rea.outputs.risk || 'UNKNOWN' }}
-          REA_FINDING_COUNT: ${{ steps.rea.outputs.finding_count || '0' }}
-          REA_DIFF_SHA256: ${{ steps.rea.outputs.diff_sha256 || '' }}
+          REA_RISK: ${{ steps.evaluate.outputs.risk || 'UNKNOWN' }}
+          REA_FINDING_COUNT: ${{ steps.evaluate.outputs.finding_count || '0' }}
+          REA_DIFF_SHA256: ${{ steps.evaluate.outputs.diff_sha256 || steps.rea_scan.outputs.diff_sha256 || '' }}
+          HUMAN_REVIEW_STATUS: ${{ steps.evaluate.outputs.review_status || 'NOT_PROVIDED' }}
+          HUMAN_REVIEWER: ${{ steps.evaluate.outputs.reviewer || '' }}
+          HUMAN_REVIEW_COMMENT_ID: ${{ steps.evaluate.outputs.comment_id || '' }}
           RUN_ID: ${{ github.run_id }}
         run: |
           python - <<'PY'
@@ -144,7 +283,10 @@ jobs:
               "risk": os.environ.get("REA_RISK", "UNKNOWN"),
               "rea_finding_count": int(os.environ.get("REA_FINDING_COUNT", "0")),
               "rea_diff_sha256": os.environ.get("REA_DIFF_SHA256", ""),
-              "risk_basis": "deterministic_read_only_commit_diff_scan",
+              "human_review_status": os.environ.get("HUMAN_REVIEW_STATUS", "NOT_PROVIDED"),
+              "human_reviewer": os.environ.get("HUMAN_REVIEWER", ""),
+              "human_review_comment_id": os.environ.get("HUMAN_REVIEW_COMMENT_ID", ""),
+              "risk_basis": "deterministic_read_only_commit_diff_scan_with_authenticated_human_review",
               "execution_authorized": False,
               "patch_authorized": False,
               "hold_clear_authorized": False,
@@ -165,5 +307,6 @@ jobs:
           path: |
             rea-independent-verification.json
             rea-diff-scan.json
+            rea-human-review-attestation.json
           if-no-files-found: error
           retention-days: 30
