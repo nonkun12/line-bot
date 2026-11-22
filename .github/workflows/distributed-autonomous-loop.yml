@@ -671,6 +671,10 @@ jobs:
             exit 0
           fi
           if [ "$loop_rc" -eq 79 ]; then
+            if [ "${GOAL_APPROVAL_REQUIRED:-false}" = "true" ]; then
+              echo "::error::BLOCKED: the explicitly approved task is not claimable; no task was executed."
+              exit 80
+            fi
             echo "all_pending_tasks_held" > /tmp/autonomous-loop-held-tasks
             echo "::warning::BLOCKED: all pending tasks are held for human review."
             exit 0
