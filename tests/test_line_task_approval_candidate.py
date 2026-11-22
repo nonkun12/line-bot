@@ -78,3 +78,17 @@ def test_approval_candidate_marks_queue_catalog_mismatch(monkeypatch):
         _Client([queued], [TASK.copy()]), {}, TASK["id"]
     )
     assert result["catalog_match"] is False
+
+
+def test_approval_candidate_marks_held_goal_state(monkeypatch):
+    monkeypatch.setattr(dispatcher, "REPO", "nonkun12/line-bot")
+    state = {
+        "goal_autopilot": {
+            "tasks": [{"task_id": TASK["id"], "status": "HELD"}]
+        },
+        "recovery_ai": {"tasks": {}},
+    }
+    result = dispatcher._fetch_task_approval_candidate(
+        _Client([TASK.copy()], [TASK.copy()], state=state), {}, TASK["id"]
+    )
+    assert result["task_held"] is True
