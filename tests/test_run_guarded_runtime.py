@@ -241,7 +241,31 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
     event_path = tmp_path / "event.json"
-    event_path.write_text(json.dumps({"sender": {"login": "nonkun12"}, "repository": {"full_name": "nonkun12/line-bot"}, "inputs": {"execution_approval": "APPROVE_EXECUTION", "approval_task_id": "rsi-test-task", "approval_instruction_sha256": hashlib.sha256(instruction.encode()).hexdigest(), "approval_base_sha": sha, "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()}}), encoding="utf-8")
+    from core.line_task_approval import ApprovalDecision, sign_approval_envelope
+    paths = ["tests/test_run_guarded_runtime.py"]
+    paths_digest = hashlib.sha256(json.dumps(paths, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+    instruction_hash = hashlib.sha256(instruction.encode()).hexdigest()
+    nonce = "e" * 32
+    expiry = int(time.time()) + 300
+    secret = "test-only-line-approval-secret-at-least-32-bytes"
+    decision = ApprovalDecision("rsi-test-task", instruction_hash, paths_digest, sha, expiry, "U-line-user", nonce)
+    signature = sign_approval_envelope(decision, secret=secret)
+    event_path.write_text(json.dumps({
+        "sender": {"login": "nonkun12"},
+        "repository": {"full_name": "nonkun12/line-bot"},
+        "inputs": {
+            "execution_approval": "APPROVE_EXECUTION",
+            "approval_task_id": "rsi-test-task",
+            "approval_instruction_sha256": instruction_hash,
+            "approval_base_sha": sha,
+            "approval_allowed_paths_sha256": paths_digest,
+            "approval_expires_at": str(expiry),
+            "approval_line_user_id": "U-line-user",
+            "approval_nonce": nonce,
+            "approval_signature": signature,
+        },
+    }), encoding="utf-8")
+    monkeypatch.setenv("LINE_TASK_APPROVAL_HMAC_SECRET", secret)
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
     monkeypatch.delenv("GITHUB_ENV", raising=False)
 
