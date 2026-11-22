@@ -28,17 +28,30 @@ def _timestamp(value: str) -> datetime:
     return parsed
 
 
-def _body_head_sha(body: str) -> str:
+def _body_value(body: str, key: str, pattern: re.Pattern[str]) -> str:
+    if not isinstance(body, str):
+        raise ValueError("review_comment_body_missing")
+    lines = [line.strip() for line in body.splitlines()]
+    values = [line.split(":", 1)[1].strip() for line in lines
+              if line.startswith(f"{key}:")]
+    if len(values) != 1 or not pattern.fullmatch(values[0]):
+        raise ValueError(f"review_{key.lower()}_invalid")
+    return values[0]
+
+
+def _validate_review_body(body: str, target_sha: str, base_sha: str,
+                          diff_sha256: str) -> None:
     if not isinstance(body, str):
         raise ValueError("review_comment_body_missing")
     lines = [line.strip() for line in body.splitlines()]
     if lines.count(_MARKER) != 1:
         raise ValueError("review_marker_invalid")
-    values = [line.split(":", 1)[1].strip() for line in lines
-              if line.startswith("HEAD_SHA:")]
-    if len(values) != 1 or not _SHA_RE.fullmatch(values[0]):
-        raise ValueError("review_head_sha_invalid")
-    return values[0]
+    if _body_value(body, "HEAD_SHA", _SHA_RE) != target_sha:
+        raise ValueError("review_comment_head_mismatch")
+    if _body_value(body, "BASE_SHA", _SHA_RE) != base_sha:
+        raise ValueError("review_comment_base_mismatch")
+    if _body_value(body, "DIFF_SHA256", _DIFF_RE) != diff_sha256:
+        raise ValueError("review_comment_diff_mismatch")
 
 
 def apply_human_review_attestation(
@@ -55,10 +68,15 @@ def apply_human_review_attestation(
     diff_sha256 = report.get("diff_sha256")
     if not isinstance(target_sha, str) or not _SHA_RE.fullmatch(target_sha):
         raise ValueError("report_target_sha_invalid")
+    base_sha = report.get("base_sha")
+    if not isinstance(base_sha, str) or not _SHA_RE.fullmatch(base_sha):
+        raise ValueError("report_base_sha_invalid")
     if not isinstance(diff_sha256, str) or not _DIFF_RE.fullmatch(diff_sha256):
         raise ValueError("report_diff_hash_invalid")
     if attestation.get("expected_head_sha") != target_sha:
         raise ValueError("review_head_sha_mismatch")
+    if attestation.get("expected_base_sha") != base_sha:
+        raise ValueError("review_base_sha_mismatch")
     if attestation.get("expected_diff_sha256") != diff_sha256:
         raise ValueError("review_diff_hash_mismatch")
 
@@ -79,9 +97,9 @@ def apply_human_review_attestation(
             or not comment_url.startswith(f"https://github.com/{repo}/pull/{pr_number}#issuecomment-")):
         raise ValueError("review_comment_origin_invalid")
 
-    if _body_head_sha(attestation.get("comment_body")) != target_sha:
-        raise ValueError("review_comment_head_mismatch")
-    created_at = _timestamp(attestation.get("comment_created_at"))
+    _validate_review_body(
+        attestation.get("comment_body"), target_sha, base_sha, diff_sha256
+    )
     reviewed_at = _timestamp(attestation.get("comment_updated_at") or attestation.get("comment_created_at"))
     head_commit_at = _timestamp(attestation.get("head_commit_at"))
     if reviewed_at < head_commit_at:
@@ -112,6 +130,7 @@ def apply_human_review_attestation(
         "comment_url": comment_url,
         "comment_created_at": attestation["comment_created_at"],
         "comment_updated_at": attestation.get("comment_updated_at", attestation["comment_created_at"]),
+        "base_sha": base_sha,
         "target_sha": target_sha,
         "diff_sha256": diff_sha256,
     }
@@ -123,6 +142,7 @@ def apply_human_review_attestation(
         "comment_url": comment_url,
         "comment_created_at": attestation["comment_created_at"],
         "comment_updated_at": attestation.get("comment_updated_at", attestation["comment_created_at"]),
+        "base_sha": base_sha,
         "target_sha": target_sha,
         "diff_sha256": diff_sha256,
         "reviewed_paths": ["distributed_loop_trigger.py"],
