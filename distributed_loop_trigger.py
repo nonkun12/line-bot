@@ -12,7 +12,7 @@ import unicodedata
 import uuid
 import zipfile
 from datetime import datetime, timezone
-from typing import Tuple
+from typing import Any, Tuple
 
 import httpx
 
