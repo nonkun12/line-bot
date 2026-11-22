@@ -369,6 +369,62 @@ def _decode_contents_payload(payload: object) -> dict:
     return value
 
 
+def _durable_task_is_held(durable_state: dict, task_id: str) -> bool:
+    goal = durable_state.get("goal_autopilot")
+    goal_tasks = goal.get("tasks") if isinstance(goal, dict) else None
+    matching = [
+        item for item in goal_tasks
+        if isinstance(item, dict) and item.get("task_id") == task_id
+    ] if isinstance(goal_tasks, list) else []
+    if len(matching) != 1:
+        raise ValueError("approval_task_goal_state_missing_or_ambiguous")
+    recovery = durable_state.get("recovery_ai")
+    recovery_tasks = recovery.get("tasks") if isinstance(recovery, dict) else None
+    recovery_entry = recovery_tasks.get(task_id) if isinstance(recovery_tasks, dict) else None
+    return (
+        matching[0].get("status") in {"HELD", "FAILED", "IN_PROGRESS"}
+        or (isinstance(recovery_entry, dict) and recovery_entry.get("held") is True)
+    )
+
+
+def _approval_reservation_marker(decision) -> tuple[str, str]:
+    identity = {
+        "repository": "nonkun12/line-bot",
+        "actor": "nonkun12",
+        "task_id": decision.task_id,
+        "instruction_sha256": decision.instruction_sha256,
+        "allowed_paths_sha256": decision.allowed_paths_sha256,
+        "base_sha": decision.base_sha,
+        "approval_nonce": decision.nonce,
+    }
+    marker = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return marker, f"refs/heads/rsi-approval-reserved/{marker}"
+
+
+def _reserve_approval_nonce(client: httpx.Client, headers: dict[str, str], decision) -> bool:
+    marker, marker_ref = _approval_reservation_marker(decision)
+    response = client.post(
+        "https://api.github.com/repos/nonkun12/line-bot/git/refs",
+        json={"ref": marker_ref, "sha": decision.base_sha},
+        headers=headers,
+    )
+    if response.status_code == 422:
+        return False
+    if response.status_code != 201:
+        raise ValueError(f"approval_nonce_reservation_http_{response.status_code}")
+    payload = response.json()
+    if (
+        not isinstance(payload, dict)
+        or payload.get("ref") != marker_ref
+        or not isinstance(payload.get("object"), dict)
+        or payload["object"].get("sha") != decision.base_sha
+    ):
+        raise ValueError("approval_nonce_reservation_response_invalid")
+    return True
+
+
 def _fetch_task_approval_candidate(client: httpx.Client, headers: dict[str, str], task_id: str) -> dict:
     if REPO != "nonkun12/line-bot":
         raise ValueError("approval_repository_not_allowlisted")
@@ -405,21 +461,7 @@ def _fetch_task_approval_candidate(client: httpx.Client, headers: dict[str, str]
     catalog_match = all(
         queued[0].get(k) == task.get(k) for k in ("id", "instruction", "allowed_paths")
     )
-    goal = durable_state.get("goal_autopilot")
-    goal_tasks = goal.get("tasks") if isinstance(goal, dict) else None
-    matching_goal_tasks = [
-        item for item in goal_tasks
-        if isinstance(item, dict) and item.get("task_id") == task_id
-    ] if isinstance(goal_tasks, list) else []
-    if len(matching_goal_tasks) != 1:
-        raise ValueError("approval_task_goal_state_missing_or_ambiguous")
-    recovery = durable_state.get("recovery_ai")
-    recovery_tasks = recovery.get("tasks") if isinstance(recovery, dict) else None
-    recovery_entry = recovery_tasks.get(task_id) if isinstance(recovery_tasks, dict) else None
-    task_held = (
-        matching_goal_tasks[0].get("status") in {"HELD", "FAILED", "IN_PROGRESS"}
-        or (isinstance(recovery_entry, dict) and recovery_entry.get("held") is True)
-    )
+    task_held = _durable_task_is_held(durable_state, task_id)
     return {
         "task_id": task_id, "catalog_registered": True, "catalog_match": catalog_match,
         "execution_approved": task.get("execution_approved") is True,
@@ -487,36 +529,8 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                 candidate=candidate, now_epoch=int(time.time()), secret=secret,
             )
             signature = sign_approval_envelope(decision, secret=secret)
-            identity = {
-                "repository": "nonkun12/line-bot",
-                "actor": "nonkun12",
-                "task_id": decision.task_id,
-                "instruction_sha256": decision.instruction_sha256,
-                "allowed_paths_sha256": decision.allowed_paths_sha256,
-                "base_sha": decision.base_sha,
-                "approval_nonce": decision.nonce,
-            }
-            marker = hashlib.sha256(
-                json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
-            ).hexdigest()
-            marker_ref = f"refs/heads/rsi-approval-reserved/{marker}"
-            reservation = client.post(
-                f"https://api.github.com/repos/nonkun12/line-bot/git/refs",
-                json={"ref": marker_ref, "sha": decision.base_sha},
-                headers=headers,
-            )
-            if reservation.status_code == 422:
+            if not _reserve_approval_nonce(client, headers, decision):
                 return True, "この承認nonceは既に受付済み、または消費済みです。再実行は行いません。新しい承認候補を発行してください。"
-            if reservation.status_code != 201:
-                return True, f"承認nonceを安全に予約できません（HTTP {reservation.status_code}）。実行要求は送信していません。"
-            reservation_payload = reservation.json()
-            if (
-                not isinstance(reservation_payload, dict)
-                or reservation_payload.get("ref") != marker_ref
-                or not isinstance(reservation_payload.get("object"), dict)
-                or reservation_payload["object"].get("sha") != decision.base_sha
-            ):
-                return True, "承認nonce予約の応答を検証できません。実行要求は送信していません。"
             response = client.post(
                 f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW}/dispatches",
                 json={"ref": "main", "inputs": {
