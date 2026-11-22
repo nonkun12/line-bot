@@ -45,8 +45,8 @@ class GoalStateStore:
             if cur.rowcount != 1: conn.rollback(); raise RuntimeError("goal revision conflict")
             conn.commit()
         return expected_revision + 1
-    def claim_next(self, goal_id: str) -> dict[str, Any]:
-        """Atomically persist IN_PROGRESS before any external executor can run."""
+    def claim_next(self, goal_id: str, *, task_id: str | None = None) -> dict[str, Any]:
+        """Atomically claim the next task, or only the explicitly bound task."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT revision, document FROM goal_state WHERE goal_id=?", (goal_id,)).fetchone()
@@ -54,13 +54,19 @@ class GoalStateStore:
             revision, goal = int(row["revision"]), json.loads(row["document"])
             decision = evaluate_goal(goal)
             if decision["decision"] != "CONTINUE": conn.rollback(); return decision
-            task = next(item for item in goal["tasks"] if item["task_id"] == decision["task_id"])
+            if task_id is None:
+                task = next(item for item in goal["tasks"] if item["task_id"] == decision["task_id"])
+            else:
+                task = next((item for item in goal["tasks"] if item.get("task_id") == task_id), None)
+                if task is None or task.get("status") != "PENDING":
+                    conn.rollback()
+                    return {"decision":"HOLD","reason":"requested_task_not_pending","task_id":task_id}
             task["status"] = "IN_PROGRESS"
             payload = json.dumps(goal, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             cur = conn.execute("UPDATE goal_state SET revision=revision+1, document=? WHERE goal_id=? AND revision=?", (payload, goal_id, revision))
             if cur.rowcount != 1: conn.rollback(); return {"decision":"HOLD","reason":"goal_revision_conflict"}
             conn.commit()
-            return {**decision, "decision":"CLAIMED", "revision":revision+1}
+            return {**decision, "task_id":task["task_id"], "decision":"CLAIMED", "revision":revision+1}
     def record_result(self, goal_id: str, task_id: str, *, status: str, completion_evidence: dict[str, Any] | None = None) -> int:
         if status not in {"COMPLETED","FAILED","HELD"}: raise ValueError("unsupported terminal task status")
         with self._connect() as conn:
