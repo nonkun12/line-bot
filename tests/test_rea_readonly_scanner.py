@@ -113,14 +113,15 @@ class ReadonlyScannerTests(unittest.TestCase):
         base = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
         ).strip()
-        self._write("distributed_loop_trigger.py", "VALUE = 2\\n")
+        self._write("distributed_loop_trigger.py", "VALUE = 2\n")
         self._commit()
         target = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
         ).strip()
 
         report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
-        self.assertEqual(report["status"], "FINDINGS")
+        self.assertEqual(report["findings_count"], 1)
+        self.assertEqual({item["category"] for item in report["findings"]}, {"manual_review_required"})
         self.assertEqual(report["changed_paths"], ["distributed_loop_trigger.py"])
         finding = next(
             item for item in report["findings"]
@@ -131,6 +132,36 @@ class ReadonlyScannerTests(unittest.TestCase):
             finding["evidence"]["check"],
             "sensitive_entrypoint_requires_human_review",
         )
+
+    def test_commit_diff_requires_human_review_when_dispatcher_is_renamed(self) -> None:
+        self._write("distributed_loop_trigger.py", "VALUE = 3\n")
+        self._commit()
+        base = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        subprocess.run(
+            ["git", "mv", "distributed_loop_trigger.py", "scripts/moved_dispatch.py"],
+            cwd=self.root, check=True,
+        )
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(report["status"], "FINDINGS")
+        self.assertEqual(
+            report["changed_paths"],
+            ["distributed_loop_trigger.py", "scripts/moved_dispatch.py"],
+        )
+        categories = {item["category"] for item in report["findings"]}
+        self.assertIn("manual_review_required", categories)
+        self.assertIn("deleted_file", categories)
+        manual = next(
+            item for item in report["findings"]
+            if item["category"] == "manual_review_required"
+        )
+        self.assertEqual(manual["severity"], "HIGH")
 
     def test_commit_diff_still_blocks_other_repository_root_files(self) -> None:
         base = subprocess.check_output(
@@ -182,7 +213,7 @@ class ReadonlyScannerTests(unittest.TestCase):
             ["git", "rm", "-rf", "."], cwd=self.root, check=True,
             capture_output=True,
         )
-        self._write("scripts/unrelated.py", "VALUE = 9\\n")
+        self._write("scripts/unrelated.py", "VALUE = 9\n")
         self._commit()
         target = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
