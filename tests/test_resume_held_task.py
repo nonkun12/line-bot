@@ -169,4 +169,4 @@ def test_goal_only_reconciliation_rejects_changed_or_unapproved_goal_task(tmp_pa
             state_path=state, recovery_path=recovery, queue_path=catalog,
             task_id=TASK_ID, cause_fixed=True,
         )
-    assert RecoveryStore(recovery).task_status(TASK_ID)["resume_requires_review"] is not True
+    assert RecoveryStore(recovery).task_status(TASK_ID).get("resume_requires_review", False) is not True
