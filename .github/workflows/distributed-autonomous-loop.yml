@@ -32,6 +32,22 @@ on:
         description: 'Exact base commit SHA shown by the blocked preflight'
         required: false
         type: string
+      approval_expires_at:
+        description: 'Unix expiry from the signed LINE preview challenge'
+        required: false
+        type: string
+      approval_line_user_id:
+        description: 'LINE user ID that issued the explicit approval'
+        required: false
+        type: string
+      approval_nonce:
+        description: 'Stable nonce from the signed preview; reused on replay'
+        required: false
+        type: string
+      approval_signature:
+        description: 'HMAC-SHA256 signature for the task-bound approval envelope'
+        required: false
+        type: string
       max_tasks:
         description: 'Manual run task limit (1–4 tasks; all safety gates still apply)'
         required: false
@@ -537,6 +553,7 @@ jobs:
         id: run_task
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          LINE_TASK_APPROVAL_HMAC_SECRET: ${{ secrets.LINE_TASK_APPROVAL_HMAC_SECRET }}
           SELF_IMPROVEMENT_HISTORY_PATH: /tmp/line-bot-self-improvement.jsonl
           # RAG is advisory and sanitized; the authoritative Recovery AI state
           # remains durable in autonomous-loop-state. This SQLite cache is run-local.
