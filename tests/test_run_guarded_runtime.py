@@ -793,16 +793,16 @@ def test_explicit_denial_cannot_fall_back_to_workflow_prepared_approval(tmp_path
     assert evidence["execution_authorized"] is False
 
 
-def test_approval_consumption_marker_rejects_replay_and_allows_fresh_preview(monkeypatch):
+def test_approval_reservation_and_consumption_reject_replay_and_allow_fresh_nonce(monkeypatch):
     import urllib.error
 
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
-    refs = []
     consumed_refs = set()
+    requests = []
 
     class Response:
-        status = 201
-        def __init__(self, ref, sha):
+        def __init__(self, status, ref, sha):
+            self.status = status
             self.payload = json.dumps({"ref": ref, "object": {"sha": sha}}).encode()
         def __enter__(self):
             return self
@@ -811,16 +811,19 @@ def test_approval_consumption_marker_rejects_replay_and_allows_fresh_preview(mon
         def read(self):
             return self.payload
 
-    def create_ref(request, timeout):
+    def fake_urlopen(request, timeout):
+        requests.append((request.get_method(), request.full_url))
+        if request.get_method() == "GET":
+            ref = "refs/" + request.full_url.split("/git/ref/", 1)[1]
+            return Response(200, ref, "b" * 40)
         payload = json.loads(request.data.decode())
         ref = payload["ref"]
-        refs.append(ref)
         if ref in consumed_refs:
             raise urllib.error.HTTPError(request.full_url, 422, "already exists", {}, None)
         consumed_refs.add(ref)
-        return Response(ref, payload["sha"])
+        return Response(201, ref, payload["sha"])
 
-    monkeypatch.setattr(guarded_runtime.urllib.request, "urlopen", create_ref)
+    monkeypatch.setattr(guarded_runtime.urllib.request, "urlopen", fake_urlopen)
     base = {
         "execution_authorized": True,
         "actor": "nonkun12",
@@ -840,8 +843,9 @@ def test_approval_consumption_marker_rejects_replay_and_allows_fresh_preview(mon
     assert replay["gate"] == "BLOCKED"
     assert replay["reason_code"] == "approval_already_consumed"
     assert fresh_preview["gate"] == "PASS"
-    assert refs[0] == refs[1]
-    assert refs[2] != refs[0]
+    assert [method for method, _ in requests] == ["GET", "POST", "GET", "POST", "GET", "POST"]
+    assert "rsi-approval-reserved" in requests[0][1]
+    assert "rsi-approval-consumed" in requests[1][1]
 
 
 def test_line_approval_secret_is_scoped_to_guarded_runtime_handoff(monkeypatch):
