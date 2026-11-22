@@ -220,6 +220,11 @@ def run(args: argparse.Namespace, *, approval_hmac_secret: str = "",
                 if claimed_this_run:
                     _reconcile_claimed_tasks(store, claimed_this_run, goal_output)
                     return 80
+                if approval_required:
+                    reason = str(claim.get("reason") or claim.get("decision") or "approval_target_not_claimable")
+                    print("GOAL_AUTOPILOT=BLOCKED reason=" + reason, flush=True)
+                    _append_blocked(results_path, approval_task_id, reason)
+                    return 80
                 return 79
             claimed_this_run.add(str(claim["task_id"]))
             loaded = store.read(GOAL_ID)
