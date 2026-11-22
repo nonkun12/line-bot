@@ -215,6 +215,10 @@ def run(args: argparse.Namespace, *, approval_hmac_secret: str = "",
                 GOAL_ID, task_id=approval_task_id if approval_required else None
             )
             if claim.get("decision") == "COMPLETE":
+                if approval_required:
+                    print("GOAL_AUTOPILOT=BLOCKED reason=approved_task_already_complete", flush=True)
+                    _append_blocked(results_path, approval_task_id, "approved_task_already_complete")
+                    return 80
                 break
             if claim.get("decision") != "CLAIMED":
                 if claimed_this_run:
