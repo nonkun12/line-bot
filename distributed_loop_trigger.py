@@ -379,11 +379,20 @@ def _durable_task_is_held(durable_state: dict, task_id: str) -> bool:
     if len(matching) != 1:
         raise ValueError("approval_task_goal_state_missing_or_ambiguous")
     recovery = durable_state.get("recovery_ai")
-    recovery_tasks = recovery.get("tasks") if isinstance(recovery, dict) else None
-    recovery_entry = recovery_tasks.get(task_id) if isinstance(recovery_tasks, dict) else None
+    if not isinstance(recovery, dict):
+        raise ValueError("approval_recovery_state_missing_or_invalid")
+    recovery_tasks = recovery.get("tasks")
+    if not isinstance(recovery_tasks, dict):
+        raise ValueError("approval_recovery_tasks_missing_or_invalid")
+    recovery_entry = recovery_tasks.get(task_id)
+    if not isinstance(recovery_entry, dict):
+        raise ValueError("approval_task_recovery_state_missing_or_invalid")
+    recovery_held = recovery_entry.get("held")
+    if type(recovery_held) is not bool:
+        raise ValueError("approval_task_recovery_hold_flag_missing_or_invalid")
     return (
         matching[0].get("status") in {"HELD", "FAILED", "IN_PROGRESS"}
-        or (isinstance(recovery_entry, dict) and recovery_entry.get("held") is True)
+        or recovery_held
     )
 
 
