@@ -646,7 +646,7 @@ def test_preview_rejects_durable_held_task():
         "goal_autopilot": {
             "tasks": [{"task_id": "task-1", "status": "HELD"}]
         },
-        "recovery_ai": {"tasks": {}},
+        "recovery_ai": {"tasks": {"task-1": {"held": False}}},
     }
     assert trigger._durable_task_is_held(state, "task-1") is True
     state["goal_autopilot"]["tasks"][0]["status"] = "PENDING"
@@ -654,6 +654,33 @@ def test_preview_rejects_durable_held_task():
     assert trigger._durable_task_is_held(state, "task-1") is True
     state["recovery_ai"]["tasks"]["task-1"]["held"] = False
     assert trigger._durable_task_is_held(state, "task-1") is False
+
+
+@pytest.mark.parametrize(
+    "recovery",
+    [None, [], {}, {"tasks": None}, {"tasks": []}, {"tasks": {"task-1": None}},
+     {"tasks": {"task-1": {}}}, {"tasks": {"task-1": {"held": "false"}}}],
+)
+def test_preview_blocks_when_recovery_hold_state_is_missing_or_invalid(recovery):
+    state = {
+        "goal_autopilot": {
+            "tasks": [{"task_id": "task-1", "status": "PENDING"}]
+        },
+        "recovery_ai": recovery,
+    }
+    with pytest.raises(ValueError):
+        trigger._durable_task_is_held(state, "task-1")
+
+
+def test_preview_blocks_when_recovery_task_record_is_missing():
+    state = {
+        "goal_autopilot": {
+            "tasks": [{"task_id": "task-1", "status": "PENDING"}]
+        },
+        "recovery_ai": {"tasks": {"other-task": {"held": False}}},
+    }
+    with pytest.raises(ValueError, match="approval_task_recovery_state_missing_or_invalid"):
+        trigger._durable_task_is_held(state, "task-1")
 
 
 def test_status_malformed_github_json_fails_closed(monkeypatch):
