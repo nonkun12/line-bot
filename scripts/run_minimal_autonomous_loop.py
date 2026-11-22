@@ -155,14 +155,16 @@ def classify_final_outcome(
         return "NOT_RUN", "queue_empty"
 
     if all_tasks_held:
-        # The queue-refill gate can discover that every catalog task is held
-        # before the runner emits a task row. In that case the runner records
-        # NOT_RUN with queue_total=queue_completed=0; classify the run as a
-        # genuine held-queue BLOCKED result, not an evidence mismatch.
+        # A held task can remain counted in the runtime queue even though the
+        # runner correctly emits no task row. With an explicit all-held marker,
+        # NOT_RUN plus zero completed tasks is a genuine held-queue BLOCKED result
+        # whether the held item is counted in queue_total or the refill queue is
+        # empty. This changes reporting only; it never authorizes execution.
         held_queue_not_run = (
             task_statuses == ["NOT_RUN"]
             and loop_outcome == "success"
-            and queue_total == 0
+            and isinstance(queue_total, int)
+            and queue_total >= 0
             and queue_completed == 0
         )
         if (task_statuses != ["BLOCKED"] and not held_queue_not_run) or loop_outcome != "success":
