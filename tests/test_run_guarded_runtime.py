@@ -895,3 +895,7 @@ def test_line_approval_secret_handoff_is_narrow_in_workflow_and_runners():
     assert 'os.environ.pop("LINE_TASK_APPROVAL_HMAC_SECRET", "")' in loop
     assert 'env.pop("LINE_TASK_APPROVAL_HMAC_SECRET", None)' in loop
     assert 'env["LINE_TASK_APPROVAL_HMAC_SECRET"] = approval_hmac_secret' in loop
+    assert "GOAL_APPROVAL_REQUIRED:" in workflow
+    assert "GOAL_APPROVAL_TASK_ID:" in workflow
+    assert "approval_required=approval_required" in bridge
+    assert "approval_task_id=approval_task_id" in bridge
