@@ -99,15 +99,13 @@ def sign_preview_challenge(
         raise ValueError("approval base or paths digest is invalid")
     if type(expires_at) is not int or not approver_user_id or not _HEX32.fullmatch(nonce):
         raise ValueError("approval challenge fields are invalid")
-    return hmac.new(
-        secret.encode("utf-8"),
-        _canonical(_challenge_payload(
-            task_id=task_id, instruction_sha256=instruction_sha256,
-            allowed_paths_sha256=allowed_paths_sha256, base_sha=base_sha,
-            expires_at=expires_at, approver_user_id=approver_user_id, nonce=nonce,
-        )),
-        hashlib.sha256,
-    ).hexdigest()
+    payload = _challenge_payload(
+        task_id=task_id, instruction_sha256=instruction_sha256,
+        allowed_paths_sha256=allowed_paths_sha256, base_sha=base_sha,
+        expires_at=expires_at, approver_user_id=approver_user_id, nonce=nonce,
+    )
+    payload["purpose"] = "line-task-approval-preview-v1"
+    return hmac.new(secret.encode("utf-8"), _canonical(payload), hashlib.sha256).hexdigest()
 
 
 def verify_preview_challenge(command: ApprovalCommand, *, approver_user_id: str,
@@ -161,6 +159,7 @@ def sign_approval_envelope(decision: ApprovalDecision, *, secret: str) -> str:
         approver_user_id=decision.approver_user_id,
         nonce=decision.nonce,
     )
+    payload["purpose"] = "line-task-approval-execution-v1"
     return hmac.new(secret.encode("utf-8"), _canonical(payload), hashlib.sha256).hexdigest()
 
 
@@ -196,6 +195,8 @@ def validate_approval_request(
         raise ValueError("task is not an exact trusted catalog candidate")
     if candidate.get("execution_approved") is not True:
         raise ValueError("catalog execution approval is missing")
+    if candidate.get("task_held") is True:
+        raise ValueError("task is currently held and requires human review")
     instruction = candidate.get("instruction")
     paths = candidate.get("allowed_paths")
     if not isinstance(instruction, str) or not instruction.strip():
