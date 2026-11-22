@@ -63,10 +63,10 @@ def test_approval_candidate_rejects_missing_or_duplicate_queue_entries(monkeypat
         )
 
 
-def test_approval_candidate_rejects_queue_catalog_mismatch(monkeypatch):
+def test_approval_candidate_marks_queue_catalog_mismatch(monkeypatch):
     monkeypatch.setattr(dispatcher, "REPO", "nonkun12/line-bot")
     queued = {**TASK, "instruction": "Altered queued instruction"}
-    with pytest.raises(ValueError, match="catalog_mismatch"):
-        dispatcher._fetch_task_approval_candidate(
-            _Client([queued], [TASK.copy()]), {}, TASK["id"]
+    result = dispatcher._fetch_task_approval_candidate(
+        _Client([queued], [TASK.copy()]), {}, TASK["id"]
     )
+    assert result["catalog_match"] is False
