@@ -243,7 +243,14 @@ def test_guarded_runner_sentinel_outcome_is_preserved_without_synthetic_failure(
     assert goal["tasks"][0]["hold_reason"] == "guarded_runtime_or_evidence_gate_failed"
 
 
-def test_approved_held_target_returns_blocked_not_held_success(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "claim_result",
+    [
+        {"decision": "HOLD", "reason": "requested_task_not_pending"},
+        {"decision": "COMPLETE", "reason": "all_acceptance_criteria_verified"},
+    ],
+)
+def test_approved_nonpending_target_returns_blocked_not_success(tmp_path, monkeypatch, claim_result):
     queue, catalog, state, results, stop = _inputs(tmp_path)
     monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
     monkeypatch.setattr(bridge, "ROOT", tmp_path)
@@ -251,7 +258,7 @@ def test_approved_held_target_returns_blocked_not_held_success(tmp_path, monkeyp
         bridge.GoalStateStore,
         "claim_next",
         lambda self, goal_id, task_id=None: {
-            "decision": "HOLD", "reason": "requested_task_not_pending", "task_id": task_id
+            **claim_result, "task_id": task_id
         },
     )
     args = SimpleNamespace(
@@ -268,6 +275,10 @@ def test_approved_held_target_returns_blocked_not_held_success(tmp_path, monkeyp
     rows = [json.loads(line) for line in results.read_text().splitlines()]
     assert rows[-1]["status"] == "BLOCKED"
     assert rows[-1]["task_id"] == "approved-test-task"
+    assert rows[-1]["failure_reason"] in {
+        "requested_task_not_pending", "all_acceptance_criteria_verified",
+        "approved_task_already_complete",
+    }
 
 
 def test_workflow_returns_nonzero_for_nonclaimable_explicit_approval():
