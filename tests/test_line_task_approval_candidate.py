@@ -86,7 +86,7 @@ def test_approval_candidate_marks_held_goal_state(monkeypatch):
         "goal_autopilot": {
             "tasks": [{"task_id": TASK["id"], "status": "HELD"}]
         },
-        "recovery_ai": {"tasks": {}},
+        "recovery_ai": {"tasks": {TASK["id"]: {"held": False}}},
     }
     result = dispatcher._fetch_task_approval_candidate(
         _Client([TASK.copy()], [TASK.copy()], state=state), {}, TASK["id"]
