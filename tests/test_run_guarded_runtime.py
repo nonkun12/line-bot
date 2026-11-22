@@ -767,8 +767,13 @@ def test_schedule_execution_approval_rejects_unapproved_catalog_task(monkeypatch
     ],
 )
 def test_schedule_execution_approval_rejects_catalog_definition_mismatch(monkeypatch, field, value):
-    kwargs = {field: value}
-    _configure_catalog_schedule(monkeypatch, **kwargs)
+    import json
+
+    _configure_catalog_schedule(monkeypatch)
+    if field == "instruction":
+        _configure_catalog_schedule(monkeypatch, instruction=value)
+    else:
+        monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(value))
     evidence = guarded_runtime._verify_execution_approval("a" * 40, "catalog task instruction")
     assert evidence["gate"] == "BLOCKED"
     assert evidence["execution_authorized"] is False
