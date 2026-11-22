@@ -118,3 +118,26 @@ def test_repair_blocks_when_one_shot_authorization_was_already_consumed(monkeypa
     assert result["status"] == "BLOCKED"
     assert result["reason_code"] == "repair_attempt_already_consumed"
     assert called == []
+
+def test_repair_blocks_if_rea_mutates_the_verified_worktree(monkeypatch, tmp_path):
+    _install_git_state(monkeypatch)
+    _consume_pass(monkeypatch)
+    original_git = executor._git
+    status_calls = 0
+
+    def git_with_rea_side_effect(root, *args):
+        nonlocal status_calls
+        if args == ("status", "--porcelain", "--untracked-files=all"):
+            status_calls += 1
+            if status_calls == 3:
+                return " M tests/test_example.py"
+        return original_git(root, *args)
+
+    monkeypatch.setattr(executor, "_git", git_with_rea_side_effect)
+    result = executor.execute_one_repair(
+        EVIDENCE, token="token",
+        repair_executor=lambda _request: {"status": "PASS"},
+        rea_runner=_rea_pass, repo_root=tmp_path,
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["reason_code"] == "post_rea_repository_state_changed"
