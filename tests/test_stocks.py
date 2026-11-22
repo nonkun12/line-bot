@@ -1,5 +1,6 @@
 from agents.stocks.node import StocksAgent
 from core.agents import AgentRequest
+from core.stocks import StockQuote, safe_stock_quote
 
 
 def test_normalize_japanese_ticker():
@@ -89,6 +90,7 @@ def test_yahoo_quote_retries_after_valid_error_payload(monkeypatch):
     assert "query1.finance.yahoo.com" in calls[0]
     assert "query2.finance.yahoo.com" in calls[1]
 
+
 def test_yahoo_quote_retries_second_endpoint(monkeypatch):
     class FakeResponse:
         def __enter__(self):
@@ -128,6 +130,7 @@ def test_yahoo_quote_retries_second_endpoint(monkeypatch):
     assert "query1.finance.yahoo.com" in calls[0]
     assert "query2.finance.yahoo.com" in calls[1]
 
+
 def test_yahoo_japan_html_fallback(monkeypatch):
     html = """<!doctype html>
 <html><body>
@@ -165,3 +168,19 @@ def test_yahoo_japan_html_fallback(monkeypatch):
     assert quote["currency"] == "JPY"
     assert calls[-1] == "https://finance.yahoo.co.jp/quote/7203.T"
 
+
+def test_safe_stock_quote_accepts_zero_price_boundary():
+    class FakeProvider:
+        def __init__(self):
+            self.requested_tickers = []
+
+        def get_quote(self, ticker):
+            self.requested_tickers.append(ticker)
+            return StockQuote(ticker=ticker, price=0.0)
+
+    provider = FakeProvider()
+
+    quote = safe_stock_quote(provider, "7203")
+
+    assert quote == StockQuote(ticker="7203.T", price=0.0)
+    assert provider.requested_tickers == ["7203.T"]
