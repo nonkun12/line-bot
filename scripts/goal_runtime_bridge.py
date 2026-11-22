@@ -285,6 +285,15 @@ def run(args: argparse.Namespace, *, approval_hmac_secret: str = "",
                 if child.returncode != 0:
                     return child.returncode
             else:
+                if child.returncode == 81 and not approval_required:
+                    # A normal/scheduled run without a LINE approval must not
+                    # strand a claimed task in HELD merely because the guarded
+                    # runtime correctly refused unapproved execution.
+                    _reconcile_claimed_tasks(store, claimed_this_run, goal_output)
+                    _append_blocked(
+                        results_path, selected["task_id"], "execution_approval_required"
+                    )
+                    return 80
                 store.record_result(GOAL_ID, selected["task_id"], status="HELD")
                 _reconcile_claimed_tasks(store, claimed_this_run, goal_output, selected["task_id"])
                 # Preserve guarded runner sentinels: the parent workflow maps
