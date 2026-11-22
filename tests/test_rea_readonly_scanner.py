@@ -109,20 +109,28 @@ class ReadonlyScannerTests(unittest.TestCase):
         self.assertEqual(report["findings_count"], 0)
         self.assertEqual(report["changed_paths"], ["line_development.py"])
 
-    def test_commit_diff_allows_only_reviewed_distributed_loop_trigger(self) -> None:
+    def test_commit_diff_requires_human_review_for_distributed_loop_trigger(self) -> None:
         base = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
         ).strip()
-        self._write("distributed_loop_trigger.py", "VALUE = 2\n")
+        self._write("distributed_loop_trigger.py", "VALUE = 2\\n")
         self._commit()
         target = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
         ).strip()
 
         report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
-        self.assertEqual(report["status"], "PASS")
-        self.assertEqual(report["findings_count"], 0)
+        self.assertEqual(report["status"], "FINDINGS")
         self.assertEqual(report["changed_paths"], ["distributed_loop_trigger.py"])
+        finding = next(
+            item for item in report["findings"]
+            if item["category"] == "manual_review_required"
+        )
+        self.assertEqual(finding["severity"], "HIGH")
+        self.assertEqual(
+            finding["evidence"]["check"],
+            "sensitive_entrypoint_requires_human_review",
+        )
 
     def test_commit_diff_still_blocks_other_repository_root_files(self) -> None:
         base = subprocess.check_output(
@@ -209,6 +217,14 @@ class ReadonlyScannerTests(unittest.TestCase):
     def test_assume_unchanged_index_flag_blocks_scan(self) -> None:
         subprocess.run(
             ["git", "update-index", "--assume-unchanged", "scripts/good.py"],
+            cwd=self.root, check=True,
+        )
+        with self.assertRaises(ScanBlocked):
+            scan_repository(self.root)
+
+    def test_skip_worktree_index_flag_blocks_scan(self) -> None:
+        subprocess.run(
+            ["git", "update-index", "--skip-worktree", "scripts/good.py"],
             cwd=self.root, check=True,
         )
         with self.assertRaises(ScanBlocked):
