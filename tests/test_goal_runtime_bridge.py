@@ -240,3 +240,30 @@ def test_guarded_runner_sentinel_outcome_is_preserved_without_synthetic_failure(
     goal = json.loads(goal_output.read_text())
     assert goal["tasks"][0]["status"] == "HELD"
     assert goal["tasks"][0]["hold_reason"] == "guarded_runtime_or_evidence_gate_failed"
+
+
+def test_approved_held_target_returns_blocked_not_held_success(tmp_path, monkeypatch):
+    queue, catalog, state, results, stop = _inputs(tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        bridge.GoalStateStore,
+        "claim_next",
+        lambda self, goal_id, task_id=None: {
+            "decision": "HOLD", "reason": "requested_task_not_pending", "task_id": task_id
+        },
+    )
+    args = SimpleNamespace(
+        catalog=catalog, state=state, results=results, stop_file=stop,
+        goal_state_output=tmp_path / "goal-pending.json", max_tasks=1,
+    )
+
+    result = bridge.run(
+        args, approval_hmac_secret="x" * 40, approval_required=True,
+        approval_task_id="approved-test-task",
+    )
+
+    assert result == 80
+    rows = [json.loads(line) for line in results.read_text().splitlines()]
+    assert rows[-1]["status"] == "BLOCKED"
+    assert rows[-1]["task_id"] == "approved-test-task"
