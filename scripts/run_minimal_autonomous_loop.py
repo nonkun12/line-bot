@@ -414,12 +414,16 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
                 or not all(isinstance(item, str) and item.strip() for item in allowed_paths)
             ):
                 raise ValueError("versioned task definition is invalid")
+            repair_approved = entry.get("repair_approved", False)
+            if not isinstance(repair_approved, bool):
+                raise ValueError("versioned repair approval must be boolean")
             normalized = {
                 "id": task_id,
                 "instruction": instruction,
                 "allowed_paths": [item.strip() for item in allowed_paths],
-                # Preserve approval only in this trusted catalog representation.
+                # Repair is a distinct privilege; absent means explicitly disabled.
                 "execution_approved": entry.get("execution_approved") is True,
+                "repair_approved": repair_approved,
             }
             previous = definitions.get(task_id)
             if previous is not None and previous != normalized:
