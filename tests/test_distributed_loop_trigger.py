@@ -762,4 +762,4 @@ def test_line_approval_handler_checks_capacity_before_nonce_reservation_and_disp
 
     capacity_source = inspect.getsource(trigger._approval_dispatch_capacity_error)
     assert "one atomic" in capacity_source
-    assert "best-effort" in capacity_source
+    assert "best-effort" in capacity_source.lower()
