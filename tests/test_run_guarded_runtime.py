@@ -858,15 +858,19 @@ def test_line_approval_secret_is_scoped_to_guarded_runtime_handoff(monkeypatch):
     ])
     captured = {}
 
-    def capture_run(args, *, approval_hmac_secret=""):
+    def capture_run(args, *, approval_hmac_secret="", approval_required=False, approval_task_id=""):
         assert "LINE_TASK_APPROVAL_HMAC_SECRET" not in os.environ
         captured["secret"] = approval_hmac_secret
+        captured["approval_required"] = approval_required
+        captured["approval_task_id"] = approval_task_id
         return 0
 
     monkeypatch.setattr(goal_runtime_bridge, "run", capture_run)
 
     assert goal_runtime_bridge.main() == 0
     assert captured["secret"] == secret
+    assert captured["approval_required"] is False
+    assert captured["approval_task_id"] == ""
     assert "LINE_TASK_APPROVAL_HMAC_SECRET" not in os.environ
 
 
