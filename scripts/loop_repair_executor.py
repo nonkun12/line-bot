@@ -91,6 +91,7 @@ def execute_one_repair(
         changed = _git(root, "diff", "--name-only").splitlines()
         staged = _git(root, "diff", "--cached", "--name-only").splitlines()
         untracked = _git(root, "ls-files", "--others", "--exclude-standard").splitlines()
+        post_repair_status = _git(root, "status", "--porcelain", "--untracked-files=all")
     except Exception:
         return _blocked("post_repair_repository_state_unreadable")
     allowed = set(authorization["allowed_paths"])
@@ -119,6 +120,25 @@ def execute_one_repair(
         or post_rea.get("independent") is not True
     ):
         return _blocked("post_repair_rea_not_independent_pass")
+
+    # REA is a read-only verifier. Reject any verifier-side mutation so the
+    # verified diff is exactly the diff that remains after independent review.
+    try:
+        final_head = _git(root, "rev-parse", "HEAD")
+        final_status = _git(root, "status", "--porcelain", "--untracked-files=all")
+        final_changed = _git(root, "diff", "--name-only").splitlines()
+        final_staged = _git(root, "diff", "--cached", "--name-only").splitlines()
+        final_untracked = _git(root, "ls-files", "--others", "--exclude-standard").splitlines()
+    except Exception:
+        return _blocked("post_rea_repository_state_unreadable")
+    final_paths = set(final_changed + final_staged + final_untracked)
+    if (
+        final_head != before_head
+        or final_status != post_repair_status
+        or final_paths != actual
+        or not final_paths.issubset(allowed)
+    ):
+        return _blocked("post_rea_repository_state_changed")
 
     return {
         "status": "REPAIR_VERIFIED",
