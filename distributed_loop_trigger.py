@@ -478,6 +478,36 @@ def _approval_request_id(nonce: str) -> str:
     return nonce
 
 
+def _approval_dispatch_capacity_error(client: Any, headers: dict) -> str:
+    """Fail closed when the LINE intake already has two outstanding workflow runs."""
+    outstanding: dict[str, dict] = {}
+    base = f"https://api.github.com/repos/{REPO}"
+    for status in ("in_progress", "queued", "pending", "waiting"):
+        response = client.get(
+            f"{base}/actions/workflows/{WORKFLOW}/runs",
+            params={"branch": "main", "status": status, "per_page": 100},
+            headers=headers,
+        )
+        if response.status_code in {401, 403}:
+            return "承認Dispatchの受付枠を確認できません（GitHub権限不足）。"
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("workflow_runs"), list):
+            raise ValueError("approval_workflow_runs_response_invalid")
+        for run in payload["workflow_runs"]:
+            if not isinstance(run, dict):
+                raise ValueError("approval_workflow_run_invalid")
+            run_id = run.get("id")
+            if run_id is not None:
+                outstanding[str(run_id)] = run
+    if len(outstanding) >= 2:
+        return (
+            "分散Loopは実行中または待機中です。LINEからの受付枠（最大2件）が埋まっています。"
+            "現在の処理が進んでから、新しい承認候補を発行してください。"
+        )
+    return ""
+
+
 def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
     preview = parse_approval_preview_command(message)
     approval = parse_approval_command(message)
@@ -496,6 +526,7 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
         "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
+    dispatch_attempted = False
     try:
         with httpx.Client(timeout=8.0) as client:
             task_id = preview.task_id if preview is not None else approval.task_id
@@ -536,8 +567,12 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                 candidate=candidate, now_epoch=int(time.time()), secret=secret,
             )
             signature = sign_approval_envelope(decision, secret=secret)
+            capacity_error = _approval_dispatch_capacity_error(client, headers)
+            if capacity_error:
+                return True, capacity_error
             if not _reserve_approval_nonce(client, headers, decision):
                 return True, "この承認nonceは既に受付済み、または消費済みです。再実行は行いません。新しい承認候補を発行してください。"
+            dispatch_attempted = True
             response = client.post(
                 f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW}/dispatches",
                 json={"ref": "main", "inputs": {
@@ -562,6 +597,11 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                 "実行側で署名・期限・nonceの一度限りの消費・既存Safety Gateを再検証します。"
             )
     except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+        if dispatch_attempted:
+            return True, (
+                "BLOCKED: 承認Dispatchの応答を確認できません。起動済みの可能性があるため再送せず、"
+                "GitHub Actionsの実行履歴を確認してください。必要なら新しい承認候補を発行してください。"
+            )
         return True, "BLOCKED: タスク承認のGitHub応答を検証できません。実行要求は送信していません。"
 
 
