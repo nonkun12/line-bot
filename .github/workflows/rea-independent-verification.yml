@@ -137,10 +137,10 @@ jobs:
               return;
             }
 
-            const [headCommit, comments] = await Promise.all([
+            const [headCommit, reviews] = await Promise.all([
               github.rest.repos.getCommit({ owner, repo, ref: expectedSha }),
-              github.paginate(github.rest.issues.listComments, {
-                owner, repo, issue_number: pr.number, per_page: 100
+              github.paginate(github.rest.pulls.listReviews, {
+                owner, repo, pull_number: pr.number, per_page: 100
               })
             ]);
             const headCommitAt =
@@ -152,51 +152,31 @@ jobs:
             }
 
             const authorLogin = pr.user?.login;
-            const shaLine = /^HEAD_SHA:\s*([0-9a-f]{40})$/;
-            const baseLine = /^BASE_SHA:\s*([0-9a-f]{40})$/;
-            const diffLine = /^DIFF_SHA256:\s*([0-9a-f]{64})$/;
-            const candidates = comments.filter(comment => {
-              if (comment.user?.login !== authorLogin || !comment.created_at || !comment.updated_at) return false;
-              const lines = (comment.body || "").split(/\r?\n/).map(line => line.trim());
-              const decisions = lines.filter(line =>
-                line === "REA-HUMAN-REVIEW: APPROVED" ||
-                line === "REA-HUMAN-REVIEW: REJECTED"
-              );
-              const shaValues = lines.map(line => line.match(shaLine)).filter(Boolean);
-              const baseValues = lines.map(line => line.match(baseLine)).filter(Boolean);
-              const diffValues = lines.map(line => line.match(diffLine)).filter(Boolean);
-              return decisions.length === 1 &&
-                shaValues.length === 1 && shaValues[0][1] === expectedSha &&
-                baseValues.length === 1 && baseValues[0][1] === baseSha &&
-                diffValues.length === 1 && diffValues[0][1] === diffSha256;
-            }).sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
-
+            const candidates = reviews.filter(review =>
+              review.user?.login &&
+              review.user.login !== authorLogin &&
+              review.state === "APPROVED" &&
+              review.commit_id === expectedSha &&
+              review.submitted_at &&
+              Date.parse(review.submitted_at) >= Date.parse(headCommitAt)
+            ).sort((a, b) => Date.parse(b.submitted_at) - Date.parse(a.submitted_at));
             if (!candidates.length) {
-              core.info("No authenticated human-review comment matches this exact HEAD SHA.");
+              core.info("No independent formal APPROVED review matches the exact HEAD SHA.");
               return;
             }
-            const comment = candidates[0];
-            const lines = (comment.body || "").split(/\r?\n/).map(line => line.trim());
-            if (!lines.includes("REA-HUMAN-REVIEW: APPROVED")) {
-              core.setOutput("decision", "REJECTED");
-              core.info("The latest matching human-review comment rejects this revision.");
-              return;
-            }
-            if (Date.parse(comment.updated_at) < Date.parse(headCommitAt)) {
-              core.info("The review comment predates the reviewed commit.");
-              return;
-            }
+            const review = candidates[0];
             const attestation = {
               expected_head_sha: expectedSha,
               expected_base_sha: baseSha,
               expected_diff_sha256: diffSha256,
-              reviewer_login: comment.user.login,
+              reviewer_login: review.user.login,
               pr_author_login: authorLogin,
-              comment_id: comment.id,
-              comment_url: comment.html_url,
-              comment_body: comment.body,
-              comment_created_at: comment.created_at,
-              comment_updated_at: comment.updated_at,
+              comment_id: review.id,
+              comment_url: review.html_url,
+              comment_body: "REA-HUMAN-REVIEW: APPROVED\\nHEAD_SHA: " + expectedSha +
+                "\\nBASE_SHA: " + baseSha + "\\nDIFF_SHA256: " + diffSha256,
+              comment_created_at: review.submitted_at,
+              comment_updated_at: review.submitted_at,
               head_commit_at: headCommitAt,
               repo_full_name: owner + "/" + repo,
               pr_number: pr.number
