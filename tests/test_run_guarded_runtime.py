@@ -715,3 +715,71 @@ def test_explicit_denial_cannot_fall_back_to_workflow_prepared_approval(tmp_path
 
     assert evidence["gate"] == "BLOCKED"
     assert evidence["execution_authorized"] is False
+
+
+def _configure_catalog_schedule(monkeypatch, *, approved=True, instruction="catalog task instruction", paths=None):
+    import json
+
+    catalog_paths = paths if paths is not None else ["tests/test_catalog_task.py"]
+    catalog = {
+        "tasks": [{
+            "id": "catalog-task-1",
+            "instruction": instruction,
+            "allowed_paths": catalog_paths,
+            "execution_approved": approved,
+        }]
+    }
+    monkeypatch.setattr(
+        guarded_runtime,
+        "_git",
+        lambda *args: json.dumps(catalog) if args == ("show", "a" * 40 + ":.github/autonomous-loop-task-catalog.json") else "",
+    )
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "catalog-task-1")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(catalog_paths))
+
+
+def test_schedule_execution_approval_requires_exact_reviewed_catalog(monkeypatch):
+    _configure_catalog_schedule(monkeypatch)
+    evidence = guarded_runtime._verify_execution_approval("a" * 40, "catalog task instruction")
+    assert evidence["gate"] == "PASS"
+    assert evidence["execution_authorized"] is True
+    assert evidence["scope"] == "catalog_preapproved_execution"
+    assert evidence["reason_code"] == "reviewed_catalog_preapproval"
+    assert evidence["catalog_sha"] == "a" * 40
+
+
+def test_schedule_execution_approval_rejects_unapproved_catalog_task(monkeypatch):
+    _configure_catalog_schedule(monkeypatch, approved=False)
+    evidence = guarded_runtime._verify_execution_approval("a" * 40, "catalog task instruction")
+    assert evidence["gate"] == "BLOCKED"
+    assert evidence["execution_authorized"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("instruction", "different instruction"),
+        ("paths", ["tests/other.py"]),
+    ],
+)
+def test_schedule_execution_approval_rejects_catalog_definition_mismatch(monkeypatch, field, value):
+    kwargs = {field: value}
+    _configure_catalog_schedule(monkeypatch, **kwargs)
+    evidence = guarded_runtime._verify_execution_approval("a" * 40, "catalog task instruction")
+    assert evidence["gate"] == "BLOCKED"
+    assert evidence["execution_authorized"] is False
+
+
+def test_schedule_execution_approval_rejects_wrong_actor_and_branch(monkeypatch):
+    _configure_catalog_schedule(monkeypatch)
+    monkeypatch.setenv("GITHUB_ACTOR", "someone-else")
+    evidence = guarded_runtime._verify_execution_approval("a" * 40, "catalog task instruction")
+    assert evidence["gate"] == "BLOCKED"
+    monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/unreviewed")
+    evidence = guarded_runtime._verify_execution_approval("a" * 40, "catalog task instruction")
+    assert evidence["gate"] == "BLOCKED"
