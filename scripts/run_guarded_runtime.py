@@ -180,34 +180,43 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
     actor = str(sender.get("login", ""))
     repo_name = str(repository.get("full_name", ""))
 
+    approval_nonce = ""
     if event_name == "workflow_dispatch":
         if not isinstance(inputs, dict):
             return blocked
-        # Existing task-bound dispatch fields remain supported for compatibility.
-        if "execution_approval" in inputs:
-            approval_fields_valid = (
-                str(inputs.get("execution_approval", "")) == "APPROVE_EXECUTION"
-                and str(inputs.get("approval_task_id", "")) == task_id
-                and str(inputs.get("approval_instruction_sha256", "")).lower() == instruction_digest
-                and bool(allowed_paths_digest)
-                and str(inputs.get("approval_allowed_paths_sha256", "")).lower() == allowed_paths_digest
-                and str(inputs.get("approval_base_sha", "")) == start_sha
+        try:
+            expiry = int(str(inputs.get("approval_expires_at", "")))
+        except (TypeError, ValueError):
+            return blocked
+        approval_nonce = str(inputs.get("approval_nonce", ""))
+        approver = str(inputs.get("approval_line_user_id", ""))
+        signature = str(inputs.get("approval_signature", ""))
+        from core.line_task_approval import verify_approval_envelope_signature
+        remaining = expiry - int(datetime.now(timezone.utc).timestamp())
+        approval_fields_valid = (
+            str(inputs.get("execution_approval", "")) == "APPROVE_EXECUTION"
+            and str(inputs.get("approval_task_id", "")) == task_id
+            and str(inputs.get("approval_instruction_sha256", "")).lower() == instruction_digest
+            and bool(allowed_paths_digest)
+            and str(inputs.get("approval_allowed_paths_sha256", "")).lower() == allowed_paths_digest
+            and str(inputs.get("approval_base_sha", "")) == start_sha
+            and bool(re.fullmatch(r"[0-9a-f]{32}", approval_nonce))
+            and 0 < remaining <= 600
+            and approver
+            and verify_approval_envelope_signature(
+                task_id=task_id,
+                instruction_sha256=instruction_digest,
+                allowed_paths_sha256=allowed_paths_digest,
+                base_sha=start_sha,
+                expires_at=expiry,
+                approver_user_id=approver,
+                nonce=approval_nonce,
+                signature=signature,
+                secret=os.environ.get("LINE_TASK_APPROVAL_HMAC_SECRET", ""),
             )
-        else:
-            approval_fields_valid = (
-                os.environ.get("AUTONOMOUS_EXECUTION_APPROVAL", "") == "APPROVE_EXECUTION"
-                and os.environ.get("AUTONOMOUS_APPROVAL_TASK_ID", "").strip() == task_id
-                and os.environ.get("AUTONOMOUS_APPROVAL_INSTRUCTION_SHA256", "").lower() == instruction_digest
-                and os.environ.get("AUTONOMOUS_APPROVAL_ALLOWED_PATHS_SHA256", "").lower() == allowed_paths_digest
-                and os.environ.get("AUTONOMOUS_APPROVAL_BASE_SHA", "") == start_sha
-                and str(inputs.get("instruction", "")) == instruction
-                and bool(str(inputs.get("user_id", "")).strip())
-            )
+        )
     else:
-        # A single exact PR comment is the compact, task-bound approval path.
-        # The task ID is checked against the runtime-selected catalog entry;
-        # instruction/path hashes and the base SHA are derived here from that
-        # trusted task and the current checkout, never supplied by the commenter.
+        # PR-comment approvals remain task-bound; derive a stable nonce from comment ID.
         issue = event.get("issue") if isinstance(event, dict) else None
         comment = event.get("comment") if isinstance(event, dict) else None
         body = comment.get("body", "") if isinstance(comment, dict) else ""
@@ -215,12 +224,15 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
             r"/distributed-loop resume_task_id=([A-Za-z0-9._-]{1,100}) confirm_cause_fixed=true reviewed=true",
             body if isinstance(body, str) else "",
         )
+        comment_id = comment.get("id") if isinstance(comment, dict) else None
+        approval_nonce = hashlib.sha256(str(comment_id).encode("utf-8")).hexdigest()[:32] if comment_id else ""
         approval_fields_valid = (
             isinstance(issue, dict)
             and isinstance(issue.get("pull_request"), dict)
             and match is not None
             and match.group(1) == task_id
             and bool(allowed_paths_digest)
+            and bool(approval_nonce)
         )
     if (
         actor != "nonkun12"
@@ -242,6 +254,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "instruction_sha256": instruction_digest,
         "allowed_paths_sha256": allowed_paths_digest,
         "base_sha": start_sha,
+        "approval_nonce": approval_nonce,
     }
 
 
@@ -395,6 +408,7 @@ def _consume_execution_approval(approval_evidence: dict[str, object], start_sha:
         "instruction_sha256": approval_evidence.get("instruction_sha256", ""),
         "allowed_paths_sha256": approval_evidence.get("allowed_paths_sha256", ""),
         "base_sha": start_sha,
+        "approval_nonce": approval_evidence.get("approval_nonce", ""),
     }
     if not all(isinstance(value, str) and value for value in identity.values()):
         return {"gate": "BLOCKED", "reason_code": "approval_ledger_identity_invalid"}
