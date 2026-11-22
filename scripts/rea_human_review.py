@@ -94,7 +94,7 @@ def apply_human_review_attestation(
     if (not isinstance(repo, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo)
             or not isinstance(pr_number, int) or isinstance(pr_number, bool) or pr_number <= 0
             or not isinstance(comment_url, str)
-            or not comment_url.startswith(f"https://github.com/{repo}/pull/{pr_number}#issuecomment-")):
+            or not comment_url.startswith(f"https://github.com/{repo}/pull/{pr_number}#pullrequestreview-")):
         raise ValueError("review_comment_origin_invalid")
 
     _validate_review_body(
