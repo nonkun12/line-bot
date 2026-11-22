@@ -1,3 +1,9 @@
+import inspect
+import re
+from pathlib import Path
+
+import pytest
+
 import distributed_loop_trigger as trigger
 from distributed_loop_trigger import request_distributed_loop
 
@@ -675,3 +681,29 @@ def test_status_malformed_github_json_fails_closed(monkeypatch):
     assert handled is True
     assert "BLOCKED" in reply
     assert "JSON形式" in reply or "通信" in reply
+
+
+
+def test_line_approval_request_id_matches_workflow_validation_contract():
+    workflow_path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "distributed-autonomous-loop.yml"
+    )
+    workflow = workflow_path.read_text(encoding="utf-8")
+    validator = re.search(
+        r'\[\[ "\$\{REQUEST_ID\}" =~ (\^\[0-9a-f\]\{32\}\$) \]\]',
+        workflow,
+    )
+    assert validator is not None
+
+    nonce = "a" * 32
+    request_id = trigger._approval_request_id(nonce)
+    assert request_id == nonce
+    assert re.fullmatch(validator.group(1), request_id)
+
+    handler_source = inspect.getsource(trigger._handle_line_task_approval)
+    assert '"request_id": _approval_request_id(decision.nonce)' in handler_source
+    with pytest.raises(ValueError, match="approval_nonce_invalid_for_request_id"):
+        trigger._approval_request_id("line-approval-" + nonce)
