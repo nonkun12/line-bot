@@ -206,3 +206,27 @@ def test_management_gate_result_allowed_is_true_only_for_allow():
     assert ManagementGateResult(GateDecision.ALLOW, ()).allowed is True
     assert ManagementGateResult(GateDecision.DENY, ("blocked",)).allowed is False
     assert ManagementGateResult(GateDecision.NEEDS_HUMAN, ("review",)).allowed is False
+
+@pytest.mark.parametrize(
+    ("now_epoch", "expected"),
+    [
+        (99, False),  # before issuance
+        (100, True),  # issuance instant is valid
+        (499, True),  # immediately before expiry
+        (500, False),  # expiry instant is invalid
+    ],
+)
+def test_capability_grant_is_valid_at_enforces_time_boundaries(
+    now_epoch: int, expected: bool
+) -> None:
+    grant = CapabilityGrant(
+        issuer="human",
+        subject="management",
+        scopes=frozenset({"tests/"}),
+        issued_at=100,
+        expires_at=500,
+        parent_task="task-1",
+        nonce="boundary-test",
+    )
+
+    assert grant.is_valid_at(now_epoch) is expected
