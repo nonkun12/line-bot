@@ -749,3 +749,17 @@ def test_line_approval_dispatch_capacity_blocks_at_two_outstanding_runs():
     })
     message = trigger._approval_dispatch_capacity_error(client, {})
     assert "最大2件" in message
+
+def test_line_approval_handler_checks_capacity_before_nonce_reservation_and_dispatch():
+    import inspect
+    from distributed_loop_trigger import _handle_line_task_approval
+
+    source = inspect.getsource(_handle_line_task_approval)
+    capacity_check = source.index("_approval_dispatch_capacity_error(client, headers)")
+    nonce_reservation = source.index("_reserve_approval_nonce(client, headers, decision)")
+    dispatch = source.index("response = client.post(")
+    assert capacity_check < nonce_reservation < dispatch
+
+    capacity_source = inspect.getsource(trigger._approval_dispatch_capacity_error)
+    assert "not an atomic" in capacity_source
+    assert "best-effort" in capacity_source
