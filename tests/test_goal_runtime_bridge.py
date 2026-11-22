@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 import pytest
@@ -267,3 +268,24 @@ def test_approved_held_target_returns_blocked_not_held_success(tmp_path, monkeyp
     rows = [json.loads(line) for line in results.read_text().splitlines()]
     assert rows[-1]["status"] == "BLOCKED"
     assert rows[-1]["task_id"] == "approved-test-task"
+
+
+def test_workflow_returns_nonzero_for_nonclaimable_explicit_approval():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github/workflows/distributed-autonomous-loop.yml"
+    ).read_text(encoding="utf-8")
+    start = workflow.index('          if [ "$loop_rc" -eq 79 ]; then')
+    end = workflow.index('          exit "$loop_rc"', start)
+    shell_block = workflow[start:end]
+    script = (
+        'loop_rc=79\n'
+        'GOAL_APPROVAL_REQUIRED=true\n'
+        + shell_block
+        + '\nexit "$loop_rc"\n'
+    )
+
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+
+    assert result.returncode == 80
+    assert "explicitly approved task is not claimable" in result.stderr
