@@ -169,6 +169,8 @@ jobs:
       INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
       INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
       INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
+      GOAL_APPROVAL_REQUIRED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.execution_approval == 'APPROVE_EXECUTION' && 'true' || 'false' }}
+      GOAL_APPROVAL_TASK_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.approval_task_id || '' }}
       AUTO_APPLY_PATCH: 'false'
       AUTO_DEPLOY: 'false'
       # Set repository Actions variable CONTROL_TOWER_KILL_SWITCH=true to stop
