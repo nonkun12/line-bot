@@ -392,10 +392,10 @@ def _fetch_task_approval_candidate(client: httpx.Client, headers: dict[str, str]
         raise ValueError("approval_queue_or_catalog_invalid")
     queued = [x for x in queued_tasks if isinstance(x, dict) and x.get("id") == task_id]
     registered = [x for x in catalog_tasks if isinstance(x, dict) and x.get("id") == task_id]
-    if len(registered) != 1 or len(queued) > 1:
-        raise ValueError("approval_task_not_unique_in_trusted_catalog")
+    if len(registered) != 1 or len(queued) != 1:
+        raise ValueError("approval_task_not_unique_or_not_queued")
     task = registered[0]
-    catalog_match = not queued or all(
+    catalog_match = all(
         queued[0].get(k) == task.get(k) for k in ("id", "instruction", "allowed_paths")
     )
     return {
