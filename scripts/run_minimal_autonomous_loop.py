@@ -630,6 +630,7 @@ def run_task(
     *,
     expected_base_sha: str | None = None,
     recovery_state_path: Path | None = None,
+    approval_hmac_secret: str = "",
 ) -> dict[str, object]:
     summary = summary_dir / f"minimal-autonomous-{task['id']}.json"
     run_nonce = uuid.uuid4().hex
@@ -648,6 +649,8 @@ def run_task(
             "failure_reason": "control_tower_head_changed",
         }
     env = os.environ.copy()
+    # Never inherit the signing key into advisory or preparation subprocesses.
+    env.pop("LINE_TASK_APPROVAL_HMAC_SECRET", None)
     if _deterministic_target_for_task(task) is not None and not _is_review_coverage_gap_model_task(task):
         # Do not expose provider credentials to deterministic test-only tasks.
         for key in (
@@ -745,6 +748,9 @@ def run_task(
     exit_code = 1
     failure_reason = ""
     global ACTIVE_PROCESS
+    # The guarded runtime is the sole child allowed to receive the signing key.
+    if approval_hmac_secret:
+        env["LINE_TASK_APPROVAL_HMAC_SECRET"] = approval_hmac_secret
     process = subprocess.Popen(
         [sys.executable, "scripts/run_guarded_runtime.py"],
         cwd=ROOT,
@@ -938,6 +944,8 @@ def _handle_signal(signum: int, _frame) -> None:
 
 
 def main() -> int:
+    # Remove the key from this process before any Git, STOP, RAG, or advisory subprocess.
+    approval_hmac_secret = os.environ.pop("LINE_TASK_APPROVAL_HMAC_SECRET", "")
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
     parser = argparse.ArgumentParser()
@@ -1443,6 +1451,7 @@ def main() -> int:
                     task, index, args.stop_file,
                     expected_base_sha=control_tower_head,
                     recovery_state_path=args.state.parent / "recovery-ai-state.json",
+                    approval_hmac_secret=approval_hmac_secret,
                 )
                 # Retry only explicit transient provider failures. Never retry
                 # invalid requests, authorization/security failures, test failures,
@@ -1477,7 +1486,8 @@ def main() -> int:
                     if retry_base_sha != current_head:
                         break
                     result = run_task(
-                        task, index, args.stop_file, expected_base_sha=retry_base_sha
+                        task, index, args.stop_file, expected_base_sha=retry_base_sha,
+                        approval_hmac_secret=approval_hmac_secret,
                     )
         # Carry the exact preflight REA evidence into the Control Tower decision.
         # This is diagnostic metadata only and grants no execution or repair authority.
