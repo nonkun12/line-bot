@@ -339,3 +339,27 @@ def test_cli_emits_candidate_exclusion_diagnostics(tmp_path, monkeypatch, capsys
         "invalid_issue_number_count": 0,
     }
     assert logged["reason"] == "no_valid_test_only_spec"
+
+
+@pytest.mark.parametrize("issue_number", [True, False])
+def test_proposal_rejects_boolean_issue_number(tmp_path, issue_number):
+    candidate = issue("boolean-issue-number")
+    candidate["number"] = issue_number
+    result, queue_path = run(tmp_path, [candidate], state())
+
+    assert result["status"] == "NO_TRUSTED_CANDIDATES"
+    assert result["diagnostics"]["invalid_issue_number_count"] == 1
+    assert json.loads(queue_path.read_text(encoding="utf-8"))["tasks"] == []
+
+
+def test_proposals_reject_conflicting_registered_definitions_for_same_task_id(tmp_path):
+    with pytest.raises(ValueError, match="conflicting registered task definitions"):
+        run(
+            tmp_path,
+            [issue("conflicting-task")],
+            state(),
+            registered_tasks=[
+                registered("conflicting-task"),
+                registered("conflicting-task", instruction="A different registered instruction."),
+            ],
+        )
