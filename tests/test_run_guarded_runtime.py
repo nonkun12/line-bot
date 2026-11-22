@@ -230,7 +230,11 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     monkeypatch.setattr(guarded_runtime, "_augment_instruction_with_history", lambda instruction, path: instruction)
     monkeypatch.setattr(guarded_runtime, "_augment_with_hermes_advice", lambda instruction, path: instruction)
     monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: False)
-    monkeypatch.setattr(guarded_runtime.runtime, "execute", lambda instruction: 0)
+    def execute_without_approval_secret(instruction):
+        assert "LINE_TASK_APPROVAL_HMAC_SECRET" not in os.environ
+        return 0
+
+    monkeypatch.setattr(guarded_runtime.runtime, "execute", execute_without_approval_secret)
     monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
     instruction = "safe test instruction"
     monkeypatch.setenv("DEV_INSTRUCTION", instruction)
@@ -275,6 +279,7 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
         lambda evidence, start_sha: {"gate": "PASS", "reason_code": "approval_consumed_once", "marker_ref": "refs/heads/rsi-approval-consumed/test", "marker_sha": start_sha},
     )
     assert guarded_runtime.main() == 0
+    assert "LINE_TASK_APPROVAL_HMAC_SECRET" not in os.environ
     summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
     assert summary["status"] == "PASS"
     assert summary["rea"] == rea
