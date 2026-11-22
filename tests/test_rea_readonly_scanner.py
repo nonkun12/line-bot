@@ -109,6 +109,21 @@ class ReadonlyScannerTests(unittest.TestCase):
         self.assertEqual(report["findings_count"], 0)
         self.assertEqual(report["changed_paths"], ["line_development.py"])
 
+    def test_commit_diff_allows_only_reviewed_distributed_loop_trigger(self) -> None:
+        base = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        self._write("distributed_loop_trigger.py", "VALUE = 2\\n")
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["findings_count"], 0)
+        self.assertEqual(report["changed_paths"], ["distributed_loop_trigger.py"])
+
     def test_commit_diff_still_blocks_other_repository_root_files(self) -> None:
         base = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
