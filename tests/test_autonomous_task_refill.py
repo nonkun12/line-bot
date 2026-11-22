@@ -733,3 +733,32 @@ def test_main_adds_execution_approved_catalog_task_on_success(
     assert report["added"] == 1
     runtime = json.loads(output.read_text(encoding="utf-8"))
     assert any(task["id"] == "task-cli-new" for task in runtime["tasks"])
+
+
+@pytest.mark.parametrize("instruction", ["", "   ", "x" * 5001])
+def test_refill_rejects_empty_whitespace_and_overlong_instructions(tmp_path: Path, instruction: str):
+    queue, catalog, completed = _inputs(
+        tmp_path,
+        candidates=[{**_task("task-invalid-instruction"), "instruction": instruction}],
+    )
+    output = tmp_path / "runtime.json"
+
+    with pytest.raises(ValueError, match="invalid task instruction"):
+        build_queue(queue, catalog, completed, output)
+
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("target", ["queue", "catalog"])
+def test_refill_rejects_non_list_tasks_in_queue_or_catalog(tmp_path: Path, target: str):
+    queue, catalog, completed = _inputs(tmp_path, candidates=[_task("task-valid")])
+    source = queue if target == "queue" else catalog
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["tasks"] = {"unexpected": "object"}
+    source.write_text(json.dumps(payload), encoding="utf-8")
+    output = tmp_path / "runtime.json"
+
+    with pytest.raises(ValueError, match="queue and catalog tasks must be lists"):
+        build_queue(queue, catalog, completed, output)
+
+    assert not output.exists()
