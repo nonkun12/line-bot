@@ -707,3 +707,45 @@ def test_line_approval_request_id_matches_workflow_validation_contract():
     assert '"request_id": _approval_request_id(decision.nonce)' in handler_source
     with pytest.raises(ValueError, match="approval_nonce_invalid_for_request_id"):
         trigger._approval_request_id("line-approval-" + nonce)
+
+
+
+class _CapacityResponse:
+    def __init__(self, runs):
+        self.status_code = 200
+        self._runs = runs
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {"workflow_runs": self._runs}
+
+
+class _CapacityClient:
+    def __init__(self, runs_by_status):
+        self.runs_by_status = runs_by_status
+
+    def get(self, url, *, params, headers):
+        return _CapacityResponse(self.runs_by_status.get(params["status"], []))
+
+
+def test_line_approval_dispatch_capacity_allows_fewer_than_two_outstanding_runs():
+    client = _CapacityClient({
+        "in_progress": [{"id": 1}],
+        "queued": [],
+        "pending": [],
+        "waiting": [],
+    })
+    assert trigger._approval_dispatch_capacity_error(client, {}) == ""
+
+
+def test_line_approval_dispatch_capacity_blocks_at_two_outstanding_runs():
+    client = _CapacityClient({
+        "in_progress": [{"id": 1}],
+        "queued": [{"id": 2}],
+        "pending": [],
+        "waiting": [],
+    })
+    message = trigger._approval_dispatch_capacity_error(client, {})
+    assert "最大2件" in message
