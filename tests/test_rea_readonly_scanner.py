@@ -113,7 +113,7 @@ class ReadonlyScannerTests(unittest.TestCase):
         base = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
         ).strip()
-        self._write("distributed_loop_trigger.py", "VALUE = 2\\n")
+        self._write("distributed_loop_trigger.py", "VALUE = 2\n")
         self._commit()
         target = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
