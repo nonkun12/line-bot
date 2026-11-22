@@ -540,8 +540,8 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                 f"Task {decision.task_id} の1タスク承認Dispatchを受け付けました。"
                 "実行側で署名・期限・nonceの一度限りの消費・既存Safety Gateを再検証します。"
             )
-    except (httpx.HTTPError, ValueError, TypeError, KeyError):
-        return True, "タスク承認を安全に検証できませんでした。実行要求は送信していません。"
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+        return True, "BLOCKED: タスク承認のGitHub応答を検証できません。実行要求は送信していません。"
 
 
 def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
