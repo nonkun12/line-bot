@@ -611,13 +611,23 @@ jobs:
           if [ "$TRIGGER_MODE" = "obsidian_incident" ]; then
             python scripts/run_minimal_autonomous_loop.py "${loop_args[@]}"
           else
-            LINE_TASK_APPROVAL_HMAC_SECRET="$approval_hmac_secret" PYTHONPATH=. python scripts/goal_runtime_bridge.py \
-              --catalog .github/autonomous-loop-task-catalog.json \
-              --state /tmp/autonomous-loop-state.json \
-              --results /tmp/minimal-autonomous-loop.jsonl \
-              --stop-file "$STOP_FILE" \
-              --goal-state-output /tmp/goal-autopilot-pending.json \
-              --max-tasks "${MAX_TASKS}"
+            if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ] && [ "${{ inputs.execution_approval || 'DENY' }}" = "APPROVE_EXECUTION" ]; then
+              LINE_TASK_APPROVAL_HMAC_SECRET="$approval_hmac_secret" PYTHONPATH=. python scripts/goal_runtime_bridge.py \
+                --catalog .github/autonomous-loop-task-catalog.json \
+                --state /tmp/autonomous-loop-state.json \
+                --results /tmp/minimal-autonomous-loop.jsonl \
+                --stop-file "$STOP_FILE" \
+                --goal-state-output /tmp/goal-autopilot-pending.json \
+                --max-tasks "${MAX_TASKS}"
+            else
+              PYTHONPATH=. python scripts/goal_runtime_bridge.py \
+                --catalog .github/autonomous-loop-task-catalog.json \
+                --state /tmp/autonomous-loop-state.json \
+                --results /tmp/minimal-autonomous-loop.jsonl \
+                --stop-file "$STOP_FILE" \
+                --goal-state-output /tmp/goal-autopilot-pending.json \
+                --max-tasks "${MAX_TASKS}"
+            fi
           fi
           loop_rc=$?
           unset approval_hmac_secret
