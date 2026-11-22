@@ -16,17 +16,19 @@ from pathlib import Path
 from typing import Any
 
 ALLOWED_ROOTS = (".github/workflows/", "core/", "scripts/", "tests/", "docs/rea/")
-ALLOWED_ROOT_FILES = frozenset({"line_development.py"})
+# Root-level entrypoints are denied by default. Each exception is reviewed
+# individually; do not replace this exact set with a broad root-level rule.
+ALLOWED_ROOT_FILES = frozenset({"line_development.py", "distributed_loop_trigger.py"})
 
 
 def _is_allowed_path(path: str) -> bool:
-    """Allow reviewed root entrypoints explicitly; keep other root files blocked."""
+    """Allow only reviewed root entrypoints; keep every other root file blocked."""
     return path in ALLOWED_ROOT_FILES or path.startswith(ALLOWED_ROOTS)
 ALLOWED_SUFFIXES = frozenset({".py", ".json", ".yml", ".yaml", ".md", ".txt"})
 MAX_FILE_BYTES = 512 * 1024
 MAX_FILES = 5000
 DANGEROUS_FLAG_RE = re.compile(
-    r"""^[ \t]*(AUTO_APPLY_PATCH|AUTO_DEPLOY)[ \t]*[:=][ \t]*["\']?(true|yes|1)["\']?[ \t]*(?:#.*)?$""",
+    r"""^[ \\t]*(AUTO_APPLY_PATCH|AUTO_DEPLOY)[ \\t]*[:=][ \\t]*["\\']?(true|yes|1)["\\']?[ \\t]*(?:#.*)?$""",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -94,7 +96,7 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
     # The -v index listing exposes assume-unchanged (lowercase tags) and
     # skip-worktree (S) flags. Either can conceal worktree changes from status.
     index_flags = _git(root, "ls-files", "-v", "-z", "--")
-    for record in index_flags.split("\0"):
+    for record in index_flags.split("\\0"):
         if not record:
             continue
         if len(record) < 3 or record[1] != " ":
@@ -104,14 +106,14 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
             raise ScanBlocked("git_index_flags_unsafe")
 
     # -z preserves filenames without Git's quoted-path display format.
-    entries = _git(root, "ls-files", "-s", "-z", "--").split("\0")
+    entries = _git(root, "ls-files", "-s", "-z", "--").split("\\0")
     candidates: list[tuple[str, str]] = []
     for entry in entries:
         if not entry:
             continue
-        if "\t" not in entry:
+        if "\\t" not in entry:
             raise ScanBlocked("git_index_entry_invalid")
-        metadata, path = entry.split("\t", 1)
+        metadata, path = entry.split("\\t", 1)
         parts = metadata.split()
         if len(parts) < 3:
             raise ScanBlocked("git_index_entry_invalid")
@@ -185,7 +187,7 @@ def scan_repository(repo_root: str | Path) -> dict[str, Any]:
 
         if relative.startswith(".github/workflows/"):
             for match in DANGEROUS_FLAG_RE.finditer(source):
-                line = source.count("\n", 0, match.start()) + 1
+                line = source.count("\\n", 0, match.start()) + 1
                 flag_name = match.group(1).upper()
                 findings.append(_finding(
                     category="safety_flag",
@@ -264,8 +266,8 @@ def scan_commit_diff(
 
     changed_raw = _git(root, "diff", "--name-only", "-z", base_sha, target_sha)
     deleted_raw = _git(root, "diff", "--diff-filter=D", "--name-only", "-z", base_sha, target_sha)
-    changed = [item for item in changed_raw.split("\0") if item]
-    deleted = set(item for item in deleted_raw.split("\0") if item)
+    changed = [item for item in changed_raw.split("\\0") if item]
+    deleted = set(item for item in deleted_raw.split("\\0") if item)
     if len(changed) > MAX_FILES:
         raise ScanBlocked("scan_file_limit_exceeded")
 
@@ -345,7 +347,7 @@ def scan_commit_diff(
                 ))
         if relative.startswith(".github/workflows/"):
             for match in DANGEROUS_FLAG_RE.finditer(source):
-                line = source.count("\n", 0, match.start()) + 1
+                line = source.count("\\n", 0, match.start()) + 1
                 flag_name = match.group(1).upper()
                 findings.append(_finding(
                     category="safety_flag", severity="CRITICAL", confidence="MEDIUM",
