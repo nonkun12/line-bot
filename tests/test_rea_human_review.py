@@ -8,15 +8,19 @@ from scripts.rea_human_review import apply_human_review_attestation
 
 HEAD = "a" * 40
 DIFF = "b" * 64
+BASE = "c" * 40
 COMMENT = (
     "REA-HUMAN-REVIEW: APPROVED\n"
     f"HEAD_SHA: {HEAD}\n"
+    f"BASE_SHA: {BASE}\n"
+    f"DIFF_SHA256: {DIFF}\n"
     "I reviewed the complete dispatcher diff."
 )
 
 
 def make_report() -> dict:
     return {
+        "base_sha": BASE,
         "target_sha": HEAD,
         "diff_sha256": DIFF,
         "findings": [
@@ -44,7 +48,7 @@ def make_report() -> dict:
 def make_attestation() -> dict:
     return {
         "expected_head_sha": HEAD,
-        "expected_base_sha": "c" * 40,
+        "expected_base_sha": BASE,
         "expected_diff_sha256": DIFF,
         "reviewer_login": "nonkun12",
         "pr_author_login": "nonkun12",
@@ -88,7 +92,7 @@ class HumanReviewAttestationTests(unittest.TestCase):
 
     def test_comment_must_bind_the_base_sha(self) -> None:
         evidence = make_attestation()
-        evidence["comment_body"] = evidence["comment_body"].replace("c" * 40, "d" * 40)
+        evidence["comment_body"] = evidence["comment_body"].replace(BASE, "d" * 40)
         with self.assertRaisesRegex(ValueError, "review_comment_base_mismatch"):
             apply_human_review_attestation(make_report(), evidence)
 
