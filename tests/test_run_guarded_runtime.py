@@ -812,7 +812,7 @@ def test_approval_reservation_and_consumption_reject_replay_and_allow_fresh_nonc
             return self.payload
 
     def fake_urlopen(request, timeout):
-        requests.append((request.get_method(), request.full_url))
+        requests.append((request.get_method(), request.full_url, request.data))
         if request.get_method() == "GET":
             ref = "refs/" + request.full_url.split("/git/ref/", 1)[1]
             return Response(200, ref, "b" * 40)
@@ -843,9 +843,9 @@ def test_approval_reservation_and_consumption_reject_replay_and_allow_fresh_nonc
     assert replay["gate"] == "BLOCKED"
     assert replay["reason_code"] == "approval_already_consumed"
     assert fresh_preview["gate"] == "PASS"
-    assert [method for method, _ in requests] == ["GET", "POST", "GET", "POST", "GET", "POST"]
+    assert [method for method, _, _ in requests] == ["GET", "POST", "GET", "POST", "GET", "POST"]
     assert "rsi-approval-reserved" in requests[0][1]
-    assert "rsi-approval-consumed" in requests[1][1]
+    assert "rsi-approval-consumed" in requests[1][2].decode("utf-8")
 
 
 def test_line_approval_secret_is_scoped_to_guarded_runtime_handoff(monkeypatch):
