@@ -175,7 +175,7 @@ def _reconcile_claimed_tasks(store: GoalStateStore, task_ids: set[str], output: 
     _write_state(output, latest[1])
 
 
-def run(args: argparse.Namespace) -> int:
+def run(args: argparse.Namespace, *, approval_hmac_secret: str = "") -> int:
     queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", ".github/autonomous-loop-tasks.json"))
     state_path, results_path, stop_file = args.state.resolve(), args.results.resolve(), args.stop_file.resolve()
     goal_output = args.goal_state_output.resolve()
@@ -223,6 +223,10 @@ def run(args: argparse.Namespace) -> int:
                 child_queue = Path(queue_tmp) / "queue.json"
                 child_queue.write_text(json.dumps(one_queue, ensure_ascii=False) + "\n", encoding="utf-8")
                 env = os.environ.copy()
+                # Keep the signing key out of the bridge and every unrelated child.
+                env.pop("LINE_TASK_APPROVAL_HMAC_SECRET", None)
+                if approval_hmac_secret:
+                    env["LINE_TASK_APPROVAL_HMAC_SECRET"] = approval_hmac_secret
                 env["AUTONOMOUS_LOOP_TASK_QUEUE"] = str(child_queue)
                 before = len(results_path.read_text(encoding="utf-8").splitlines()) if results_path.exists() else 0
                 command = [sys.executable, "scripts/run_minimal_autonomous_loop.py",
@@ -277,6 +281,8 @@ def run(args: argparse.Namespace) -> int:
     return 0
 
 def main() -> int:
+    # Capture the key before any subprocess can inherit it; pass it only to the loop runner.
+    approval_hmac_secret = os.environ.pop("LINE_TASK_APPROVAL_HMAC_SECRET", "")
     parser = argparse.ArgumentParser()
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
@@ -288,7 +294,7 @@ def main() -> int:
     if not 1 <= args.max_tasks <= 4:
         raise SystemExit("--max-tasks must be between 1 and 4")
     try:
-        return run(args)
+        return run(args, approval_hmac_secret=approval_hmac_secret)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         print("GOAL_AUTOPILOT=BLOCKED reason=" + type(exc).__name__, flush=True)
         return 80
