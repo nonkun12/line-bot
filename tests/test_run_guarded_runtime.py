@@ -784,9 +784,12 @@ def test_explicit_denial_cannot_fall_back_to_workflow_prepared_approval(tmp_path
     assert evidence["execution_authorized"] is False
 
 
-def test_approval_consumption_marker_is_stable_for_replay_and_distinct_for_new_preview(monkeypatch):
+def test_approval_consumption_marker_rejects_replay_and_allows_fresh_preview(monkeypatch):
+    import urllib.error
+
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
     refs = []
+    consumed_refs = set()
 
     class Response:
         status = 201
@@ -801,8 +804,12 @@ def test_approval_consumption_marker_is_stable_for_replay_and_distinct_for_new_p
 
     def create_ref(request, timeout):
         payload = json.loads(request.data.decode())
-        refs.append(payload["ref"])
-        return Response(payload["ref"], payload["sha"])
+        ref = payload["ref"]
+        refs.append(ref)
+        if ref in consumed_refs:
+            raise urllib.error.HTTPError(request.full_url, 422, "already exists", {}, None)
+        consumed_refs.add(ref)
+        return Response(ref, payload["sha"])
 
     monkeypatch.setattr(guarded_runtime.urllib.request, "urlopen", create_ref)
     base = {
@@ -818,6 +825,11 @@ def test_approval_consumption_marker_is_stable_for_replay_and_distinct_for_new_p
     fresh_preview = guarded_runtime._consume_execution_approval(
         {**base, "approval_nonce": "e" * 32}, "b" * 40
     )
-    assert first["gate"] == replay["gate"] == fresh_preview["gate"] == "PASS"
+
+    assert first["gate"] == "PASS"
+    assert first["reason_code"] == "approval_consumed_once"
+    assert replay["gate"] == "BLOCKED"
+    assert replay["reason_code"] == "approval_already_consumed"
+    assert fresh_preview["gate"] == "PASS"
     assert refs[0] == refs[1]
     assert refs[2] != refs[0]
