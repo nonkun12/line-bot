@@ -101,8 +101,10 @@ class HumanReviewAttestationTests(unittest.TestCase):
         source = make_report()
         source["findings"][1]["category"] = "manual_review_required"
         source["findings"][1]["evidence"]["path"] = "scripts/other.py"
-        with self.assertRaisesRegex(ValueError, "reviewable_finding_not_unique"):
-            apply_human_review_attestation(source, evidence)
+        updated = apply_human_review_attestation(source, evidence)
+        self.assertEqual(updated["findings"][0]["status"], "HUMAN_REVIEWED")
+        self.assertEqual(updated["findings"][1]["status"], "REVIEW_REQUIRED")
+        self.assertEqual(updated["findings"][1]["severity"], "HIGH")
 
 
 if __name__ == "__main__":
