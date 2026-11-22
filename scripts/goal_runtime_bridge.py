@@ -175,7 +175,14 @@ def _reconcile_claimed_tasks(store: GoalStateStore, task_ids: set[str], output: 
     _write_state(output, latest[1])
 
 
-def run(args: argparse.Namespace, *, approval_hmac_secret: str = "") -> int:
+def run(args: argparse.Namespace, *, approval_hmac_secret: str = "",
+        approval_required: bool = False, approval_task_id: str = "") -> int:
+    if approval_hmac_secret and not approval_required:
+        print("GOAL_AUTOPILOT=BLOCKED reason=approval_context_mismatch", flush=True)
+        return 80
+    if approval_required and (not approval_hmac_secret or not approval_task_id or args.max_tasks != 1):
+        print("GOAL_AUTOPILOT=BLOCKED reason=approval_task_binding_missing", flush=True)
+        return 80
     queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", ".github/autonomous-loop-tasks.json"))
     state_path, results_path, stop_file = args.state.resolve(), args.results.resolve(), args.stop_file.resolve()
     goal_output = args.goal_state_output.resolve()
@@ -188,6 +195,9 @@ def run(args: argparse.Namespace, *, approval_hmac_secret: str = "") -> int:
     authorized = _authorized_queue(queue_path, args.catalog, completed)
     if not authorized:
         return 78
+    if approval_required and not any(task["task_id"] == approval_task_id for task in authorized):
+        print("GOAL_AUTOPILOT=BLOCKED reason=approval_task_not_in_authorized_queue", flush=True)
+        return 80
     with tempfile.TemporaryDirectory(prefix="goal-autopilot-") as tmp:
         store = GoalStateStore(Path(tmp) / "goal.sqlite3")
         claimed_this_run: set[str] = set()
@@ -201,7 +211,9 @@ def run(args: argparse.Namespace, *, approval_hmac_secret: str = "") -> int:
                     _reconcile_claimed_tasks(store, claimed_this_run, goal_output)
                     return 80
                 return 79
-            claim = store.claim_next(GOAL_ID)
+            claim = store.claim_next(
+                GOAL_ID, task_id=approval_task_id if approval_required else None
+            )
             if claim.get("decision") == "COMPLETE":
                 break
             if claim.get("decision") != "CLAIMED":
@@ -283,6 +295,8 @@ def run(args: argparse.Namespace, *, approval_hmac_secret: str = "") -> int:
 def main() -> int:
     # Capture the key before any subprocess can inherit it; pass it only to the loop runner.
     approval_hmac_secret = os.environ.pop("LINE_TASK_APPROVAL_HMAC_SECRET", "")
+    approval_required = os.environ.pop("GOAL_APPROVAL_REQUIRED", "false").strip().casefold() == "true"
+    approval_task_id = os.environ.pop("GOAL_APPROVAL_TASK_ID", "").strip()
     parser = argparse.ArgumentParser()
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
@@ -294,7 +308,12 @@ def main() -> int:
     if not 1 <= args.max_tasks <= 4:
         raise SystemExit("--max-tasks must be between 1 and 4")
     try:
-        return run(args, approval_hmac_secret=approval_hmac_secret)
+        return run(
+            args,
+            approval_hmac_secret=approval_hmac_secret,
+            approval_required=approval_required,
+            approval_task_id=approval_task_id,
+        )
     except (OSError, ValueError, KeyError, TypeError) as exc:
         print("GOAL_AUTOPILOT=BLOCKED reason=" + type(exc).__name__, flush=True)
         return 80
