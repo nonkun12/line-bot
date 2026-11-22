@@ -671,7 +671,7 @@ def run_task(
     instruction = str(task["instruction"])
     rag_db_path = os.environ.get("RECOVERY_RAG_DB_PATH", "").strip()
     rag_namespace = os.environ.get("RECOVERY_RAG_NAMESPACE", "distributed-loop").strip()
-    if rag_db_path and rag_namespace:
+    if rag_db_path and rag_namespace and os.environ.get("GITHUB_EVENT_NAME") != "schedule":
         try:
             from scripts.recovery_rag import build_task_context
             rag_context = build_task_context(
@@ -697,7 +697,7 @@ def run_task(
             print("RECOVERY_RAG_CONTEXT attached=false", flush=True)
     # Attach only sanitized historical REA outcomes; never treat retrieved
     # records as instructions or authority to bypass current safety gates.
-    if rag_db_path and rag_namespace:
+    if rag_db_path and rag_namespace and os.environ.get("GITHUB_EVENT_NAME") != "schedule":
         try:
             from scripts.rea_rag import (
                 build_rea_context,
