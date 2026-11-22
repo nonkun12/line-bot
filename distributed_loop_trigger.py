@@ -1,6 +1,7 @@
 """Safe LINE-triggered dispatcher for the distributed GitHub Actions loop."""
 from __future__ import annotations
 
+import base64
 import io
 import json
 import os
@@ -13,6 +14,15 @@ from datetime import datetime, timezone
 from typing import Tuple
 
 import httpx
+
+from core.line_task_approval import (
+    parse_approval_command,
+    parse_approval_preview_command,
+    sign_approval_envelope,
+    sign_preview_challenge,
+    validate_approval_request,
+    instruction_digest,
+)
 
 REPO = os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
 WORKFLOW = "distributed-autonomous-loop.yml"
@@ -345,7 +355,144 @@ def _append_task_evidence(
         lines.append(f"Catalog実行候補: {eligible_count}件")
 
 
+
+def _decode_contents_payload(payload: object) -> dict:
+    if not isinstance(payload, dict) or payload.get("encoding") != "base64":
+        raise ValueError("github_contents_encoding_invalid")
+    raw = payload.get("content")
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError("github_contents_missing")
+    value = json.loads(base64.b64decode(raw, validate=True).decode("utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError("github_contents_json_invalid")
+    return value
+
+
+def _fetch_task_approval_candidate(client: httpx.Client, headers: dict[str, str], task_id: str) -> dict:
+    if REPO != "nonkun12/line-bot":
+        raise ValueError("approval_repository_not_allowlisted")
+    base = f"https://api.github.com/repos/{REPO}"
+    commit = client.get(f"{base}/commits/main", headers=headers)
+    commit.raise_for_status()
+    base_sha = commit.json().get("sha")
+    if not isinstance(base_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+        raise ValueError("approval_base_sha_unavailable")
+    queue_response = client.get(
+        f"{base}/contents/.github/autonomous-loop-tasks.json?ref={base_sha}", headers=headers
+    )
+    queue_response.raise_for_status()
+    catalog_response = client.get(
+        f"{base}/contents/.github/autonomous-loop-task-catalog.json?ref={base_sha}", headers=headers
+    )
+    catalog_response.raise_for_status()
+    queue = _decode_contents_payload(queue_response.json())
+    catalog = _decode_contents_payload(catalog_response.json())
+    queued_tasks, catalog_tasks = queue.get("tasks"), catalog.get("tasks")
+    if not isinstance(queued_tasks, list) or not isinstance(catalog_tasks, list):
+        raise ValueError("approval_queue_or_catalog_invalid")
+    queued = [x for x in queued_tasks if isinstance(x, dict) and x.get("id") == task_id]
+    registered = [x for x in catalog_tasks if isinstance(x, dict) and x.get("id") == task_id]
+    if len(registered) != 1 or len(queued) > 1:
+        raise ValueError("approval_task_not_unique_in_trusted_catalog")
+    task = registered[0]
+    catalog_match = not queued or all(
+        queued[0].get(k) == task.get(k) for k in ("id", "instruction", "allowed_paths")
+    )
+    return {
+        "task_id": task_id, "catalog_registered": True, "catalog_match": catalog_match,
+        "execution_approved": task.get("execution_approved") is True,
+        "instruction": task.get("instruction"), "allowed_paths": task.get("allowed_paths"),
+        "base_sha": base_sha,
+    }
+
+
+def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
+    preview = parse_approval_preview_command(message)
+    approval = parse_approval_command(message)
+    if preview is None and approval is None:
+        normalized = unicodedata.normalize("NFKC", str(message)).strip()
+        if normalized.startswith(("承認候補", "実行承認")):
+            return True, "承認コマンドの形式が不正です。表示された1行をそのまま返信してください。"
+        return False, ""
+    if not user_id or user_id not in _allowed_users():
+        return True, "タスク承認は許可されていません（LINEユーザーの許可リストにありません）。"
+    secret = os.environ.get("LINE_TASK_APPROVAL_HMAC_SECRET", "")
+    token = (os.environ.get("GITHUB_ACTIONS_DISPATCH_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
+    if len(secret.encode("utf-8")) < 32 or not token:
+        return True, "タスク承認を安全に処理できません（署名鍵またはGitHub認証が未設定です）。"
+    headers = {
+        "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            task_id = preview.task_id if preview is not None else approval.task_id
+            candidate = _fetch_task_approval_candidate(client, headers, task_id)
+            if preview is not None:
+                if candidate["catalog_match"] is not True:
+                    return True, "承認候補を作成できません（QueueとCatalogの定義が一致しません）。"
+                if candidate["execution_approved"] is not True:
+                    return True, "Catalog上の実行登録承認がないため、LINE実行承認には進めません。"
+                instruction = candidate.get("instruction")
+                paths = candidate.get("allowed_paths")
+                if not isinstance(instruction, str) or not isinstance(paths, list):
+                    return True, "承認候補の指示または許可パスが不正です。"
+                from core.line_task_approval import allowed_paths_digest
+                expires_at = int(time.time()) + 300
+                nonce = uuid.uuid4().hex
+                digest = instruction_digest(instruction)
+                paths_digest = allowed_paths_digest(paths)
+                signature = sign_preview_challenge(
+                    task_id=task_id, instruction_sha256=digest,
+                    allowed_paths_sha256=paths_digest, base_sha=candidate["base_sha"],
+                    expires_at=expires_at, approver_user_id=user_id, nonce=nonce, secret=secret,
+                )
+                command = f"実行承認: {task_id} {digest} {candidate['base_sha']} {expires_at} {nonce} {signature}"
+                path_lines = "\n".join(f"- {path}" for path in paths)
+                return True, (
+                    "【実行承認候補・5分間有効】\n"
+                    f"Task ID: {task_id}\n指示:\n{instruction}\n許可ファイル:\n{path_lines}\n"
+                    f"指示SHA-256: {digest}\n基準SHA: {candidate['base_sha']}\n期限Unix: {expires_at}\n\n"
+                    "内容を確認し、このタスクだけを承認する場合は次の1行を返信してください。\n"
+                    f"{command}\n同じ承認コマンドの再送は同じnonceとなり、実行側で一度だけ消費されます。"
+                )
+            from core.line_task_approval import allowed_paths_digest
+            decision = validate_approval_request(
+                approval, user_id=user_id, allowed_user_ids=_allowed_users(),
+                candidate=candidate, now_epoch=int(time.time()), secret=secret,
+            )
+            signature = sign_approval_envelope(decision, secret=secret)
+            response = client.post(
+                f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW}/dispatches",
+                json={"ref": "main", "inputs": {
+                    "execution_approval": "APPROVE_EXECUTION",
+                    "approval_task_id": decision.task_id,
+                    "approval_instruction_sha256": decision.instruction_sha256,
+                    "approval_allowed_paths_sha256": decision.allowed_paths_sha256,
+                    "approval_base_sha": decision.base_sha,
+                    "approval_expires_at": str(decision.expires_at),
+                    "approval_line_user_id": decision.approver_user_id,
+                    "approval_nonce": decision.nonce,
+                    "approval_signature": signature,
+                    "max_tasks": "1", "request_id": uuid.uuid4().hex,
+                    "continuation_depth": "0", "mode": "normal",
+                }},
+                headers=headers,
+            )
+            if response.status_code != 204:
+                return True, f"実行承認Dispatchを拒否されました（HTTP {response.status_code}）。実行は開始していません。"
+            return True, (
+                f"Task {decision.task_id} の1タスク承認Dispatchを受け付けました。"
+                "実行側で署名・期限・nonceの一度限りの消費・既存Safety Gateを再検証します。"
+            )
+    except (httpx.HTTPError, ValueError, TypeError, KeyError):
+        return True, "タスク承認を安全に検証できませんでした。実行要求は送信していません。"
+
+
 def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
+    handled, approval_message = _handle_line_task_approval(user_id, message)
+    if handled:
+        return True, approval_message
     command = _normalize_command(message)
     status_kind = None
     if command in {
