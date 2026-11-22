@@ -288,4 +288,4 @@ def test_workflow_returns_nonzero_for_nonclaimable_explicit_approval():
     result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
 
     assert result.returncode == 80
-    assert "explicitly approved task is not claimable" in result.stderr
+    assert "explicitly approved task is not claimable" in result.stdout
