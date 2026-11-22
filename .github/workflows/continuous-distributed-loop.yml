@@ -4,7 +4,9 @@ name: Continuous Distributed Loop
 # and durable completion evidence. Empty queues, NO_CHANGE, HOLD/FAIL, missing
 # evidence, kill switch, and the depth limit all stop the chain.
 on:
-  workflow_dispatch:
+  workflow_run:
+    workflows: ["Distributed Autonomous Development Loop"]
+    types: [completed]
 
 permissions:
   actions: write
