@@ -51,6 +51,7 @@ def make_attestation() -> dict:
         "comment_url": "https://github.com/nonkun12/line-bot/pull/1576#issuecomment-123",
         "comment_body": COMMENT,
         "comment_created_at": "2026-11-22T10:00:00Z",
+        "comment_updated_at": "2026-11-22T10:00:00Z",
         "head_commit_at": "2026-11-22T09:00:00Z",
         "repo_full_name": "nonkun12/line-bot",
         "pr_number": 1576,
@@ -87,6 +88,7 @@ class HumanReviewAttestationTests(unittest.TestCase):
     def test_comment_must_postdate_reviewed_head(self) -> None:
         evidence = make_attestation()
         evidence["comment_created_at"] = "2026-11-22T08:59:59Z"
+        evidence["comment_updated_at"] = "2026-11-22T08:59:59Z"
         with self.assertRaisesRegex(ValueError, "review_comment_predates_head"):
             apply_human_review_attestation(make_report(), evidence)
 
