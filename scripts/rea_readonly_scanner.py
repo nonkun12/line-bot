@@ -268,8 +268,8 @@ def scan_commit_diff(
         raise ScanBlocked("commit_diff_unavailable")
     diff_sha256 = hashlib.sha256(patch.stdout).hexdigest()
 
-    changed_raw = _git(root, "diff", "--name-only", "-z", base_sha, target_sha)
-    deleted_raw = _git(root, "diff", "--diff-filter=D", "--name-only", "-z", base_sha, target_sha)
+    changed_raw = _git(root, "diff", "--no-renames", "--name-only", "-z", base_sha, target_sha)
+    deleted_raw = _git(root, "diff", "--no-renames", "--diff-filter=D", "--name-only", "-z", base_sha, target_sha)
     changed = [item for item in changed_raw.split("\0") if item]
     deleted = set(item for item in deleted_raw.split("\0") if item)
     if len(changed) > MAX_FILES:
