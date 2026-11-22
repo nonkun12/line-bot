@@ -203,7 +203,7 @@ def _verify_execution_approval(
             and str(inputs.get("approval_allowed_paths_sha256", "")).lower() == allowed_paths_digest
             and str(inputs.get("approval_base_sha", "")) == start_sha
             and bool(re.fullmatch(r"[0-9a-f]{32}", approval_nonce))
-            and 0 < remaining <= 600
+            and 0 < remaining <= 300
             and approver
             and verify_approval_envelope_signature(
                 task_id=task_id,
