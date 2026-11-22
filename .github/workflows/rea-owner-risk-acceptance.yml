@@ -45,9 +45,11 @@ jobs:
       - name: Resolve current PR identity
         id: pr
         uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
         with:
           script: |
-            const number = Number(core.getInput("pr_number") || context.payload.inputs?.pr_number);
+            const number = Number(process.env.PR_NUMBER);
             if (!Number.isInteger(number) || number <= 0) {
               core.setFailed("Invalid PR number.");
               return;
