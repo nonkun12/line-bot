@@ -74,24 +74,40 @@ def decide(evidence: dict[str, Any]) -> Decision:
 
     if category == "transient":
         code = evidence.get("failure_code")
+        retry_count = evidence.get("retry_count", 0)
         if (
-            code in SAFE_TRANSIENT_CODES
+            isinstance(code, str) and code in SAFE_TRANSIENT_CODES
             and _sha(base_sha) and base_sha == produced_sha
             and evidence.get("working_tree_clean") is True
-            and evidence.get("retry_count", 0) < 2
+            and type(retry_count) is int and 0 <= retry_count < 2
         ):
             return Decision("RETRY_TRANSIENT", "allowlisted_transient_failure", task_id, fingerprint)
         return Decision("HOLD", "transient_retry_not_proven_safe", task_id, fingerprint, requires_human=True)
 
     if category in SAFE_REPAIR_CATEGORIES:
         allowed_paths = evidence.get("allowed_paths")
+
+        def safe_repo_path(path: Any) -> bool:
+            if not isinstance(path, str) or not path or len(path) > 240:
+                return False
+            # Exact repository-relative POSIX paths only.
+            if path.startswith("/") or chr(92) in path or ":" in path:
+                return False
+            parts = path.split("/")
+            if any(part in {"", ".", ".."} for part in parts):
+                return False
+            if any(char in part for part in parts for char in "*?[]{}"):
+                return False
+            return True
+
         if (
             attempts < MAX_REPAIR_ATTEMPTS
             and isinstance(allowed_paths, list) and bool(allowed_paths)
-            and all(isinstance(path, str) and path and not path.startswith("/")
-                    and ".." not in path.split("/") for path in allowed_paths)
+            and len(allowed_paths) <= 20
+            and all(safe_repo_path(path) for path in allowed_paths)
+            and len(set(allowed_paths)) == len(allowed_paths)
             and evidence.get("execution_authorized") is True
-            and rea_status in {"PRE_REPAIR_PASS", "NOT_REQUIRED"}
+            and rea_status == "PRE_REPAIR_PASS"
         ):
             return Decision(
                 "REPAIR_ONCE", "bounded_repair_budget_available", task_id,
