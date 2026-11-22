@@ -77,3 +77,31 @@ def test_bound_claim_for_missing_or_non_pending_task_does_not_claim_another(tmp_
     assert claim["reason"] == "requested_task_not_pending"
     saved = store.read("g1")[1]
     assert all(task["status"] == "PENDING" for task in saved["tasks"])
+
+
+def test_bound_claim_enforces_dependencies_before_claiming(tmp_path):
+    data = goal()
+    data["tasks"][1]["depends_on"] = ["t1"]
+    store = GoalStateStore(tmp_path / "goal.db")
+    store.create(data)
+
+    claim = store.claim_next("g1", task_id="t2")
+
+    assert claim["decision"] == "HOLD"
+    assert claim["reason"] == "requested_task_dependencies_incomplete"
+    saved = store.read("g1")[1]
+    assert saved["tasks"][0]["status"] == "PENDING"
+    assert saved["tasks"][1]["status"] == "PENDING"
+
+
+def test_bound_claim_rejects_unauthorized_kind(tmp_path):
+    data = goal()
+    data["tasks"][1]["kind"] = "DEPLOY"
+    store = GoalStateStore(tmp_path / "goal.db")
+    store.create(data)
+
+    claim = store.claim_next("g1", task_id="t2")
+
+    assert claim["decision"] == "HOLD"
+    assert claim["reason"] == "requested_task_not_authorized"
+    assert all(task["status"] == "PENDING" for task in store.read("g1")[1]["tasks"])
