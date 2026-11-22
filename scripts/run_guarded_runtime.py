@@ -514,7 +514,13 @@ def main() -> int:
         return 82
 
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
-    approval_evidence = _verify_execution_approval(start_sha, instruction)
+    # The HMAC key is needed only to verify the incoming approval envelope.
+    # Remove it immediately afterward so runtime execution and any descendants
+    # cannot inherit the signing key through their environment.
+    try:
+        approval_evidence = _verify_execution_approval(start_sha, instruction)
+    finally:
+        os.environ.pop("LINE_TASK_APPROVAL_HMAC_SECRET", None)
     if approval_evidence.get("execution_authorized") is True:
         consumption = _consume_execution_approval(approval_evidence, start_sha)
         approval_evidence["consumption"] = consumption
