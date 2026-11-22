@@ -125,7 +125,7 @@ def test_approval_dispatch_claims_only_the_bound_task(tmp_path, monkeypatch):
         results.write_text(json.dumps({
             "task_id": selected_id, "status": "PASS", "exit_code": 0,
             "base_sha": "a" * 40, "produced_sha": "b" * 40, "run_nonce": "nonce-2",
-        }) + "\\n")
+        }) + "\n")
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(bridge.subprocess, "run", fake_run)
