@@ -303,19 +303,27 @@ def test_workflow_returns_nonzero_for_nonclaimable_explicit_approval():
 
 
 
-def test_unapproved_scheduled_attempt_returns_task_to_pending(tmp_path, monkeypatch):
+def test_unapproved_scheduled_attempt_with_real_child_exit_shape_returns_pending(tmp_path, monkeypatch):
     queue, catalog, state, results, stop = _inputs(tmp_path)
     monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
     monkeypatch.setattr(bridge, "ROOT", tmp_path)
 
     def fake_run(command, *, cwd, env, check):
+        # run_minimal_autonomous_loop returns 1 after converting the guarded
+        # runtime's exit 81 into a failed task result. Preserve the exact
+        # sanitized approval evidence emitted in the JSONL result row.
         results.write_text(json.dumps({
             "task_id": "approved-test-task",
-            "status": "BLOCKED",
+            "status": "FAIL",
             "exit_code": 81,
-            "failure_reason": "independent_execution_approval_missing_or_invalid",
+            "failure_reason": "task_runtime_failed",
+            "execution_approval": {
+                "gate": "BLOCKED",
+                "reason_code": "independent_execution_approval_missing_or_invalid",
+                "execution_authorized": False,
+            },
         }) + "\n")
-        return SimpleNamespace(returncode=81)
+        return SimpleNamespace(returncode=1)
 
     monkeypatch.setattr(bridge.subprocess, "run", fake_run)
     goal_output = tmp_path / "goal-pending.json"
@@ -330,3 +338,29 @@ def test_unapproved_scheduled_attempt_returns_task_to_pending(tmp_path, monkeypa
     rows = [json.loads(line) for line in results.read_text().splitlines()]
     assert rows[-1]["status"] == "BLOCKED"
     assert rows[-1]["failure_reason"] == "execution_approval_required"
+
+
+def test_unapproved_scheduled_attempt_without_approval_evidence_stays_held(tmp_path, monkeypatch):
+    queue, catalog, state, results, stop = _inputs(tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+
+    def fake_run(command, *, cwd, env, check):
+        results.write_text(json.dumps({
+            "task_id": "approved-test-task",
+            "status": "FAIL",
+            "exit_code": 81,
+            "failure_reason": "task_runtime_failed",
+        }) + "\n")
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(bridge.subprocess, "run", fake_run)
+    goal_output = tmp_path / "goal-held.json"
+    args = SimpleNamespace(
+        catalog=catalog, state=state, results=results, stop_file=stop,
+        goal_state_output=goal_output, max_tasks=1,
+    )
+
+    assert bridge.run(args, approval_required=False) == 1
+    goal = json.loads(goal_output.read_text())
+    assert goal["tasks"][0]["status"] == "HELD"
