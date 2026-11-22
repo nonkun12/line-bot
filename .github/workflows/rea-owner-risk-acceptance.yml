@@ -1,0 +1,146 @@
+name: REA Owner Risk Acceptance (Audit Only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Open PR number to evaluate against its current exact head"
+        required: true
+        type: number
+      decision:
+        description: "Record the repository owner's explicit risk decision"
+        required: true
+        type: choice
+        options:
+          - ACCEPT
+          - DECLINE
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: rea-owner-risk-acceptance-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  record:
+    name: Verify exact PR and record owner decision
+    if: github.ref == 'refs/heads/main' && github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted main workflow code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Resolve current PR identity
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const number = Number(core.getInput("pr_number") || context.payload.inputs?.pr_number);
+            if (!Number.isInteger(number) || number <= 0) {
+              core.setFailed("Invalid PR number.");
+              return;
+            }
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner, repo: context.repo.repo, pull_number: number
+            });
+            if (pr.state !== "open" || pr.merged) {
+              core.setFailed("PR must be open and unmerged.");
+              return;
+            }
+            if (!/^[0-9a-f]{40}$/.test(pr.base.sha) || !/^[0-9a-f]{40}$/.test(pr.head.sha)) {
+              core.setFailed("PR commit identity is invalid.");
+              return;
+            }
+            core.setOutput("number", String(number));
+            core.setOutput("base_sha", pr.base.sha);
+            core.setOutput("head_sha", pr.head.sha);
+            core.setOutput("author", pr.user.login);
+            core.setOutput("base_ref", pr.base.ref);
+
+      - name: Fetch immutable PR commits
+        env:
+          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+          git cat-file -e "$BASE_SHA^{commit}"
+          git cat-file -e "$HEAD_SHA^{commit}"
+
+      - name: Run trusted read-only diff scan
+        id: scan
+        env:
+          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from scripts.rea_readonly_scanner import scan_commit_diff
+          report = scan_commit_diff(".", base_sha=os.environ["BASE_SHA"],
+                                    target_sha=os.environ["HEAD_SHA"])
+          if report.get("complete") is not True:
+              raise SystemExit("REA_OWNER_ACCEPTANCE=BLOCKED: scan incomplete")
+          Path("rea-owner-risk-scan.json").write_text(
+              json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps({
+              "base_sha": report.get("base_sha"),
+              "target_sha": report.get("target_sha"),
+              "diff_sha256": report.get("diff_sha256"),
+              "findings_count": report.get("findings_count"),
+          }, sort_keys=True))
+          PY
+
+      - name: Record owner decision (never a merge authorization)
+        env:
+          DECISION: ${{ inputs.decision }}
+          ACTOR: ${{ github.actor }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from scripts.rea_owner_risk_acceptance import build_owner_risk_acceptance
+
+          report = json.loads(Path("rea-owner-risk-scan.json").read_text(encoding="utf-8"))
+          receipt = build_owner_risk_acceptance(
+              report,
+              actor=os.environ["ACTOR"],
+              repository_owner=os.environ["REPOSITORY_OWNER"],
+              decision=os.environ["DECISION"],
+              run_id=int(os.environ["RUN_ID"]),
+              accepted_at=datetime.now(timezone.utc).isoformat(),
+          )
+          Path("rea-owner-risk-acceptance.json").write_text(
+              json.dumps(receipt, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(receipt, sort_keys=True))
+          if receipt["status"] != "ACCEPTED" and receipt["decision"] == "ACCEPT":
+              raise SystemExit("REA_OWNER_ACCEPTANCE=BLOCKED")
+          PY
+
+      - name: Upload owner acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-owner-risk-acceptance-${{ github.run_id }}
+          path: |
+            rea-owner-risk-scan.json
+            rea-owner-risk-acceptance.json
+          if-no-files-found: error
+          retention-days: 90
