@@ -144,3 +144,47 @@ def test_same_preview_command_reuses_same_nonce_for_atomic_ledger():
     replay = parse_approval_command(text)
     assert first == replay
     assert first.nonce == replay.nonce == NONCE
+
+
+def test_preview_and_execution_signatures_are_domain_separated():
+    command, _ = _challenge()
+    decision = validate_approval_request(
+        command, user_id=USER, allowed_user_ids={USER},
+        candidate=_candidate(), now_epoch=NOW, secret=SECRET,
+    )
+    preview_signature = command.challenge_signature
+    execution_signature = sign_approval_envelope(decision, secret=SECRET)
+
+    assert preview_signature != execution_signature
+    assert not verify_approval_envelope_signature(
+        task_id=decision.task_id,
+        instruction_sha256=decision.instruction_sha256,
+        allowed_paths_sha256=decision.allowed_paths_sha256,
+        base_sha=decision.base_sha,
+        expires_at=decision.expires_at,
+        approver_user_id=decision.approver_user_id,
+        nonce=decision.nonce,
+        signature=preview_signature,
+        secret=SECRET,
+    )
+
+
+def test_approval_candidate_held_state_is_rejected():
+    command, _ = _challenge()
+    candidate = {**_candidate(), "task_held": True}
+    with pytest.raises(ValueError, match="currently held"):
+        validate_approval_request(
+            command, user_id=USER, allowed_user_ids={USER},
+            candidate=candidate, now_epoch=NOW, secret=SECRET,
+        )
+
+
+def test_approval_challenge_rejects_expiry_over_300_seconds():
+    command, _ = _challenge()
+    from dataclasses import replace
+    extended = replace(command, expires_at=NOW + 301)
+    with pytest.raises(ValueError, match="five-minute"):
+        validate_approval_request(
+            extended, user_id=USER, allowed_user_ids={USER},
+            candidate=_candidate(), now_epoch=NOW, secret=SECRET,
+        )
