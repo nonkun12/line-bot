@@ -173,8 +173,7 @@ jobs:
               pr_author_login: authorLogin,
               comment_id: review.id,
               comment_url: review.html_url,
-              comment_body: "REA-HUMAN-REVIEW: APPROVED\\nHEAD_SHA: " + expectedSha +
-                "\\nBASE_SHA: " + baseSha + "\\nDIFF_SHA256: " + diffSha256,
+              comment_body: review.body,
               comment_created_at: review.submitted_at,
               comment_updated_at: review.submitted_at,
               head_commit_at: headCommitAt,
