@@ -218,11 +218,11 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
         "hold_clear_authorized": False,
         "merge_deploy_authorized": False,
     }
-    monkeypatch.setattr(
-        guarded_runtime,
-        "_git",
-        lambda *args: sha if args == ("rev-parse", "HEAD") else "test-branch",
-    )
+    def git_without_approval_secret(*args):
+        assert "LINE_TASK_APPROVAL_HMAC_SECRET" not in os.environ
+        return sha if args == ("rev-parse", "HEAD") else "test-branch"
+
+    monkeypatch.setattr(guarded_runtime, "_git", git_without_approval_secret)
     monkeypatch.setattr(
         "scripts.rea_control_tower_adapter.prepare_rea_evidence",
         lambda root, expected_sha: rea,
