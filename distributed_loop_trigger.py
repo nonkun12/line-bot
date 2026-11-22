@@ -362,7 +362,7 @@ def _decode_contents_payload(payload: object) -> dict:
     raw = payload.get("content")
     if not isinstance(raw, str) or not raw.strip():
         raise ValueError("github_contents_missing")
-    value = json.loads(base64.b64decode(raw, validate=True).decode("utf-8"))
+    value = json.loads(base64.b64decode(re.sub(r"\\s+", "", raw), validate=True).decode("utf-8"))
     if not isinstance(value, dict):
         raise ValueError("github_contents_json_invalid")
     return value
