@@ -254,6 +254,7 @@ jobs:
           }, sort_keys=True))
           if risk in {"HIGH", "CRITICAL"}:
               raise SystemExit("REA_DIFF_SCAN=BLOCKED")
+          PY
 
       - name: Write SHA-bound verification receipt
         if: always()
