@@ -108,3 +108,65 @@ def test_resume_accepts_catalog_only_task_when_tracked_queue_is_exhausted(tmp_pa
     assert RecoveryStore(recovery).task_status(TASK_ID)["held"] is False
     assert RecoveryStore(recovery).task_status(TASK_ID)["resume_requires_review"] is True
     assert RecoveryStore(recovery).task_status(OTHER_TASK_ID)["held"] is True
+
+
+def test_resume_reconciles_exact_goal_only_held_task_after_explicit_confirmations(tmp_path):
+    state, recovery, _queue = _fixtures(tmp_path)
+    recovery_data = json.loads(recovery.read_text(encoding="utf-8"))
+    recovery_data["tasks"][TASK_ID]["held"] = False
+    recovery_data["tasks"][TASK_ID].pop("resume_requires_review", None)
+    _write(recovery, recovery_data)
+    state_data = json.loads(state.read_text(encoding="utf-8"))
+    state_data["recovery_ai"] = recovery_data
+    state_data["goal_autopilot"] = {"goal_id": "distributed-loop-main-goal-v1", "tasks": [{
+        "task_id": TASK_ID, "status": "HELD", "execution_authorized": True,
+        "instruction": "bounded task", "allowed_paths": ["tests/"],
+    }]}
+    _write(state, state_data)
+    catalog = tmp_path / "catalog.json"
+    _write(catalog, {"tasks": [{
+        "id": TASK_ID, "instruction": "bounded task", "allowed_paths": ["tests/"],
+        "execution_approved": True,
+    }]})
+
+    result = resume_task(
+        state_path=state, recovery_path=recovery, queue_path=catalog,
+        task_id=TASK_ID, cause_fixed=True,
+    )
+
+    status = RecoveryStore(recovery).task_status(TASK_ID)
+    assert result["held"] is False
+    assert status["held"] is False
+    assert status["resume_requires_review"] is True
+    assert status["consecutive_failures"] == 1  # preserve historical failure evidence
+    assert RecoveryStore(recovery).task_status(OTHER_TASK_ID)["held"] is True
+    assert json.loads(state.read_text(encoding="utf-8"))["recovery_ai"] == json.loads(
+        recovery.read_text(encoding="utf-8")
+    )
+
+
+def test_goal_only_reconciliation_rejects_changed_or_unapproved_goal_task(tmp_path):
+    state, recovery, _queue = _fixtures(tmp_path)
+    recovery_data = json.loads(recovery.read_text(encoding="utf-8"))
+    recovery_data["tasks"][TASK_ID]["held"] = False
+    recovery_data["tasks"][TASK_ID].pop("resume_requires_review", None)
+    _write(recovery, recovery_data)
+    state_data = json.loads(state.read_text(encoding="utf-8"))
+    state_data["recovery_ai"] = recovery_data
+    state_data["goal_autopilot"] = {"goal_id": "distributed-loop-main-goal-v1", "tasks": [{
+        "task_id": TASK_ID, "status": "HELD", "execution_authorized": True,
+        "instruction": "changed instruction", "allowed_paths": ["tests/"],
+    }]}
+    _write(state, state_data)
+    catalog = tmp_path / "catalog.json"
+    _write(catalog, {"tasks": [{
+        "id": TASK_ID, "instruction": "bounded task", "allowed_paths": ["tests/"],
+        "execution_approved": True,
+    }]})
+
+    with pytest.raises(ValueError, match="exact approved Goal-only HELD"):
+        resume_task(
+            state_path=state, recovery_path=recovery, queue_path=catalog,
+            task_id=TASK_ID, cause_fixed=True,
+        )
+    assert RecoveryStore(recovery).task_status(TASK_ID)["resume_requires_review"] is not True
