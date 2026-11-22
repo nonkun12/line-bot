@@ -22,6 +22,13 @@ jobs:
       actions: read
       contents: read
     steps:
+      - name: Checkout main for the bounded Orca publisher
+        if: always()
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
       - name: Reconcile candidate and independent receipt
         env:
           GH_TOKEN: ${{ github.token }}
@@ -205,3 +212,55 @@ jobs:
           path: rea-verification-handoff.json
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish SHA-bound REA handoff to Orca
+        if: always()
+        continue-on-error: true
+        env:
+          ORCA_STATUS_URL: ${{ secrets.ORCA_STATUS_URL }}
+          ORCA_STATUS_SECRET: ${{ secrets.ORCA_STATUS_SECRET }}
+          REPOSITORY: ${{ github.repository }}
+          VERIFY_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ORCA_STATUS_URL:-}" ] || [ -z "${ORCA_STATUS_SECRET:-}" ]; then
+            echo "Orca REA handoff skipped: ORCA_STATUS_URL/ORCA_STATUS_SECRET are not configured."
+            exit 0
+          fi
+          python - <<'PY' | python scripts/orca_status_publisher.py
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          result = json.loads(Path("rea-verification-handoff.json").read_text(encoding="utf-8"))
+          gate = result.get("gate")
+          status = gate if gate in {"HOLD", "REVIEW_REQUIRED", "BLOCKED"} else "BLOCKED"
+          payload = {
+              "captured_at": datetime.now(timezone.utc).isoformat(),
+              "run_id": str(os.environ["VERIFY_RUN_ID"]),
+              "tasks": [], "dispatches": [], "workers": [], "streams": [],
+              "rsi_review": {
+                  "phase": "REA_VERIFICATION_HANDOFF",
+                  "status": status, "gate": status,
+                  "reason_code": str(result.get("reason_code") or "handoff_reason_unavailable")[:100],
+                  "next_action": "REQUEST_HUMAN_REVIEW",
+                  "repository": os.environ["REPOSITORY"],
+                  "head_sha": str(result.get("candidate_sha") or ""),
+                  "review_count": 1,
+                  "review_evidence_event_ids": [
+                      "orchestra-rea:source-run-" + str(result.get("source_run_id") or "unknown"),
+                      "orchestra-rea:verification-run-" + str(result.get("verification_run_id") or os.environ["VERIFY_RUN_ID"]),
+                  ],
+                  "source_run_id": int(result.get("source_run_id") or 0),
+                  "verification_run_id": int(result.get("verification_run_id") or os.environ["VERIFY_RUN_ID"]),
+                  "candidate_evidence_sha256": str(result.get("candidate_evidence_sha256") or ""),
+                  "receipt_sha256": str(result.get("receipt_sha256") or ""),
+                  "allow_continue": False, "proposal_only": True,
+                  "execution_authorized": False, "patch_authorized": False,
+                  "hold_clear_authorized": False, "merge_deploy_authorized": False,
+                  "scheduler_started": False, "model_activated": False,
+              },
+          }
+          print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+          PY

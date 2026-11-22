@@ -141,7 +141,7 @@ def validate_snapshot(payload: object) -> dict:
     if review is not None:
         if not isinstance(review, dict):
             raise ValueError("rsi_review must be an object")
-        if review.get("status") not in {"PASS", "FAIL", "BLOCKED", "NO_CHANGE"}:
+        if review.get("status") not in {"PASS", "FAIL", "BLOCKED", "NO_CHANGE", "HOLD", "REVIEW_REQUIRED"}:
             raise ValueError("invalid RSI review status")
         flags = ("allow_continue", "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized", "scheduler_started", "model_activated")
         if any(review.get(flag) is not False for flag in flags) or review.get("proposal_only") is not True:
@@ -152,7 +152,7 @@ def validate_snapshot(payload: object) -> dict:
         event_ids = review.get("review_evidence_event_ids", [])
         if not isinstance(event_ids, list) or len(event_ids) > 20 or any(not isinstance(x, str) or not x.startswith("orchestra-rea:") or len(x) > 180 for x in event_ids):
             raise ValueError("invalid RSI review evidence references")
-        allowed = {"phase", "status", "reason_code", "next_action", "repository", "head_sha", "review_count", "review_evidence_event_ids", "allow_continue", "proposal_only", "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized", "scheduler_started", "model_activated"}
+        allowed = {"phase", "status", "reason_code", "next_action", "repository", "head_sha", "review_count", "review_evidence_event_ids", "source_run_id", "verification_run_id", "candidate_evidence_sha256", "receipt_sha256", "gate", "allow_continue", "proposal_only", "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized", "scheduler_started", "model_activated"}
         clean["rsi_review"] = {k: v for k, v in review.items() if k in allowed and ((isinstance(v, (str, int, bool)) and len(str(v)) <= 300) or (k == "review_evidence_event_ids" and isinstance(v, list)))}
     return clean
 
