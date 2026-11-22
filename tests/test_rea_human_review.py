@@ -96,10 +96,10 @@ class HumanReviewAttestationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "review_comment_base_mismatch"):
             apply_human_review_attestation(make_report(), evidence)
 
-    def test_reviewer_must_be_pr_author(self) -> None:
+    def test_pr_author_cannot_self_attest(self) -> None:
         evidence = make_attestation()
-        evidence["reviewer_login"] = "someone-else"
-        with self.assertRaisesRegex(ValueError, "reviewer_not_authenticated_pr_author"):
+        evidence["reviewer_login"] = "nonkun12"
+        with self.assertRaisesRegex(ValueError, "reviewer_is_pr_author"):
             apply_human_review_attestation(make_report(), evidence)
 
     def test_comment_must_postdate_reviewed_head(self) -> None:
