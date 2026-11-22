@@ -44,6 +44,7 @@ def make_report() -> dict:
 def make_attestation() -> dict:
     return {
         "expected_head_sha": HEAD,
+        "expected_base_sha": "c" * 40,
         "expected_diff_sha256": DIFF,
         "reviewer_login": "nonkun12",
         "pr_author_login": "nonkun12",
@@ -77,6 +78,18 @@ class HumanReviewAttestationTests(unittest.TestCase):
         evidence = make_attestation()
         evidence["expected_diff_sha256"] = "d" * 64
         with self.assertRaisesRegex(ValueError, "review_diff_hash_mismatch"):
+            apply_human_review_attestation(make_report(), evidence)
+
+    def test_comment_must_bind_the_diff_hash(self) -> None:
+        evidence = make_attestation()
+        evidence["comment_body"] = evidence["comment_body"].replace(DIFF, "d" * 64)
+        with self.assertRaisesRegex(ValueError, "review_comment_diff_mismatch"):
+            apply_human_review_attestation(make_report(), evidence)
+
+    def test_comment_must_bind_the_base_sha(self) -> None:
+        evidence = make_attestation()
+        evidence["comment_body"] = evidence["comment_body"].replace("c" * 40, "d" * 40)
+        with self.assertRaisesRegex(ValueError, "review_comment_base_mismatch"):
             apply_human_review_attestation(make_report(), evidence)
 
     def test_reviewer_must_be_pr_author(self) -> None:
