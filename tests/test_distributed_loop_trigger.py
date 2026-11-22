@@ -177,6 +177,7 @@ class _Client:
         self.created_status = created_status
         self.artifacts = list(artifacts or [])
         self.artifact_zip = artifact_zip
+        self.zip_downloads = 0
         self.posted = []
 
     def __enter__(self):
@@ -189,6 +190,7 @@ class _Client:
         url = args[0] if args else ""
         params = kwargs.get("params", {})
         if url.endswith("/zip"):
+            self.zip_downloads += 1
             return _Response(200, content=self.artifact_zip)
         if url.endswith("/artifacts"):
             return _Response(200, {"artifacts": self.artifacts})
@@ -560,3 +562,36 @@ def test_status_classifier_does_not_swallow_development_requests():
     from distributed_loop_trigger import _is_readonly_status_request
     assert not _is_readonly_status_request("分散Loopを起動して4タスク開発してください")
     assert not _is_readonly_status_request("分散Loopの仕組みを修正してPRを作成してください")
+
+
+def test_status_command_ignores_expired_artifact_without_downloading(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+    run = {
+        "id": 123,
+        "run_number": 91,
+        "event": "schedule",
+        "status": "completed",
+        "conclusion": "success",
+        "display_title": "scheduled loop",
+        "head_sha": "a" * 40,
+        "created_at": "2026-10-20T07:00:00Z",
+        "html_url": "https://github.com/nonkun12/line-bot/actions/runs/123",
+    }
+    client = _Client(
+        [run],
+        artifacts=[{
+            "id": 456,
+            "name": "minimal-autonomous-loop-123",
+            "expired": True,
+            "size_in_bytes": 100,
+        }],
+        artifact_zip=b"not a valid zip",
+    )
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=client):
+        handled, reply = trigger.request_distributed_loop("u1", "統括AIの状況")
+
+    assert handled is True
+    assert "実行Artifactを取得できず" in reply
+    assert client.zip_downloads == 0
