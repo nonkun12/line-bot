@@ -595,3 +595,83 @@ def test_status_command_ignores_expired_artifact_without_downloading(monkeypatch
     assert handled is True
     assert "実行Artifactを取得できず" in reply
     assert client.zip_downloads == 0
+
+
+def test_approval_reservation_is_atomic_and_nonce_bound():
+    from types import SimpleNamespace
+
+    decision = SimpleNamespace(
+        task_id="task-1",
+        instruction_sha256="a" * 64,
+        allowed_paths_sha256="b" * 64,
+        base_sha="c" * 40,
+        nonce="d" * 32,
+    )
+    marker, ref = trigger._approval_reservation_marker(decision)
+    assert len(marker) == 64
+    assert ref == f"refs/heads/rsi-approval-reserved/{marker}"
+
+    class Response:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self.payload = payload or {}
+        def json(self):
+            return self.payload
+
+    class Client:
+        def __init__(self, status):
+            self.status = status
+            self.calls = []
+        def post(self, url, *, json, headers):
+            self.calls.append((url, json, headers))
+            return Response(self.status, {
+                "ref": ref, "object": {"sha": decision.base_sha}
+            })
+
+    first = Client(201)
+    assert trigger._reserve_approval_nonce(first, {"Authorization": "Bearer x"}, decision) is True
+    assert first.calls[0][1] == {"ref": ref, "sha": decision.base_sha}
+    replay = Client(422)
+    assert trigger._reserve_approval_nonce(replay, {"Authorization": "Bearer x"}, decision) is False
+
+
+def test_preview_rejects_durable_held_task():
+    state = {
+        "goal_autopilot": {
+            "tasks": [{"task_id": "task-1", "status": "HELD"}]
+        },
+        "recovery_ai": {"tasks": {}},
+    }
+    assert trigger._durable_task_is_held(state, "task-1") is True
+    state["goal_autopilot"]["tasks"][0]["status"] = "PENDING"
+    state["recovery_ai"]["tasks"]["task-1"] = {"held": True}
+    assert trigger._durable_task_is_held(state, "task-1") is True
+    state["recovery_ai"]["tasks"]["task-1"]["held"] = False
+    assert trigger._durable_task_is_held(state, "task-1") is False
+
+
+def test_status_malformed_github_json_fails_closed(monkeypatch):
+    monkeypatch.setenv("DISTRIBUTED_LOOP_LINE_USER_IDS", "u1")
+    monkeypatch.setenv("GITHUB_ACTIONS_DISPATCH_TOKEN", "test-token")
+
+    class BrokenResponse:
+        status_code = 200
+        def raise_for_status(self):
+            return None
+        def json(self):
+            raise ValueError("malformed JSON")
+
+    class BrokenClient:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def get(self, *args, **kwargs):
+            return BrokenResponse()
+
+    from unittest.mock import patch
+    with patch.object(trigger.httpx, "Client", return_value=BrokenClient()):
+        handled, reply = trigger.request_distributed_loop("u1", "統括AIの状況")
+    assert handled is True
+    assert "BLOCKED" in reply
+    assert "JSON形式" in reply or "通信" in reply
