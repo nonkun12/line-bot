@@ -397,7 +397,7 @@ def test_control_tower_reselects_second_task_against_new_head(monkeypatch, tmp_p
         lambda _result: {"phase": "CONTINUE", "next_action": "CONTINUE", "reason_code": "test_pass", "allow_continue": True, "repair_executed": False},
     )
 
-    def fake_run_task(task, index, _stop_file, *, expected_base_sha=None, recovery_state_path=None):
+    def fake_run_task(task, index, _stop_file, *, expected_base_sha=None, recovery_state_path=None, approval_hmac_secret=None):
         if index == 1:
             head["sha"] = "b" * 40
             return {
