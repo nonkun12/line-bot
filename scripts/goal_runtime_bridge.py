@@ -285,10 +285,19 @@ def run(args: argparse.Namespace, *, approval_hmac_secret: str = "",
                 if child.returncode != 0:
                     return child.returncode
             else:
-                if child.returncode == 81 and not approval_required:
-                    # A normal/scheduled run without a LINE approval must not
-                    # strand a claimed task in HELD merely because the guarded
-                    # runtime correctly refused unapproved execution.
+                approval_evidence = row.get("execution_approval") if isinstance(row, dict) else None
+                approval_was_missing = (
+                    isinstance(approval_evidence, dict)
+                    and approval_evidence.get("gate") == "BLOCKED"
+                    and approval_evidence.get("execution_authorized") is False
+                    and approval_evidence.get("reason_code")
+                    == "independent_execution_approval_missing_or_invalid"
+                )
+                if not approval_required and approval_was_missing:
+                    # The guarded runtime exits 81, but run_minimal_autonomous_loop
+                    # converts any non-PASS task result into process exit 1.
+                    # Identify this specific fail-closed result by its bound row
+                    # evidence, not by the bridge's child-process return code.
                     _reconcile_claimed_tasks(store, claimed_this_run, goal_output)
                     _append_blocked(
                         results_path, selected["task_id"], "execution_approval_required"
