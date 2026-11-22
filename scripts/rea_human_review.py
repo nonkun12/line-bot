@@ -82,8 +82,9 @@ def apply_human_review_attestation(
     if _body_head_sha(attestation.get("comment_body")) != target_sha:
         raise ValueError("review_comment_head_mismatch")
     created_at = _timestamp(attestation.get("comment_created_at"))
+    reviewed_at = _timestamp(attestation.get("comment_updated_at") or attestation.get("comment_created_at"))
     head_commit_at = _timestamp(attestation.get("head_commit_at"))
-    if created_at < head_commit_at:
+    if reviewed_at < head_commit_at:
         raise ValueError("review_comment_predates_head")
 
     findings = report.get("findings")
@@ -110,6 +111,7 @@ def apply_human_review_attestation(
         "comment_id": comment_id,
         "comment_url": comment_url,
         "comment_created_at": attestation["comment_created_at"],
+        "comment_updated_at": attestation.get("comment_updated_at", attestation["comment_created_at"]),
         "target_sha": target_sha,
         "diff_sha256": diff_sha256,
     }
@@ -120,6 +122,7 @@ def apply_human_review_attestation(
         "comment_id": comment_id,
         "comment_url": comment_url,
         "comment_created_at": attestation["comment_created_at"],
+        "comment_updated_at": attestation.get("comment_updated_at", attestation["comment_created_at"]),
         "target_sha": target_sha,
         "diff_sha256": diff_sha256,
         "reviewed_paths": ["distributed_loop_trigger.py"],
