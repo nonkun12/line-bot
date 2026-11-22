@@ -560,15 +560,16 @@ def test_execution_approval_consumption_requires_github_token(monkeypatch):
     assert result["reason_code"] == "approval_ledger_token_missing"
 
 
-def test_execution_approval_consumption_blocks_duplicate_ref(monkeypatch):
+def test_execution_approval_requires_intake_reservation(monkeypatch):
     import urllib.error
 
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
 
-    def duplicate_ref(request, timeout):
-        raise urllib.error.HTTPError(request.full_url, 422, "already exists", {}, None)
+    def missing_reservation(request, timeout):
+        assert request.get_method() == "GET"
+        raise urllib.error.HTTPError(request.full_url, 404, "not found", {}, None)
 
-    monkeypatch.setattr(guarded_runtime.urllib.request, "urlopen", duplicate_ref)
+    monkeypatch.setattr(guarded_runtime.urllib.request, "urlopen", missing_reservation)
     evidence = {
         "execution_authorized": True,
         "actor": "nonkun12",
@@ -579,7 +580,7 @@ def test_execution_approval_consumption_blocks_duplicate_ref(monkeypatch):
     }
     result = guarded_runtime._consume_execution_approval(evidence, "b" * 40)
     assert result["gate"] == "BLOCKED"
-    assert result["reason_code"] == "approval_already_consumed"
+    assert result["reason_code"].startswith("approval_reservation_missing_or_unreadable")
 
 
 def test_write_summary_marks_post_generation_rea_as_pre_publish_gate(tmp_path, monkeypatch):
