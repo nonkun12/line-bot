@@ -85,9 +85,29 @@ def resume_task(
     try:
         store = RecoveryStore(recovery_path)
         before = store.task_status(task_id)
-        if before.get("held") is not True:
-            raise ValueError("task is not held")
-        store.resume_held_task(task_id, cause_fixed=True)
+        if before.get("held") is True:
+            store.resume_held_task(task_id, cause_fixed=True)
+        elif before.get("held") is False:
+            # A Goal Autopilot HELD with Recovery AI already unheld is a distinct,
+            # explicitly reconciled state. Never infer it from Recovery AI alone.
+            goal = state.get("goal_autopilot")
+            if not isinstance(goal, dict) or goal.get("goal_id") != "distributed-loop-main-goal-v1":
+                raise ValueError("durable Goal Autopilot identity is invalid")
+            goal_tasks = goal.get("tasks")
+            matches = [item for item in goal_tasks if isinstance(item, dict)
+                       and item.get("task_id") == task_id] if isinstance(goal_tasks, list) else []
+            catalog_task = matches[0] if len(matches) == 1 else None
+            registered = [item for item in tasks if isinstance(item, dict)
+                          and item.get("id") == task_id]
+            if (len(registered) != 1 or registered[0].get("execution_approved") is not True
+                    or catalog_task is None or catalog_task.get("status") != "HELD"
+                    or catalog_task.get("execution_authorized") is not True
+                    or catalog_task.get("instruction") != registered[0].get("instruction")
+                    or catalog_task.get("allowed_paths") != registered[0].get("allowed_paths")):
+                raise ValueError("Recovery AI is not held and no exact approved Goal-only HELD task was verified")
+            store.request_resume_review_for_goal_hold(task_id, cause_fixed=True)
+        else:
+            raise ValueError("Recovery AI hold state is ambiguous")
         updated = _read_json(recovery_path)
         after = RecoveryStore(recovery_path).task_status(task_id)
     except RecoveryStateError as exc:

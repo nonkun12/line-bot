@@ -297,6 +297,21 @@ class RecoveryStore:
         record["resume_requires_review"] = True
         self._write(data)
 
+    def request_resume_review_for_goal_hold(self, task_id: str, *, cause_fixed: bool) -> None:
+        """Stage review for a Goal-only HELD task without fabricating a Recovery hold."""
+        task_id = _safe_id(task_id)
+        if cause_fixed is not True:
+            raise ValueError("explicit confirmation that the cause is fixed is required")
+        data = self._read()
+        record = data["tasks"].get(task_id)
+        if not isinstance(record, dict) or record.get("held") is not False:
+            raise ValueError("Recovery AI task must already be explicitly unheld")
+        if record.get("resume_requires_review", False) is not False:
+            raise ValueError("Recovery AI task already has a pending or ambiguous resume review")
+        record["resumed_at"] = utc_now()
+        record["resume_requires_review"] = True
+        self._write(data)
+
     def confirm_resume_review(self, task_id: str, *, reviewed: bool) -> None:
         """Acknowledge the required post-resume review before a held task can run."""
         task_id = _safe_id(task_id)
