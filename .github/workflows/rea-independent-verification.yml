@@ -153,15 +153,15 @@ jobs:
             const authorLogin = pr.user?.login;
             const shaLine = /^HEAD_SHA:\s*([0-9a-f]{40})$/;
             const candidates = comments.filter(comment => {
-              if (comment.user?.login !== authorLogin || !comment.created_at) return false;
+              if (comment.user?.login !== authorLogin || !comment.created_at || !comment.updated_at) return false;
               const lines = (comment.body || "").split(/\r?\n/).map(line => line.trim());
-              const hasDecision = lines.some(line =>
+              const decisions = lines.filter(line =>
                 line === "REA-HUMAN-REVIEW: APPROVED" ||
                 line === "REA-HUMAN-REVIEW: REJECTED"
               );
               const shaValues = lines.map(line => line.match(shaLine)).filter(Boolean);
-              return hasDecision && shaValues.length === 1 && shaValues[0][1] === expectedSha;
-            }).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+              return decisions.length === 1 && shaValues.length === 1 && shaValues[0][1] === expectedSha;
+            }).sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
 
             if (!candidates.length) {
               core.info("No authenticated human-review comment matches this exact HEAD SHA.");
@@ -174,7 +174,7 @@ jobs:
               core.info("The latest matching human-review comment rejects this revision.");
               return;
             }
-            if (Date.parse(comment.created_at) < Date.parse(headCommitAt)) {
+            if (Date.parse(comment.updated_at) < Date.parse(headCommitAt)) {
               core.info("The review comment predates the reviewed commit.");
               return;
             }
@@ -187,6 +187,7 @@ jobs:
               comment_url: comment.html_url,
               comment_body: comment.body,
               comment_created_at: comment.created_at,
+              comment_updated_at: comment.updated_at,
               head_commit_at: headCommitAt,
               repo_full_name: owner + "/" + repo,
               pr_number: pr.number
@@ -273,6 +274,9 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
+          for name in ("rea-diff-scan.json", "rea-human-review-attestation.json"):
+              if not Path(name).exists():
+                  Path(name).write_text(json.dumps({"status": "NOT_RUN"}, sort_keys=True) + "\\n", encoding="utf-8")
           receipt = {
               "schema_version": 1,
               "run_id": int(os.environ["RUN_ID"]),
@@ -307,7 +311,6 @@ jobs:
           path: |
             rea-independent-verification.json
             rea-diff-scan.json
-            rea-human-review-attestation.json
             rea-human-review-attestation.json
           if-no-files-found: error
           retention-days: 30
