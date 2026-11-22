@@ -32,12 +32,12 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Collect recent Actions runs (read-only)
+      - name: Collect the latest 30 Actions runs (read-only; bounded request)
         id: actions
         continue-on-error: true
         run: |
           set -euo pipefail
-          if gh api --paginate --slurp "repos/$REPOSITORY/actions/runs?per_page=100" > /tmp/monitor-runs.json; then
+          if gh api "repos/$REPOSITORY/actions/runs?per_page=30" > /tmp/monitor-runs.json; then
             echo "collected=true" >> "$GITHUB_OUTPUT"
           else
             printf '%s\n' '{}' > /tmp/monitor-runs.json
