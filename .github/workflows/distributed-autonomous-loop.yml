@@ -1209,7 +1209,24 @@ jobs:
           from pathlib import Path
           durable = json.loads(Path('/tmp/recovery-ai-state-readback.json').read_text(encoding='utf-8'))
           expected = json.loads(Path('/tmp/recovery-ai-state.json').read_text(encoding='utf-8'))
-          if durable.get('recovery_ai') != expected:
+          recovery_durable = durable.get('recovery_ai')
+          if not isinstance(recovery_durable, dict):
+              raise SystemExit('Recovery AI durable read-back is missing or invalid')
+          timestamp = recovery_durable.get('state_updated_at')
+          if not isinstance(timestamp, str):
+              raise SystemExit('Recovery AI durable freshness timestamp is missing')
+          from datetime import datetime
+          try:
+              datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+          except ValueError as exc:
+              raise SystemExit('Recovery AI durable freshness timestamp is invalid') from exc
+          durable_compare = dict(recovery_durable)
+          expected_compare = dict(expected)
+          # The durable writer refreshes this metadata at commit time. Compare
+          # the stable payload independently from the freshness marker.
+          durable_compare.pop('state_updated_at', None)
+          expected_compare.pop('state_updated_at', None)
+          if durable_compare != expected_compare:
               raise SystemExit('Recovery AI durable read-back mismatch')
           rag_payload = json.loads(Path('/tmp/recovery-rag-state.json').read_text(encoding='utf-8'))
           if durable.get('recovery_rag') != rag_payload.get('records'):

@@ -25,3 +25,13 @@ def test_recovery_ai_durable_write_refreshes_freshness_timestamp():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "recovery['state_updated_at'] = datetime.now(timezone.utc).isoformat()" in text
     assert "data['recovery_ai'] = recovery" in text
+
+
+
+def test_recovery_ai_readback_ignores_only_freshness_timestamp_and_validates_it():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "durable_compare.pop('state_updated_at', None)" in text
+    assert "expected_compare.pop('state_updated_at', None)" in text
+    assert "datetime.fromisoformat(timestamp.replace('Z', '+00:00'))" in text
+    assert "if durable_compare != expected_compare:" in text
+    assert "Recovery AI durable read-back mismatch" in text
