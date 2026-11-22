@@ -38,7 +38,7 @@ class _Client:
             "goal_autopilot": {
                 "tasks": [{"task_id": TASK["id"], "status": "PENDING"}]
             },
-            "recovery_ai": {"tasks": {}},
+            "recovery_ai": {"tasks": {TASK["id"]: {"held": False}}},
         }
 
     def get(self, url, headers):
