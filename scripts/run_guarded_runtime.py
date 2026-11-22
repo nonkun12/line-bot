@@ -132,7 +132,9 @@ def _shared_stop_active() -> bool:
     return get_status(repository, token)
 
 
-def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, object]:
+def _verify_execution_approval(
+    start_sha: str, instruction: str, *, secret: str | None = None
+) -> dict[str, object]:
     """Verify approval against the exact task, instruction, base, and path scope."""
     instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
     raw_allowed_paths = os.environ.get("AUTONOMOUS_ALLOWED_PATHS", "")
@@ -212,7 +214,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
                 approver_user_id=approver,
                 nonce=approval_nonce,
                 signature=signature,
-                secret=os.environ.get("LINE_TASK_APPROVAL_HMAC_SECRET", ""),
+                secret=secret if secret is not None else os.environ.get("LINE_TASK_APPROVAL_HMAC_SECRET", ""),
             )
         )
     else:
@@ -455,6 +457,10 @@ def _consume_execution_approval(approval_evidence: dict[str, object], start_sha:
 def main() -> int:
     # Each guarded task owns its own failure evidence; never inherit a stale code.
     os.environ.pop("AUTONOMOUS_FAILURE_CODE", None)
+    # Keep the signing key only in this local variable until envelope verification.
+    # Removing it before any subprocess, REA adapter, or runtime work prevents
+    # accidental inheritance by every child process in this task's lifecycle.
+    approval_hmac_secret = os.environ.pop("LINE_TASK_APPROVAL_HMAC_SECRET", "")
     start_sha = _git("rev-parse", "HEAD")
     if not start_sha:
         return 1
@@ -514,13 +520,9 @@ def main() -> int:
         return 82
 
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
-    # The HMAC key is needed only to verify the incoming approval envelope.
-    # Remove it immediately afterward so runtime execution and any descendants
-    # cannot inherit the signing key through their environment.
-    try:
-        approval_evidence = _verify_execution_approval(start_sha, instruction)
-    finally:
-        os.environ.pop("LINE_TASK_APPROVAL_HMAC_SECRET", None)
+    approval_evidence = _verify_execution_approval(
+        start_sha, instruction, secret=approval_hmac_secret
+    )
     if approval_evidence.get("execution_authorized") is True:
         consumption = _consume_execution_approval(approval_evidence, start_sha)
         approval_evidence["consumption"] = consumption
