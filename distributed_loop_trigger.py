@@ -479,7 +479,14 @@ def _approval_request_id(nonce: str) -> str:
 
 
 def _approval_dispatch_capacity_error(client: Any, headers: dict) -> str:
-    """Fail closed when the LINE intake already has two outstanding workflow runs."""
+    """Best-effort admission check for two outstanding workflow runs.
+
+    GitHub's run listing and workflow_dispatch POST are not one atomic
+    operation. Concurrent LINE requests (or a scheduled run starting between
+    the check and dispatch) can temporarily exceed this advisory cap. The
+    check is a load-shedding guard, not a hard concurrency lock; authorization
+    and nonce replay protection remain independent mandatory gates.
+    """
     outstanding: dict[str, dict] = {}
     base = f"https://api.github.com/repos/{REPO}"
     for status in ("in_progress", "queued", "pending", "waiting"):
