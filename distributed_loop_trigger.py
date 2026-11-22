@@ -385,8 +385,14 @@ def _fetch_task_approval_candidate(client: httpx.Client, headers: dict[str, str]
         f"{base}/contents/.github/autonomous-loop-task-catalog.json?ref={base_sha}", headers=headers
     )
     catalog_response.raise_for_status()
+    state_response = client.get(
+        "https://api.github.com/repos/nonkun12/line-bot/contents/.autonomous-loop-state.json?ref=autonomous-loop-state",
+        headers=headers,
+    )
+    state_response.raise_for_status()
     queue = _decode_contents_payload(queue_response.json())
     catalog = _decode_contents_payload(catalog_response.json())
+    durable_state = _decode_contents_payload(state_response.json())
     queued_tasks, catalog_tasks = queue.get("tasks"), catalog.get("tasks")
     if not isinstance(queued_tasks, list) or not isinstance(catalog_tasks, list):
         raise ValueError("approval_queue_or_catalog_invalid")
@@ -398,9 +404,25 @@ def _fetch_task_approval_candidate(client: httpx.Client, headers: dict[str, str]
     catalog_match = all(
         queued[0].get(k) == task.get(k) for k in ("id", "instruction", "allowed_paths")
     )
+    goal = durable_state.get("goal_autopilot")
+    goal_tasks = goal.get("tasks") if isinstance(goal, dict) else None
+    matching_goal_tasks = [
+        item for item in goal_tasks
+        if isinstance(item, dict) and item.get("task_id") == task_id
+    ] if isinstance(goal_tasks, list) else []
+    if len(matching_goal_tasks) != 1:
+        raise ValueError("approval_task_goal_state_missing_or_ambiguous")
+    recovery = durable_state.get("recovery_ai")
+    recovery_tasks = recovery.get("tasks") if isinstance(recovery, dict) else None
+    recovery_entry = recovery_tasks.get(task_id) if isinstance(recovery_tasks, dict) else None
+    task_held = (
+        matching_goal_tasks[0].get("status") in {"HELD", "FAILED", "IN_PROGRESS"}
+        or (isinstance(recovery_entry, dict) and recovery_entry.get("held") is True)
+    )
     return {
         "task_id": task_id, "catalog_registered": True, "catalog_match": catalog_match,
         "execution_approved": task.get("execution_approved") is True,
+        "task_held": task_held,
         "instruction": task.get("instruction"), "allowed_paths": task.get("allowed_paths"),
         "base_sha": base_sha,
     }
@@ -429,6 +451,8 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
             task_id = preview.task_id if preview is not None else approval.task_id
             candidate = _fetch_task_approval_candidate(client, headers, task_id)
             if preview is not None:
+                if candidate.get("task_held") is True:
+                    return True, "このタスクはHOLDまたは実行中です。人手レビューと状態確認が終わるまでプレビューできません。"
                 if candidate["catalog_match"] is not True:
                     return True, "承認候補を作成できません（QueueとCatalogの定義が一致しません）。"
                 if candidate["execution_approved"] is not True:
@@ -462,6 +486,36 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                 candidate=candidate, now_epoch=int(time.time()), secret=secret,
             )
             signature = sign_approval_envelope(decision, secret=secret)
+            identity = {
+                "repository": "nonkun12/line-bot",
+                "actor": "nonkun12",
+                "task_id": decision.task_id,
+                "instruction_sha256": decision.instruction_sha256,
+                "allowed_paths_sha256": decision.allowed_paths_sha256,
+                "base_sha": decision.base_sha,
+                "approval_nonce": decision.nonce,
+            }
+            marker = hashlib.sha256(
+                json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            marker_ref = f"refs/heads/rsi-approval-consumed/{marker}"
+            reservation = client.post(
+                f"https://api.github.com/repos/nonkun12/line-bot/git/refs",
+                json={"ref": marker_ref, "sha": decision.base_sha},
+                headers=headers,
+            )
+            if reservation.status_code == 422:
+                return True, "この承認nonceは既に受付済み、または消費済みです。再実行は行いません。新しい承認候補を発行してください。"
+            if reservation.status_code != 201:
+                return True, f"承認nonceを安全に予約できません（HTTP {reservation.status_code}）。実行要求は送信していません。"
+            reservation_payload = reservation.json()
+            if (
+                not isinstance(reservation_payload, dict)
+                or reservation_payload.get("ref") != marker_ref
+                or not isinstance(reservation_payload.get("object"), dict)
+                or reservation_payload["object"].get("sha") != decision.base_sha
+            ):
+                return True, "承認nonce予約の応答を検証できません。実行要求は送信していません。"
             response = client.post(
                 f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW}/dispatches",
                 json={"ref": "main", "inputs": {
@@ -474,7 +528,7 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                     "approval_line_user_id": decision.approver_user_id,
                     "approval_nonce": decision.nonce,
                     "approval_signature": signature,
-                    "max_tasks": "1", "request_id": uuid.uuid4().hex,
+                    "max_tasks": "1", "request_id": "line-approval-" + decision.nonce,
                     "continuation_depth": "0", "mode": "normal",
                 }},
                 headers=headers,
@@ -706,5 +760,5 @@ def request_distributed_loop(user_id: str, message: str) -> Tuple[bool, str]:
             if r.status_code in {401, 403}:
                 return True, "分散Loopを起動できません（GitHub Actions権限不足）。"
             return True, f"分散Loop起動に失敗しました（GitHub HTTP {r.status_code}）。"
-    except httpx.HTTPError:
-        return True, "統括AIへの接続に失敗しました（GitHub通信エラー）。"
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+        return True, "BLOCKED: GitHub応答の通信またはJSON形式を検証できません。安全のため受付・実行を行いません。"
