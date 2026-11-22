@@ -499,7 +499,7 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
             marker = hashlib.sha256(
                 json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
             ).hexdigest()
-            marker_ref = f"refs/heads/rsi-approval-consumed/{marker}"
+            marker_ref = f"refs/heads/rsi-approval-reserved/{marker}"
             reservation = client.post(
                 f"https://api.github.com/repos/nonkun12/line-bot/git/refs",
                 json={"ref": marker_ref, "sha": decision.base_sha},
