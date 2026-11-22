@@ -417,39 +417,61 @@ def _consume_execution_approval(approval_evidence: dict[str, object], start_sha:
     marker = hashlib.sha256(
         json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    ref = f"refs/heads/rsi-approval-consumed/{marker}"
-    # LINE intake atomically reserves this ref before dispatch. Runtime only
-    # verifies that reservation; it never creates a second marker or accepts an
-    # unreserved manually-dispatched approval.
-    api_ref = ref.removeprefix("refs/")
-    request = urllib.request.Request(
-        f"https://api.github.com/repos/nonkun12/line-bot/git/ref/{api_ref}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "line-bot-rsi-approval-gate",
-        },
+    reservation_ref = f"refs/heads/rsi-approval-reserved/{marker}"
+    consumed_ref = f"refs/heads/rsi-approval-consumed/{marker}"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "line-bot-rsi-approval-gate",
+    }
+    reservation_request = urllib.request.Request(
+        "https://api.github.com/repos/nonkun12/line-bot/git/ref/" + reservation_ref.removeprefix("refs/"),
+        headers=headers,
         method="GET",
     )
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        with urllib.request.urlopen(reservation_request, timeout=15) as response:
+            reserved = json.loads(response.read().decode("utf-8"))
             if (
                 response.status != 200
-                or payload.get("ref") != ref
-                or not isinstance(payload.get("object"), dict)
-                or payload["object"].get("sha") != start_sha
+                or reserved.get("ref") != reservation_ref
+                or not isinstance(reserved.get("object"), dict)
+                or reserved["object"].get("sha") != start_sha
             ):
                 return {"gate": "BLOCKED", "reason_code": "approval_reservation_response_invalid"}
-    except urllib.error.HTTPError:
-        return {"gate": "BLOCKED", "reason_code": "approval_reservation_missing_or_unreadable"}
     except Exception as exc:
-        return {"gate": "BLOCKED", "reason_code": f"approval_reservation_error:{type(exc).__name__}"}
+        return {"gate": "BLOCKED", "reason_code": f"approval_reservation_missing_or_unreadable:{type(exc).__name__}"}
+
+    # A second, separate atomic ref consumes the reserved approval at execution
+    # time. This preserves one-run-only behavior even if duplicate workflow runs
+    # were already queued before the LINE intake reservation completed.
+    consume_request = urllib.request.Request(
+        "https://api.github.com/repos/nonkun12/line-bot/git/refs",
+        data=json.dumps({"ref": consumed_ref, "sha": start_sha}).encode("utf-8"),
+        headers={**headers, "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(consume_request, timeout=15) as response:
+            consumed = json.loads(response.read().decode("utf-8"))
+            if (
+                response.status != 201
+                or consumed.get("ref") != consumed_ref
+                or not isinstance(consumed.get("object"), dict)
+                or consumed["object"].get("sha") != start_sha
+            ):
+                return {"gate": "BLOCKED", "reason_code": "approval_ledger_response_invalid"}
+    except urllib.error.HTTPError as exc:
+        if exc.code == 422:
+            return {"gate": "BLOCKED", "reason_code": "approval_already_consumed"}
+        return {"gate": "BLOCKED", "reason_code": f"approval_ledger_http_{exc.code}"}
+    except Exception as exc:
+        return {"gate": "BLOCKED", "reason_code": f"approval_ledger_error:{type(exc).__name__}"}
     return {
         "gate": "PASS",
-        "reason_code": "approval_reserved_once",
-        "marker_ref": ref,
+        "reason_code": "approval_consumed_once",
+        "marker_ref": consumed_ref,
         "marker_sha": start_sha,
     }
 
