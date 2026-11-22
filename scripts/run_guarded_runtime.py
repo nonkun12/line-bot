@@ -225,7 +225,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
             body if isinstance(body, str) else "",
         )
         comment_id = comment.get("id") if isinstance(comment, dict) else None
-        approval_nonce = hashlib.sha256(str(comment_id).encode("utf-8")).hexdigest()[:32] if comment_id else ""
+        approval_nonce = hashlib.sha256(str(comment_id if comment_id is not None else body).encode("utf-8")).hexdigest()[:32] if body else ""
         approval_fields_valid = (
             isinstance(issue, dict)
             and isinstance(issue.get("pull_request"), dict)
