@@ -453,6 +453,7 @@ def test_registered_catalog_is_loaded_from_versioned_catalogs_not_runtime_queue(
         "instruction": "reviewed instruction",
         "allowed_paths": ["tests/test_loop_not_run_and_evidence.py"],
         "execution_approved": True,
+        "repair_approved": False,
     }
     payloads = {
         ".github/autonomous-loop-tasks.json": json.dumps({"tasks": [queue_task]}),
