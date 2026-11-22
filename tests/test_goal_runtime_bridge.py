@@ -300,3 +300,33 @@ def test_workflow_returns_nonzero_for_nonclaimable_explicit_approval():
 
     assert result.returncode == 80
     assert "explicitly approved task is not claimable" in result.stdout
+
+
+
+def test_unapproved_scheduled_attempt_returns_task_to_pending(tmp_path, monkeypatch):
+    queue, catalog, state, results, stop = _inputs(tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+
+    def fake_run(command, *, cwd, env, check):
+        results.write_text(json.dumps({
+            "task_id": "approved-test-task",
+            "status": "BLOCKED",
+            "exit_code": 81,
+            "failure_reason": "independent_execution_approval_missing_or_invalid",
+        }) + "\n")
+        return SimpleNamespace(returncode=81)
+
+    monkeypatch.setattr(bridge.subprocess, "run", fake_run)
+    goal_output = tmp_path / "goal-pending.json"
+    args = SimpleNamespace(
+        catalog=catalog, state=state, results=results, stop_file=stop,
+        goal_state_output=goal_output, max_tasks=1,
+    )
+
+    assert bridge.run(args, approval_required=False) == 80
+    goal = json.loads(goal_output.read_text())
+    assert goal["tasks"][0]["status"] == "PENDING"
+    rows = [json.loads(line) for line in results.read_text().splitlines()]
+    assert rows[-1]["status"] == "BLOCKED"
+    assert rows[-1]["failure_reason"] == "execution_approval_required"
