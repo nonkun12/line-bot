@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -161,7 +162,8 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "expected_allowed_paths_sha256": allowed_paths_digest,
         "expected_base_sha": start_sha,
     }
-    if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+    event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+    if event_name not in {"workflow_dispatch", "issue_comment"}:
         return blocked
     event_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
     if not event_path:
@@ -173,32 +175,52 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
     sender = event.get("sender") if isinstance(event, dict) else None
     repository = event.get("repository") if isinstance(event, dict) else None
     inputs = event.get("inputs") if isinstance(event, dict) else None
-    if not isinstance(sender, dict) or not isinstance(repository, dict) or not isinstance(inputs, dict):
+    if not isinstance(sender, dict) or not isinstance(repository, dict):
         return blocked
     actor = str(sender.get("login", ""))
     repo_name = str(repository.get("full_name", ""))
-    # Preferred path: the trusted LINE workflow creates a fresh approval
-    # envelope only after authenticating the workflow actor, repository, ref,
-    # instruction, and exact safe-path manifest. Legacy task-bound event inputs
-    # remain supported for existing callers and regression coverage.
-    if "execution_approval" in inputs:
-        approval_fields_valid = (
-            str(inputs.get("execution_approval", "")) == "APPROVE_EXECUTION"
-            and str(inputs.get("approval_task_id", "")) == task_id
-            and str(inputs.get("approval_instruction_sha256", "")).lower() == instruction_digest
-            and bool(allowed_paths_digest)
-            and str(inputs.get("approval_allowed_paths_sha256", "")).lower() == allowed_paths_digest
-            and str(inputs.get("approval_base_sha", "")) == start_sha
-        )
+
+    if event_name == "workflow_dispatch":
+        if not isinstance(inputs, dict):
+            return blocked
+        # Existing task-bound dispatch fields remain supported for compatibility.
+        if "execution_approval" in inputs:
+            approval_fields_valid = (
+                str(inputs.get("execution_approval", "")) == "APPROVE_EXECUTION"
+                and str(inputs.get("approval_task_id", "")) == task_id
+                and str(inputs.get("approval_instruction_sha256", "")).lower() == instruction_digest
+                and bool(allowed_paths_digest)
+                and str(inputs.get("approval_allowed_paths_sha256", "")).lower() == allowed_paths_digest
+                and str(inputs.get("approval_base_sha", "")) == start_sha
+            )
+        else:
+            approval_fields_valid = (
+                os.environ.get("AUTONOMOUS_EXECUTION_APPROVAL", "") == "APPROVE_EXECUTION"
+                and os.environ.get("AUTONOMOUS_APPROVAL_TASK_ID", "").strip() == task_id
+                and os.environ.get("AUTONOMOUS_APPROVAL_INSTRUCTION_SHA256", "").lower() == instruction_digest
+                and os.environ.get("AUTONOMOUS_APPROVAL_ALLOWED_PATHS_SHA256", "").lower() == allowed_paths_digest
+                and os.environ.get("AUTONOMOUS_APPROVAL_BASE_SHA", "") == start_sha
+                and str(inputs.get("instruction", "")) == instruction
+                and bool(str(inputs.get("user_id", "")).strip())
+            )
     else:
+        # A single exact PR comment is the compact, task-bound approval path.
+        # The task ID is checked against the runtime-selected catalog entry;
+        # instruction/path hashes and the base SHA are derived here from that
+        # trusted task and the current checkout, never supplied by the commenter.
+        issue = event.get("issue") if isinstance(event, dict) else None
+        comment = event.get("comment") if isinstance(event, dict) else None
+        body = comment.get("body", "") if isinstance(comment, dict) else ""
+        match = re.fullmatch(
+            r"/distributed-loop resume_task_id=([A-Za-z0-9._-]{1,100}) confirm_cause_fixed=true reviewed=true",
+            body if isinstance(body, str) else "",
+        )
         approval_fields_valid = (
-            os.environ.get("AUTONOMOUS_EXECUTION_APPROVAL", "") == "APPROVE_EXECUTION"
-            and os.environ.get("AUTONOMOUS_APPROVAL_TASK_ID", "").strip() == task_id
-            and os.environ.get("AUTONOMOUS_APPROVAL_INSTRUCTION_SHA256", "").lower() == instruction_digest
-            and os.environ.get("AUTONOMOUS_APPROVAL_ALLOWED_PATHS_SHA256", "").lower() == allowed_paths_digest
-            and os.environ.get("AUTONOMOUS_APPROVAL_BASE_SHA", "") == start_sha
-            and str(inputs.get("instruction", "")) == instruction
-            and bool(str(inputs.get("user_id", "")).strip())
+            isinstance(issue, dict)
+            and isinstance(issue.get("pull_request"), dict)
+            and match is not None
+            and match.group(1) == task_id
+            and bool(allowed_paths_digest)
         )
     if (
         actor != "nonkun12"
