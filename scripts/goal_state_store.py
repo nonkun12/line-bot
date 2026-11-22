@@ -3,7 +3,7 @@ from __future__ import annotations
 import json, sqlite3
 from pathlib import Path
 from typing import Any
-from scripts.goal_autopilot import _valid_completion_evidence, evaluate_goal
+from scripts.goal_autopilot import BLOCKED_KINDS, SAFE_KINDS, _valid_completion_evidence, evaluate_goal
 
 class GoalStateStore:
     """Durable CAS state. Claims work but deliberately never executes it."""
@@ -61,6 +61,18 @@ class GoalStateStore:
                 if task is None or task.get("status") != "PENDING":
                     conn.rollback()
                     return {"decision":"HOLD","reason":"requested_task_not_pending","task_id":task_id}
+                completed = {
+                    item["task_id"] for item in goal["tasks"]
+                    if item.get("status") == "COMPLETED"
+                }
+                dependencies = task.get("depends_on", [])
+                if not isinstance(dependencies, list) or not set(dependencies).issubset(completed):
+                    conn.rollback()
+                    return {"decision":"HOLD","reason":"requested_task_dependencies_incomplete","task_id":task_id}
+                kind = task.get("kind")
+                if kind in BLOCKED_KINDS or kind not in SAFE_KINDS or task.get("execution_authorized") is not True:
+                    conn.rollback()
+                    return {"decision":"HOLD","reason":"requested_task_not_authorized","task_id":task_id}
             task["status"] = "IN_PROGRESS"
             payload = json.dumps(goal, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             cur = conn.execute("UPDATE goal_state SET revision=revision+1, document=? WHERE goal_id=? AND revision=?", (payload, goal_id, revision))
