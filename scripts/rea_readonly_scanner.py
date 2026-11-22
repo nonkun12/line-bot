@@ -18,11 +18,16 @@ from typing import Any
 ALLOWED_ROOTS = (".github/workflows/", "core/", "scripts/", "tests/", "docs/rea/")
 # Root-level entrypoints are denied by default; keep this exact reviewed set narrow.
 ALLOWED_ROOT_FILES = frozenset({"line_development.py", "distributed_loop_trigger.py"})
+# This entrypoint can authorize LINE requests and dispatch GitHub workflows.
+# Keep it scannable, but never let path allowlisting alone imply approval.
+MANUAL_REVIEW_ROOT_FILES = frozenset({"distributed_loop_trigger.py"})
 
 
 def _is_allowed_path(path: str) -> bool:
     """Allow only reviewed root entrypoints; keep every other root file blocked."""
     return path in ALLOWED_ROOT_FILES or path.startswith(ALLOWED_ROOTS)
+
+
 ALLOWED_SUFFIXES = frozenset({".py", ".json", ".yml", ".yaml", ".md", ".txt"})
 MAX_FILE_BYTES = 512 * 1024
 MAX_FILES = 5000
@@ -283,6 +288,15 @@ def scan_commit_diff(
                 required_tests=["Verify the task-bound allowed-path manifest."],
             ))
             continue
+        if relative in MANUAL_REVIEW_ROOT_FILES:
+            findings.append(_finding(
+                category="manual_review_required", severity="HIGH", confidence="HIGH",
+                target_sha=target_sha, path=relative, line=None,
+                evidence_code="sensitive_entrypoint_requires_human_review",
+                hypothesis="The changed LINE dispatcher can alter user authorization or GitHub workflow dispatch behavior.",
+                suggested_fix="Require an explicit human review of the complete entrypoint diff before accepting this generated change.",
+                required_tests=["Verify LINE user authorization and workflow-dispatch boundaries in the complete diff."],
+            ))
         if relative in deleted:
             severity = "HIGH" if relative.startswith("tests/") else "MEDIUM"
             findings.append(_finding(
