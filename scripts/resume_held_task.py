@@ -91,7 +91,9 @@ def resume_task(
             # A Goal Autopilot HELD with Recovery AI already unheld is a distinct,
             # explicitly reconciled state. Never infer it from Recovery AI alone.
             goal = state.get("goal_autopilot")
-            goal_tasks = goal.get("tasks") if isinstance(goal, dict) else None
+            if not isinstance(goal, dict) or goal.get("goal_id") != "distributed-loop-main-goal-v1":
+                raise ValueError("durable Goal Autopilot identity is invalid")
+            goal_tasks = goal.get("tasks")
             matches = [item for item in goal_tasks if isinstance(item, dict)
                        and item.get("task_id") == task_id] if isinstance(goal_tasks, list) else []
             catalog_task = matches[0] if len(matches) == 1 else None
