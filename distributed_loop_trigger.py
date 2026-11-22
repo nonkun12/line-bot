@@ -471,6 +471,13 @@ def _fetch_task_approval_candidate(client: httpx.Client, headers: dict[str, str]
     }
 
 
+def _approval_request_id(nonce: str) -> str:
+    """Use the nonce itself as the workflow's 32-character hex correlation ID."""
+    if not isinstance(nonce, str) or re.fullmatch(r"[0-9a-f]{32}", nonce) is None:
+        raise ValueError("approval_nonce_invalid_for_request_id")
+    return nonce
+
+
 def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
     preview = parse_approval_preview_command(message)
     approval = parse_approval_command(message)
@@ -543,7 +550,7 @@ def _handle_line_task_approval(user_id: str, message: str) -> Tuple[bool, str]:
                     "approval_line_user_id": decision.approver_user_id,
                     "approval_nonce": decision.nonce,
                     "approval_signature": signature,
-                    "max_tasks": "1", "request_id": "line-approval-" + decision.nonce,
+                    "max_tasks": "1", "request_id": _approval_request_id(decision.nonce),
                     "continuation_depth": "0", "mode": "normal",
                 }},
                 headers=headers,
