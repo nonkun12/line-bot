@@ -89,30 +89,30 @@ def apply_human_review_attestation(
     findings = report.get("findings")
     if not isinstance(findings, list):
         raise ValueError("report_findings_invalid")
-    matching = [
-        item for item in findings
+    matching_indices = [
+        index for index, item in enumerate(findings)
         if isinstance(item, dict)
-        and (item.get("category"), item.get("evidence", {}).get("path"),
-             item.get("evidence", {}).get("check")) in _REVIEWABLE
+        and isinstance(item.get("evidence"), dict)
+        and (item.get("category"), item["evidence"].get("path"),
+             item["evidence"].get("check")) in _REVIEWABLE
         and item.get("target_sha") == target_sha
         and item.get("status") == "REVIEW_REQUIRED"
     ]
-    if len(matching) != 1:
+    if len(matching_indices) != 1:
         raise ValueError("reviewable_finding_not_unique")
 
     updated = dict(report)
     updated_findings = [dict(item) if isinstance(item, dict) else item for item in findings]
-    for item in updated_findings:
-        if item is matching[0]:
-            item["status"] = "HUMAN_REVIEWED"
-            item["human_review"] = {
-                "reviewer_login": reviewer,
-                "comment_id": comment_id,
-                "comment_url": comment_url,
-                "comment_created_at": attestation["comment_created_at"],
-                "target_sha": target_sha,
-                "diff_sha256": diff_sha256,
-            }
+    reviewed_finding = updated_findings[matching_indices[0]]
+    reviewed_finding["status"] = "HUMAN_REVIEWED"
+    reviewed_finding["human_review"] = {
+        "reviewer_login": reviewer,
+        "comment_id": comment_id,
+        "comment_url": comment_url,
+        "comment_created_at": attestation["comment_created_at"],
+        "target_sha": target_sha,
+        "diff_sha256": diff_sha256,
+    }
     updated["findings"] = updated_findings
     updated["human_review_attestation"] = {
         "status": "VERIFIED",
