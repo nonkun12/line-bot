@@ -31,9 +31,15 @@ def _contents_payload(value):
 
 
 class _Client:
-    def __init__(self, queued, catalog):
+    def __init__(self, queued, catalog, state=None):
         self.queued = queued
         self.catalog = catalog
+        self.state = state or {
+            "goal_autopilot": {
+                "tasks": [{"task_id": TASK["id"], "status": "PENDING"}]
+            },
+            "recovery_ai": {"tasks": {}},
+        }
 
     def get(self, url, headers):
         if url.endswith("/commits/main"):
@@ -42,6 +48,8 @@ class _Client:
             return _Response(_contents_payload({"tasks": self.queued}))
         if "autonomous-loop-task-catalog.json" in url:
             return _Response(_contents_payload({"tasks": self.catalog}))
+        if ".autonomous-loop-state.json" in url:
+            return _Response(_contents_payload(self.state))
         raise AssertionError(f"unexpected URL: {url}")
 
 
