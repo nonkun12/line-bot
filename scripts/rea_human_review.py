@@ -82,8 +82,8 @@ def apply_human_review_attestation(
 
     reviewer = attestation.get("reviewer_login")
     pr_author = attestation.get("pr_author_login")
-    if not isinstance(reviewer, str) or not reviewer or reviewer != pr_author:
-        raise ValueError("reviewer_not_authenticated_pr_author")
+    if not isinstance(reviewer, str) or not reviewer or reviewer == pr_author:
+        raise ValueError("reviewer_is_pr_author")
 
     comment_id = attestation.get("comment_id")
     if not isinstance(comment_id, int) or isinstance(comment_id, bool) or comment_id <= 0:
