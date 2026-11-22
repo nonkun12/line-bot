@@ -53,3 +53,27 @@ def test_importing_inflight_goal_preserves_hold_for_reconciliation(tmp_path):
     reopened = GoalStateStore(tmp_path / "reopened.db")
     reopened.create(inflight)
     assert reopened.claim_next("g1")["reason"] == "in_flight_task_requires_reconciliation"
+
+def test_bound_claim_selects_only_the_approved_pending_task(tmp_path):
+    store = GoalStateStore(tmp_path / "goal.db")
+    store.create(goal())
+
+    claim = store.claim_next("g1", task_id="t2")
+
+    assert claim["decision"] == "CLAIMED"
+    assert claim["task_id"] == "t2"
+    saved = store.read("g1")[1]
+    assert saved["tasks"][0]["status"] == "PENDING"
+    assert saved["tasks"][1]["status"] == "IN_PROGRESS"
+
+
+def test_bound_claim_for_missing_or_non_pending_task_does_not_claim_another(tmp_path):
+    store = GoalStateStore(tmp_path / "goal.db")
+    store.create(goal())
+
+    claim = store.claim_next("g1", task_id="not-in-goal")
+
+    assert claim["decision"] == "HOLD"
+    assert claim["reason"] == "requested_task_not_pending"
+    saved = store.read("g1")[1]
+    assert all(task["status"] == "PENDING" for task in saved["tasks"])
