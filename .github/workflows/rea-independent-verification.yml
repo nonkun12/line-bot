@@ -120,7 +120,6 @@ jobs:
           DIFF_SHA256: ${{ steps.rea_scan.outputs.diff_sha256 }}
         with:
           script: |
-            const core = require("@actions/core");
             const { owner, repo } = context.repo;
             core.setOutput("attestation_json", "{}");
             if (context.eventName !== "pull_request" || !context.payload.pull_request) {
