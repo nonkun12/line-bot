@@ -34,7 +34,7 @@ def execute_one_repair(
     evidence: dict[str, Any],
     *,
     token: str,
-    repair_executor: Callable[[dict[str, Any]], dict[str, Any]],
+    repair_executor: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     rea_runner: Callable[[dict[str, Any]], dict[str, Any]],
     repo_root: str | Path,
     repository: str = "nonkun12/line-bot",
@@ -46,6 +46,12 @@ def execute_one_repair(
     never accepted as an executable command by this coordinator.
     """
     root = Path(repo_root).resolve()
+    if repair_executor is None:
+        try:
+            from scripts.loop_local_repair_adapter import create_local_repair_adapter
+            repair_executor = create_local_repair_adapter(root)
+        except Exception:
+            return _blocked("local_repair_adapter_unavailable")
     try:
         authorization = authorize_repair(evidence)
     except Exception:
