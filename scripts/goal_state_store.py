@@ -93,6 +93,9 @@ class GoalStateStore:
                 if "result_status" in failure_evidence and (not isinstance(failure_evidence["result_status"], str) or failure_evidence["result_status"] not in {"PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN", "INCOMPLETE"}):
                     conn.rollback(); raise ValueError("failure evidence result status invalid")
                 task["failure_evidence"] = dict(failure_evidence)
+            else:
+                # Do not carry a previous attempt's diagnosis into a new result.
+                task.pop("failure_evidence", None)
             task["status"] = status
             payload = json.dumps(goal, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             cur = conn.execute("UPDATE goal_state SET revision=revision+1, document=? WHERE goal_id=? AND revision=?", (payload, goal_id, revision))
