@@ -73,6 +73,8 @@ def execute_one_repair(
     request = {
         "task_id": authorization["task_id"],
         "instruction_sha256": authorization["instruction_sha256"],
+        # The adapter verifies this exact text against the authorized digest before use.
+        "instruction": evidence.get("instruction", ""),
         "allowed_paths": authorization["allowed_paths"],
         "base_sha": authorization["base_sha"],
         "failure_fingerprint": authorization["failure_fingerprint"],
