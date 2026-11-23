@@ -119,8 +119,7 @@ def validate_attestation_chain(record):
         if not _texts(claims): issues.append("attestation_claims_invalid")
         elif not set(claims).issubset(allowed_claims): issues.append("attestation_claim_out_of_scope")
     if len(refs) != len(set(refs)): issues.append("attestation_refs_duplicate")
-    if len(keys) != len(set(keys)): issues.append("attestation_keys_duplicate")
-    if len(seqs) != len(chain) or sorted(seqs) != list(range(len(chain))):
+    if len(seqs) != len(chain) or seqs != list(range(len(chain))):
         issues.append("attestation_sequence_not_contiguous")
     if len(times) == len(chain) and times != sorted(times):
         issues.append("attestation_time_order_invalid")
