@@ -131,6 +131,7 @@ def test_global_hold_prevents_rsi_ingestion(tmp_path):
             producer_id="looplab-independent-evaluator",
             sign_digest=lambda digest: "sig:" + digest,
             created_at=123,
+            **_trust_kwargs(),
         )
     assert ledger.verify()
     with sqlite3.connect(ledger.path) as db:
@@ -165,3 +166,37 @@ def test_status_mismatch_is_rejected_before_ledger_write(tmp_path):
             created_at=123,
         )
     assert ledger.verify()
+
+
+def test_invalid_adapter_signature_is_rejected_before_ledger_write(tmp_path):
+    executor, ledger = _executor(tmp_path)
+    payload = _evaluation("FAIL")
+    payload["adapter_signature"] = "forged"
+    with pytest.raises(ValueError, match="adapter_signature_verification_failed"):
+        record_evaluation_as_rsi_observation(
+            evaluation_result=payload, executor=executor,
+            producer_id="looplab-independent-evaluator",
+            sign_digest=lambda digest: "sig:" + digest, created_at=123,
+            **_trust_kwargs(),
+        )
+    with sqlite3.connect(ledger.path) as db:
+        assert db.execute("SELECT COUNT(*) FROM rsi_evidence").fetchone()[0] == 0
+
+
+def test_unregistered_or_mismatched_dataset_is_rejected(tmp_path):
+    executor, ledger = _executor(tmp_path)
+    payload = _evaluation("FAIL")
+    trust = _trust_kwargs()
+    trust["resolve_locked_dataset"] = lambda _: {
+        "dataset_sha256": "f" * 64, "sample_count": 1,
+        "minimum_sample_count": 1, "locked": True,
+    }
+    with pytest.raises(ValueError, match="held_out_dataset_registry_mismatch"):
+        record_evaluation_as_rsi_observation(
+            evaluation_result=payload, executor=executor,
+            producer_id="looplab-independent-evaluator",
+            sign_digest=lambda digest: "sig:" + digest, created_at=123,
+            **trust,
+        )
+    with sqlite3.connect(ledger.path) as db:
+        assert db.execute("SELECT COUNT(*) FROM rsi_evidence").fetchone()[0] == 0
