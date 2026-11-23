@@ -12,6 +12,12 @@ def _seal(value: Any) -> str:
                                     ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
+def _pair_key(metric_id: Any, cohort: Any) -> tuple[str, str] | None:
+    if isinstance(metric_id, str) and metric_id.strip() and isinstance(cohort, str) and cohort.strip():
+        return (metric_id, cohort)
+    return None
+
+
 def _finite_number(value: Any) -> bool:
     return (isinstance(value, (int, float)) and not isinstance(value, bool)
             and math.isfinite(value))
@@ -50,14 +56,14 @@ def check_metric_denominators(observations: Sequence[Mapping[str, Any]]) -> dict
         errors.append("metric_observations_empty")
     for i, item in enumerate(observations):
         metric_id, cohort = item.get("metric_id"), item.get("cohort_id")
-        key = (metric_id, cohort)
+        key = _pair_key(metric_id, cohort)
         if not isinstance(metric_id, str) or not metric_id.strip():
             errors.append(f"observation_metric_id_invalid:{i}")
         if not isinstance(cohort, str) or not cohort.strip():
             errors.append(f"observation_cohort_id_invalid:{i}")
-        if key in seen:
+        if key is not None and key in seen:
             errors.append(f"observation_duplicate:{metric_id}:{cohort}")
-        else:
+        elif key is not None:
             seen.add(key)
         numerator, denominator, sample_count = (
             item.get("numerator"), item.get("denominator"), item.get("sample_count"))
@@ -86,14 +92,14 @@ def check_uncertainty_intervals(intervals: Sequence[Mapping[str, Any]]) -> dict[
         errors.append("uncertainty_intervals_empty")
     for i, item in enumerate(intervals):
         metric_id, cohort = item.get("metric_id"), item.get("cohort_id")
-        key = (metric_id, cohort)
+        key = _pair_key(metric_id, cohort)
         if not isinstance(metric_id, str) or not metric_id.strip():
             errors.append(f"interval_metric_id_invalid:{i}")
         if not isinstance(cohort, str) or not cohort.strip():
             errors.append(f"interval_cohort_id_invalid:{i}")
-        if key in seen:
+        if key is not None and key in seen:
             errors.append(f"interval_duplicate:{metric_id}:{cohort}")
-        else:
+        elif key is not None:
             seen.add(key)
         lower, estimate, upper = item.get("lower"), item.get("estimate"), item.get("upper")
         if not all(_finite_number(v) for v in (lower, estimate, upper)):
@@ -116,14 +122,14 @@ def check_comparison_compatibility(comparisons: Sequence[Mapping[str, Any]]) -> 
         errors.append("comparisons_empty")
     for i, item in enumerate(comparisons):
         metric_id, cohort = item.get("metric_id"), item.get("cohort_id")
-        key = (metric_id, cohort)
+        key = _pair_key(metric_id, cohort)
         if not isinstance(metric_id, str) or not metric_id.strip():
             errors.append(f"comparison_metric_id_invalid:{i}")
         if not isinstance(cohort, str) or not cohort.strip():
             errors.append(f"comparison_cohort_id_invalid:{i}")
-        if key in seen:
+        if key is not None and key in seen:
             errors.append(f"comparison_duplicate:{metric_id}:{cohort}")
-        else:
+        elif key is not None:
             seen.add(key)
         for field in ("baseline_protocol", "candidate_protocol", "baseline_population",
                       "candidate_population", "baseline_window", "candidate_window"):
