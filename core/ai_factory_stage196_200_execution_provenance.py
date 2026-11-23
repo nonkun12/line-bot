@@ -12,9 +12,6 @@ import json
 import re
 from typing import Callable
 
-from core.ai_factory_stage191_195_capability_benchmarks import (
-    BenchmarkRunEvidence, FrozenBenchmarkSuite,
-)
 
 _HEX = re.compile(r"^[0-9a-f]{64}$")
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,159}$")
@@ -369,7 +366,7 @@ class Stage199ExecutionEvidenceBinder:
               nonce: str, require_hardware_signed: bool = False,
               hold_active: bool = False) -> BoundExecutionEvidence:
         _hold(hold_active, 199)
-        if not isinstance(suite, FrozenBenchmarkSuite) or suite.frozen is not True:
+        if not all(hasattr(suite, name) for name in ("suite_id", "version", "cases", "suite_digest", "signature", "frozen")) or suite.frozen is not True:
             raise ExecutionProvenanceError("suite is not frozen")
         suite_payload = {
             "suite_id": suite.suite_id, "version": suite.version,
@@ -378,7 +375,7 @@ class Stage199ExecutionEvidenceBinder:
         if _digest(suite_payload) != suite.suite_digest:
             raise ExecutionProvenanceError("suite digest mismatch")
         _check_signature(suite.suite_digest, suite.signature, verify_suite_signature, "suite")
-        if not isinstance(run, BenchmarkRunEvidence) or run.proposal_only is not True:
+        if not all(hasattr(run, name) for name in ("suite_digest", "candidate_id", "artifact_digest", "run_id", "executor_id", "evaluator_id", "results", "run_digest", "signature")) or run.proposal_only is not True:
             raise ExecutionProvenanceError("run evidence is invalid")
         run_payload = {
             "suite_digest": run.suite_digest, "candidate_id": run.candidate_id,
