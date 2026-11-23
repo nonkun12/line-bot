@@ -4,7 +4,13 @@ import json
 
 import pytest
 
+from core.ai_factory_stage181_185_intergeneration_evolution import (
+    CandidateEvaluation, Stage181InterGenerationEvaluator, Stage182BoundedVariationPlanner,
+    Stage183ParetoDiversitySelector, Stage184CohortComposer,
+    Stage185EvolutionReadinessPackager,
+)
 from core.ai_factory_stage186_190_multigeneration_evolution import (
+    stage185_checkpoint_verifier,
     GenerationSnapshot,
     GeneralizationAuditEvidence,
     LongitudinalEvolutionError,
@@ -34,9 +40,8 @@ def signed(value):
     return replace(value, signature=SIGN(unsigned_digest(value)))
 
 
-def snapshots():
+def snapshots(parent=H):
     rows = []
-    parent = H
     for generation in (1, 2, 3):
         row = GenerationSnapshot(
             generation=generation,
@@ -534,3 +539,55 @@ def test_stage190_rejects_oversized_trend_before_materializing_identity_sets():
     )
     with pytest.raises(LongitudinalEvolutionError, match="32-item bound"):
         package(oversized, audit, attribution, ledger)
+
+
+
+def test_stage185_signed_checkpoint_connects_to_stage186_and_rejects_tampering():
+    evaluations = (
+        CandidateEvaluation(
+            "baseline", "1" * 64, ("root",), 0, 1, H,
+            "evaluator-baseline", "trial-baseline", .90, .99, 100, 500, "valid",
+        ),
+        CandidateEvaluation(
+            "candidate-main", "2" * 64, ("root",), 0, 1, H,
+            "evaluator-challenger", "trial-challenger", .92, .99, 95, 490, "valid",
+        ),
+    )
+    report = Stage181InterGenerationEvaluator().build(
+        source_generation=0, target_generation=1, baseline_candidate_id="baseline",
+        evaluations=evaluations, verify_signature=lambda item: item.signature == "valid",
+        sign_report=SIGN,
+    )
+    variations = Stage182BoundedVariationPlanner().build(
+        report, recipes=(("candidate-var", ("candidate-main",), "3" * 64, 1),),
+        sign_report=SIGN,
+    )
+    selection = Stage183ParetoDiversitySelector().build(report, evaluations)
+    cohort = Stage184CohortComposer().build(
+        report, selection, variations, sign_report=SIGN,
+    )
+    checkpoint = Stage185EvolutionReadinessPackager().build(
+        report, selection, variations, cohort,
+        verify_report_signature=VERIFY,
+        verify_variation_signature=VERIFY,
+        verify_cohort_signature=VERIFY,
+        sign_certificate=SIGN,
+    )
+    assert checkpoint.proposed_generation == 1
+    assert "candidate-main" in checkpoint.candidate_ids
+    verifier = stage185_checkpoint_verifier(checkpoint, verify_signature=VERIFY)
+    trend = build_trend(
+        snapshots(parent=checkpoint.certificate_digest),
+        parent_readiness_digest=checkpoint.certificate_digest,
+        parent_generation=checkpoint.proposed_generation,
+        verify_parent_readiness=verifier,
+    )
+    assert trend.parent_readiness_digest == checkpoint.certificate_digest
+    forged = replace(checkpoint, certificate_signature="forged")
+    with pytest.raises(LongitudinalEvolutionError, match="does not authorize"):
+        build_trend(
+            snapshots(parent=forged.certificate_digest),
+            parent_readiness_digest=forged.certificate_digest,
+            parent_generation=forged.proposed_generation,
+            verify_parent_readiness=stage185_checkpoint_verifier(forged, verify_signature=VERIFY),
+        )
