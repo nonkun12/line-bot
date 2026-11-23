@@ -7,6 +7,14 @@ import subprocess
 from scripts import loop_local_repair_adapter as adapter
 
 
+class _Opener:
+    def __init__(self, response):
+        self.response = response
+
+    def open(self, *_args, **_kwargs):
+        return self.response
+
+
 class _Response:
     status = 200
 
@@ -64,7 +72,7 @@ def test_local_adapter_applies_only_a_valid_allowlisted_patch(monkeypatch, tmp_p
         "+value = 1\n"
         "+assert value == 1\n"
     )
-    monkeypatch.setattr(adapter.urllib.request, "urlopen", lambda *_a, **_k: _Response({"response": patch}))
+    monkeypatch.setattr(adapter.urllib.request, "build_opener", lambda *_a, **_k: _Opener(_Response({"response": patch})))
     result = adapter.create_local_repair_adapter(root)(_request(base))
     assert result["status"] == "PASS"
     assert result["provider"] == "local_ollama_only"
@@ -75,7 +83,7 @@ def test_local_adapter_applies_only_a_valid_allowlisted_patch(monkeypatch, tmp_p
 def test_local_adapter_rejects_instruction_hash_mismatch_before_model_call(monkeypatch, tmp_path):
     root, base = _repo(tmp_path)
     called = []
-    monkeypatch.setattr(adapter.urllib.request, "urlopen", lambda *_a, **_k: called.append(True))
+    monkeypatch.setattr(adapter.urllib.request, "build_opener", lambda *_a, **_k: called.append(True))
     request = _request(base)
     request["instruction"] = "tampered instruction"
     result = adapter.create_local_repair_adapter(root)(request)
@@ -113,7 +121,7 @@ def test_local_adapter_fails_closed_when_local_model_is_unavailable(monkeypatch,
         import urllib.error
         raise urllib.error.URLError("connection refused")
 
-    monkeypatch.setattr(adapter.urllib.request, "urlopen", unavailable)
+    monkeypatch.setattr(adapter.urllib.request, "build_opener", lambda *_a, **_k: type("Opener", (), {"open": staticmethod(unavailable)})())
     result = adapter.create_local_repair_adapter(root)(_request(base))
     assert result["status"] == "BLOCKED"
     assert result["reason_code"] == "local_model_unavailable_no_cloud_fallback"
