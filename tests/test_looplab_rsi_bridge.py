@@ -31,11 +31,11 @@ def _evaluation(status="FAIL"):
     ).encode()).hexdigest()
     record = {
         "experiment_id": "looplab-bridge-01",
-        "status": status,
         "baseline": {"candidate_id": "base", "artifact_sha256": "a" * 64, "score": 0.0},
-            "challenger": {"candidate_id": "candidate", "artifact_sha256": "b" * 64, "score": 0.0},
-            "evaluator": {"evaluator_id": "rsi.exact_match.v1", "version": "1", "metric": "exact_match_rate", "direction": "higher", "minimum_delta": 0.0},
-            "held_out": {"dataset_id": "fixture", "dataset_sha256": dataset_sha, "sample_count": 1, "locked": True},
+        "challenger": {"candidate_id": "candidate", "artifact_sha256": "b" * 64, "score": 0.0},
+        "evaluator": {"evaluator_id": "rsi.exact_match.v1", "version": "1", "metric": "exact_match_rate", "direction": "higher", "minimum_delta": 0.0},
+        "held_out": {"dataset_id": "fixture", "dataset_sha256": dataset_sha, "sample_count": 1, "locked": True},
+        "safety": {"stop_state": "INACTIVE", "global_hold_state": "CLEAR"},
     }
     evidence_sha = hashlib.sha256(json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return {
