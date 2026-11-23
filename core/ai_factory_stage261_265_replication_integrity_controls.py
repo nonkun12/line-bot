@@ -173,7 +173,14 @@ def stage264_correct_multiple_comparisons(*, estimates: Sequence[Mapping],
     for estimate in estimates:
         if not isinstance(estimate, Mapping) or estimate.get("status") != "PAIRED_GAIN_ESTIMATED":
             return _blocked("every family member must be a paired gain estimate")
-        if (not _digest(estimate.get("protocol_digest"))
+        claimed = estimate.get("result_digest")
+        try:
+            estimate_body = {key: value for key, value in estimate.items() if key != "result_digest"}
+            actual = sha256(json.dumps(estimate_body, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+        except (TypeError, ValueError):
+            return _blocked("estimate digest cannot be recomputed")
+        if (not _digest(claimed) or claimed != actual
+                or not _digest(estimate.get("protocol_digest"))
                 or not _digest(estimate.get("observations_digest"))
                 or isinstance(estimate.get("sample_count"), bool)
                 or not isinstance(estimate.get("sample_count"), int) or estimate["sample_count"] < 1
@@ -199,7 +206,9 @@ def stage264_correct_multiple_comparisons(*, estimates: Sequence[Mapping],
     })
 
 
-def stage265_validate_independent_replication(*, primary_package: Mapping,
+def stage265_validate_independent_replication(*, primary_preregistration: Mapping,
+                                               replication_preregistration: Mapping,
+                                               primary_package: Mapping,
                                                replication_package: Mapping,
                                                primary_evaluator_id: str,
                                                replication_evaluator_id: str,
@@ -207,23 +216,35 @@ def stage265_validate_independent_replication(*, primary_package: Mapping,
     """Require positive gated evidence on distinct task sets and declared evaluators."""
     if held is not False:
         return _blocked("HOLD state must be explicitly false")
-    if (not _valid(primary_package, "CAPABILITY_EVIDENCE_PACKAGE_READY")
+    if (not _valid(primary_preregistration, "EVALUATION_PREREGISTERED")
+            or not _valid(replication_preregistration, "EVALUATION_PREREGISTERED")
+            or not _valid(primary_package, "CAPABILITY_EVIDENCE_PACKAGE_READY")
             or not _valid(replication_package, "CAPABILITY_EVIDENCE_PACKAGE_READY")):
-        return _blocked("both evidence packages must pass integrity validation")
+        return _blocked("both preregistrations and evidence packages must pass integrity validation")
     if (not isinstance(primary_evaluator_id, str) or not primary_evaluator_id.strip()
             or not isinstance(replication_evaluator_id, str) or not replication_evaluator_id.strip()
             or primary_evaluator_id == replication_evaluator_id):
         return _blocked("independent evaluator IDs must be distinct declarations")
-    if primary_package["task_set_digest"] == replication_package["task_set_digest"]:
+    primary_protocol = dict(primary_preregistration["protocol"])
+    replication_protocol = dict(replication_preregistration["protocol"])
+    primary_task_set = primary_protocol.pop("task_set_digest", None)
+    replication_task_set = replication_protocol.pop("task_set_digest", None)
+    if primary_task_set == replication_task_set:
         return _blocked("replication must use a distinct task set")
+    if primary_protocol != replication_protocol:
+        return _blocked("replication protocol parameters must match apart from task-set identity")
+    if (primary_package["protocol_digest"] != primary_preregistration["protocol_digest"]
+            or replication_package["protocol_digest"] != replication_preregistration["protocol_digest"]
+            or primary_package["task_set_digest"] != primary_task_set
+            or replication_package["task_set_digest"] != replication_task_set):
+        return _blocked("package-to-preregistration linkage mismatch")
     if (primary_package["gate_status"] != "CAPABILITY_GAIN_SUPPORTED"
             or replication_package["gate_status"] != "CAPABILITY_GAIN_SUPPORTED"):
         return _blocked("both primary and replication gates must support the gain")
-    if primary_package["protocol_digest"] != replication_package["protocol_digest"]:
-        return _blocked("primary and replication protocols must match")
+    family_digest = sha256(json.dumps(primary_protocol, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return _seal({
         "status": "INDEPENDENT_REPLICATION_DECLARED",
-        "protocol_digest": primary_package["protocol_digest"],
+        "protocol_family_digest": family_digest,
         "primary_task_set_digest": primary_package["task_set_digest"],
         "replication_task_set_digest": replication_package["task_set_digest"],
         "primary_evaluator_id": primary_evaluator_id,
