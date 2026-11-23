@@ -11,6 +11,10 @@ on:
         description: "LINE user ID"
         required: true
         type: string
+      task_id:
+        description: "Stable cross-interface task ID from LINE"
+        required: true
+        type: string
       loop_count:
         description: "Sequential safe development passes (1-4)"
         required: false
@@ -54,7 +58,9 @@ jobs:
       - name: Prepare task-bound LINE execution approval
         env:
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
+          DEV_TASK_ID: ${{ github.event.inputs.task_id }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
+          DEV_TASK_ID: ${{ github.event.inputs.task_id }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_REF: ${{ github.ref }}
@@ -62,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, os, re, subprocess, uuid
+          import hashlib, json, os, re, subprocess
           from scripts import line_development_worker_v2 as worker
 
           head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
@@ -74,6 +80,7 @@ jobs:
               or os.environ["GITHUB_REPOSITORY"] != "nonkun12/line-bot"
               or os.environ["GITHUB_REF"] != "refs/heads/main"
               or not user_id.strip()
+              or not re.fullmatch(r"[0-9a-f]{32}", os.environ.get("DEV_TASK_ID", ""))
               or not re.fullmatch(r"[0-9a-f]{40}", head)
               or not instruction.strip()
           ):
@@ -94,7 +101,7 @@ jobs:
           if len(allowed_paths) > 40000:
               raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED")
 
-          task_id = uuid.uuid4().hex
+          task_id = os.environ["DEV_TASK_ID"]
           values = {
               "AUTONOMOUS_START_SHA": head,
               "AUTONOMOUS_TASK_ID": task_id,
@@ -215,6 +222,7 @@ jobs:
         if: always()
         env:
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
+          DEV_TASK_ID: ${{ github.event.inputs.task_id }}
           LOOP_COUNT: ${{ github.event.inputs.loop_count || '4' }}
           DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
           TEST_ONLY: ${{ steps.development.outputs.test_only }}
@@ -242,6 +250,8 @@ jobs:
           fi
           {
             echo "# $title"
+            echo
+            echo "- Task ID: ${DEV_TASK_ID}"
             echo
             echo "- 結果: **$result**"
             echo "- 詳細: $detail"
@@ -305,7 +315,7 @@ jobs:
           export AUTONOMOUS_CHANGED_FILES="$(git diff --name-only "$AUTONOMOUS_START_SHA" "$AUTONOMOUS_PRODUCED_SHA" | paste -sd, -)"
           export AUTONOMOUS_SOURCE="on-demand"
           export AUTONOMOUS_AGENT="DistributedDevelopmentRuntime"
-          export AUTONOMOUS_TASK_ID="on-demand-line-development"
+          export AUTONOMOUS_TASK_ID="${DEV_TASK_ID}"
           # Runtime exit status alone is not exact-SHA test evidence.
           export AUTONOMOUS_TESTS_RESULT="NOT_RUN"
           export AUTONOMOUS_SAFETY_GATE_RESULT="BLOCKED"
@@ -325,6 +335,7 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
+          DEV_TASK_ID: ${{ github.event.inputs.task_id }}
           DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
           TEST_ONLY: ${{ steps.development.outputs.test_only }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -337,6 +348,7 @@ jobs:
               raise SystemExit(0)
           outcome = os.environ.get("DEVELOPMENT_OUTCOME", "unknown")
           instruction = os.environ.get("DEV_INSTRUCTION", "")
+          task_id = os.environ.get("DEV_TASK_ID", "")
           run_url = os.environ.get("RUN_URL", "")
           test_only = os.environ.get("TEST_ONLY") == "true"
           try:
@@ -368,11 +380,11 @@ jobs:
           run_url = os.environ.get("RUN_URL", "")
           test_only = os.environ.get("TEST_ONLY") == "true"
           if outcome == "success" and test_only:
-              message = "✅ 本線E2Eテストが完了しました。\n" f"指示: {instruction}\n" "E2E専用経路でpytestを実行し、成功しました。\n" f"実行結果: {run_url}"
+              message = "✅ 本線E2Eテストが完了しました。\n" f"Task ID: {task_id}\n" f"指示: {instruction}\n" "E2E専用経路でpytestを実行し、成功しました。\n" f"実行結果: {run_url}"
           elif outcome == "success":
-              message = "⚠️ 自動開発ランタイムは終了しましたが、テスト合格は未確認です。\n" f"指示: {instruction}\n" "PRと対象HEADのテスト証拠を確認するまで、合格・マージ可能とは扱いません。\n" f"実行結果: {run_url}"
+              message = "⚠️ 自動開発ランタイムは終了しましたが、テスト合格は未確認です。\n" f"Task ID: {task_id}\n" f"指示: {instruction}\n" "PRと対象HEADのテスト証拠を確認するまで、合格・マージ可能とは扱いません。\n" f"実行結果: {run_url}"
           else:
-              message = "❌ 自動開発が失敗しました。\n" f"指示: {instruction}\n" f"失敗地点: GitHub Actions（{outcome}）\n" f"詳細: {run_url}"
+              message = "❌ 自動開発が失敗しました。\n" f"Task ID: {task_id}\n" f"指示: {instruction}\n" f"失敗地点: GitHub Actions（{outcome}）\n" f"詳細: {run_url}"
           payload = json.dumps({"user_id": os.environ["DEV_USER_ID"], "message": message}).encode("utf-8")
           request = urllib.request.Request("https://line-bot-yvea.onrender.com/internal/push", data=payload, headers={"Content-Type": "application/json", "x-internal-key": key}, method="POST")
           try:
