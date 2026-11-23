@@ -22,12 +22,12 @@ class FakeClient:
         return self.content
 
 
-def make_plan():
+def make_plan(*, sample_count=1):
     candidate = "b" * 64
     cases = (BenchmarkCase("one", "say token", "TOKEN"),)
     protocol = benchmark_protocol_digest(cases)
     baseline = FrozenBaseline(
-        "baseline-v1", "f" * 64, protocol, 0.0, 100, 10_000, "pending"
+        "baseline-v1", "f" * 64, protocol, 0.0, sample_count, 10_000, "pending"
     )
     baseline = FrozenBaseline(
         baseline.baseline_id, baseline.model_digest, baseline.protocol_digest,
@@ -86,6 +86,24 @@ def test_independent_evaluator_recomputes_evidence_and_signs_result(tmp_path):
     assert len(signed) == 1
     assert evaluation.signature.startswith("signed:")
     assert len(evaluation.evidence_digest) == 64
+
+
+def test_evaluator_rejects_baseline_with_different_sample_count(tmp_path):
+    plan, cases, baseline = make_plan(sample_count=2)
+    ledger = EvidenceLedger(tmp_path / "sample-count.sqlite")
+    runner = LocalRSIExperimentRunner(
+        FakeClient("TOKEN"), executor_id="local-runner",
+        candidate_digest=plan.candidate_digest, model_id="fixture-model",
+        ledger=ledger, cases=cases,
+        sign_evidence=lambda digest: "sig:" + digest,
+    )
+    result = runner(plan)
+    evaluator = make_evaluator(
+        ledger, FakeClient(json.dumps({"rationale": "must not be reached"})), baseline
+    )
+
+    with pytest.raises(RSIError, match="sample count"):
+        evaluator.evaluate(plan, result)
 
 
 def test_evaluator_rejects_executor_identity_and_unbound_result(tmp_path):
