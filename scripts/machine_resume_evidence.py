@@ -62,6 +62,7 @@ def validate_machine_resume_evidence(
     expected_base_sha: str,
     expected_workflow_run_id: str,
     expected_run_attempt: int,
+    expected_nonce: str,
     now: datetime | None = None,
     max_age_seconds: int = 3600,
 ) -> dict[str, Any]:
@@ -76,6 +77,7 @@ def validate_machine_resume_evidence(
         or not isinstance(expected_workflow_run_id, str)
         or not expected_workflow_run_id.isdigit()
         or type(expected_run_attempt) is not int or expected_run_attempt < 1
+        or not isinstance(expected_nonce, str) or not _NONCE.fullmatch(expected_nonce)
         or type(max_age_seconds) is not int or not 1 <= max_age_seconds <= 86400
     ):
         return _blocked("resume_expected_context_invalid")
@@ -123,6 +125,7 @@ def validate_machine_resume_evidence(
         or evidence.get("run_attempt") != expected_run_attempt
         or not isinstance(evidence.get("nonce"), str)
         or not _NONCE.fullmatch(evidence["nonce"])
+        or evidence.get("nonce") != expected_nonce
     ):
         return _blocked("resume_evidence_binding_or_gate_failed")
 
