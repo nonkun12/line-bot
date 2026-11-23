@@ -26,7 +26,9 @@ def snapshots(qualities=(.90, .91, .92), safeties=(.97, .97, .98),
             suite_digest=H, dataset_digest=J, environment_digest=K,
             provenance_certificate_digest="d" * 64, evaluator_id="independent-eval",
             quality=qualities[i], safety=safeties[i], latency_ms=latencies[i],
-            memory_mb=memories[i], nonce=f"nonce-{i}", sign=SIGN, verify=VERIFY,
+            memory_mb=memories[i], nonce=f"nonce-{i}",
+            verify_provenance_certificate=lambda digest: digest == "d" * 64,
+            sign=SIGN, verify=VERIFY,
         ))
     return tuple(rows)
 
@@ -116,7 +118,7 @@ def test_hold_fails_closed(stage):
                 generation=0, suite_digest=H, dataset_digest=J, environment_digest=K,
                 provenance_certificate_digest="d" * 64, evaluator_id="e",
                 quality=.9, safety=.99, latency_ms=10, memory_mb=20, nonce="n",
-                sign=SIGN, verify=VERIFY, hold_active=True,
+                verify_provenance_certificate=lambda digest: True, sign=SIGN, verify=VERIFY, hold_active=True,
             )
         elif stage == 202:
             Stage202GenerationLineage().build(
