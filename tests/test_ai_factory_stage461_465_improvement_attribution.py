@@ -18,8 +18,7 @@ def test_461_requires_matched_comparison_context():
 
 
 def test_462_rejects_uncontrolled_or_multiple_primary_changes():
-    assert check_change_isolation([{"change_id": "c1", "category": "prompt"}],
-                                  "prompt")["pass"]
+    assert check_change_isolation([{"change_id": "c1", "category": "prompt"}], "prompt")["pass"]
     assert not check_change_isolation([
         {"change_id": "c1", "category": "prompt"},
         {"change_id": "c2", "category": "weights"}], "prompt")["pass"]
@@ -35,10 +34,8 @@ def test_463_respects_metric_direction_and_minimum_gain():
 
 
 def test_464_fails_when_guardrail_regression_exceeds_limit():
-    assert check_guardrail_metrics({"latency": 10}, {"latency": 11},
-                                   {"latency": 1})["pass"]
-    assert not check_guardrail_metrics({"latency": 10}, {"latency": 12},
-                                       {"latency": 1})["pass"]
+    assert check_guardrail_metrics({"latency": 10}, {"latency": 11}, {"latency": 1})["pass"]
+    assert not check_guardrail_metrics({"latency": 10}, {"latency": 12}, {"latency": 1})["pass"]
 
 
 def test_465_aggregate_holds_on_any_failed_gate_and_never_authorizes():
