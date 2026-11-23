@@ -86,7 +86,7 @@ Compare against a frozen baseline and holdout tasks. Do not count more loop iter
 
 The current branch now propagates one stable 32-character task ID from the LINE dispatcher into the governed GitHub Actions workflow. The workflow binds that same ID to the task-bound execution approval, run name, final report, PR description, optional Google Sheets ledger record, 90-day report artifact, and LINE completion notification. Legacy workflow callers may omit the input; the workflow then generates its own ID.
 
-The workflow artifact and GitHub run record provide a durable correlation trail, but this is not yet a complete shared task database or a LINE task-lookup command. Google Sheets persistence depends on its existing credentials/configuration. ChatGPT is not automatically connected to LINE; it can use the shared task ID and GitHub evidence when that information is provided or retrieved through an authorized GitHub connection.
+The workflow artifact and GitHub run record provide a durable correlation trail, but this is not yet a complete shared task database. A read-only LINE task lookup now searches the latest 100 workflow runs by exact `display_title` (`LINE task <task_id>`) and returns the workflow state plus a validated same-repository run URL. It does not yet retrieve or interpret the report artifact, paginate older runs, or verify task-level acceptance evidence. Google Sheets persistence depends on its existing credentials/configuration. ChatGPT is not automatically connected to LINE; it can use the shared task ID and GitHub evidence when that information is provided or retrieved through an authorized GitHub connection.
 
 ## Verified integration baseline (2026-11-23)
 
@@ -96,11 +96,12 @@ Read-only inspection confirmed that:
 - The dispatcher now creates a 32-character UUID task ID and sends it as the `task_id` workflow input. Retries within that dispatch reuse the same ID.
 - The workflow uses the supplied ID as `AUTONOMOUS_TASK_ID` and `AUTONOMOUS_APPROVAL_TASK_ID`; it records the ID in its run name, report, PR description, optional Sheets record, report artifact name, and LINE completion message.
 - A missing ID from legacy callers is supported: the workflow generates an ID before task-bound approval.
-- The latest full Pytest workflow for the current branch passed after the task ID test update. The workflow itself has not been dispatched as a live LINE development task.
+- The latest full Pytest workflow for the current branch passed after the task ID test update (run `45108436743`, commit `439a609f2991bc3ebc92d6d3c7e566f4c430fcff`). Its `test` job completed successfully. The workflow itself has not been dispatched as a live LINE development task.
+- The read-only task status command (`タスク状況: <32桁hex>`, with aliases `開発状況:` and `task status:`) is wired into `app.py` before development/Loop routing. It enforces the LINE user allowlist and performs only a GitHub Actions workflow-runs GET request. It distinguishes queued, running, workflow success, failure, cancellation, and other completed states. A workflow success is explicitly not represented as task acceptance or merge readiness.
 
 ## Remaining implementation order
 
-1. Add a read-only LINE lookup by task ID, backed by GitHub workflow-run metadata and the task report artifact.
+1. Extend the read-only task lookup to retrieve the report artifact safely, paginate beyond the latest 100 runs, and expose task-level acceptance evidence without treating workflow success as task success.
 2. Make the sanitized task record retrievable for ChatGPT-assisted analysis using the same task ID.
 3. Add a compact ChatGPT-to-LINE handoff format with objective, acceptance criteria, test plan, risks, and allowed paths.
 4. Add end-to-end tests for task identity continuity, duplicate delivery, replay rejection, status-only non-dispatch, and evidence-bound terminal states.
