@@ -71,3 +71,12 @@ def test_stage_390_integrates_improvement_gate_without_authorizing_promotion():
     blocked = evaluate_stages_386_390(**{**args, "paired_improvements": [0.0, 0.01]})
     assert blocked["status"] == "BLOCKED"
     assert blocked["promotion_authorized"] is False
+
+
+def test_stage_386_rejects_duplicate_sample_identifiers():
+    result = check_paired_sample_alignment(
+        [{"sample_id": "a"}, {"sample_id": "a"}],
+        [{"sample_id": "a"}, {"sample_id": "b"}],
+    )
+    assert not result["pass"]
+    assert "candidate_sample_id_duplicate" in result["errors"]
