@@ -172,7 +172,7 @@ def create_post_repair_rea_runner(repo_root: str | Path):
             report = _run_scanner(
                 root, stage="POST_REPAIR", base_sha=base_sha, target_sha=target_sha
             )
-            tests = _run_pytest(root)
+            tests = _run_pytest(root, allowed_paths)
             if tests["status"] != "PASS":
                 raise RuntimeError("rea_post_repair_tests_not_pass")
             return {
