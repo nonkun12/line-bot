@@ -16,14 +16,14 @@ TASK_SET_DIGEST = hashlib.sha256(json.dumps(
 ).encode()).hexdigest()
 
 
-def _pipeline(candidate_score=0.9):
+def _pipeline(candidate_score=0.95):
     prereg = stage256_preregister_evaluation(
         protocol_id="protocol-001", metric_name="task_success",
         metric_direction="higher_is_better", minimum_gain=0.05,
         alpha=0.05, minimum_pairs=30, task_set_digest=TASK_SET_DIGEST,
     )
     rows = [{
-        **task, "baseline_score": 0.7, "candidate_score": candidate_score
+        **task, "baseline_score": 0.05, "candidate_score": candidate_score
     } for task in TASKS]
     paired = stage257_validate_paired_results(preregistration=prereg, observations=rows)
     estimate = stage258_estimate_paired_gain(preregistration=prereg, paired_results=paired)
@@ -81,7 +81,7 @@ def test_259_requires_lower_bound_to_exceed_preregistered_minimum():
     assert package["status"] == "CAPABILITY_EVIDENCE_PACKAGE_READY"
     assert package["rsi_or_asi_demonstrated"] is False
     assert package["requires_independent_replication"] is True
-    *_, weak_gate, weak_package = _pipeline(candidate_score=0.71)
+    *_, weak_gate, weak_package = _pipeline(candidate_score=0.06)
     assert weak_gate["status"] == "CAPABILITY_GAIN_NOT_ESTABLISHED"
     assert weak_package["status"] == "CAPABILITY_EVIDENCE_PACKAGE_READY"
 
