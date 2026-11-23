@@ -103,7 +103,7 @@ def stage241_reproducibility_check(
 def stage242_stratified_robustness(
     *, strata: Sequence[Mapping], required_strata: Sequence[str],
     identity_digest: str, minimum_coverage: float = 1.0,
-    minimum_gain: float = 0.0, minimum_sample_count: int = 2, held: bool = False,
+    minimum_gain: float = 1e-9, minimum_sample_count: int = 2, held: bool = False,
 ):
     """Require complete declared slice coverage and minimum per-slice evidence."""
     if held is not False:
@@ -112,7 +112,7 @@ def stage242_stratified_robustness(
             or not isinstance(required_strata, Sequence) or isinstance(required_strata, (str, bytes))
             or not required_strata or not _digest(identity_digest)
             or not _finite(minimum_coverage) or minimum_coverage != 1.0
-            or not _finite(minimum_gain) or minimum_gain < 0
+            or not _finite(minimum_gain) or minimum_gain <= 0
             or not isinstance(minimum_sample_count, int) or isinstance(minimum_sample_count, bool)
             or minimum_sample_count < 2):
         return _blocked("invalid robustness inputs; complete coverage and bounded thresholds are required")
