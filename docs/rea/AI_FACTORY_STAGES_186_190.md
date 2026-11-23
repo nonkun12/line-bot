@@ -3,7 +3,8 @@
 Stages 186–190 extend the Stage 181–185 inter-generation readiness pipeline. They improve longitudinal evaluation, holdout auditing, regression diagnosis, survival knowledge retention, and evidence packaging. Outputs remain proposal-only.
 
 ## Stage 186 — Longitudinal trend analysis
-- Requires a trusted Stage 185 readiness digest, matching starting generation, and candidate-lineage verifier.
+- Requires a signed Stage 185 readiness checkpoint, matching starting generation, and candidate-lineage verifier.
+- The Stage 186 module exposes `stage185_checkpoint_verifier`, an adapter over the signed Stage 185 certificate. It verifies the certificate digest/signature, proposed generation, candidate membership, and proposal-only authority flags.
 - Each generation snapshot is signed over a canonical digest and chained to the prior snapshot; the first snapshot chains to the Stage 185 checkpoint.
 - Uses a fixed suite digest, unique evaluator/trial identities, and a distinct executor identity.
 - Consumes at most 33 items to enforce the 32-snapshot cap before materialization.
@@ -45,3 +46,11 @@ The Stage 185 checkpoint verifier and Stage 189 predecessor verifier are trusted
 - Stage 187 binds its minimum holdout-coverage policy into the signed audit digest and rejects coverage thresholds below 95%.
 - Stage 190 revalidates the trusted Stage 185 checkpoint at certificate time, preventing stale checkpoint replay between trend creation and packaging.
 - Stage 190 independently enforces the 32-snapshot, 64-diagnostic, and 512-ledger-entry collection bounds before expensive validation; evidence collections must be immutable tuples.
+
+
+## Upstream Stage 171–185 hardening and connection
+- Stage 171–175 now re-compute combination, compatibility, candidate-evaluation, report, and selection digests before downstream use.
+- Stage 173 accepts at most 256 trial records and requires complete compatibility coverage, typed evidence, distinct repeat evaluators, and stable candidate artifact identity.
+- Stage 181 accepts at most 64 candidate evaluations; Stage 182 bounds recipe iteration before materialization; Stage 183 requires typed, bounded evaluation evidence.
+- Stage 185 includes the eligible/selected candidate identities in its readiness digest and can emit a signed checkpoint. Unsigned legacy certificates remain usable for review display but are rejected by the Stage 186 adapter.
+- Stage 186 consumes that certificate through `stage185_checkpoint_verifier`; no manual digest-only trust shim is required. The connection validates candidate identity and generation, not merely digest equality.
