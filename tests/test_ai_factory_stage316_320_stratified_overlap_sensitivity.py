@@ -60,6 +60,9 @@ def test_317_pairwise_evaluator_overlap_bounds():
     assert stage317_check_evaluator_overlap(
         evaluator_tasks={"e1": ["x"], "e2": ["y"]}, minimum_shared_tasks=1,
     )["status"] == "EVALUATOR_OVERLAP_OUT_OF_BOUNDS"
+    assert stage317_check_evaluator_overlap(
+        evaluator_tasks={"e1": ["x"], "e2": ["y"]}, minimum_evaluators="2",
+    )["status"] == "INSUFFICIENT_EVIDENCE"
 
 
 def test_318_required_domain_evaluator_coverage():
