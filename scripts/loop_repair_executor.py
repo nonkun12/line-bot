@@ -1,7 +1,8 @@
 """Fail-closed coordinator for one authorized repair and independent post-repair REA.
 
-The caller must supply a trusted provider-free repair adapter and an independent
-REA runner. This module never clears HOLD or dispatches/resumes a task itself.
+The default repair adapter uses only loopback Ollama/LFM3; callers may inject a
+trusted provider-free adapter for tests or another local runtime. An independent
+REA runner is always required. This module never clears HOLD or resumes a task.
 """
 from __future__ import annotations
 
@@ -41,8 +42,8 @@ def execute_one_repair(
 ) -> dict[str, Any]:
     """Consume authorization, run one trusted repair, then require independent REA.
 
-    repair_executor receives only the task-bound identity and allowlisted paths.
-    It must be a trusted local/provider-free adapter; arbitrary model output is
+    The default adapter is loopback-only and provider-free. An injected adapter
+    must follow the same trust boundary; arbitrary model output is
     never accepted as an executable command by this coordinator.
     """
     root = Path(repo_root).resolve()
