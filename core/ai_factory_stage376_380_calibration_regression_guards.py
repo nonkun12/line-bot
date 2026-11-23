@@ -40,7 +40,7 @@ def check_calibration_bins(bins: Sequence[Mapping[str, Any]], *,
         total += count
         weighted_error += count * abs(confidence - accuracy)
     ece = weighted_error / total if total else None
-    if ece is not None and _finite_number(maximum_expected_error) and ece > maximum_expected_error:
+    if ece is not None and _finite_number(maximum_expected_error) and ece - maximum_expected_error > 1e-12:
         errors.append("expected_calibration_error_exceeded")
     return {"stage": 376, "pass": not errors, "errors": errors,
             "sample_count": total, "expected_calibration_error": ece}
@@ -86,7 +86,7 @@ def check_subgroup_disparity(groups: Sequence[Mapping[str, Any]], *,
         else:
             scores.append(score)
     gap = max(scores) - min(scores) if len(scores) == len(groups) and scores else None
-    if gap is not None and _finite_number(maximum_gap) and gap > maximum_gap:
+    if gap is not None and _finite_number(maximum_gap) and gap - maximum_gap > 1e-12:
         errors.append("subgroup_gap_exceeded")
     return {"stage": 378, "pass": not errors, "errors": errors, "observed_gap": gap}
 
