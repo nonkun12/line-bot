@@ -494,3 +494,100 @@ def test_bounded_development_scope_dispatches_without_enabling_terminal_actions(
     )
     assert captured["json"]["inputs"]["instruction"] == instruction
     assert "受け付けました" in reply
+
+
+
+def test_task_status_lookup_returns_read_only_run_evidence(monkeypatch):
+    from line_development import request_development_task_status
+
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    task_id = "a" * 32
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "workflow_runs": [{
+                    "id": 123,
+                    "display_title": f"LINE task {task_id}",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "created_at": "2026-11-23T00:00:00Z",
+                    "html_url": "https://github.com/nonkun12/line-bot/actions/runs/123",
+                }]
+            }
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured["params"] = kwargs["params"]
+        return Response()
+
+    monkeypatch.setattr("line_development.httpx.get", fake_get)
+    reply = request_development_task_status(
+        f"タスク状況: {task_id}",
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+
+    assert captured["url"].endswith("/actions/workflows/line-development-dispatch.yml/runs")
+    assert captured["params"] == {"per_page": 100}
+    assert "WORKFLOW_SUCCESS" in reply
+    assert "タスク合格・マージ可能を意味しません" in reply
+    assert "https://github.com/nonkun12/line-bot/actions/runs/123" in reply
+
+
+def test_task_status_lookup_does_not_match_malformed_or_untrusted_run(monkeypatch):
+    from line_development import request_development_task_status
+
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U123")
+    assert request_development_task_status(
+        "タスク状況: NOT_A_TASK_ID",
+        user_id="U123",
+        token="secret",
+    ) is None
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "workflow_runs": [{
+                    "id": 124,
+                    "display_title": "LINE task " + "b" * 32,
+                    "status": "completed",
+                    "conclusion": "success",
+                    "created_at": "2026-11-23T00:00:00Z",
+                    "html_url": "https://evil.example/run/124",
+                }]
+            }
+
+    monkeypatch.setattr("line_development.httpx.get", lambda *args, **kwargs: Response())
+    reply = request_development_task_status(
+        "タスク状況: " + "b" * 32,
+        user_id="U123",
+        token="secret",
+        repository="nonkun12/line-bot",
+    )
+    assert "WORKFLOW_SUCCESS" in reply
+    assert "evil.example" not in reply
+
+
+def test_task_status_lookup_requires_line_user_allowlist(monkeypatch):
+    from line_development import request_development_task_status
+
+    monkeypatch.setenv("DEV_ALLOWED_USER_IDS", "U999")
+    reply = request_development_task_status(
+        "タスク状況: " + "c" * 32,
+        user_id="U123",
+        token="secret",
+    )
+    assert "参照権限がありません" in reply
