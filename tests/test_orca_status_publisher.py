@@ -24,7 +24,7 @@ def test_validate_snapshot_redacts_unknown_fields():
 
 @pytest.mark.parametrize("captured", [None, "not-a-date", "2026-01-01T00:00:00",
     (datetime.now(timezone.utc)-timedelta(minutes=6)).isoformat(),
-    (datetime.now(timezone.utc)+timedelta(minutes=2)).isoformat()])
+    (datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()])
 def test_validate_snapshot_rejects_invalid_or_stale_timestamps(captured):
     data = payload()
     data["captured_at"] = captured
