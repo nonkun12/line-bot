@@ -121,6 +121,15 @@ def record_evaluation_as_rsi_observation(
     from dataclasses import replace
     verified_observation = replace(observation, evidence_digest=evidence_digest)
     diagnoses = executor.observe((verified_observation,))
+    hypotheses = executor.hypothesize(diagnoses) if diagnoses else ()
+    plans = executor.plan(
+        hypotheses,
+        baseline_digest=baseline["artifact_sha256"],
+        candidate_digest=candidate_digest,
+        protocol_digest=protocol_digest,
+        expected_cost_units=1,
+    ) if hypotheses else ()
+    selected = executor.select_next(plans) if plans else None
     return {
         "experiment_id": experiment_id,
         "status": status,
@@ -129,6 +138,14 @@ def record_evaluation_as_rsi_observation(
         "evidence_event_id": event_id,
         "evidence_digest": evidence_digest,
         "diagnosis_ids": [item.diagnosis_id for item in diagnoses],
+        "hypothesis_ids": [item.hypothesis_id for item in hypotheses],
+        "selected_plan": ({
+            "experiment_id": selected.experiment_id,
+            "hypothesis_id": selected.hypothesis_id,
+            "plan_digest": selected.plan_digest,
+            "expected_cost_units": selected.expected_cost_units,
+        } if selected else None),
+        "execution_started": False,
         "authority": dict(_FORBIDDEN_AUTHORITY),
     }
 
