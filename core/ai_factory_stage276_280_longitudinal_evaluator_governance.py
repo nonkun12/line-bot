@@ -90,6 +90,10 @@ def stage276_append_capability_history(*, previous: Mapping | None, observation:
     parsed = _time(recorded_at)
     if parsed is None:
         return _blocked("observation requires a timezone-aware recorded_at timestamp")
+    if previous is not None:
+        previous_time = _time(previous.get("recorded_at"))
+        if previous_time is None or parsed <= previous_time:
+            return _blocked("history timestamps must increase strictly")
     payload = {
         "status": "CAPABILITY_HISTORY_RECORD",
         "sequence": sequence,
@@ -207,7 +211,9 @@ def stage279_detect_measurement_bias(*, subgroup_scores: Sequence[Mapping],
         if (not isinstance(domain, str) or not domain.strip() or not isinstance(group, str)
                 or not group.strip() or not _number(score) or not 0 <= score <= 1 or not _digest(evidence)):
             return _blocked("subgroup score fields are invalid")
-        groups.setdefault(domain, {})[group] = float(score)
+        if group in groups.setdefault(domain, {}):
+            return _blocked("duplicate subgroup entries are not allowed")
+        groups[domain][group] = float(score)
     if not groups or any(len(values) < minimum_groups for values in groups.values()):
         return _blocked("every domain must include the minimum number of distinct groups")
     summaries, biased = [], []
