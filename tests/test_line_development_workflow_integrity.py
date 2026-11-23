@@ -51,3 +51,9 @@ def test_dispatch_workflow_propagates_one_stable_cross_interface_task_id():
     assert "steps.prepare_task.outputs.task_id" in text
     assert "line-development-task-${{ steps.prepare_task.outputs.task_id || github.run_id }}" in text
     assert "Task ID: \\`${DEV_TASK_ID}\\`" in text
+
+
+def test_dispatch_workflow_names_runs_with_the_shared_task_id():
+    workflow_path = ROOT / ".github" / "workflows" / _WORKFLOW_FILE
+    text = workflow_path.read_text(encoding="utf-8")
+    assert "run-name: LINE task ${{ inputs.task_id || github.run_id }}" in text
