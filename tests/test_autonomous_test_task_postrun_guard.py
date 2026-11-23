@@ -91,12 +91,12 @@ def _policy_git_repo(tmp_path: Path):
     target = TARGETS[0][1]
     path = repo / target
     path.parent.mkdir(parents=True, exist_ok=True)
-    before = "def test_existing():\\n    assert True\\n"
+    before = "def test_existing():\n    assert True\n"
     path.write_text(before, encoding="utf-8")
     _git(repo, "add", target)
     _git(repo, "commit", "-m", "base")
     base = _git(repo, "rev-parse", "HEAD")
-    path.write_text(before + "\\n\\ndef test_added():\\n    assert True\\n", encoding="utf-8")
+    path.write_text(before + "\n\ndef test_added():\n    assert True\n", encoding="utf-8")
     _git(repo, "add", target)
     _git(repo, "commit", "-m", "append test")
     produced = _git(repo, "rev-parse", "HEAD")
