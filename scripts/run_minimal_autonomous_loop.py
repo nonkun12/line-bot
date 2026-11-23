@@ -1545,6 +1545,30 @@ def main() -> int:
                 "reason": "state_persistence_failed",
             }
 
+        # Recovery AI may request exactly one repair. Dispatch only when the
+        # versioned catalog separately approves repair; hosted Actions cannot
+        # reach the local model and therefore report BLOCKED without fallback.
+        if result.get("status") in {"FAIL", "TIMEOUT"}:
+            try:
+                from scripts.loop_self_heal_dispatch import maybe_run_repair
+                self_heal = maybe_run_repair(
+                    str(task["id"]),
+                    result.get("recovery_ai", {}),
+                    registered_catalog,
+                    args.state.parent / "recovery-ai-state.json",
+                )
+                if self_heal is not None:
+                    result["self_heal"] = self_heal
+            except Exception as exc:
+                result["self_heal"] = {
+                    "status": "BLOCKED",
+                    "reason_code": "self_heal_dispatch_error:" + type(exc).__name__,
+                    "repair_executed": False,
+                    "hold_clear_authorized": False,
+                    "resume_authorized": False,
+                    "merge_deploy_authorized": False,
+                }
+
         # First persist a sanitized observation, then let the single
         # orchestrator combine it with the task and Recovery AI evidence.
         try:
