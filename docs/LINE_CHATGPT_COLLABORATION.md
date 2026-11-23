@@ -84,24 +84,25 @@ Compare against a frozen baseline and holdout tasks. Do not count more loop iter
 
 ## Current implementation boundary
 
-This document defines the intended collaboration contract. It does not itself connect ChatGPT to LINE, add an API integration, dispatch a workflow, resume the distributed Loop, or authorize code changes outside this documentation file. Existing app.py routing and GitHub workflows must be inspected and tested before claiming end-to-end availability.
+The current branch now propagates one stable 32-character task ID from the LINE dispatcher into the governed GitHub Actions workflow. The workflow binds that same ID to the task-bound execution approval, run name, final report, PR description, optional Google Sheets ledger record, 90-day report artifact, and LINE completion notification. Legacy workflow callers may omit the input; the workflow then generates its own ID.
+
+The workflow artifact and GitHub run record provide a durable correlation trail, but this is not yet a complete shared task database or a LINE task-lookup command. Google Sheets persistence depends on its existing credentials/configuration. ChatGPT is not automatically connected to LINE; it can use the shared task ID and GitHub evidence when that information is provided or retrieved through an authorized GitHub connection.
 
 ## Verified integration baseline (2026-11-23)
 
-Read-only inspection of the current branch found:
-
+Read-only inspection confirmed that:
 - `app.py` already routes explicit Loop status requests through `request_distributed_loop` before general AI routing.
-- `line_development.py` already requires the configured LINE user allowlist before dispatching the governed development workflow.
-- The LINE development dispatcher generates a short `request_id` for logs and the LINE receipt, but its workflow_dispatch payload currently contains only `instruction` and `user_id`. The ID is therefore not yet a durable cross-system task ID.
-- `distributed-autonomous-loop.yml` already accepts an optional `request_id` input, but the LINE development dispatcher is a separate workflow path.
-- `core/pending_queue.py` is a SQLite queue intended for work waiting on a Mac-side worker; it is not, by itself, a shared hosted task ledger for ChatGPT and GitHub Actions.
+- `line_development.py` requires the configured LINE user allowlist before dispatching the governed development workflow.
+- The dispatcher now creates a 32-character UUID task ID and sends it as the `task_id` workflow input. Retries within that dispatch reuse the same ID.
+- The workflow uses the supplied ID as `AUTONOMOUS_TASK_ID` and `AUTONOMOUS_APPROVAL_TASK_ID`; it records the ID in its run name, report, PR description, optional Sheets record, report artifact name, and LINE completion message.
+- A missing ID from legacy callers is supported: the workflow generates an ID before task-bound approval.
+- The latest full Pytest workflow for the current branch passed after the task ID test update. The workflow itself has not been dispatched as a live LINE development task.
 
-## Implementation order
+## Remaining implementation order
 
-1. Introduce a durable, server-side task envelope and stable task ID before acknowledging a request.
-2. Propagate that ID through LINE dispatch, GitHub Actions run metadata/artifacts, and completion notifications.
-3. Add read-only LINE lookup by task ID and expose the same sanitized task record for ChatGPT-assisted analysis.
-4. Add a ChatGPT-to-LINE handoff format that carries the task ID, objective, acceptance criteria, test plan, risks, and allowed paths. Until a privacy-reviewed API bridge exists, this is a copy/share workflow, not an automated connection.
-5. Add end-to-end tests for identity continuity, duplicate delivery, replay rejection, status-only non-dispatch, and evidence-bound terminal states.
+1. Add a read-only LINE lookup by task ID, backed by GitHub workflow-run metadata and the task report artifact.
+2. Make the sanitized task record retrievable for ChatGPT-assisted analysis using the same task ID.
+3. Add a compact ChatGPT-to-LINE handoff format with objective, acceptance criteria, test plan, risks, and allowed paths.
+4. Add end-to-end tests for task identity continuity, duplicate delivery, replay rejection, status-only non-dispatch, and evidence-bound terminal states.
 
-Do not use the existing Mac-local pending queue as the canonical shared ledger without first proving that the hosted LINE and GitHub Actions runtimes can safely access the same durable store. Do not reuse the current ephemeral `request_id` as a durable task ID until uniqueness, persistence, and run/artifact propagation are implemented.
+Do not use the existing Mac-local pending queue as the canonical shared ledger; it is not shared by the hosted LINE and GitHub Actions runtimes. Do not claim automatic ChatGPT-to-LINE synchronization until a privacy-reviewed API bridge exists.
