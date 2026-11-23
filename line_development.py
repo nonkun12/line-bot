@@ -116,7 +116,7 @@ def dispatch_development_workflow(
 ) -> str:
     """Dispatch authorized development requests to the existing Secretary repository."""
     instruction = str(instruction or "").strip()
-    request_id = uuid.uuid4().hex[:12]
+    request_id = uuid.uuid4().hex
     if _is_read_only_development_request(instruction):
         return "読み取り専用の依頼として受け付けました。開発ワークフローは起動していません。"
     if not instruction:
@@ -150,6 +150,7 @@ def dispatch_development_workflow(
         "inputs": {
             "instruction": instruction,
             "user_id": str(user_id),
+            "task_id": request_id,
         },
     }
 
@@ -176,7 +177,7 @@ def dispatch_development_workflow(
         logger.info("line_dev_dispatch event=github_response request_id=%s attempt=%s status=%s", request_id, attempt, response.status_code)
         if response.status_code == 204:
             logger.info("line_dev_dispatch event=accepted request_id=%s", request_id)
-            return f"🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始しました。\n通常のLINE会話とは分離して実行します。\n受付ID: {request_id}"
+            return f"🚀 開発指示を受け付けました。GitHub Actionsで開発・テストを開始しました。\n通常のLINE会話とは分離して実行します。\n受付ID / Task ID: {request_id}"
 
         if response.status_code in _RETRYABLE_STATUS_CODES and attempt < _DISPATCH_ATTEMPTS:
             retry_after = response.headers.get("Retry-After", "")
@@ -192,7 +193,7 @@ def dispatch_development_workflow(
             detail = detail[:300]
         if response.status_code in {401, 403}:
             logger.error("line_dev_dispatch event=failed request_id=%s reason=github_auth status=%s", request_id, response.status_code)
-            return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}（GitHub Token/権限を確認してください。受付ID: {request_id}）"
+            return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}（GitHub Token/権限を確認してください。受付ID / Task ID: {request_id}）"
         logger.error("line_dev_dispatch event=failed request_id=%s reason=github_http status=%s", request_id, response.status_code)
         if detail:
             return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}（{detail}、受付ID: {request_id}）"
