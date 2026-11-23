@@ -200,3 +200,91 @@ def dispatch_development_workflow(
         return f"開発ワークフローの起動に失敗しました: HTTP {response.status_code}（受付ID: {request_id}）"
 
     return f"開発ワークフローの起動に失敗しました: {last_error or 'unknown error'}"
+
+
+_TASK_STATUS_COMMAND_RE = re.compile(
+    r"^(?:タスク状況|開発状況|task status)\\s*[:：]\\s*([0-9a-f]{32})$",
+    re.IGNORECASE,
+)
+
+
+def request_development_task_status(
+    message: str,
+    *,
+    user_id: str,
+    token: str | None = None,
+    repository: str | None = None,
+) -> str | None:
+    """Read-only lookup of a LINE task by its stable workflow run name."""
+    match = _TASK_STATUS_COMMAND_RE.fullmatch(str(message or "").strip())
+    if match is None:
+        return None
+
+    task_id = match.group(1).lower()
+    if not _is_authorized_user(user_id):
+        return "タスク状況の参照権限がありません。"
+    token = token or os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        return "タスク状況を取得できません（GitHub認証未設定）。"
+
+    repository = repository or os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot")
+    url = (
+        f"https://api.github.com/repos/{repository}"
+        f"/actions/workflows/{_WORKFLOW_FILE}/runs"
+    )
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    try:
+        response = httpx.get(
+            url,
+            params={"per_page": 100},
+            headers=headers,
+            timeout=8.0,
+        )
+        if response.status_code in {401, 403}:
+            return "タスク状況を取得できません（GitHub権限不足）。"
+        response.raise_for_status()
+        payload = response.json()
+        runs = payload.get("workflow_runs", []) if isinstance(payload, dict) else []
+        expected_title = f"LINE task {task_id}"
+        matches = [
+            run for run in runs
+            if isinstance(run, dict)
+            and run.get("display_title") == expected_title
+            and isinstance(run.get("id"), int)
+            and not isinstance(run.get("id"), bool)
+        ]
+        if not matches:
+            return (
+                f"Task ID {task_id} は直近100件の実行履歴に見つかりません。"
+                "未受付・履歴範囲外・実行開始前の可能性があります。"
+            )
+        run = max(matches, key=lambda item: str(item.get("created_at", "")))
+        state = run.get("status")
+        conclusion = run.get("conclusion")
+        if state == "queued":
+            result = "QUEUED（実行待ち）"
+        elif state == "in_progress":
+            result = "RUNNING（実行中）"
+        elif state == "completed":
+            if conclusion == "success":
+                result = "WORKFLOW_SUCCESS（タスク合格・マージ可能を意味しません）"
+            elif conclusion == "failure":
+                result = "FAIL（ワークフロー失敗）"
+            elif conclusion == "cancelled":
+                result = "CANCELLED（中断）"
+            else:
+                result = f"COMPLETED（{str(conclusion or '結果未確定').upper()}）"
+        else:
+            result = str(state or "UNKNOWN").upper()
+        run_url = run.get("html_url", "")
+        expected_prefix = f"https://github.com/{repository}/actions/runs/"
+        if not isinstance(run_url, str) or not run_url.startswith(expected_prefix):
+            run_url = ""
+        suffix = f"\\n実行記録: {run_url}" if run_url else ""
+        return f"Task ID: {task_id}\\n状態: {result}{suffix}"
+    except (httpx.HTTPError, ValueError, TypeError):
+        return "タスク状況を取得できません（GitHub応答エラー）。"
