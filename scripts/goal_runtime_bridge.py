@@ -149,6 +149,12 @@ def _append_blocked(path: Path, task_id: str, reason: str) -> None:
 def _failure_evidence(child_returncode: int, row: dict[str, Any] | None) -> dict[str, Any]:
     """Persist only bounded, allowlisted failure metadata; never copy raw logs."""
     if row is None:
+        if child_returncode in {78, 79}:
+            return {
+                "stage": "child_runner",
+                "reason_code": "guarded_runner_sentinel",
+                "child_exit_code": child_returncode,
+            }
         return {
             "stage": "result_collection",
             "reason_code": "result_missing_or_ambiguous",
