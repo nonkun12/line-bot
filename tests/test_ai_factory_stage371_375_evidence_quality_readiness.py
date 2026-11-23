@@ -62,3 +62,12 @@ def test_stage_375_aggregates_checks_and_never_authorizes_execution():
     blocked = evaluate_stages_371_375(**{**args, "missing_fields": 2})
     assert blocked["status"] == "BLOCKED"
     assert blocked["execution_authorized"] is False
+
+
+def test_stage_371_invalid_clock_fails_closed_without_type_error():
+    result = check_evidence_freshness(
+        [{"timestamp": 10}], now_epoch="10", maximum_age_seconds=-1
+    )
+    assert not result["pass"]
+    assert "now_epoch_invalid" in result["errors"]
+    assert "maximum_age_invalid" in result["errors"]
