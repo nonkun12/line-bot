@@ -414,7 +414,7 @@ jobs:
           set -euo pipefail
           python -m scripts.autonomous_task_refill \
             --queue .github/autonomous-loop-tasks.json \
-            --catalog "${AUTONOMOUS_LOOP_TASK_CATALOG:-.github/autonomous-loop-task-catalog.json}" \
+            --catalog .github/autonomous-loop-task-catalog.json \
             --completed-state /tmp/autonomous-loop-state.json \
             --output /tmp/autonomous-loop-runtime-queue.json \
             --history /tmp/line-bot-self-improvement.jsonl \
@@ -640,7 +640,7 @@ jobs:
             python scripts/run_minimal_autonomous_loop.py "${loop_args[@]}"
           else
             PYTHONPATH=. python scripts/goal_runtime_bridge.py \
-              --catalog .github/autonomous-loop-task-catalog.json \
+              --catalog "${AUTONOMOUS_LOOP_TASK_CATALOG:-.github/autonomous-loop-task-catalog.json}" \
               --state /tmp/autonomous-loop-state.json \
               --results /tmp/minimal-autonomous-loop.jsonl \
               --stop-file "$STOP_FILE" \
