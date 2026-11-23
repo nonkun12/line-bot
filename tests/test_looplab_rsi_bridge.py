@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 
 import pytest
 
@@ -107,7 +108,8 @@ def test_global_hold_prevents_rsi_ingestion(tmp_path):
             created_at=123,
         )
     assert ledger.verify()
-
+    with sqlite3.connect(ledger.path) as db:
+        assert db.execute("SELECT COUNT(*) FROM rsi_evidence").fetchone()[0] == 0
 
 
 def test_status_cannot_be_forged_even_when_both_status_fields_are_changed(tmp_path):
