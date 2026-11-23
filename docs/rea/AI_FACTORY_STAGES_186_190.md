@@ -54,3 +54,17 @@ The Stage 185 checkpoint verifier and Stage 189 predecessor verifier are trusted
 - Stage 181 accepts at most 64 candidate evaluations; Stage 182 bounds recipe iteration before materialization; Stage 183 requires typed, bounded evaluation evidence.
 - Stage 185 includes the eligible/selected candidate identities in its readiness digest and can emit a signed checkpoint. Unsigned legacy certificates remain usable for review display but are rejected by the Stage 186 adapter.
 - Stage 186 consumes that certificate through `stage185_checkpoint_verifier`; no manual digest-only trust shim is required. The connection validates candidate identity and generation, not merely digest equality.
+
+## Stages 191–195 — Reproducible capability measurement
+
+The companion module `core/ai_factory_stage191_195_capability_benchmarks.py` adds a proposal-only measurement layer:
+
+- **Stage 191:** freezes a canonical, content-addressed benchmark suite; case definitions are typed, unique, signed, sorted deterministically, and bounded to 256.
+- **Stage 192:** records externally generated baseline/challenger run evidence; every suite case must appear exactly once, numeric metrics must be finite, and executor/evaluator identities must be distinct.
+- **Stage 193:** compares candidates on the exact same suite using weighted quality, minimum safety, latency, and memory guardrails. Thresholds cannot be weakened below the frozen policy.
+- **Stage 194:** requires at least three distinct signed paired comparisons and revalidates comparison payload digests before computing repeatability.
+- **Stage 195:** emits a machine-readable `CAPABILITY_GAIN_SUPPORTED` decision only from a valid repeatability certificate.
+
+A supported capability gain means only that the supplied, signed benchmark evidence passed the defined repeatability and regression checks. It does not prove general intelligence or ASI, and it does not itself establish that a model actually ran in a trusted sandbox: the runner, evaluator, signing keys, dataset provenance, and hardware telemetry remain external trust inputs that require separate provenance controls.
+
+All stages fail closed on HOLD, malformed evidence, replay, missing suite coverage, weak signatures, and threshold weakening. Outputs remain proposal-only; model activation, weight mutation, generation advancement, merge, and deployment authorization are explicitly false. No model execution, paid API, cloud fallback, or production write is introduced.
