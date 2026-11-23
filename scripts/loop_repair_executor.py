@@ -74,6 +74,15 @@ def execute_one_repair(
     if before_head != evidence.get("base_sha") or before_status:
         return _blocked("repository_not_at_clean_authorized_base")
 
+    preflight = getattr(repair_executor, "preflight", None)
+    if callable(preflight):
+        try:
+            preflight_result = preflight()
+        except Exception:
+            return _blocked("local_repair_preflight_error")
+        if not isinstance(preflight_result, dict) or preflight_result.get("status") != "PASS":
+            return _blocked(str(preflight_result.get("reason_code", "local_repair_preflight_blocked")) if isinstance(preflight_result, dict) else "local_repair_preflight_invalid")
+
     try:
         consumed = consume_repair_authorization(
             authorization, token=token, repository=repository
