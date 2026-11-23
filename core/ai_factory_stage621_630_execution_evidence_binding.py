@@ -134,10 +134,13 @@ def validate_execution_evidence(record):
         if comp.get("baseline_ref") == comp.get("candidate_ref"): issues.append("comparison_refs_must_differ")
     if _timestamp(record.get("created_at")) is None: issues.append("created_at_invalid")
     if record.get("automatic_execution") is not False: issues.append("automatic_execution_must_be_false")
-    outcomes = {x.get("run_ref") for x in record.get("outcome_records",[]) if isinstance(x,dict)}
-    artifacts = {x.get("run_ref") for x in record.get("result_artifacts",[]) if isinstance(x,dict)}
-    events = {x.get("run_ref") for k in ("failure_records","abort_records")
-              for x in record.get(k,[]) if isinstance(x,dict)}
+    outcome_rows = record.get("outcome_records") if isinstance(record.get("outcome_records"), list) else []
+    artifact_rows = record.get("result_artifacts") if isinstance(record.get("result_artifacts"), list) else []
+    failure_rows = record.get("failure_records") if isinstance(record.get("failure_records"), list) else []
+    abort_rows = record.get("abort_records") if isinstance(record.get("abort_records"), list) else []
+    outcomes = {x.get("run_ref") for x in outcome_rows if isinstance(x,dict)}
+    artifacts = {x.get("run_ref") for x in artifact_rows if isinstance(x,dict)}
+    events = {x.get("run_ref") for x in failure_rows + abort_rows if isinstance(x,dict)}
     if outcomes and not outcomes.issubset(artifacts | events): issues.append("outcome_evidence_unbound")
     if missing or issues: return {"status":"BLOCKED","missing":missing,"issues":sorted(set(issues))}
     return {"status":"DECLARATIONS_COMPLETE","missing":[],"issues":[],
