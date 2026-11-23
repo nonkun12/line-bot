@@ -87,4 +87,3 @@ def test_new_failure_result_clears_stale_failure_evidence(tmp_path):
     task = store.read("g1")[1]["tasks"][0]
     assert task["status"] == "HELD"
     assert "failure_evidence" not in task
-
