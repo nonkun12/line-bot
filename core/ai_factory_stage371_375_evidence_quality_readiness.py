@@ -18,20 +18,24 @@ def check_evidence_freshness(records: Sequence[Mapping[str, Any]], *,
     ages = []
     if not records:
         errors.append("evidence_empty")
-    if isinstance(now_epoch, bool) or not isinstance(now_epoch, int) or now_epoch < 0:
+    now_valid = isinstance(now_epoch, int) and not isinstance(now_epoch, bool) and now_epoch >= 0
+    max_age_valid = (isinstance(maximum_age_seconds, int) and
+                     not isinstance(maximum_age_seconds, bool) and maximum_age_seconds >= 0)
+    if not now_valid:
         errors.append("now_epoch_invalid")
-    if (isinstance(maximum_age_seconds, bool) or
-            not isinstance(maximum_age_seconds, int) or maximum_age_seconds < 0):
+    if not max_age_valid:
         errors.append("maximum_age_invalid")
     for index, record in enumerate(records):
         stamp = record.get("timestamp")
         if isinstance(stamp, bool) or not isinstance(stamp, int) or stamp < 0:
             errors.append(f"timestamp_invalid:{index}")
             continue
+        if not now_valid:
+            continue
         age = now_epoch - stamp
         if age < 0:
             errors.append(f"timestamp_in_future:{index}")
-        elif isinstance(maximum_age_seconds, int) and not isinstance(maximum_age_seconds, bool) and age > maximum_age_seconds:
+        elif max_age_valid and age > maximum_age_seconds:
             errors.append(f"evidence_stale:{index}")
         ages.append(age)
     return {"stage": 371, "pass": not errors, "errors": errors, "ages_seconds": ages}
