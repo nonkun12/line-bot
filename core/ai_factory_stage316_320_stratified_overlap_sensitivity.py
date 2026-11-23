@@ -95,9 +95,10 @@ def stage317_check_evaluator_overlap(*, evaluator_tasks: Mapping,
     """Quantify declared pairwise task overlap without claiming evaluator independence."""
     if held is not False:
         return _blocked("HOLD state must be explicitly false")
-    if (not isinstance(evaluator_tasks, Mapping) or len(evaluator_tasks) < minimum_evaluators
+    if (not isinstance(evaluator_tasks, Mapping)
             or isinstance(minimum_evaluators, bool) or not isinstance(minimum_evaluators, int)
-            or minimum_evaluators < 2 or isinstance(minimum_shared_tasks, bool)
+            or minimum_evaluators < 2 or len(evaluator_tasks) < minimum_evaluators
+            or isinstance(minimum_shared_tasks, bool)
             or not isinstance(minimum_shared_tasks, int) or minimum_shared_tasks < 0
             or isinstance(maximum_pairwise_jaccard, bool)
             or not isinstance(maximum_pairwise_jaccard, (int, float))
