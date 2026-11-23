@@ -271,6 +271,9 @@ class EvidenceLedger:
             "protocol_digest": protocol_digest,
             "result_digest": result_digest,
             "producer_id": producer_id,
+            "evaluation_event_id": observation.evaluation_event_id,
+            "evaluation_event_digest": observation.evaluation_event_digest,
+            "evaluation_decision": observation.evaluation_decision,
         }
         signature = sign_digest(canonical_digest(payload))
         if not isinstance(signature, str) or not signature.strip() or len(signature) > 4096:
@@ -282,6 +285,7 @@ class EvidenceLedger:
     def append_verified_observations(
         self, observations: tuple[Observation, ...],
         verify_producer_signature: Callable[[str, str, str], bool],
+        verify_evaluation: Callable[[IndependentEvaluation], bool] | None = None,
     ) -> None:
         """Verify source provenance and append observations in one SQLite transaction."""
         if not callable(verify_producer_signature):
@@ -326,7 +330,8 @@ class EvidenceLedger:
                     expected_fields = {
                         "observation_id", "capability", "outcome", "detail", "created_at",
                         "experiment_id", "candidate_digest", "protocol_digest", "result_digest",
-                        "producer_id",
+                        "producer_id", "evaluation_event_id", "evaluation_event_digest",
+                        "evaluation_decision",
                     }
                     if set(source) != expected_fields:
                         raise RSIError("observation source evidence schema is invalid")
