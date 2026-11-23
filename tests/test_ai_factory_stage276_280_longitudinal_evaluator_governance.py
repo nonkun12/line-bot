@@ -60,11 +60,13 @@ def make_bias():
 
 def test_276_creates_linked_history_records_and_rejects_tampering():
     first = make_guard()
-    first["recorded_at"] = "2026-11-23T10:00:00+00:00"
-    record1 = stage276_append_capability_history(previous=None, observation=first)
+    record1 = stage276_append_capability_history(
+        previous=None, observation=first, recorded_at="2026-11-23T10:00:00+00:00"
+    )
     second = make_guard()
-    second["recorded_at"] = "2026-11-23T11:00:00+00:00"
-    record2 = stage276_append_capability_history(previous=record1, observation=second)
+    record2 = stage276_append_capability_history(
+        previous=record1, observation=second, recorded_at="2026-11-23T11:00:00+00:00"
+    )
     assert record1["sequence"] == 1 and record2["sequence"] == 2
     assert record2["previous_record_digest"] == record1["record_digest"]
     tampered = {**record1, "sequence": 99}
@@ -118,8 +120,9 @@ def test_279_flags_declared_subgroup_gaps():
 
 def test_280_unified_gate_requires_all_sealed_components():
     guard = make_guard()
-    guard["recorded_at"] = "2026-11-23T10:00:00+00:00"
-    history = stage276_append_capability_history(previous=None, observation=guard)
+    history = stage276_append_capability_history(
+        previous=None, observation=guard, recorded_at="2026-11-23T10:00:00+00:00"
+    )
     evaluator, durability, bias = make_evaluators(), make_durability(), make_bias()
     result = stage280_evaluate_capability_evidence_governance(
         history_record=history, evaluator_result=evaluator,
