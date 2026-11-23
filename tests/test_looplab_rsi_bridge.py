@@ -59,6 +59,9 @@ def test_fail_evaluation_becomes_signed_rsi_observation_and_diagnosis(tmp_path):
     assert result["recorded"] is True
     assert result["status"] == "FAIL"
     assert len(result["diagnosis_ids"]) == 1
+    assert len(result["hypothesis_ids"]) == 1
+    assert result["selected_plan"]["plan_digest"]
+    assert result["execution_started"] is False
     assert ledger.verify()
 
 
@@ -73,6 +76,9 @@ def test_pass_evaluation_is_recorded_without_failure_diagnosis(tmp_path):
     )
     assert result["recorded"] is True
     assert result["diagnosis_ids"] == []
+    assert result["hypothesis_ids"] == []
+    assert result["selected_plan"] is None
+    assert result["execution_started"] is False
     assert ledger.verify()
 
 
