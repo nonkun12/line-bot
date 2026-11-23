@@ -438,6 +438,8 @@ class RSIExecutor:
         verify_evaluation: Callable[[IndependentEvaluation], bool],
         verify_evidence_signature: Callable[[str, str, str], bool],
         executor_id: str,
+        verify_adapter_signature: Callable[[str, str, str], bool] | None = None,
+        resolve_locked_dataset: Callable[[str], Mapping[str, Any] | None] | None = None,
         max_experiments_per_cycle: int = 4,
     ) -> None:
         _bounded_id(executor_id, "executor id")
@@ -450,6 +452,9 @@ class RSIExecutor:
         if not callable(verify_evidence_signature):
             raise TypeError("independent evidence producer verifier is required")
         self.verify_evidence_signature = verify_evidence_signature
+        # Trust roots are injected at executor construction, not per bridge call.
+        self.verify_adapter_signature = verify_adapter_signature
+        self.resolve_locked_dataset = resolve_locked_dataset
         self.executor_id = executor_id
         self.max_experiments_per_cycle = max_experiments_per_cycle
 
