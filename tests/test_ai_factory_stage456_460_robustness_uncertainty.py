@@ -36,7 +36,7 @@ def test_459_computes_weighted_calibration_error():
             {"count": 50, "mean_confidence": 0.9, "observed_accuracy": 0.8}]
     result = check_calibration_bins(bins, maximum_expected_calibration_error=0.05)
     assert result["pass"]
-    assert result["expected_calibration_error"] == 0.05
+    assert abs(result["expected_calibration_error"] - 0.05) < 1e-12
     assert not check_calibration_bins(bins, maximum_expected_calibration_error=0.04)["pass"]
 
 
