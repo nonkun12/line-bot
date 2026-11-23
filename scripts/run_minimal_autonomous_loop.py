@@ -414,12 +414,16 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
                 or not all(isinstance(item, str) and item.strip() for item in allowed_paths)
             ):
                 raise ValueError("versioned task definition is invalid")
+            repair_approved = entry.get("repair_approved", False)
+            if not isinstance(repair_approved, bool):
+                raise ValueError("versioned repair approval must be boolean")
             normalized = {
                 "id": task_id,
                 "instruction": instruction,
                 "allowed_paths": [item.strip() for item in allowed_paths],
-                # Preserve approval only in this trusted catalog representation.
+                # Repair is a distinct privilege; absent means explicitly disabled.
                 "execution_approved": entry.get("execution_approved") is True,
+                "repair_approved": repair_approved,
             }
             previous = definitions.get(task_id)
             if previous is not None and previous != normalized:
@@ -667,7 +671,7 @@ def run_task(
     instruction = str(task["instruction"])
     rag_db_path = os.environ.get("RECOVERY_RAG_DB_PATH", "").strip()
     rag_namespace = os.environ.get("RECOVERY_RAG_NAMESPACE", "distributed-loop").strip()
-    if rag_db_path and rag_namespace:
+    if rag_db_path and rag_namespace and os.environ.get("GITHUB_EVENT_NAME") != "schedule":
         try:
             from scripts.recovery_rag import build_task_context
             rag_context = build_task_context(
@@ -693,7 +697,7 @@ def run_task(
             print("RECOVERY_RAG_CONTEXT attached=false", flush=True)
     # Attach only sanitized historical REA outcomes; never treat retrieved
     # records as instructions or authority to bypass current safety gates.
-    if rag_db_path and rag_namespace:
+    if rag_db_path and rag_namespace and os.environ.get("GITHUB_EVENT_NAME") != "schedule":
         try:
             from scripts.rea_rag import (
                 build_rea_context,
@@ -1540,6 +1544,30 @@ def main() -> int:
                 "recorded": False,
                 "reason": "state_persistence_failed",
             }
+
+        # Recovery AI may request exactly one repair. Dispatch only when the
+        # versioned catalog separately approves repair; hosted Actions cannot
+        # reach the local model and therefore report BLOCKED without fallback.
+        if result.get("status") in {"FAIL", "TIMEOUT"}:
+            try:
+                from scripts.loop_self_heal_dispatch import maybe_run_repair
+                self_heal = maybe_run_repair(
+                    str(task["id"]),
+                    result.get("recovery_ai", {}),
+                    registered_catalog,
+                    args.state.parent / "recovery-ai-state.json",
+                )
+                if self_heal is not None:
+                    result["self_heal"] = self_heal
+            except Exception as exc:
+                result["self_heal"] = {
+                    "status": "BLOCKED",
+                    "reason_code": "self_heal_dispatch_error:" + type(exc).__name__,
+                    "repair_executed": False,
+                    "hold_clear_authorized": False,
+                    "resume_authorized": False,
+                    "merge_deploy_authorized": False,
+                }
 
         # First persist a sanitized observation, then let the single
         # orchestrator combine it with the task and Recovery AI evidence.
