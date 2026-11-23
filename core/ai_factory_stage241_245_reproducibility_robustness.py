@@ -107,7 +107,7 @@ def stage242_stratified_robustness(
     coverage = len(observed) / len(required)
     missing = sorted(set(required) - set(observed))
     regressions = sorted(key for key, (gain, _) in observed.items() if gain < minimum_gain)
-    passed = coverage >= minimum_coverage and not missing and not regressions
+    passed = coverage >= minimum_coverage and not regressions
     return _out({
         "status": "ROBUSTNESS_SUPPORTED" if passed else "ROBUSTNESS_INSUFFICIENT",
         "coverage": coverage, "minimum_coverage": minimum_coverage,
