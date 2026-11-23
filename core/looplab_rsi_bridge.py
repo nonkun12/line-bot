@@ -120,6 +120,8 @@ def record_evaluation_as_rsi_observation(
         protocol_digest=protocol_digest,
         result_digest=result_digest,
     )
+    # Fail closed before writing even source evidence when ingestion is held.
+    executor._control()
     evidence_digest = executor.ledger.append_observation_evidence(
         event_id,
         observation=observation,
