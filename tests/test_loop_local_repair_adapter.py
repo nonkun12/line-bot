@@ -110,7 +110,8 @@ def test_local_adapter_fails_closed_when_local_model_is_unavailable(monkeypatch,
     root, base = _repo(tmp_path)
 
     def unavailable(*_args, **_kwargs):
-        raise OSError("connection refused")
+        import urllib.error
+        raise urllib.error.URLError("connection refused")
 
     monkeypatch.setattr(adapter.urllib.request, "urlopen", unavailable)
     result = adapter.create_local_repair_adapter(root)(_request(base))
