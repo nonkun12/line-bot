@@ -78,6 +78,9 @@ def test_289_rejects_overlap_and_insufficient_holdout():
     assert stage289_enforce_holdout_separation(
         development_task_digests=[h("d")], holdout_task_digests=[h("h")]
     )["status"] == "INSUFFICIENT_EVIDENCE"
+    assert stage289_enforce_holdout_separation(
+        development_task_digests=[[]], holdout_task_digests=[h(f"h{i}") for i in range(10)]
+    )["status"] == "INSUFFICIENT_EVIDENCE"
 
 
 def test_290_requires_all_sealed_robustness_gates():
