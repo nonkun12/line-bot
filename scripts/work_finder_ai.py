@@ -58,11 +58,17 @@ def find_work(
         and not (repo_root / test).is_symlink()
     ]
     records = recovery["tasks"]
-    held_count = sum(1 for item in records.values() if isinstance(item, dict) and item.get("held") is True)
-    review_count = sum(
-        1 for item in records.values()
-        if isinstance(item, dict) and item.get("resume_requires_review") is True
-    )
+    held_ids = {
+        task_id for task_id, item in records.items()
+        if isinstance(task_id, str) and isinstance(item, dict) and item.get("held") is True
+    }
+    review_ids = {
+        task_id for task_id, item in records.items()
+        if isinstance(task_id, str) and isinstance(item, dict)
+        and item.get("resume_requires_review") is True
+    }
+    held_count = len(held_ids)
+    review_count = len(review_ids)
     candidate_count = report["candidate_count"]
 
     # Mirror the queue-refill admission boundary for observability. Catalog
