@@ -1,4 +1,5 @@
 name: LINE Development Dispatch
+run-name: LINE task ${{ inputs.task_id || github.run_id }}
 
 on:
   workflow_dispatch:
