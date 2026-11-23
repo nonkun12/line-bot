@@ -6,6 +6,7 @@ from core.ai_factory_stage181_185_intergeneration_evolution import (
     CandidateEvaluation, EvolutionError, Stage181InterGenerationEvaluator,
     Stage182BoundedVariationPlanner, Stage183ParetoDiversitySelector,
     Stage184CohortComposer, Stage185EvolutionReadinessPackager,
+    stage185_readiness_verifier,
 )
 
 H = "a" * 64
