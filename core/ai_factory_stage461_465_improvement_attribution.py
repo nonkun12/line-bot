@@ -16,8 +16,7 @@ def _valid_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
-def check_paired_comparison(baseline: Mapping[str, Any],
-                            candidate: Mapping[str, Any]) -> dict[str, Any]:
+def check_paired_comparison(baseline: Mapping[str, Any], candidate: Mapping[str, Any]) -> dict[str, Any]:
     """461: require matched task/protocol/metric and distinct run identifiers."""
     errors: list[str] = []
     for field in ("protocol_id", "task_set_id", "metric_id", "scoring_method"):
@@ -33,8 +32,7 @@ def check_paired_comparison(baseline: Mapping[str, Any],
     return {"stage": 461, "pass": not errors, "errors": errors}
 
 
-def check_change_isolation(changes: Sequence[Mapping[str, Any]],
-                           declared_primary_change: str) -> dict[str, Any]:
+def check_change_isolation(changes: Sequence[Mapping[str, Any]], declared_primary_change: str) -> dict[str, Any]:
     """462: accept a single declared primary change and reject additional uncontrolled changes."""
     errors: list[str] = []
     if not isinstance(declared_primary_change, str) or not declared_primary_change.strip():
@@ -74,15 +72,14 @@ def check_metric_improvement(baseline_value: float, candidate_value: float, *,
         gain = delta if direction == "higher_is_better" else -delta
         if not _valid_number(minimum_improvement) or minimum_improvement < 0:
             errors.append("minimum_improvement_invalid")
-        elif gain < minimum_improvement:
+        elif gain + 1e-12 < minimum_improvement:
             errors.append("minimum_improvement_not_met")
     return {"stage": 463, "pass": not errors, "errors": errors,
             "raw_delta": delta, "direction": direction,
             "minimum_improvement": minimum_improvement}
 
 
-def check_guardrail_metrics(baseline: Mapping[str, float],
-                            candidate: Mapping[str, float],
+def check_guardrail_metrics(baseline: Mapping[str, float], candidate: Mapping[str, float],
                             maximum_regressions: Mapping[str, float]) -> dict[str, Any]:
     """464: reject missing/non-finite guardrails and degradation beyond per-metric limits."""
     errors: list[str] = []
@@ -99,7 +96,7 @@ def check_guardrail_metrics(baseline: Mapping[str, float],
             continue
         regression = after - before
         regressions[metric] = regression
-        if regression > limit:
+        if regression > limit + 1e-12:
             errors.append(f"guardrail_regression_exceeded:{metric}")
     return {"stage": 464, "pass": not errors, "errors": errors,
             "regressions": regressions, "limits": dict(maximum_regressions)}
@@ -117,8 +114,7 @@ def evaluate_stages_461_465(*, baseline: Mapping[str, Any], candidate: Mapping[s
         check_change_isolation(changes, declared_primary_change),
         check_metric_improvement(baseline.get("metric_value"), candidate.get("metric_value"),
                                  direction=direction, minimum_improvement=minimum_improvement),
-        check_guardrail_metrics(guardrail_baseline, guardrail_candidate,
-                                maximum_regressions),
+        check_guardrail_metrics(guardrail_baseline, guardrail_candidate, maximum_regressions),
     ]
     passed = all(item["pass"] for item in checks)
     record = {"checks": checks, "pass": passed, "proposal_only": True}
