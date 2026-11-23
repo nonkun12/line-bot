@@ -50,7 +50,11 @@ def test_dependency_and_integrity_records_fail_closed():
 
 def test_reconciliation_and_service_regression_evidence_required():
  x=good(); x["reconciliation"]["status"]="FAIL_DECLARED"
- assert m.validate_recovery_record(x)["status"]=="DECLARATIONS_COMPLETE"
+ assert "reconciliation_not_pass_declared" in m.validate_recovery_record(x)["issues"]
+ x=good(); x["service_checks"][0]["status"]="UNKNOWN"
+ assert "service_checks_not_pass_declared" in m.validate_recovery_record(x)["issues"]
+ x=good(); x["regression_checks"][0]["status"]="FAIL_DECLARED"
+ assert "regression_checks_not_pass_declared" in m.validate_recovery_record(x)["issues"]
  x=good(); x["service_checks"]=[]
  assert "service_checks_invalid" in m.validate_recovery_record(x)["issues"]
  x=good(); x["regression_checks"][0]["result_evidence_ref"]=""
@@ -67,3 +71,9 @@ def test_residual_risks_and_no_automatic_restore():
  assert "residual_risk_disposition_invalid" in m.validate_recovery_record(x)["issues"]
  x=good(); x["automatic_restore"]=True
  assert "automatic_restore_must_be_false" in m.validate_recovery_record(x)["issues"]
+
+def test_signoff_must_accept_and_residual_risks_must_be_resolved_or_accepted():
+ x=good(); x["independent_signoff"]["decision"]="PENDING"
+ assert "independent_signoff_not_accepted" in m.validate_recovery_record(x)["issues"]
+ x=good(); x["residual_risks"][0]["disposition"]="UNRESOLVED"
+ assert "residual_risk_unresolved" in m.validate_recovery_record(x)["issues"]
