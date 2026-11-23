@@ -8,6 +8,10 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from scripts.autonomous_task_target_allowlist import TARGETS
+
+ALLOWED_TEST_PATHS = {test_path for _, test_path in TARGETS}
+
 FORBIDDEN_CALLS = {
     "eval", "exec", "compile", "__import__", "open",
 }
@@ -88,8 +92,8 @@ def verify_policy_run(
     target = policy.get("admitted_allowed_path")
     if not isinstance(task_id, str) or not task_id:
         raise ValueError("admitted_task_id_missing")
-    if not isinstance(target, str) or not target.startswith("tests/") or not target.endswith(".py"):
-        raise ValueError("admitted_test_path_invalid")
+    if not isinstance(target, str) or target not in ALLOWED_TEST_PATHS:
+        raise ValueError("admitted_test_path_not_allowlisted")
     matching = [row for row in rows if row.get("task_id") == task_id]
     if len(matching) != 1 or len(rows) != 1:
         raise ValueError("policy_task_execution_evidence_missing_or_ambiguous")
