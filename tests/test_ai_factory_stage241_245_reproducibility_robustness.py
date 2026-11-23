@@ -92,7 +92,7 @@ def test_243_direction_aware_safety_gate_detects_large_higher_is_better_drop():
 def test_244_requires_distinct_roles_and_ordered_confidence_interval():
     args = {"design": _design(), "effect_estimate": 0.04, "lower_confidence_bound": 0.01,
             "evaluator_id": "eval", "proposer_id": "proposer", "runner_id": "runner",
-            "identity_digest": _identity()}
+            "identity_digest": _identity(), "protocol_digest": D2}
     assert stage244_gain_attribution(**args)["status"] == "GAIN_ATTRIBUTION_SUPPORTED"
     assert stage244_gain_attribution(**{**args, "runner_id": "eval"})["status"] == "INSUFFICIENT_EVIDENCE"
     assert stage244_gain_attribution(**{**args, "lower_confidence_bound": 0.5})["status"] == "INSUFFICIENT_EVIDENCE"
