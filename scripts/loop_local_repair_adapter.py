@@ -50,7 +50,7 @@ def _safe_paths(value: Any) -> list[str] | None:
         if item.startswith("/") or "\\" in item or ":" in item:
             return None
         parts = item.split("/")
-        if any(part in {"", ".", ".."} for part in parts):
+        if any(part in {"", ".", ".."} or part.lower() == ".git" for part in parts):
             return None
         if any(char in part for part in parts for char in "*?[]{}"):
             return None
@@ -75,6 +75,8 @@ def _extract_patch(response: str) -> str | None:
 def _patch_paths(patch: str) -> list[str] | None:
     found: list[str] = []
     for line in patch.splitlines():
+        if line.startswith(("diff --git ", "index ", "new file mode ", "deleted file mode ", "old mode ", "new mode ", "rename from ", "rename to ", "copy from ", "copy to ")):
+            return None
         if line.startswith("--- ") or line.startswith("+++ "):
             raw = line[4:].split("\t", 1)[0]
             if raw == "/dev/null":
@@ -101,7 +103,12 @@ def _read_context(root: Path, paths: list[str]) -> dict[str, str] | None:
         try:
             resolved = target.resolve(strict=True)
             resolved.relative_to(root)
-            if target.is_symlink() or not resolved.is_file():
+            current = root
+            for part in relative.split("/"):
+                current = current / part
+                if current.is_symlink():
+                    return None
+            if not resolved.is_file():
                 return None
             content = resolved.read_text(encoding="utf-8")
         except (OSError, UnicodeError, ValueError):
