@@ -118,7 +118,7 @@ def test_275_ranks_proposals_only_within_cost_ceiling():
         ],
     )
     assert result["status"] == "NEXT_RESEARCH_PLAN_PROPOSED"
-    assert result["proposal_count"] == 1
+    assert result["proposal_count"] == 2
     assert result["proposals"][0]["candidate_id"] == "focus-coding"
     assert result["proposals"][0]["priority_score"] > result["proposals"][1]["priority_score"]
     assert result["plan_is_executable"] is False
