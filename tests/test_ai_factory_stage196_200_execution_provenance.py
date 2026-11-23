@@ -1,10 +1,9 @@
-from dataclasses import replace
+from dataclasses import asdict, dataclass, replace
+import hashlib
+import json
 
 import pytest
 
-from core.ai_factory_stage191_195_capability_benchmarks import (
-    BenchmarkCase, CaseResult, Stage191FrozenSuiteBuilder, Stage192RunEvidenceRecorder,
-)
 from core.ai_factory_stage196_200_execution_provenance import (
     ExecutionProvenanceError, Stage196ModelRuntimeManifest, Stage197DatasetProvenance,
     Stage198EnvironmentAttestor, Stage199ExecutionEvidenceBinder,
@@ -19,18 +18,70 @@ J = "b" * 64
 K = "c" * 64
 
 
+def digest(value):
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":"),
+                     ensure_ascii=True, allow_nan=False).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
+@dataclass(frozen=True)
+class Case:
+    case_id: str
+    input_digest: str
+    expected_digest: str
+    category: str
+    weight: float
+
+
+@dataclass(frozen=True)
+class Suite:
+    suite_id: str
+    version: str
+    cases: tuple
+    suite_digest: str
+    signature: str
+    frozen: bool = True
+
+
+@dataclass(frozen=True)
+class Result:
+    case_id: str
+    quality: float
+    safety: float
+    latency_ms: float
+    memory_mb: float
+
+
+@dataclass(frozen=True)
+class Run:
+    suite_digest: str
+    candidate_id: str
+    artifact_digest: str
+    run_id: str
+    executor_id: str
+    evaluator_id: str
+    results: tuple
+    run_digest: str
+    signature: str
+    proposal_only: bool = True
+
+
 def fixtures():
-    suite = Stage191FrozenSuiteBuilder().build(
-        "capability-suite", "v1",
-        (BenchmarkCase("case-1", H, J, "reasoning", 1.0),),
-        sign_suite=SIGN, verify_suite_signature=VERIFY,
-    )
-    run = Stage192RunEvidenceRecorder().build(
-        suite, candidate_id="candidate-v2", artifact_digest=K, run_id="run-001",
-        executor_id="runner-01", evaluator_id="evaluator-01",
-        results=(CaseResult("case-1", .9, .99, 10, 100),),
-        verify_suite_signature=VERIFY, sign_run=SIGN, verify_run_signature=VERIFY,
-    )
+    cases = (Case("case-1", H, J, "reasoning", 1.0),)
+    suite_digest = digest({
+        "suite_id": "capability-suite", "version": "v1",
+        "cases": [asdict(row) for row in cases], "frozen": True,
+    })
+    suite = Suite("capability-suite", "v1", cases, suite_digest, SIGN(suite_digest))
+    results = (Result("case-1", .9, .99, 10, 100),)
+    run_digest = digest({
+        "suite_digest": suite_digest, "candidate_id": "candidate-v2",
+        "artifact_digest": K, "run_id": "run-001", "executor_id": "runner-01",
+        "evaluator_id": "evaluator-01", "results": [asdict(row) for row in results],
+        "proposal_only": True,
+    })
+    run = Run(suite_digest, "candidate-v2", K, "run-001", "runner-01",
+              "evaluator-01", results, run_digest, SIGN(run_digest))
     model = Stage196ModelRuntimeManifest().build(
         candidate_id="candidate-v2", artifact_digest=K, runtime_name="python",
         runtime_version="3.13.1", inference_engine="local-engine",
@@ -73,8 +124,9 @@ def test_stage196_binds_artifact_and_runtime_identity():
     _, run, model, _, _ = fixtures()
     assert model.artifact_digest == run.artifact_digest
     assert model.manifest_digest
-    forged = replace(model, runtime_version="9.9")
-    assert not verify_model_runtime_manifest(forged, verify_signature=VERIFY)
+    assert not verify_model_runtime_manifest(
+        replace(model, runtime_version="9.9"), verify_signature=VERIFY,
+    )
 
 
 def test_stage197_requires_dataset_source_and_preprocessing_digests():
@@ -88,8 +140,7 @@ def test_stage197_requires_dataset_source_and_preprocessing_digests():
 
 
 def test_stage198_records_assurance_level_without_overclaiming():
-    environment = fixtures()[-1]
-    assert environment.attestation_level == "self_reported"
+    assert fixtures()[-1].attestation_level == "self_reported"
     with pytest.raises(ExecutionProvenanceError, match="HOLD"):
         Stage198EnvironmentAttestor().build(
             environment_id="env", operating_system="linux", architecture="x86_64",
@@ -108,14 +159,14 @@ def test_stage199_binds_run_model_dataset_and_environment():
 
 def test_stage199_rejects_model_artifact_mismatch():
     suite, run, model, dataset, environment = fixtures()
-    forged_model = replace(model, artifact_digest=H)
     with pytest.raises(ExecutionProvenanceError, match="artifact identity"):
         Stage199ExecutionEvidenceBinder().build(
-            suite, run, model_manifest=forged_model, dataset_manifest=dataset,
-            environment=environment, verify_suite_signature=VERIFY,
-            verify_run_signature=VERIFY, verify_model_signature=VERIFY,
-            verify_dataset_signature=VERIFY, verify_environment_signature=VERIFY,
-            sign_binding=SIGN, verify_binding_signature=VERIFY, nonce="nonce-1",
+            suite, run, model_manifest=replace(model, artifact_digest=H),
+            dataset_manifest=dataset, environment=environment,
+            verify_suite_signature=VERIFY, verify_run_signature=VERIFY,
+            verify_model_signature=VERIFY, verify_dataset_signature=VERIFY,
+            verify_environment_signature=VERIFY, sign_binding=SIGN,
+            verify_binding_signature=VERIFY, nonce="nonce-1",
         )
 
 
@@ -125,9 +176,8 @@ def test_stage199_can_require_hardware_signed_attestation():
 
 
 def test_stage200_issues_only_proposal_certificate():
-    binding = bind(fixtures())
     certificate = Stage200ExecutionProvenanceGate().build(
-        binding, verify_binding_signature=VERIFY, sign_certificate=SIGN,
+        bind(fixtures()), verify_binding_signature=VERIFY, sign_certificate=SIGN,
         verify_certificate_signature=VERIFY,
     )
     assert verify_stage200_certificate(certificate, verify_signature=VERIFY)
@@ -138,9 +188,8 @@ def test_stage200_issues_only_proposal_certificate():
 
 
 def test_stage200_rejects_tampering_and_authority_escalation():
-    binding = bind(fixtures())
     certificate = Stage200ExecutionProvenanceGate().build(
-        binding, verify_binding_signature=VERIFY, sign_certificate=SIGN,
+        bind(fixtures()), verify_binding_signature=VERIFY, sign_certificate=SIGN,
         verify_certificate_signature=VERIFY,
     )
     assert not verify_stage200_certificate(
@@ -156,8 +205,7 @@ def test_stage200_rejects_tampering_and_authority_escalation():
 
 @pytest.mark.parametrize("stage", [196, 197, 198, 199, 200])
 def test_hold_blocks_every_new_stage(stage):
-    values = fixtures()
-    suite, run, model, dataset, environment = values
+    suite, run, model, dataset, environment = fixtures()
     with pytest.raises(ExecutionProvenanceError, match="HOLD"):
         if stage == 196:
             Stage196ModelRuntimeManifest().build(
@@ -181,9 +229,9 @@ def test_hold_blocks_every_new_stage(stage):
                 sign_attestation=SIGN, verify_attestation_signature=VERIFY, hold_active=True,
             )
         elif stage == 199:
-            bind(values, hold_active=True)
+            bind((suite, run, model, dataset, environment), hold_active=True)
         else:
-            binding = bind(values)
+            binding = bind((suite, run, model, dataset, environment))
             Stage200ExecutionProvenanceGate().build(
                 binding, verify_binding_signature=VERIFY, sign_certificate=SIGN,
                 verify_certificate_signature=VERIFY, hold_active=True,
