@@ -73,7 +73,7 @@ def test_lineage_rejects_generation_gap_and_duplicate_artifact():
         )
     rows = list(snapshots())
     rows[2] = replace(rows[2], artifact_digest=rows[1].artifact_digest)
-    with pytest.raises(CapabilityTrendError, match="distinct artifact"):
+    with pytest.raises(CapabilityTrendError, match="snapshot signature or digest invalid"):
         Stage202GenerationLineage().build(
             rows, verify_snapshot_signature=VERIFY, sign=SIGN, verify=VERIFY,
         )
