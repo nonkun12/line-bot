@@ -43,7 +43,7 @@ def _evaluation(status="FAIL"):
         "experiment_id": "looplab-bridge-01",
         "status": status,
         "record": record,
-        "evaluation": {"status": status, "reason": "minimum_improvement_not_met", "evidence_sha256": evidence_sha},
+        "evaluation": {"experiment_id": "looplab-bridge-01", "status": status, "reason": "minimum_improvement_not_met", "evidence_sha256": evidence_sha},
         "adapter_id": "looplab.simulator_rsi_bridge.v1",
     }
 
