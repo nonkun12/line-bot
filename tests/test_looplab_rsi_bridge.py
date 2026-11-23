@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 
 from core.looplab_rsi_bridge import record_evaluation_as_rsi_observation
-from core.rsi_executor import EvidenceLedger, RSIControl, RSIExecutor, RSIError
+from core.rsi_executor import EvidenceLedger, RSIControl, RSIExecutor, RSIError, canonical_digest
 
 
 def _executor(tmp_path, *, hold=False):
@@ -40,12 +40,35 @@ def _evaluation(status="FAIL"):
         "safety": {"stop_state": "INACTIVE", "global_hold_state": "CLEAR"},
     }
     evidence_sha = hashlib.sha256(json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    return {
+    result = {
         "experiment_id": "looplab-bridge-01",
         "status": status,
         "record": record,
         "evaluation": {"experiment_id": "looplab-bridge-01", "status": status, "reason": "minimum_improvement_not_met", "evidence_sha256": evidence_sha},
         "adapter_id": "looplab.simulator_rsi_bridge.v1",
+    }
+    result["adapter_signature"] = "trusted:" + canonical_digest({
+        "adapter_id": result["adapter_id"],
+        "experiment_id": result["experiment_id"],
+        "record": result["record"],
+        "evaluation": result["evaluation"],
+    })
+    return result
+
+
+def _trust_kwargs():
+    dataset = [{"sample_id": "a", "expected": "yes"}]
+    dataset_sha = hashlib.sha256(json.dumps(
+        dataset, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()).hexdigest()
+    return {
+        "verify_adapter_signature": lambda adapter, digest, signature: (
+            adapter == "looplab.simulator_rsi_bridge.v1" and signature == "trusted:" + digest
+        ),
+        "resolve_locked_dataset": lambda dataset_id: ({
+            "dataset_sha256": dataset_sha, "sample_count": 1,
+            "minimum_sample_count": 1, "locked": True,
+        } if dataset_id == "fixture" else None),
     }
 
 
@@ -57,6 +80,7 @@ def test_fail_evaluation_becomes_signed_rsi_observation_and_diagnosis(tmp_path):
         producer_id="looplab-independent-evaluator",
         sign_digest=lambda digest: "sig:" + digest,
         created_at=123,
+        **_trust_kwargs(),
     )
     assert result["recorded"] is True
     assert result["status"] == "FAIL"
@@ -75,6 +99,7 @@ def test_pass_evaluation_is_recorded_without_failure_diagnosis(tmp_path):
         producer_id="looplab-independent-evaluator",
         sign_digest=lambda digest: "sig:" + digest,
         created_at=123,
+        **_trust_kwargs(),
     )
     assert result["recorded"] is True
     assert result["diagnosis_ids"] == []
