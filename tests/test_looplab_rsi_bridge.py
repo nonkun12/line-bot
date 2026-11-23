@@ -29,17 +29,21 @@ def _evaluation(status="FAIL"):
     dataset_sha = hashlib.sha256(json.dumps(
         dataset, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode()).hexdigest()
-    evidence_sha = "e" * 64
-    return {
+    record = {
         "experiment_id": "looplab-bridge-01",
         "status": status,
-        "record": {
-            "baseline": {"candidate_id": "base", "artifact_sha256": "a" * 64, "score": 0.0},
+        "baseline": {"candidate_id": "base", "artifact_sha256": "a" * 64, "score": 0.0},
             "challenger": {"candidate_id": "candidate", "artifact_sha256": "b" * 64, "score": 0.0},
             "evaluator": {"evaluator_id": "rsi.exact_match.v1", "version": "1", "metric": "exact_match_rate", "direction": "higher", "minimum_delta": 0.0},
             "held_out": {"dataset_id": "fixture", "dataset_sha256": dataset_sha, "sample_count": 1, "locked": True},
-        },
+    }
+    evidence_sha = hashlib.sha256(json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return {
+        "experiment_id": "looplab-bridge-01",
+        "status": status,
+        "record": record,
         "evaluation": {"status": status, "reason": "minimum_improvement_not_met", "evidence_sha256": evidence_sha},
+        "adapter_id": "looplab.simulator_rsi_bridge.v1",
     }
 
 
@@ -83,7 +87,6 @@ def test_blocked_evaluation_is_not_promoted_or_written(tmp_path):
     )
     assert result["recorded"] is False
     assert ledger.verify()
-    assert ledger.read_event("unused") if False else True
 
 
 def test_global_hold_prevents_rsi_ingestion(tmp_path):
