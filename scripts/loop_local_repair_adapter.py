@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 LOCAL_ENDPOINT = "http://127.0.0.1:11434/api/generate"
+LOCAL_TAGS_ENDPOINT = "http://127.0.0.1:11434/api/tags"
 LOCAL_MODEL = "lfm3:1.7b-qad-q4_0"
 MAX_INSTRUCTION_CHARS = 12_000
 MAX_FILE_CHARS = 80_000
@@ -130,6 +131,26 @@ def create_local_repair_adapter(repo_root: str | Path):
     """Return a callable compatible with loop_repair_executor.execute_one_repair."""
     root = Path(repo_root).resolve()
 
+    def preflight() -> dict[str, Any]:
+        """Confirm the exact local model exists before consuming one-shot approval."""
+        request_obj = urllib.request.Request(LOCAL_TAGS_ENDPOINT, method="GET")
+        try:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirectHandler)
+            with opener.open(request_obj, timeout=10) as response:
+                if response.status != 200:
+                    return _blocked("local_model_preflight_http_status")
+                payload = json.loads(response.read().decode("utf-8"))
+            models = payload.get("models") if isinstance(payload, dict) else None
+            names = {
+                item.get("name") for item in models
+                if isinstance(item, dict) and isinstance(item.get("name"), str)
+            } if isinstance(models, list) else set()
+            if LOCAL_MODEL not in names:
+                return _blocked("required_local_model_not_installed")
+            return {"status": "PASS", "provider": "local_ollama_only", "model": LOCAL_MODEL}
+        except Exception:
+            return _blocked("local_model_preflight_unavailable_no_cloud_fallback")
+
     def repair(request: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(request, dict) or request.get("provider_policy") != "provider_free_only":
             return _blocked("provider_policy_invalid")
@@ -227,4 +248,5 @@ def create_local_repair_adapter(repo_root: str | Path):
             "changed_paths": actual,
         }
 
+    repair.preflight = preflight
     return repair
