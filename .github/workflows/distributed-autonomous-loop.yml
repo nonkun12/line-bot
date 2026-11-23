@@ -521,8 +521,8 @@ jobs:
             printf '{"status":"NO_SAFE_CANDIDATE","candidate_count":0,"candidates":[]}\n' > "$REVIEW_REPORT"
           fi
           # Unknown/active emergency-stop state disables policy admission; it never bypasses the runner's own stop check.
-          if python -c 'from core.emergency_stop import get_status; import os; raise SystemExit(1 if get_status(os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"), os.environ["GITHUB_TOKEN"]) else 0)'; then
-            python -m scripts.autonomous_test_task_admission \
+          if [ -s /tmp/catalog-exhaustion-report.json ] && python -c 'from core.emergency_stop import get_status; import os; raise SystemExit(1 if get_status(os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"), os.environ["GITHUB_TOKEN"]) else 0)'; then
+            if ! python -m scripts.autonomous_test_task_admission \
               --repo-root . \
               --report /tmp/catalog-exhaustion-report.json \
               --queue /tmp/autonomous-loop-runtime-queue.json \
@@ -531,9 +531,20 @@ jobs:
               --output-queue "$POLICY_QUEUE" \
               --output-catalog "$POLICY_CATALOG" \
               --output-review-report "$REVIEW_REPORT" \
-              --output-report "$POLICY_REPORT"
+              --output-report "$POLICY_REPORT"; then
+              cp /tmp/autonomous-loop-runtime-queue.json "$POLICY_QUEUE"
+              cp .github/autonomous-loop-task-catalog.json "$POLICY_CATALOG"
+              cp /tmp/catalog-exhaustion-report.json "$REVIEW_REPORT"
+              printf '{"version":1,"policy_version":"test-only-append-v1","status":"POLICY_BLOCKED","reason":"admission_validation_failed","persistent_catalog_modified":false,"durable_state_modified":false,"held_tasks_resumed":false}\n' > "$POLICY_REPORT"
+            fi
           else
-            printf '{"version":1,"policy_version":"test-only-append-v1","status":"POLICY_SKIPPED","reason":"emergency_stop_active_or_unverifiable","persistent_catalog_modified":false,"durable_state_modified":false,"held_tasks_resumed":false}\n' > "$POLICY_REPORT"
+            if [ -s /tmp/catalog-exhaustion-report.json ]; then
+              cp /tmp/catalog-exhaustion-report.json "$REVIEW_REPORT"
+              reason=emergency_stop_active_or_unverifiable
+            else
+              reason=analyzer_report_missing
+            fi
+            printf '{"version":1,"policy_version":"test-only-append-v1","status":"POLICY_SKIPPED","reason":"%s","persistent_catalog_modified":false,"durable_state_modified":false,"held_tasks_resumed":false}\n' "$reason" > "$POLICY_REPORT"
           fi
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=$POLICY_QUEUE" >> "$GITHUB_ENV"
           echo "AUTONOMOUS_LOOP_TASK_CATALOG=$POLICY_CATALOG" >> "$GITHUB_ENV"
