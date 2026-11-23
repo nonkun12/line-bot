@@ -6,7 +6,7 @@ def u(): return stage348_check_uncertainty_interval(lower_bound=.1,upper_bound=.
 def c(): return stage349_check_metric_contract(declared_metrics={"quality":{"direction":"higher_is_better","unit":"score"}},observed_metrics={"quality":{"direction":"higher_is_better","unit":"score"}},required_metrics=["quality"])
 def test_346_perturbation_pairs_and_bounds():
  assert r()["status"]=="PERTURBATION_ROBUSTNESS_PASSED"
- assert stage346_check_perturbation_robustness(reference_scores={"a":.1},perturbed_scores={"a":.8},maximum_absolute_change=.1)["status"]=="PERTURBATION_ROBUSTNESS_FAILED"
+ assert stage346_check_perturbation_robustness(reference_scores={"a":.1},perturbed_scores={"a":.8},maximum_absolute_change=.1,minimum_shared_cases=1)["status"]=="PERTURBATION_ROBUSTNESS_FAILED"
 def test_347_missingness_is_bounded():
  assert m()["status"]=="MISSINGNESS_BOUND_PASSED"
  assert stage347_check_missingness_bounds(expected_count=10,observed_count=5,maximum_missing_share=.1)["status"]=="MISSINGNESS_BOUND_FAILED"
