@@ -178,10 +178,11 @@ def stage289_enforce_holdout_separation(*, development_task_digests: Sequence[st
             or minimum_holdout_tasks < 1):
         return _blocked("task sets or holdout minimum are invalid")
     dev, test = list(development_task_digests), list(holdout_task_digests)
-    if (not dev or len(set(dev)) != len(dev) or len(set(test)) != len(test)
-            or any(not _valid_digest(x) for x in dev + test)
-            or len(test) < minimum_holdout_tasks):
-        return _blocked("task digests must be unique and valid with sufficient holdout size")
+    if (any(not _valid_digest(x) for x in dev + test)
+            or not dev or len(test) < minimum_holdout_tasks):
+        return _blocked("task digests must be valid with sufficient holdout size")
+    if len(set(dev)) != len(dev) or len(set(test)) != len(test):
+        return _blocked("task digests must be unique within each set")
     overlap = set(dev) & set(test)
     if overlap:
         return _seal({"status": "HOLDOUT_CONTAMINATION_DETECTED",
