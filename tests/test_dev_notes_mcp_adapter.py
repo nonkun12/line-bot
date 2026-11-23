@@ -1,6 +1,16 @@
+from datetime import timezone
 from unittest.mock import patch
 
 from dev_notes.mcp_notes_adapter import McpNotesLogAdapter
+from dev_notes.schema import ExecutionLogEntry
+
+
+def test_execution_log_entry_defaults_to_timezone_aware_utc():
+    entry = ExecutionLogEntry()
+
+    assert entry.timestamp.tzinfo is not None
+    assert entry.timestamp.utcoffset() == timezone.utc.utcoffset(entry.timestamp)
+    assert entry.to_dict()["timestamp"].endswith("+00:00")
 
 
 def test_mcp_notes_adapter_calls_save_note():
