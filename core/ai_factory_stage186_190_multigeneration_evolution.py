@@ -13,6 +13,11 @@ import re
 from itertools import islice
 from typing import Callable, Iterable
 
+from .ai_factory_stage181_185_intergeneration_evolution import (
+    EvolutionReadinessCertificate,
+    stage185_readiness_verifier,
+)
+
 
 class LongitudinalEvolutionError(ValueError):
     """Raised when multi-generation evidence is incomplete, unsafe, or inconsistent."""
@@ -88,6 +93,14 @@ def _signed(digest: str, signature: str, verifier: Callable[[str, str], bool], l
         raise LongitudinalEvolutionError(f"{label} signature verification failed") from exc
     if valid is not True:
         raise LongitudinalEvolutionError(f"{label} signature verification failed")
+
+
+def stage185_checkpoint_verifier(
+    certificate: EvolutionReadinessCertificate, *,
+    verify_signature: Callable[[str, str], bool],
+) -> Callable[[str, int, str], bool]:
+    """Connect a signed Stage 185 readiness certificate to Stage 186 lineage checks."""
+    return stage185_readiness_verifier(certificate, verify_signature=verify_signature)
 
 
 def _trusted_checkpoint(digest: str, generation: int,
@@ -861,7 +874,7 @@ class Stage190LongitudinalCertificatePackager:
 
 
 __all__ = [
-    "LongitudinalEvolutionError", "GenerationSnapshot", "LongitudinalTrendReport",
+    "LongitudinalEvolutionError", "stage185_checkpoint_verifier", "GenerationSnapshot", "LongitudinalTrendReport",
     "Stage186LongitudinalTrendAnalyzer", "GeneralizationAuditEvidence",
     "GeneralizationAuditReport", "Stage187GeneralizationAuditor", "RegressionClaim",
     "RegressionAttributionReport", "Stage188RegressionAttributor", "SurvivalLedgerEntry",
