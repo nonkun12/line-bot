@@ -63,3 +63,18 @@ def test_dispatch_invokes_one_repair_only_after_all_gates_pass():
     assert result["hold_clear_authorized"] is False
     assert result["resume_authorized"] is False
     assert result["merge_deploy_authorized"] is False
+
+
+
+def test_dispatch_allows_only_preapproved_catalog_patch_on_hosted_runner():
+    calls = []
+    task = _catalog()[0]
+    task["repair_patch"] = "--- a/tests/test.py\n+++ b/tests/test.py\n@@ -1 +1 @@\n-a\n+b\n"
+    task["repair_patch_sha256"] = "a" * 64
+    result = maybe_run_repair(
+        "task-1", _recovery(), [task], "/tmp/recovery.json",
+        env={"GITHUB_ACTIONS": "true", "GITHUB_TOKEN": "token"},
+        repair_runner=lambda *args: calls.append(args) or {"status": "REPAIR_VERIFIED"},
+    )
+    assert result["status"] == "REPAIR_VERIFIED"
+    assert calls == [("task-1", "/tmp/recovery.json", "token")]
