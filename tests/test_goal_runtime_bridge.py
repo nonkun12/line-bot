@@ -144,7 +144,7 @@ def test_partial_workflow_failure_does_not_durably_complete_unpublished_prior_ta
 
 
 @pytest.mark.parametrize("sentinel", [78, 79])
-def test_guarded_runner_sentinel_outcome_is_preserved_without_synthetic_failure(
+def test_guarded_runner_sentinel_preserves_upstream_gate_without_creating_goal_hold(
     tmp_path, monkeypatch, sentinel
 ):
     queue, catalog, state, results, stop = _inputs(tmp_path)
@@ -168,5 +168,7 @@ def test_guarded_runner_sentinel_outcome_is_preserved_without_synthetic_failure(
     assert bridge.run(args) == sentinel
     assert not results.exists()
     goal = json.loads(goal_output.read_text())
-    assert goal["tasks"][0]["status"] == "HELD"
-    assert goal["tasks"][0]["hold_reason"] == "guarded_runtime_or_evidence_gate_failed"
+    # The child did not execute the task; its upstream HOLD/STOP gate remains
+    # authoritative. Do not turn that into a persistent second-layer Goal HOLD.
+    assert goal["tasks"][0]["status"] == "PENDING"
+    assert "hold_reason" not in goal["tasks"][0]
