@@ -155,3 +155,11 @@ def test_local_adapter_rejects_git_directory_in_allowlist(tmp_path):
     })
     assert result["status"] == "BLOCKED"
     assert result["reason_code"] == "repair_paths_invalid"
+
+
+
+def test_local_model_transport_refuses_redirects():
+    handler = adapter._NoRedirectHandler()
+    assert handler.redirect_request(
+        None, None, 302, "Found", {}, "https://example.com/api/generate"
+    ) is None
