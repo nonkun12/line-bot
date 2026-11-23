@@ -9,7 +9,7 @@ REQUIRED={
 }
 
 def _missing(obj,keys):
- return [k for k in keys if k not in obj or obj[k] in (None,"",[],{})]
+ return [k for k in keys if k not in obj or obj[k] in (None,"",{})]
 
 def _refs(value):
  return isinstance(value,list) and bool(value) and all(isinstance(v,str) and v for v in value) and len(value)==len(set(value))
