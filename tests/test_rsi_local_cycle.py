@@ -160,4 +160,3 @@ def test_evaluator_identity_mismatch_is_rejected_before_evaluation_record(tmp_pa
     with pytest.raises(RSIError, match="required evidence event is missing"):
         ledger.read_event("evaluation:" + plan.experiment_id)
     assert ledger.verify()
-
