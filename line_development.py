@@ -203,7 +203,7 @@ def dispatch_development_workflow(
 
 
 _TASK_STATUS_COMMAND_RE = re.compile(
-    r"^(?:タスク状況|開発状況|task status)\\s*[:：]\\s*([0-9a-f]{32})$",
+    r"^(?:タスク状況|開発状況|task status)\s*[:：]\s*([0-9a-f]{32})$",
     re.IGNORECASE,
 )
 
@@ -284,7 +284,7 @@ def request_development_task_status(
         expected_prefix = f"https://github.com/{repository}/actions/runs/"
         if not isinstance(run_url, str) or not run_url.startswith(expected_prefix):
             run_url = ""
-        suffix = f"\\n実行記録: {run_url}" if run_url else ""
-        return f"Task ID: {task_id}\\n状態: {result}{suffix}"
+        suffix = f"\n実行記録: {run_url}" if run_url else ""
+        return f"Task ID: {task_id}\n状態: {result}{suffix}"
     except (httpx.HTTPError, ValueError, TypeError):
         return "タスク状況を取得できません（GitHub応答エラー）。"
