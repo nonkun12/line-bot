@@ -72,10 +72,10 @@ def stage311_check_inclusion_probabilities(*, sampling_design: str,
             or not math.isfinite(maximum_probability)
             or not 0 < minimum_probability <= maximum_probability <= 1):
         return _blocked("sampling design, task keys or probability bounds are invalid")
+    if any(not isinstance(task_id, str) or not task_id.strip() for task_id in baseline_probabilities):
+        return _blocked("task identifiers must be nonempty strings")
     rows = {}
     for task_id in sorted(baseline_probabilities):
-        if not isinstance(task_id, str) or not task_id.strip():
-            return _blocked("task identifiers must be nonempty strings")
         bp, cp = baseline_probabilities[task_id], candidate_probabilities[task_id]
         if any(isinstance(p, bool) or not isinstance(p, (int, float))
                or not math.isfinite(p) or not minimum_probability <= p <= maximum_probability
