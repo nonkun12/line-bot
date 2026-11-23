@@ -30,8 +30,6 @@ def record_evaluation_as_rsi_observation(
     executor: RSIExecutor,
     producer_id: str,
     sign_digest: Callable[[str], str],
-    verify_adapter_signature: Callable[[str, str, str], bool],
-    resolve_locked_dataset: Callable[[str], Mapping[str, Any] | None],
     created_at: int,
 ) -> dict[str, Any]:
     """Persist a signed, plan-bound observation for the existing RSI pipeline.
@@ -64,6 +62,8 @@ def record_evaluation_as_rsi_observation(
         raise ValueError("created_at_invalid")
     if not callable(sign_digest):
         raise ValueError("independent_evidence_signer_required")
+    verify_adapter_signature = executor.verify_adapter_signature
+    resolve_locked_dataset = executor.resolve_locked_dataset
     if not callable(verify_adapter_signature):
         raise ValueError("trusted_adapter_signature_verifier_required")
     if not callable(resolve_locked_dataset):
