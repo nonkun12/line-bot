@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from datetime import datetime
 from typing import Any
 
 from scripts.confirm_recovery_resume_review import confirm_in_durable_state
@@ -31,6 +32,7 @@ def confirm_if_machine_verified(
     expected_workflow_run_id: str,
     expected_run_attempt: int,
     expected_nonce: str,
+    validation_now: datetime | None = None,
 ) -> dict[str, Any]:
     """Clear only the pending review bit for one already-unheld eligible task."""
     if not isinstance(task_id, str) or not task_id or len(task_id) > 100:
@@ -46,18 +48,8 @@ def confirm_if_machine_verified(
     if len(matches) != 1:
         raise ValueError("resume_catalog_task_not_unique")
     task = matches[0]
-    evidence = _read_object(evidence_file)
-    result = validate_machine_resume_evidence(
-        task,
-        evidence,
-        expected_base_sha=expected_base_sha,
-        expected_workflow_run_id=expected_workflow_run_id,
-        expected_run_attempt=expected_run_attempt,
-        expected_nonce=expected_nonce,
-    )
-    if result.get("eligible") is not True:
-        raise ValueError(str(result.get("reason_code", "resume_evidence_blocked")))
-
+    # Check durable HOLD/review state before inspecting evidence so stale or
+    # malformed evidence can never obscure the stronger safety decision.
     durable = _read_object(state_file)
     recovery = durable.get("recovery_ai")
     if (
@@ -73,6 +65,19 @@ def confirm_if_machine_verified(
         or record.get("resume_requires_review") is not True
     ):
         raise ValueError("resume_task_not_pending_machine_review")
+
+    evidence = _read_object(evidence_file)
+    result = validate_machine_resume_evidence(
+        task,
+        evidence,
+        expected_base_sha=expected_base_sha,
+        expected_workflow_run_id=expected_workflow_run_id,
+        expected_run_attempt=expected_run_attempt,
+        expected_nonce=expected_nonce,
+        now=validation_now,
+    )
+    if result.get("eligible") is not True:
+        raise ValueError(str(result.get("reason_code", "resume_evidence_blocked")))
 
     # The existing durable writer performs atomic replacement and read-back.
     # It is reached only after all task and evidence bindings have passed.
