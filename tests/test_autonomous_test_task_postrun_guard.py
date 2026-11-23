@@ -60,6 +60,13 @@ def test_rejects_pathlib_filesystem_mutation():
         verify_append_only_test_change(before, after)
 
 
+def test_rejects_direct_builtins_namespace_access():
+    before = "def test_existing():\\n    assert True\\n"
+    after = before + "\\n\\ndef test_new():\\n    __builtins__['open']('unexpected.txt')\\n"
+    with pytest.raises(ValueError, match="new_test_uses_forbidden_escape_hatch"):
+        verify_append_only_test_change(before, after)
+
+
 def test_rejects_dynamic_attribute_escape_hatch():
     before = "def test_existing():\n    assert True\n"
     after = before + "\n\ndef test_new():\n    getattr(__builtins__, 'eval')('1 + 1')\n"
