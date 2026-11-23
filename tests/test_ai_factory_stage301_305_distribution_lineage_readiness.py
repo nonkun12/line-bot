@@ -35,3 +35,9 @@ def test_305_integrates_all_gates_fail_closed():
  result=stage305_integrate_evidence_readiness(distribution_result=dist(),domain_mix_result=mix(),missingness_result=miss(),lineage_result=lineage())
  assert result["status"]=="EVIDENCE_READINESS_PASSED" and result["asi_demonstrated"] is False
  assert stage305_integrate_evidence_readiness(distribution_result=dist(),domain_mix_result=mix(),missingness_result=miss(),lineage_result=lineage(),held=True)["status"]=="INSUFFICIENT_EVIDENCE"
+
+
+def test_304_rejects_noncanonical_payload_without_raising():
+ root=h("root")
+ row={"record_id":"bad","parent_digest":root,"payload":{"nested":float("nan")},"record_digest":h("placeholder")}
+ assert stage304_validate_evidence_lineage(records=[row],root_digest=root)["status"]=="INSUFFICIENT_EVIDENCE"
