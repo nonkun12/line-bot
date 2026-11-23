@@ -112,6 +112,13 @@ class LocalRSIIndependentEvaluator:
                 raise RSIError("benchmark evidence match flag is inconsistent")
             matched_count += int(matched)
 
+        # A quality score is comparable only when the frozen baseline and
+        # challenger were measured over the same number of benchmark cases.
+        # The signed baseline already binds this count; enforce it against the
+        # independently verified evidence instead of trusting caller metadata.
+        if self._baseline.sample_count != len(observations):
+            raise RSIError("benchmark sample count does not match frozen baseline")
+
         recomputed_quality = matched_count / len(observations)
         metrics = dict(result.metrics)
         if metrics != {
