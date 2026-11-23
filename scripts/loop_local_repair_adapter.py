@@ -25,6 +25,13 @@ MAX_PATCH_BYTES = 48_000
 REQUEST_TIMEOUT_SECONDS = 120
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Prevent a loopback model endpoint from redirecting requests off-device."""
+
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        return None
+
+
 def _blocked(reason: str) -> dict[str, Any]:
     return {"status": "BLOCKED", "reason_code": reason, "provider": "local_ollama_only"}
 
@@ -174,7 +181,8 @@ def create_local_repair_adapter(repo_root: str | Path):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request_obj, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirectHandler)
+            with opener.open(request_obj, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                 if response.status != 200:
                     return _blocked("local_model_http_status")
                 body = json.loads(response.read().decode("utf-8"))
