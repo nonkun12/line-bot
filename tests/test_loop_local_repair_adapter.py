@@ -163,3 +163,21 @@ def test_local_model_transport_refuses_redirects():
     assert handler.redirect_request(
         None, None, 302, "Found", {}, "https://example.com/api/generate"
     ) is None
+
+
+
+def test_local_adapter_preflight_requires_exact_model_without_proxy_or_redirect(monkeypatch, tmp_path):
+    root, _base = _repo(tmp_path)
+    response = _Response({"models": [{"name": adapter.LOCAL_MODEL}, {"name": "other:latest"}]})
+    opener = _Opener(response)
+    calls = []
+    monkeypatch.setattr(
+        adapter.urllib.request, "build_opener",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or opener,
+    )
+    result = adapter.create_local_repair_adapter(root).preflight()
+    assert result["status"] == "PASS"
+    assert result["model"] == adapter.LOCAL_MODEL
+    assert len(calls) == 1
+    assert any(isinstance(item, adapter.urllib.request.ProxyHandler) for item in calls[0][0])
+    assert any(item is adapter._NoRedirectHandler for item in calls[0][0])
