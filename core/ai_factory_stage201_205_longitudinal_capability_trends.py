@@ -103,8 +103,9 @@ class Stage201CapabilitySnapshot:
               generation: int, suite_digest: str, dataset_digest: str,
               environment_digest: str, provenance_certificate_digest: str,
               evaluator_id: str, quality: float, safety: float, latency_ms: float,
-              memory_mb: float, nonce: str, sign: Callable[[str], str],
-              verify: Callable[[str, str], bool],
+              memory_mb: float, nonce: str,
+              verify_provenance_certificate: Callable[[str], bool],
+              sign: Callable[[str], str], verify: Callable[[str, str], bool],
               hold_active: bool = False) -> CapabilitySnapshot:
         _hold(hold_active, 201)
         for value, label in ((snapshot_id, "snapshot id"), (candidate_id, "candidate id"),
