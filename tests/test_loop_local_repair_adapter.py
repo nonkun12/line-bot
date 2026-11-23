@@ -106,7 +106,7 @@ def test_local_adapter_rejects_patch_outside_allowlist_without_applying(monkeypa
         "@@ -0,0 +1 @@\n"
         "+unsafe = True\n"
     )
-    monkeypatch.setattr(adapter.urllib.request, "urlopen", lambda *_a, **_k: _Response({"response": patch}))
+    monkeypatch.setattr(adapter.urllib.request, "build_opener", lambda *_a, **_k: _Opener(_Response({"response": patch})))
     result = adapter.create_local_repair_adapter(root)(_request(base))
     assert result["status"] == "BLOCKED"
     assert result["reason_code"] == "local_patch_paths_outside_allowlist"
@@ -140,7 +140,7 @@ def test_local_adapter_rejects_git_metadata_patch_headers(monkeypatch, tmp_path)
         "+value = 1\\n"
         "+assert value == 1\\n"
     )
-    monkeypatch.setattr(adapter.urllib.request, "urlopen", lambda *_a, **_k: _Response({"response": patch}))
+    monkeypatch.setattr(adapter.urllib.request, "build_opener", lambda *_a, **_k: _Opener(_Response({"response": patch})))
     result = adapter.create_local_repair_adapter(root)(_request(base))
     assert result["status"] == "BLOCKED"
     assert result["reason_code"] == "local_patch_paths_outside_allowlist"
