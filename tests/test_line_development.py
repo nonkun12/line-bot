@@ -125,6 +125,10 @@ def test_dispatch_retries_transient_github_failure(monkeypatch):
     )
 
     assert len(calls) == 3
+    task_ids = [call["json"]["inputs"]["task_id"] for call in calls]
+    assert len(set(task_ids)) == 1
+    assert len(task_ids[0]) == 32
+    assert f"受付ID / Task ID: {task_ids[0]}" in reply
     assert "受け付けました" in reply
 
 
