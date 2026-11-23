@@ -64,7 +64,7 @@ def test_242_requires_complete_coverage_nonnegative_gain_and_minimum_samples():
     assert stage242_stratified_robustness(strata=rows[:1], required_strata=["a", "b"],
                                           identity_digest=identity, minimum_coverage=0.5)["status"] == "INSUFFICIENT_EVIDENCE"
     assert stage242_stratified_robustness(strata=[{**rows[0], "gain": -5}],
-                                          required_strata=["a"], identity_digest=identity)["status"] == "INSUFFICIENT_EVIDENCE"
+                                          required_strata=["a"], identity_digest=identity)["status"] == "ROBUSTNESS_INSUFFICIENT"
     assert stage242_stratified_robustness(strata=[{**rows[0], "sample_count": 1}],
                                           required_strata=["a"], identity_digest=identity)["status"] == "INSUFFICIENT_EVIDENCE"
     assert stage242_stratified_robustness(strata=[{**rows[0], "gain": 0.0}],
