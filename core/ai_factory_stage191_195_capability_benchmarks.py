@@ -235,6 +235,15 @@ class CapabilityComparison:
     proposal_only: bool = True
 
 
+def _comparison_payload(row: CapabilityComparison) -> dict:
+    return {"suite": row.suite_digest, "baseline": row.baseline_run_digest,
+            "challenger": row.challenger_run_digest, "baseline_candidate": row.baseline_candidate_id,
+            "challenger_candidate": row.challenger_candidate_id, "quality_delta": row.quality_delta,
+            "safety_delta": row.safety_delta, "latency_delta_ratio": row.latency_delta_ratio,
+            "memory_delta_ratio": row.memory_delta_ratio, "passed": row.passed,
+            "regressions": row.regressions, "proposal_only": row.proposal_only}
+
+
 def _weighted_quality(suite: FrozenBenchmarkSuite, run: BenchmarkRunEvidence) -> float:
     weights = {row.case_id: row.weight for row in suite.cases}
     total = sum(weights.values())
@@ -299,13 +308,12 @@ class Stage193PairedComparator:
             regressions.append("latency_growth")
         if memory_ratio > maximum_memory_growth:
             regressions.append("memory_growth")
-        payload = {"suite": suite.suite_digest, "baseline": baseline.run_digest,
-                   "challenger": challenger.run_digest, "baseline_candidate": baseline.candidate_id,
-                   "challenger_candidate": challenger.candidate_id, "quality_delta": quality_delta,
-                   "safety_delta": safety_delta, "latency_delta_ratio": latency_ratio,
-                   "memory_delta_ratio": memory_ratio, "passed": not regressions,
-                   "regressions": tuple(regressions), "proposal_only": True}
-        digest = _digest(payload)
+        provisional = CapabilityComparison(
+            suite.suite_digest, baseline.run_digest, challenger.run_digest,
+            baseline.candidate_id, challenger.candidate_id, quality_delta, safety_delta,
+            latency_ratio, memory_ratio, not regressions, tuple(regressions), "", "",
+        )
+        digest = _digest(_comparison_payload(provisional))
         try:
             signature = sign_comparison(digest)
         except Exception as exc:
@@ -359,8 +367,10 @@ class Stage194RepeatabilityAuditor:
         if len({row.comparison_digest for row in rows}) != len(rows):
             raise CapabilityBenchmarkError("replayed comparison evidence")
         for row in rows:
+            if not row.proposal_only or _digest(_comparison_payload(row)) != row.comparison_digest:
+                raise CapabilityBenchmarkError("comparison digest mismatch")
             _verify(row.comparison_digest, row.signature, verify_comparison_signature, "Stage 193 comparison")
-            if not row.proposal_only or row.regressions != ():
+            if row.regressions != () or row.passed is not True:
                 raise CapabilityBenchmarkError("a repeated comparison contains a regression")
         gains = [row.quality_delta for row in rows]
         passing = sum(1 for gain in gains if gain >= 0.01)
