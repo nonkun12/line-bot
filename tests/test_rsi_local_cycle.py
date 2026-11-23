@@ -137,3 +137,27 @@ def test_global_hold_blocks_before_local_runner_is_invoked(tmp_path):
         )
     assert runner.calls == 0
     assert ledger.verify()
+
+def test_evaluator_identity_mismatch_is_rejected_before_evaluation_record(tmp_path):
+    class MismatchedEvaluator(FakeIndependentEvaluator):
+        def evaluate(self, plan, result):
+            self.calls += 1
+            return IndependentEvaluation(
+                plan.experiment_id, result.result_digest, "forged-evaluator",
+                self.decision, "forged identity", "e" * 64, "evaluation-signature",
+            )
+
+    executor, ledger = make_executor(tmp_path)
+    plan = make_plan()
+    evaluator = MismatchedEvaluator("REGRESSED")
+    with pytest.raises(RSIError, match="identity does not match"):
+        run_local_rsi_cycle(
+            plan=plan, approval=make_approval(plan), runner=FakeLocalRunner(),
+            evaluator=evaluator, executor=executor,
+            sign_observation_digest=lambda digest: "attested:" + digest,
+            created_at=123,
+        )
+    with pytest.raises(RSIError, match="required evidence event is missing"):
+        ledger.read_event("evaluation:" + plan.experiment_id)
+    assert ledger.verify()
+
