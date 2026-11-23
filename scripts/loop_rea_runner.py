@@ -109,9 +109,14 @@ def _run_scanner(root: Path, *, stage: str, base_sha: str, target_sha: str | Non
     return report
 
 
-def _run_pytest(root: Path) -> dict[str, Any]:
+def _run_pytest(root: Path, allowed_paths: list[str] | None = None) -> dict[str, Any]:
+    test_paths = sorted({
+        path for path in (allowed_paths or [])
+        if isinstance(path, str) and path.startswith("tests/") and path.endswith(".py")
+    })
+    command = [sys.executable, "-m", "pytest", "-q", *test_paths]
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q"],
+        command,
         cwd=root, stdin=subprocess.DEVNULL, capture_output=True,
         text=True, check=False, timeout=DEFAULT_TEST_TIMEOUT,
     )
@@ -121,14 +126,16 @@ def _run_pytest(root: Path) -> dict[str, Any]:
     }
 
 
-def run_pre_repair_rea(repo_root: str | Path, *, base_sha: str) -> dict[str, Any]:
+def run_pre_repair_rea(
+    repo_root: str | Path, *, base_sha: str, allowed_paths: list[str] | None = None
+) -> dict[str, Any]:
     """Require a clean-base read-only scan and passing test suite before repair."""
     root = Path(repo_root).resolve()
     try:
         if _git(root, "rev-parse", "HEAD") != base_sha or _git(root, "status", "--porcelain", "--untracked-files=all"):
             raise RuntimeError("rea_pre_repair_repository_not_clean")
         report = _run_scanner(root, stage="PRE_REPAIR", base_sha=base_sha)
-        tests = _run_pytest(root)
+        tests = _run_pytest(root, allowed_paths)
         if tests["status"] != "PASS":
             raise RuntimeError("rea_pre_repair_tests_not_pass")
         return {
