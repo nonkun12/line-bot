@@ -98,12 +98,12 @@ def test_evaluator_rejects_baseline_with_different_sample_count(tmp_path):
         sign_evidence=lambda digest: "sig:" + digest,
     )
     result = runner(plan)
-    evaluator = make_evaluator(
-        ledger, FakeClient(json.dumps({"rationale": "must not be reached"})), baseline
-    )
+    rationale_client = FakeClient(json.dumps({"rationale": "must not be reached"}))
+    evaluator = make_evaluator(ledger, rationale_client, baseline)
 
     with pytest.raises(RSIError, match="sample count"):
         evaluator.evaluate(plan, result)
+    assert rationale_client.calls == []
 
 
 def test_evaluator_rejects_executor_identity_and_unbound_result(tmp_path):
