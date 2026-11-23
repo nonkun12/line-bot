@@ -27,7 +27,7 @@ def test_stage_377_rejects_malformed_or_out_of_range_intervals():
     ])["pass"]
     result = check_confidence_intervals([
         {"lower": 0.8, "estimate": 0.5, "upper": 0.2},
-        {"lower": 0.0, "estimate": 1.1, "upper": 1.0},
+        {"lower": 0.0, "estimate": 0.9, "upper": 0.8},
     ])
     assert not result["pass"]
     assert "interval_order_invalid:0" in result["errors"]
@@ -73,6 +73,6 @@ def test_stage_380_aggregates_guards_and_never_authorizes_execution():
     assert passed["proposal_only"] is True
     assert len(passed["seal"]) == 64
 
-    blocked = evaluate_stages_376_380(**{**args, "maximum_expected_error": 0.0})
+    blocked = evaluate_stages_376_380(**{**args, "calibration_bins": [{"count": 10, "confidence": 0.9, "accuracy": 0.6}]})
     assert blocked["status"] == "BLOCKED"
     assert blocked["execution_authorized"] is False
