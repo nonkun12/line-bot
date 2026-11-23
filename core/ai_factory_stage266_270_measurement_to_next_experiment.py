@@ -201,12 +201,12 @@ def stage269_aggregate_domain_evidence(*, domain_results: Sequence[Mapping],
         domain, count = row.get("domain"), row.get("sample_count")
         lower, threshold = row.get("adjusted_lower_bound"), row.get("minimum_gain")
         observations_digest = row.get("observations_digest")
-        protocol_digest = row.get("protocol_digest")
+        protocol_family_digest = row.get("protocol_family_digest")
         if (not isinstance(domain, str) or not domain.strip() or domain in seen
                 or isinstance(count, bool) or not isinstance(count, int) or count < minimum_pairs_per_domain
                 or not isinstance(lower, (int, float)) or isinstance(lower, bool) or not math.isfinite(lower)
                 or not isinstance(threshold, (int, float)) or isinstance(threshold, bool) or not math.isfinite(threshold)
-                or threshold < 0 or not _digest(observations_digest) or not _digest(protocol_digest)):
+                or threshold < 0 or not _digest(observations_digest) or not _digest(protocol_family_digest)):
             return _blocked("malformed domain evidence or insufficient sample count")
         if lower <= threshold:
             return _blocked("at least one domain does not exceed its practical gain threshold")
@@ -214,10 +214,10 @@ def stage269_aggregate_domain_evidence(*, domain_results: Sequence[Mapping],
         rows.append({
             "domain": domain, "sample_count": count,
             "adjusted_lower_bound": float(lower), "minimum_gain": float(threshold),
-            "observations_digest": observations_digest, "protocol_digest": protocol_digest,
+            "observations_digest": observations_digest, "protocol_family_digest": protocol_family_digest,
         })
     rows.sort(key=lambda item: item["domain"])
-    protocol_digests = {row["protocol_digest"] for row in rows}
+    protocol_digests = {row["protocol_family_digest"] for row in rows}
     if len(protocol_digests) != 1:
         return _blocked("domain evidence must share one preregistered protocol digest")
     return _seal({
@@ -227,7 +227,7 @@ def stage269_aggregate_domain_evidence(*, domain_results: Sequence[Mapping],
         "macro_mean_lower_bound": sum(row["adjusted_lower_bound"] for row in rows) / len(rows),
         "worst_domain_lower_bound": min(row["adjusted_lower_bound"] for row in rows),
         "all_domains_passed": True,
-        "protocol_digest": next(iter(protocol_digests)),
+        "protocol_family_digest": next(iter(protocol_digests)),
     })
 
 
@@ -251,7 +251,7 @@ def stage270_rank_next_experiment_proposals(*, candidates: Sequence[Mapping],
         if (not _valid_seal(multidomain, "MULTI_DOMAIN_CAPABILITY_GAIN_SUPPORTED")
                 or not _valid_seal(replication, "INDEPENDENT_REPLICATION_DECLARED")
                 or replication.get("rsi_or_asi_demonstrated") is not False
-                or multidomain.get("protocol_digest") != replication.get("protocol_family_digest")):
+                or multidomain.get("protocol_family_digest") != replication.get("protocol_family_digest")):
             continue
         eligible.append({
             "candidate_id": candidate_id,
