@@ -75,7 +75,7 @@ def _extract_patch(response: str) -> str | None:
     fenced = re.search(r"```(?:diff)?\s*\n(.*?)\n```", text, re.DOTALL | re.IGNORECASE)
     if fenced:
         text = fenced.group(1).strip()
-    if not text.startswith("--- ") or "\n+++ " not in text or "\n@@ " not in text:
+    if not (text.startswith("--- ") or text.startswith("diff --git ")) or "\n+++ " not in text or "\n@@ " not in text:
         return None
     return text + "\n"
 
