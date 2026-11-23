@@ -64,7 +64,60 @@ def find_work(
         if isinstance(item, dict) and item.get("resume_requires_review") is True
     )
     candidate_count = report["candidate_count"]
-    if candidate_count:
+
+    # Mirror the queue-refill admission boundary for observability. Catalog
+    # membership alone is not enough: only exact execution_approved=True tasks
+    # with an unchanged queue definition and no completion/HOLD/review gate can
+    # be counted as executable. This is diagnostic only; it grants no approval
+    # and never mutates the queue or durable state.
+    completed = state.get("completed", [])
+    if not isinstance(completed, list) or not all(isinstance(item, str) for item in completed):
+        raise ValueError("invalid completed task state")
+    completed_ids = set(completed)
+    queued_by_id = {}
+    for item in queue["tasks"]:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            raise ValueError("invalid runtime queue task")
+        if item["id"] in queued_by_id:
+            raise ValueError("duplicate runtime queue task ID")
+        queued_by_id[item["id"]] = item
+    catalog_by_id = {}
+    for item in catalog["tasks"]:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            raise ValueError("invalid catalog task")
+        if item["id"] in catalog_by_id:
+            raise ValueError("duplicate catalog task ID")
+        catalog_by_id[item["id"]] = item
+
+    approved_ids = {
+        task_id for task_id, item in catalog_by_id.items()
+        if item.get("execution_approved") is True
+    }
+    queue_executable_ids = []
+    for task_id, queued in queued_by_id.items():
+        trusted = catalog_by_id.get(task_id)
+        if (
+            trusted is not None
+            and trusted.get("execution_approved") is True
+            and all(queued.get(key) == trusted.get(key) for key in ("id", "instruction", "allowed_paths"))
+            and task_id not in completed_ids
+            and task_id not in held_ids
+            and task_id not in review_ids
+        ):
+            queue_executable_ids.append(task_id)
+    refill_eligible_ids = sorted(
+        approved_ids
+        - set(queued_by_id)
+        - completed_ids
+        - held_ids
+        - review_ids
+    )
+    execution_eligible_ids = sorted(queue_executable_ids) + refill_eligible_ids
+
+    if execution_eligible_ids:
+        next_action = "run_approved_queue_tasks"
+        cycle_status = "EXECUTION_ELIGIBLE_WORK_FOUND"
+    elif candidate_count:
         next_action = "human_review_candidates"
         cycle_status = "WORK_FOUND"
     elif report["catalog_ids_without_runtime_plan"]:
@@ -91,9 +144,16 @@ def find_work(
         "discovered_candidate_count": candidate_count,
         "review_pending_count": candidate_count,
         "completed_task_count": len(state.get("completed", [])) if isinstance(state.get("completed", []), list) else 0,
-        # Queue membership alone is not proof of execution approval.
-        "execution_eligible_count": None,
-        "execution_eligibility_status": "not_proven",
+        # This count mirrors the existing refill admission rules; it is not
+        # an authorization decision and does not alter execution_approved.
+        "approved_catalog_task_count": len(approved_ids),
+        "queued_execution_eligible_count": len(queue_executable_ids),
+        "queue_refill_eligible_count": len(refill_eligible_ids),
+        "execution_eligible_count": len(execution_eligible_ids),
+        "execution_eligible_task_ids": execution_eligible_ids,
+        "execution_eligibility_status": (
+            "eligible_tasks_present" if execution_eligible_ids else "none"
+        ),
         "candidate_policy": "review_only_no_execution_approval",
         "repeat_policy": "run_on_every_normal_distributed_loop_cycle",
         "exhaustion_policy": (
@@ -106,6 +166,7 @@ def find_work(
             "durable_state_mutated": False,
             "issues_created": False,
             "execution_approval_granted": False,
+        "execution_eligibility_is_authorization": False,
         },
     }
     return report
