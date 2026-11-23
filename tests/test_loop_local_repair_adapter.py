@@ -117,3 +117,33 @@ def test_local_adapter_fails_closed_when_local_model_is_unavailable(monkeypatch,
     result = adapter.create_local_repair_adapter(root)(_request(base))
     assert result["status"] == "BLOCKED"
     assert result["reason_code"] == "local_model_unavailable_no_cloud_fallback"
+
+
+
+def test_local_adapter_rejects_git_metadata_patch_headers(monkeypatch, tmp_path):
+    root, base = _repo(tmp_path)
+    patch = (
+        "diff --git a/tests/test_example.py b/tests/test_example.py\\n"
+        "new file mode 120000\\n"
+        "--- a/tests/test_example.py\\n"
+        "+++ b/tests/test_example.py\\n"
+        "@@ -1 +1,2 @@\\n"
+        "-value = 1\\n"
+        "+value = 1\\n"
+        "+assert value == 1\\n"
+    )
+    monkeypatch.setattr(adapter.urllib.request, "urlopen", lambda *_a, **_k: _Response({"response": patch}))
+    result = adapter.create_local_repair_adapter(root)(_request(base))
+    assert result["status"] == "BLOCKED"
+    assert result["reason_code"] == "local_patch_paths_outside_allowlist"
+    assert (root / "tests/test_example.py").read_text(encoding="utf-8") == "value = 1\\n"
+
+
+def test_local_adapter_rejects_git_directory_in_allowlist(tmp_path):
+    root, base = _repo(tmp_path)
+    result = adapter.create_local_repair_adapter(root)({
+        **_request(base),
+        "allowed_paths": [".git/config"],
+    })
+    assert result["status"] == "BLOCKED"
+    assert result["reason_code"] == "repair_paths_invalid"
