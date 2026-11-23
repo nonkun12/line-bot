@@ -90,7 +90,7 @@ class GoalStateStore:
                 for key in ("child_exit_code", "result_exit_code"):
                     if key in failure_evidence and (type(failure_evidence[key]) is not int or not -255 <= failure_evidence[key] <= 255):
                         conn.rollback(); raise ValueError("failure evidence exit code invalid")
-                if "result_status" in failure_evidence and failure_evidence["result_status"] not in {"PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN", "INCOMPLETE"}:
+                if "result_status" in failure_evidence and (not isinstance(failure_evidence["result_status"], str) or failure_evidence["result_status"] not in {"PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN", "INCOMPLETE"}):
                     conn.rollback(); raise ValueError("failure evidence result status invalid")
                 task["failure_evidence"] = dict(failure_evidence)
             task["status"] = status
