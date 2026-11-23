@@ -187,3 +187,25 @@ def test_executor_uses_default_independent_rea_runner(monkeypatch, tmp_path):
     )
     assert result["status"] == "REPAIR_VERIFIED"
     assert captured[0]["stage"] == "POST_REPAIR"
+
+
+
+def test_executor_does_not_consume_authorization_when_local_preflight_blocks(monkeypatch, tmp_path):
+    _install_git_state(monkeypatch)
+    consumed = []
+
+    def repair(_request):
+        return {"status": "BLOCKED"}
+
+    repair.preflight = lambda: {"status": "BLOCKED", "reason_code": "local_model_unavailable"}
+    monkeypatch.setattr(
+        executor, "consume_repair_authorization",
+        lambda *_args, **_kwargs: consumed.append(True) or {"gate": "PASS"},
+    )
+    result = executor.execute_one_repair(
+        EVIDENCE, token="token", repair_executor=repair,
+        rea_runner=_rea_pass, repo_root=tmp_path,
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["reason_code"] == "local_model_unavailable"
+    assert consumed == []
