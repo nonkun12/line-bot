@@ -61,8 +61,8 @@ def test_rejects_pathlib_filesystem_mutation():
 
 
 def test_rejects_direct_builtins_namespace_access():
-    before = "def test_existing():\\n    assert True\\n"
-    after = before + "\\n\\ndef test_new():\\n    __builtins__['open']('unexpected.txt')\\n"
+    before = "def test_existing():\n    assert True\n"
+    after = before + "\n\ndef test_new():\n    __builtins__['open']('unexpected.txt')\n"
     with pytest.raises(ValueError, match="new_test_uses_forbidden_escape_hatch"):
         verify_append_only_test_change(before, after)
 
