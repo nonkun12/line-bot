@@ -38,3 +38,16 @@ def test_dispatch_workflow_verifies_task_approval_before_any_execution_path():
     assert 'evidence.get("gate") != "PASS"' in approval_step
     assert 'evidence.get("execution_authorized") is not True' in approval_step
     assert "checked_out_head != approved_base" in approval_step
+
+
+def test_dispatch_workflow_propagates_one_stable_cross_interface_task_id():
+    workflow_path = ROOT / ".github" / "workflows" / _WORKFLOW_FILE
+    text = workflow_path.read_text(encoding="utf-8")
+    assert "task_id:" in text
+    assert "required: false" in text
+    assert "id: prepare_task" in text
+    assert "task_id = os.environ.get(\"DEV_TASK_ID\", \"\").strip()" in text
+    assert '"AUTONOMOUS_TASK_ID": task_id' in text
+    assert "steps.prepare_task.outputs.task_id" in text
+    assert "line-development-task-${{ steps.prepare_task.outputs.task_id || github.run_id }}" in text
+    assert "Task ID: \\`${DEV_TASK_ID}\\`" in text
