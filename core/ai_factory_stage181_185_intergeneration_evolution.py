@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import re
+from itertools import islice
 from typing import Callable, Iterable
 
 
@@ -21,8 +22,21 @@ _HEX = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _digest(value: object) -> str:
-    raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    try:
+        raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise EvolutionError("evidence is not canonically serializable") from exc
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _bounded_items(values: Iterable[object], limit: int, label: str) -> tuple:
+    try:
+        rows = tuple(islice(iter(values), limit + 1))
+    except Exception as exc:
+        raise EvolutionError(f"{label} iteration failed") from exc
+    if len(rows) > limit:
+        raise EvolutionError(f"{label} exceeds its {limit}-item bound")
+    return rows
 
 
 def _check_digest(value: str, label: str) -> None:
@@ -94,7 +108,7 @@ class Stage181InterGenerationEvaluator:
                   max_latency_regression, max_memory_regression)
         if any(not math.isfinite(x) or x < 0 for x in limits) or minimum_safety > 1:
             raise EvolutionError("invalid comparison thresholds")
-        items = tuple(evaluations)
+        items = _bounded_items(evaluations, 64, "candidate evaluations")
         if len(items) < 2:
             raise EvolutionError("baseline and at least one challenger are required")
         if len({x.candidate_id for x in items}) != len(items):
@@ -180,8 +194,8 @@ class Stage182BoundedVariationPlanner:
         _verify_intergeneration_report(report)
         if not 1 <= max_proposals <= 64 or not 1 <= max_mutation_budget <= 8:
             raise EvolutionError("variation bounds are invalid")
-        rows = tuple(recipes)
-        if not rows or len(rows) > max_proposals:
+        rows = _bounded_items(recipes, max_proposals, "variation proposals")
+        if not rows:
             raise EvolutionError("variation proposal count outside bounds")
         proposals = []
         for candidate_id, parent_ids, recipe_digest, budget in rows:
@@ -230,7 +244,9 @@ class Stage183ParetoDiversitySelector:
         _verify_intergeneration_report(report)
         if not 1 <= max_selected <= 32:
             raise EvolutionError("selection bound invalid")
-        evidence = tuple(evaluations)
+        evidence = _bounded_items(evaluations, 64, "selection evidence")
+        if any(not isinstance(x, CandidateEvaluation) for x in evidence):
+            raise EvolutionError("typed selection evidence required")
         items = {x.candidate_id: x for x in evidence}
         if len(items) != len(evidence):
             raise EvolutionError("duplicate selection evidence")
@@ -316,6 +332,8 @@ class EvolutionReadinessCertificate:
     generation_advance_authorized: bool = False
     model_activation_authorized: bool = False
     production_switch_authorized: bool = False
+    candidate_ids: tuple[str, ...] = ()
+    certificate_signature: str = ""
 
 
 class Stage185EvolutionReadinessPackager:
@@ -368,13 +386,52 @@ class Stage185EvolutionReadinessPackager:
             set(selection.selected_candidate_ids) | {p.candidate_id for p in variations.proposals}
         ):
             raise EvolutionError("cohort contains unapproved candidate lineage")
+        candidate_ids = tuple(sorted(set(selection.selected_candidate_ids) | {p.candidate_id for p in variations.proposals}))
         payload = {"report": report.report_digest, "selection": selection.selection_digest,
                    "variations": variations.proposal_set_digest, "cohort": cohort.cohort_digest,
-                   "source": report.source_generation, "target": report.target_generation}
+                   "source": report.source_generation, "target": report.target_generation,
+                   "candidate_ids": candidate_ids}
         digest = _digest(payload)
+        signature = ""
+        if sign_certificate is not None:
+            signature = sign_certificate(digest)
+            if not isinstance(signature, str) or not signature.strip():
+                raise EvolutionError("Stage 185 readiness checkpoint signing failed")
         return EvolutionReadinessCertificate(report.source_generation, report.target_generation,
             report.report_digest, selection.selection_digest, variations.proposal_set_digest,
-            cohort.cohort_digest, digest, bool(selection.selected_candidate_ids or variations.proposals))
+            cohort.cohort_digest, digest, bool(selection.selected_candidate_ids or variations.proposals),
+            candidate_ids=candidate_ids, certificate_signature=signature)
+
+
+def stage185_readiness_verifier(certificate: EvolutionReadinessCertificate, *,
+                                verify_signature: Callable[[str, str], bool]) -> Callable[[str, int, str], bool]:
+    """Adapt a signed Stage 185 certificate to the Stage 186 trusted-parent callback."""
+    def verify(digest: str, generation: int, candidate_id: str) -> bool:
+        if not isinstance(certificate, EvolutionReadinessCertificate):
+            return False
+        if (not certificate.proposal_only or not certificate.ready_for_human_review
+                or certificate.weight_mutation_authorized or certificate.generation_advance_authorized
+                or certificate.model_activation_authorized or certificate.production_switch_authorized):
+            return False
+        if (digest != certificate.certificate_digest or generation != certificate.proposed_generation
+                or candidate_id not in certificate.candidate_ids):
+            return False
+        expected = _digest({
+            "report": certificate.inter_generation_report_digest,
+            "selection": certificate.selection_digest,
+            "variations": certificate.variation_set_digest,
+            "cohort": certificate.cohort_digest,
+            "source": certificate.source_generation,
+            "target": certificate.proposed_generation,
+            "candidate_ids": certificate.candidate_ids,
+        })
+        if expected != certificate.certificate_digest or not certificate.certificate_signature:
+            return False
+        try:
+            return verify_signature(certificate.certificate_digest, certificate.certificate_signature) is True
+        except Exception:
+            return False
+    return verify
 
 
 def _verify_intergeneration_report(report: InterGenerationReport) -> None:
@@ -396,5 +453,5 @@ __all__ = [
     "Stage181InterGenerationEvaluator", "MutationProposal", "MutationProposalSet",
     "Stage182BoundedVariationPlanner", "ParetoSelection", "Stage183ParetoDiversitySelector",
     "NextGenerationCohort", "Stage184CohortComposer", "EvolutionReadinessCertificate",
-    "Stage185EvolutionReadinessPackager",
+    "Stage185EvolutionReadinessPackager", "stage185_readiness_verifier",
 ]
