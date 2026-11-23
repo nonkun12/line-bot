@@ -71,7 +71,10 @@ def test_276_creates_linked_history_records_and_rejects_tampering():
     assert record2["previous_record_digest"] == record1["record_digest"]
     tampered = {**record1, "sequence": 99}
     assert stage276_append_capability_history(
-        previous=tampered, observation=second
+        previous=tampered, observation=second, recorded_at="2026-11-23T11:00:00+00:00"
+    )["status"] == "INSUFFICIENT_EVIDENCE"
+    assert stage276_append_capability_history(
+        previous=record1, observation=second, recorded_at="2026-11-23T09:00:00+00:00"
     )["status"] == "INSUFFICIENT_EVIDENCE"
 
 
@@ -116,6 +119,10 @@ def test_279_flags_declared_subgroup_gaps():
     assert stage279_detect_measurement_bias(
         subgroup_scores=rows
     )["status"] == "MEASUREMENT_BIAS_FLAGGED"
+    duplicate = [*rows, {**rows[0], "score": 0.3}]
+    assert stage279_detect_measurement_bias(
+        subgroup_scores=duplicate
+    )["status"] == "INSUFFICIENT_EVIDENCE"
 
 
 def test_280_unified_gate_requires_all_sealed_components():
