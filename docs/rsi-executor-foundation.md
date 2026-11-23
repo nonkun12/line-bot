@@ -149,6 +149,11 @@ signatures and do not constitute a production trust root.
   signature covers the experiment, candidate, protocol, recomputed result
   digest, and raw observations. The independent evaluator verifies that
   signature and all plan/result bindings before recomputing the score.
+- The independent evaluator also requires the signed frozen baseline's
+  `sample_count` to equal the number of independently verified challenger
+  observations. A mismatch is rejected before the evaluator model is called
+  for rationale, preventing scores from differently sized benchmark samples
+  from being compared as if they were equivalent.
 - Signed control snapshots now require a generation number covered by the
   signature. Generation and issued-at values are checked against the durable
   append-only ledger, not process memory. Replayed nonces, generation
