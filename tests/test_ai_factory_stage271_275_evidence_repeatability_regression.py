@@ -86,6 +86,14 @@ def test_274_detects_domain_regression_and_requires_same_domains():
     failed = stage274_detect_capability_regression(baseline=baseline, candidate=regressed)
     assert failed["status"] == "CAPABILITY_REGRESSION_DETECTED"
     assert failed["regressed_domains"]
+    different_protocol = stage269_aggregate_domain_evidence(domain_results=[{
+        "domain": domain, "sample_count": 40, "adjusted_lower_bound": lower + 0.02,
+        "minimum_gain": 0.05, "observations_digest": digest(f"new-{domain}"),
+        "protocol_family_digest": digest("different-protocol"),
+    } for domain, lower in (("reasoning", 0.18), ("coding", 0.12))])
+    assert stage274_detect_capability_regression(
+        baseline=baseline, candidate=different_protocol
+    )["status"] == "INSUFFICIENT_EVIDENCE"
     assert stage274_detect_capability_regression(
         baseline=baseline, candidate={"status": "INSUFFICIENT_EVIDENCE"}
     )["status"] == "INSUFFICIENT_EVIDENCE"
@@ -101,6 +109,9 @@ def test_275_ranks_proposals_only_within_cost_ceiling():
             {"candidate_id": "focus-coding", "target_domain": "coding",
              "expected_information_gain": 0.8, "uncertainty": 0.2,
              "estimated_cost_units": 2, "rationale": "Probe the weakest measured domain"},
+            {"candidate_id": "focus-reasoning", "target_domain": "reasoning",
+             "expected_information_gain": 0.8, "uncertainty": 0.2,
+             "estimated_cost_units": 2, "rationale": "Check a stronger domain"},
             {"candidate_id": "expensive", "target_domain": "reasoning",
              "expected_information_gain": 1.0, "uncertainty": 0.1,
              "estimated_cost_units": 9, "rationale": "Out of budget"},
@@ -109,5 +120,6 @@ def test_275_ranks_proposals_only_within_cost_ceiling():
     assert result["status"] == "NEXT_RESEARCH_PLAN_PROPOSED"
     assert result["proposal_count"] == 1
     assert result["proposals"][0]["candidate_id"] == "focus-coding"
+    assert result["proposals"][0]["priority_score"] > result["proposals"][1]["priority_score"]
     assert result["plan_is_executable"] is False
     assert result["experiment_execution_authorized"] is False
