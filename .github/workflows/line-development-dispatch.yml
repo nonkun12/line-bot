@@ -275,6 +275,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
+          DEV_TASK_ID: ${{ steps.prepare_task.outputs.task_id }}
           BRANCH: line-dev/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -292,6 +293,7 @@ jobs:
           ${DEV_INSTRUCTION}
 
           User: \`${DEV_USER_ID}\`
+          Task ID: \`${DEV_TASK_ID}\`
 
           Multi-agent runtime: Manager → Implementer → Tester → Reviewer → Repairer(if needed) → Integrator
 
@@ -312,6 +314,7 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
+          DEV_TASK_ID: ${{ steps.prepare_task.outputs.task_id }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
