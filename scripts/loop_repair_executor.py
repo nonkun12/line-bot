@@ -36,9 +36,9 @@ def execute_one_repair(
     *,
     token: str,
     repair_executor: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-    rea_runner: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     repo_root: str | Path,
     repository: str = "nonkun12/line-bot",
+    rea_runner: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Consume authorization, run one trusted repair, then require independent REA.
 
