@@ -21,6 +21,21 @@ FORBIDDEN_ROOTS = {
 FORBIDDEN_OS_CALLS = {
     "system", "popen", "spawn", "execv", "execve", "remove", "unlink",
 }
+# Block common escape hatches even when reached through an already-imported
+# module or a pathlib object rather than a direct built-in call.
+FORBIDDEN_NAMES = {
+    "eval", "exec", "compile", "__import__", "open", "getattr", "setattr",
+    "delattr", "globals", "locals", "vars", "breakpoint",
+}
+FORBIDDEN_ATTRIBUTES = {
+    "open", "unlink", "rmdir", "mkdir", "makedirs", "removedirs",
+    "remove", "rmtree", "write_text", "write_bytes", "touch", "rename",
+    "replace", "chmod", "chown", "symlink_to", "hardlink_to", "truncate",
+    "system", "popen", "spawn", "execv", "execve", "run", "Popen",
+    "connect", "create_connection", "urlopen", "request", "send", "recv",
+    "loads", "load", "__globals__", "__builtins__", "__subclasses__",
+    "__getattribute__", "__setattr__", "__delattr__",
+}
 
 
 def _function_name(node: ast.AST) -> str | None:
@@ -33,6 +48,13 @@ def _reject_unsafe_test_body(function: ast.FunctionDef | ast.AsyncFunctionDef) -
     for node in ast.walk(function):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             raise ValueError("new_test_must_not_add_imports")
+        if isinstance(node, ast.Name) and node.id in FORBIDDEN_NAMES:
+            raise ValueError("new_test_uses_forbidden_escape_hatch")
+        if isinstance(node, ast.Attribute):
+            if node.attr in FORBIDDEN_ATTRIBUTES or (
+                node.attr.startswith("__") and node.attr.endswith("__")
+            ):
+                raise ValueError("new_test_uses_forbidden_attribute")
         if isinstance(node, ast.Call):
             target = node.func
             if isinstance(target, ast.Name) and target.id in FORBIDDEN_CALLS:
