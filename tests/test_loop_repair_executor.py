@@ -165,3 +165,25 @@ def test_executor_uses_default_loopback_adapter_when_not_injected(monkeypatch, t
     assert len(requests) == 1
     assert requests[0]["provider_policy"] == "provider_free_only"
     assert requests[0]["instruction"] == "approved exact task instruction"
+
+
+
+def test_executor_uses_default_independent_rea_runner(monkeypatch, tmp_path):
+    _install_git_state(monkeypatch)
+    _consume_pass(monkeypatch)
+    from scripts import loop_rea_runner
+
+    captured = []
+    monkeypatch.setattr(
+        loop_rea_runner,
+        "create_post_repair_rea_runner",
+        lambda _root: lambda request: captured.append(request) or _rea_pass(request),
+    )
+    result = executor.execute_one_repair(
+        EVIDENCE,
+        token="token",
+        repair_executor=lambda _request: {"status": "PASS"},
+        repo_root=tmp_path,
+    )
+    assert result["status"] == "REPAIR_VERIFIED"
+    assert captured[0]["stage"] == "POST_REPAIR"
