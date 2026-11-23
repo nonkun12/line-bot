@@ -108,9 +108,13 @@ def validate_reproducibility(record):
         issues.append("independent_replication_invalid")
     else:
         for field in ("replication_run_ref", "independent_actor_ref",
-                      "environment_ref", "input_refs", "command_refs", "result_ref"):
+                      "environment_ref", "result_ref"):
             if not _text(replication.get(field)):
                 issues.append(f"replication_{field}_invalid")
+        if not _text_list(replication.get("input_refs")):
+            issues.append("replication_input_refs_invalid")
+        if not _text_list(replication.get("command_refs")):
+            issues.append("replication_command_refs_invalid")
         if _text(record.get("primary_actor_ref")) and (
             replication.get("independent_actor_ref") == record.get("primary_actor_ref")
         ):
