@@ -185,10 +185,10 @@ def create_local_repair_adapter(repo_root: str | Path):
         if patch_paths is None or not set(patch_paths).issubset(paths):
             return _blocked("local_patch_paths_outside_allowlist")
 
-        check = _git(root, "apply", "--check", "--", input_text=patch)
+        check = _git(root, "apply", "--check", input_text=patch)
         if check.returncode:
             return _blocked("local_patch_did_not_apply_cleanly")
-        applied = _git(root, "apply", "--", input_text=patch)
+        applied = _git(root, "apply", input_text=patch)
         if applied.returncode:
             return _blocked("local_patch_apply_failed")
 
