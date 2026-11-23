@@ -146,6 +146,39 @@ def _append_blocked(path: Path, task_id: str, reason: str) -> None:
     with path.open("a", encoding="utf-8") as stream:
         stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
+def _failure_evidence(child_returncode: int, row: dict[str, Any] | None) -> dict[str, Any]:
+    """Persist only bounded, allowlisted failure metadata; never copy raw logs."""
+    if row is None:
+        if child_returncode in {78, 79}:
+            return {
+                "stage": "child_runner",
+                "reason_code": "guarded_runner_sentinel",
+                "child_exit_code": child_returncode,
+            }
+        return {
+            "stage": "result_collection",
+            "reason_code": "result_missing_or_ambiguous",
+            "child_exit_code": child_returncode,
+        }
+    row_status = row.get("status")
+    safe_status = row_status if isinstance(row_status, str) and row_status in {
+        "PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN", "INCOMPLETE"
+    } else "NOT_RUN"
+    result: dict[str, Any] = {
+        "child_exit_code": child_returncode,
+        "result_status": safe_status,
+    }
+    row_exit = row.get("exit_code")
+    if type(row_exit) is int and -255 <= row_exit <= 255:
+        result["result_exit_code"] = row_exit
+    if child_returncode in {78, 79}:
+        result.update(stage="child_runner", reason_code="guarded_runner_sentinel")
+    elif child_returncode != 0:
+        result.update(stage="child_runner", reason_code="runner_nonzero_exit")
+    else:
+        result.update(stage="independent_evidence", reason_code="success_evidence_rejected")
+    return result
+
 def _reconcile_claimed_tasks(store: GoalStateStore, task_ids: set[str], output: Path,
                             failed_task_id: str | None = None) -> None:
     if not task_ids:
@@ -260,7 +293,11 @@ def run(args: argparse.Namespace) -> int:
                 if child.returncode != 0:
                     return child.returncode
             else:
-                store.record_result(GOAL_ID, selected["task_id"], status="HELD")
+                failure_evidence = _failure_evidence(child.returncode, row)
+                store.record_result(
+                    GOAL_ID, selected["task_id"], status="HELD",
+                    failure_evidence=failure_evidence,
+                )
                 _reconcile_claimed_tasks(store, claimed_this_run, goal_output, selected["task_id"])
                 # Preserve guarded runner sentinels: the parent workflow maps
                 # 78 to queue exhaustion and 79 to a held-task marker.

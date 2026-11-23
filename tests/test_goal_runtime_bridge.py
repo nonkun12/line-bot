@@ -63,7 +63,16 @@ def test_failed_guarded_task_is_held_and_not_retried(tmp_path,monkeypatch):
                          goal_state_output=goal_output,max_tasks=1)
     assert bridge.run(args)==1
     assert goal_output.exists()
-    assert json.loads(goal_output.read_text())["tasks"][0]["status"] == "HELD"
+    held_task = json.loads(goal_output.read_text())["tasks"][0]
+    assert held_task["status"] == "HELD"
+    assert held_task["hold_reason"] == "guarded_runtime_or_evidence_gate_failed"
+    assert held_task["failure_evidence"] == {
+        "stage": "child_runner",
+        "reason_code": "runner_nonzero_exit",
+        "child_exit_code": 1,
+        "result_status": "FAIL",
+        "result_exit_code": 1,
+    }
     assert "goal_autopilot" not in json.loads(state.read_text())
 
 
@@ -170,3 +179,8 @@ def test_guarded_runner_sentinel_outcome_is_preserved_without_synthetic_failure(
     goal = json.loads(goal_output.read_text())
     assert goal["tasks"][0]["status"] == "HELD"
     assert goal["tasks"][0]["hold_reason"] == "guarded_runtime_or_evidence_gate_failed"
+    assert goal["tasks"][0]["failure_evidence"] == {
+        "stage": "child_runner",
+        "reason_code": "guarded_runner_sentinel",
+        "child_exit_code": sentinel,
+    }

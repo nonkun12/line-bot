@@ -53,3 +53,37 @@ def test_importing_inflight_goal_preserves_hold_for_reconciliation(tmp_path):
     reopened = GoalStateStore(tmp_path / "reopened.db")
     reopened.create(inflight)
     assert reopened.claim_next("g1")["reason"] == "in_flight_task_requires_reconciliation"
+
+
+@pytest.mark.parametrize("invalid_status", [["FAIL"], {"status": "FAIL"}, 1])
+def test_failure_evidence_rejects_non_string_result_status(tmp_path, invalid_status):
+    store = GoalStateStore(tmp_path / "goal.db")
+    store.create(goal())
+    store.claim_next("g1")
+    with pytest.raises(ValueError, match="failure evidence result status invalid"):
+        store.record_result(
+            "g1", "t1", status="HELD",
+            failure_evidence={
+                "stage": "child_runner",
+                "reason_code": "runner_nonzero_exit",
+                "result_status": invalid_status,
+            },
+        )
+    assert store.read("g1")[1]["tasks"][0]["status"] == "IN_PROGRESS"
+
+def test_new_failure_result_clears_stale_failure_evidence(tmp_path):
+    state = goal()
+    state["tasks"][0]["failure_evidence"] = {
+        "stage": "child_runner",
+        "reason_code": "runner_nonzero_exit",
+        "child_exit_code": 1,
+    }
+    store = GoalStateStore(tmp_path / "goal.db")
+    store.create(state)
+    store.claim_next("g1")
+
+    store.record_result("g1", "t1", status="HELD")
+
+    task = store.read("g1")[1]["tasks"][0]
+    assert task["status"] == "HELD"
+    assert "failure_evidence" not in task
