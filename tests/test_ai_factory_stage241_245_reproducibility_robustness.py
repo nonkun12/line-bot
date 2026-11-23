@@ -22,7 +22,7 @@ def _identity():
 
 def _design():
     return {"design_type": "randomized_controlled", "treatment_group": "t", "control_group": "c",
-            "assignment_method": "randomized", "preregistration_digest": D1}
+            "assignment_method": "randomized", "preregistration_digest": D2}
 
 
 def _good_gates():
@@ -41,7 +41,7 @@ def _good_gates():
     attribution = stage244_gain_attribution(
         design=_design(), effect_estimate=0.04, lower_confidence_bound=0.01,
         evaluator_id="eval", proposer_id="proposer", runner_id="runner",
-        identity_digest=identity)
+        identity_digest=identity, protocol_digest=D2)
     return {"reproducibility": r, "robustness": s, "safety": safety, "attribution": attribution}
 
 
@@ -97,6 +97,8 @@ def test_244_requires_distinct_roles_and_ordered_confidence_interval():
     assert stage244_gain_attribution(**{**args, "runner_id": "eval"})["status"] == "INSUFFICIENT_EVIDENCE"
     assert stage244_gain_attribution(**{**args, "lower_confidence_bound": 0.5})["status"] == "INSUFFICIENT_EVIDENCE"
     assert stage244_gain_attribution(**{**args, "design": {**_design(), "assignment_method": "manual"}})["status"] == "INSUFFICIENT_EVIDENCE"
+    assert stage244_gain_attribution(**{**args, "design": {**_design(), "assignment_method": "matched"}})["status"] == "INSUFFICIENT_EVIDENCE"
+    assert stage244_gain_attribution(**{**args, "protocol_digest": D3})["status"] == "INSUFFICIENT_EVIDENCE"
 
 
 def test_245_rejects_forged_statuses_mutation_and_identity_mismatch():
