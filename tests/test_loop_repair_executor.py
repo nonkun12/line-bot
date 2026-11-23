@@ -141,3 +141,27 @@ def test_repair_blocks_if_rea_mutates_the_verified_worktree(monkeypatch, tmp_pat
     )
     assert result["status"] == "BLOCKED"
     assert result["reason_code"] == "post_rea_repository_state_changed"
+
+
+
+def test_executor_uses_default_loopback_adapter_when_not_injected(monkeypatch, tmp_path):
+    _install_git_state(monkeypatch)
+    _consume_pass(monkeypatch)
+    from scripts import loop_local_repair_adapter
+
+    requests = []
+    monkeypatch.setattr(
+        loop_local_repair_adapter,
+        "create_local_repair_adapter",
+        lambda _root: lambda request: requests.append(request) or {"status": "PASS"},
+    )
+    result = executor.execute_one_repair(
+        {**EVIDENCE, "instruction": "approved exact task instruction"},
+        token="token",
+        rea_runner=_rea_pass,
+        repo_root=tmp_path,
+    )
+    assert result["status"] == "REPAIR_VERIFIED"
+    assert len(requests) == 1
+    assert requests[0]["provider_policy"] == "provider_free_only"
+    assert requests[0]["instruction"] == "approved exact task instruction"
