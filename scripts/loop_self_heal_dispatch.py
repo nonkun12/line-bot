@@ -33,7 +33,11 @@ def maybe_run_repair(
         return {"status": "BLOCKED", "reason_code": "catalog_repair_approval_missing"}
 
     runtime_env = os.environ if env is None else env
-    if str(runtime_env.get("GITHUB_ACTIONS", "")).casefold() == "true":
+    hosted = str(runtime_env.get("GITHUB_ACTIONS", "")).casefold() == "true"
+    if hosted and not (
+        isinstance(task.get("repair_patch"), str)
+        and isinstance(task.get("repair_patch_sha256"), str)
+    ):
         return {"status": "BLOCKED", "reason_code": "local_model_not_available_in_hosted_runner"}
     token = str(runtime_env.get("GITHUB_TOKEN") or runtime_env.get("GH_TOKEN") or "").strip()
     if not token:
