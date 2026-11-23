@@ -13,7 +13,7 @@ def test_stage_376_weighted_calibration_error_is_bounded():
         {"count": 10, "confidence": 0.5, "accuracy": 0.5},
     ], maximum_expected_error=0.05)
     assert result["pass"]
-    assert result["expected_calibration_error"] == 0.05
+    assert abs(result["expected_calibration_error"] - 0.05) < 1e-12
     blocked = check_calibration_bins(
         [{"count": 10, "confidence": 0.9, "accuracy": 0.6}],
         maximum_expected_error=0.1,
