@@ -71,6 +71,9 @@ class Observation:
     candidate_digest: str = ""
     protocol_digest: str = ""
     result_digest: str = ""
+    evaluation_event_id: str = ""
+    evaluation_event_digest: str = ""
+    evaluation_decision: str = ""
 
 
 @dataclass(frozen=True)
