@@ -74,7 +74,7 @@ def check_metric_improvement(baseline_value: float, candidate_value: float, *,
         gain = delta if direction == "higher_is_better" else -delta
         if not _valid_number(minimum_improvement) or minimum_improvement < 0:
             errors.append("minimum_improvement_invalid")
-        elif gain < minimum_improvement:
+        elif gain + 1e-12 < minimum_improvement:
             errors.append("minimum_improvement_not_met")
     return {"stage": 463, "pass": not errors, "errors": errors,
             "raw_delta": delta, "direction": direction,
