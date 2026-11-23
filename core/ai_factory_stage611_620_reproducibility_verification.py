@@ -51,11 +51,9 @@ def _runs_valid(value, environment_ref, input_refs, command_refs):
     for run in value:
         if not isinstance(run, dict):
             return False
-        required = ("run_ref", "actor_ref", "environment_ref", "result_ref",
-                    "started_at", "finished_at")
+        required = ("run_ref", "actor_ref", "environment_ref", "input_refs",
+                    "command_refs", "result_ref", "started_at", "finished_at")
         if any(not _text(run.get(key)) for key in required):
-            return False
-        if not _text_list(run.get("input_refs")) or not _text_list(run.get("command_refs")):
             return False
         start, finish = _timestamp(run["started_at"]), _timestamp(run["finished_at"])
         if start is None or finish is None or finish < start:
