@@ -16,6 +16,7 @@ def test_stage_381_requires_complete_reproducibility_manifest():
     result = check_reproducibility_manifest({**good, "data_digest": ""})
     assert not result["pass"]
     assert "manifest_field_missing:data_digest" in result["errors"]
+    assert not check_reproducibility_manifest({})["pass"]
 
 
 def test_stage_382_requires_exact_perturbation_coverage():
