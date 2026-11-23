@@ -111,7 +111,7 @@ def stage252_validate_key_lifecycle(*, key_records: Sequence[Mapping], evaluated
         start, end = _time(record.get("valid_from")), _time(record.get("valid_until"))
         if (not isinstance(key_id, str) or not key_id.strip() or key_id in seen
                 or not isinstance(principal_id, str) or not principal_id.strip()
-                or state not in {"active", "revoked"} or start is None or end is None
+                or not isinstance(state, str) or state not in {"active", "revoked"} or start is None or end is None
                 or start >= end):
             return _blocked("invalid, duplicate or incomplete key lifecycle record")
         if state == "active" and not start <= now < end:
@@ -159,8 +159,8 @@ def stage254_role_separation(*, assignments: Mapping, required_roles=("issuer", 
     if not isinstance(assignments, Mapping) or not isinstance(required_roles, Sequence) or isinstance(required_roles, (str, bytes)):
         return _blocked("role assignments and required role list are required")
     roles = tuple(required_roles)
-    if (not roles or len(set(roles)) != len(roles)
-            or any(not isinstance(role, str) or not role.strip() for role in roles)
+    if (not roles or any(not isinstance(role, str) or not role.strip() for role in roles)
+            or len(set(roles)) != len(roles)
             or any(not isinstance(assignments.get(role), str) or not assignments[role].strip() for role in roles)):
         return _blocked("all required roles must have distinct non-empty principals")
     principals = [assignments[role] for role in roles]
