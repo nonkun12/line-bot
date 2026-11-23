@@ -20,6 +20,8 @@ def _executor(tmp_path, *, hold=False):
         verify_evidence_signature=lambda producer, digest, signature: (
             producer == "looplab-independent-evaluator" and signature == "sig:" + digest
         ),
+        verify_adapter_signature=_trust_kwargs()["verify_adapter_signature"],
+        resolve_locked_dataset=_trust_kwargs()["resolve_locked_dataset"],
         executor_id="rsi-bridge-test",
     )
     return executor, ledger
@@ -80,7 +82,6 @@ def test_fail_evaluation_becomes_signed_rsi_observation_and_diagnosis(tmp_path):
         producer_id="looplab-independent-evaluator",
         sign_digest=lambda digest: "sig:" + digest,
         created_at=123,
-        **_trust_kwargs(),
     )
     assert result["recorded"] is True
     assert result["status"] == "FAIL"
@@ -99,7 +100,6 @@ def test_pass_evaluation_is_recorded_without_failure_diagnosis(tmp_path):
         producer_id="looplab-independent-evaluator",
         sign_digest=lambda digest: "sig:" + digest,
         created_at=123,
-        **_trust_kwargs(),
     )
     assert result["recorded"] is True
     assert result["diagnosis_ids"] == []
@@ -131,7 +131,6 @@ def test_global_hold_prevents_rsi_ingestion(tmp_path):
             producer_id="looplab-independent-evaluator",
             sign_digest=lambda digest: "sig:" + digest,
             created_at=123,
-            **_trust_kwargs(),
         )
     assert ledger.verify()
     with sqlite3.connect(ledger.path) as db:
@@ -177,7 +176,6 @@ def test_invalid_adapter_signature_is_rejected_before_ledger_write(tmp_path):
             evaluation_result=payload, executor=executor,
             producer_id="looplab-independent-evaluator",
             sign_digest=lambda digest: "sig:" + digest, created_at=123,
-            **_trust_kwargs(),
         )
     with sqlite3.connect(ledger.path) as db:
         assert db.execute("SELECT COUNT(*) FROM rsi_evidence").fetchone()[0] == 0
@@ -186,8 +184,7 @@ def test_invalid_adapter_signature_is_rejected_before_ledger_write(tmp_path):
 def test_unregistered_or_mismatched_dataset_is_rejected(tmp_path):
     executor, ledger = _executor(tmp_path)
     payload = _evaluation("FAIL")
-    trust = _trust_kwargs()
-    trust["resolve_locked_dataset"] = lambda _: {
+    executor.resolve_locked_dataset = lambda _: {
         "dataset_sha256": "f" * 64, "sample_count": 1,
         "minimum_sample_count": 1, "locked": True,
     }
@@ -196,7 +193,6 @@ def test_unregistered_or_mismatched_dataset_is_rejected(tmp_path):
             evaluation_result=payload, executor=executor,
             producer_id="looplab-independent-evaluator",
             sign_digest=lambda digest: "sig:" + digest, created_at=123,
-            **trust,
         )
     with sqlite3.connect(ledger.path) as db:
         assert db.execute("SELECT COUNT(*) FROM rsi_evidence").fetchone()[0] == 0
