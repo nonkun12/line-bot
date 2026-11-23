@@ -69,7 +69,7 @@ def test_hold_blocks_each_stage(stage):
    Stage175GenerationProposer().build(p,ev,sel,hold_active=True)
 def test_generation_proposal_rejects_cross_stage_lineage():
  p,c=setup(); cid=p.combinations[0].candidate_id; ev=report(p,c,[trial(cid,1,"e1"),trial(cid,2,"e2")]); sel=Stage174ParetoSelector().build(ev)
- with pytest.raises(EvolutionaryMergePipelineError,match="lineage"):
+ with pytest.raises(EvolutionaryMergePipelineError,match="combination plan digest"):
   Stage175GenerationProposer().build(replace(p,digest="f"*64),ev,sel)
 def test_stage171_never_creates_orchestration_weight_candidate():
  p,_=setup(); assert all(x.strategy_class=="PARAMETER_MERGE" for x in p.combinations)
