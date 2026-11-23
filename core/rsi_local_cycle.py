@@ -75,6 +75,10 @@ def run_local_rsi_cycle(
     if evaluation.evaluator_id != evaluator_id:
         raise RSIError("independent evaluator identity does not match its evaluation")
     executor.evaluate(result, evaluation)
+    evaluation_event_id = "evaluation:" + plan.experiment_id
+    stored_evaluation, evaluation_event_digest = executor.ledger.read_event(evaluation_event_id)
+    if stored_evaluation != evaluation.__dict__:
+        raise RSIError("persisted independent evaluation does not match the verified evaluation")
 
     decision_to_outcome = {
         "IMPROVED": "PASS",
@@ -100,6 +104,9 @@ def run_local_rsi_cycle(
         candidate_digest=plan.candidate_digest,
         protocol_digest=plan.protocol_digest,
         result_digest=result.result_digest,
+        evaluation_event_id=evaluation_event_id,
+        evaluation_event_digest=evaluation_event_digest,
+        evaluation_decision=evaluation.decision,
     )
 
     # Fail closed before writing observation evidence if the control gate is shut.
