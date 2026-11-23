@@ -30,6 +30,8 @@ def record_evaluation_as_rsi_observation(
     executor: RSIExecutor,
     producer_id: str,
     sign_digest: Callable[[str], str],
+    verify_adapter_signature: Callable[[str, str, str], bool],
+    resolve_locked_dataset: Callable[[str], Mapping[str, Any] | None],
     created_at: int,
 ) -> dict[str, Any]:
     """Persist a signed, plan-bound observation for the existing RSI pipeline.
@@ -62,6 +64,10 @@ def record_evaluation_as_rsi_observation(
         raise ValueError("created_at_invalid")
     if not callable(sign_digest):
         raise ValueError("independent_evidence_signer_required")
+    if not callable(verify_adapter_signature):
+        raise ValueError("trusted_adapter_signature_verifier_required")
+    if not callable(resolve_locked_dataset):
+        raise ValueError("trusted_dataset_registry_required")
 
     record = evaluation_result.get("record")
     evaluation = evaluation_result.get("evaluation")
@@ -71,8 +77,20 @@ def record_evaluation_as_rsi_observation(
         raise ValueError("evaluation_status_mismatch")
     if evaluation.get("experiment_id") != experiment_id:
         raise ValueError("evaluation_experiment_id_mismatch")
-    if evaluation_result.get("adapter_id") != "looplab.simulator_rsi_bridge.v1":
+    adapter_id = evaluation_result.get("adapter_id")
+    adapter_signature = evaluation_result.get("adapter_signature")
+    if adapter_id != "looplab.simulator_rsi_bridge.v1":
         raise ValueError("untrusted_adapter_identity")
+    if not isinstance(adapter_signature, str) or not adapter_signature.strip():
+        raise ValueError("adapter_signature_missing")
+    adapter_payload_digest = canonical_digest({
+        "adapter_id": adapter_id,
+        "experiment_id": experiment_id,
+        "record": dict(record),
+        "evaluation": dict(evaluation),
+    })
+    if verify_adapter_signature(adapter_id, adapter_payload_digest, adapter_signature) is not True:
+        raise ValueError("adapter_signature_verification_failed")
     baseline = record.get("baseline")
     challenger = record.get("challenger")
     held_out = record.get("held_out")
@@ -83,6 +101,20 @@ def record_evaluation_as_rsi_observation(
         raise ValueError("record_experiment_id_mismatch")
     if held_out.get("locked") is not True:
         raise ValueError("held_out_fixture_not_locked")
+    dataset_id = held_out.get("dataset_id")
+    if not isinstance(dataset_id, str) or not dataset_id.strip():
+        raise ValueError("held_out_dataset_identity_invalid")
+    registry_entry = resolve_locked_dataset(dataset_id)
+    if not isinstance(registry_entry, Mapping):
+        raise ValueError("held_out_dataset_not_in_trusted_registry")
+    if (registry_entry.get("dataset_sha256") != held_out.get("dataset_sha256")
+            or registry_entry.get("sample_count") != held_out.get("sample_count")
+            or registry_entry.get("locked") is not True):
+        raise ValueError("held_out_dataset_registry_mismatch")
+    minimum_samples = registry_entry.get("minimum_sample_count")
+    if (not isinstance(minimum_samples, int) or isinstance(minimum_samples, bool)
+            or minimum_samples < 1 or held_out.get("sample_count", 0) < minimum_samples):
+        raise ValueError("held_out_dataset_below_registry_minimum")
     if evaluator.get("evaluator_id") != "rsi.exact_match.v1" or evaluator.get("version") != "1":
         raise ValueError("independent_evaluator_identity_mismatch")
     if baseline.get("candidate_id") == challenger.get("candidate_id"):
