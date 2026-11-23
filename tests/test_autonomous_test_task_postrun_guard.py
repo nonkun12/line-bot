@@ -134,3 +134,12 @@ def test_policy_run_accepts_exact_clean_sha_bound_append(tmp_path):
     result = verify_policy_run(policy, rows, repo, base)
     assert result["status"] == "POLICY_GUARD_PASS"
     assert result["test_function"] == "test_added"
+
+
+def test_policy_run_allows_only_known_workflow_diagnostic_artifacts(tmp_path):
+    repo, target, base, produced, policy, rows = _policy_git_repo(tmp_path)
+    diagnostic = repo / "artifacts" / "maintenance-ai" / "diagnosis.json"
+    diagnostic.parent.mkdir(parents=True)
+    diagnostic.write_text("{}\\n", encoding="utf-8")
+    result = verify_policy_run(policy, rows, repo, base)
+    assert result["status"] == "POLICY_GUARD_PASS"
