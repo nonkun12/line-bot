@@ -89,8 +89,10 @@ def test_dispatch_uses_guarded_secretary_development_workflow(monkeypatch):
     assert captured["url"].endswith("/actions/workflows/line-development-dispatch.yml/dispatches")
     assert captured["json"] == {
         "ref": "main",
-        "inputs": {"instruction": "line_development.py にコメントを追加して", "user_id": "U123"},
+        "inputs": {"instruction": "line_development.py にコメントを追加して", "user_id": "U123", "task_id": captured["json"]["inputs"]["task_id"]},
     }
+    assert len(captured["json"]["inputs"]["task_id"]) == 32
+    assert all(char in "0123456789abcdef" for char in captured["json"]["inputs"]["task_id"])
     assert captured["headers"]["Authorization"] == "Bearer secret"
     assert captured["timeout"] == 10.0
     assert "受け付けました" in reply
