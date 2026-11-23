@@ -24,7 +24,7 @@ def domain():
     return stage323_check_domain_gain_floors(
         domain_task_scores={
             "a": {f"a{i}": {"baseline": .4, "candidate": .7} for i in range(3)},
-            "b": {f"b{i}": {"baseline": .5, "candidate": .8} for i in range(3)},
+            "b": {f"b{i}": {"baseline": .5, "candidate": .85} for i in range(3)},
         }, minimum_domain_gain=.1,
     )
 
