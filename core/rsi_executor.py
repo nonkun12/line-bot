@@ -341,6 +341,9 @@ class EvidenceLedger:
                         "outcome": item.outcome,
                         "detail": item.detail,
                         "created_at": item.created_at,
+                        "evaluation_event_id": item.evaluation_event_id,
+                        "evaluation_event_digest": item.evaluation_event_digest,
+                        "evaluation_decision": item.evaluation_decision,
                     }.items():
                         if source.get(key) != value:
                             raise RSIError("observation source evidence does not match the observation")
