@@ -134,7 +134,7 @@ def test_integrated_propose_approve_run_and_independent_evaluate(tmp_path):
     candidate_digest = "c" * 64
     protocol_digest = benchmark_protocol_digest()
     baseline_unsigned = FrozenBaseline(
-        "integration-baseline", "d" * 64, protocol_digest, 0.5, 100, 10_000, "pending"
+        "integration-baseline", "d" * 64, protocol_digest, 1.0, 3, 10_000, "pending"
     )
     baseline = FrozenBaseline(
         baseline_unsigned.baseline_id, baseline_unsigned.model_digest,
