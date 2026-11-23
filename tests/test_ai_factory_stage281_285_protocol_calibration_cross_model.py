@@ -1,4 +1,5 @@
 import hashlib
+import json
 
 from core.ai_factory_stage281_285_protocol_calibration_cross_model import (
     stage281_detect_protocol_drift, stage282_calibrate_evaluators,
@@ -34,7 +35,7 @@ def cross_model():
                   "evidence_digest": digest(f"paired-{i}")}
         rows_a.append({**common, "score": 0.70})
         rows_b.append({**common, "score": 0.72})
-    task_digest = digest("same-task-set")
+    task_digest = hashlib.sha256(json.dumps([f"t{i}" for i in range(6)], separators=(",", ":")).encode()).hexdigest()
     return stage284_compare_cross_model_reproducibility(
         model_a={"model_id": "model-a", "task_set_digest": task_digest, "scores": rows_a},
         model_b={"model_id": "model-b", "task_set_digest": task_digest, "scores": rows_b},
@@ -78,11 +79,12 @@ def test_283_requires_domain_task_and_stratum_coverage():
 
 def test_284_requires_paired_task_rows_and_flags_model_gap():
     assert cross_model()["status"] == "CROSS_MODEL_REPRODUCIBILITY_WITHIN_LIMIT"
-    task_digest = digest("same")
-    rows_a = [{"domain": "coding", "task_id": "t1", "score": 0.1,
-               "evidence_digest": digest("pair")}]
-    rows_b = [{"domain": "coding", "task_id": "t1", "score": 0.9,
-               "evidence_digest": digest("pair")}]
+    task_ids = ["t1", "t2", "t3"]
+    task_digest = hashlib.sha256(json.dumps(task_ids, separators=(",", ":")).encode()).hexdigest()
+    rows_a = [{"domain": "coding", "task_id": task, "score": 0.1,
+               "evidence_digest": digest(f"pair-{task}")} for task in task_ids]
+    rows_b = [{"domain": "coding", "task_id": task, "score": 0.9,
+               "evidence_digest": digest(f"pair-{task}")} for task in task_ids]
     result = stage284_compare_cross_model_reproducibility(
         model_a={"model_id": "a", "task_set_digest": task_digest, "scores": rows_a},
         model_b={"model_id": "b", "task_set_digest": task_digest, "scores": rows_b},
