@@ -168,6 +168,7 @@ def stage283_check_sample_adequacy(*, task_records: Sequence[Mapping],
 def stage284_compare_cross_model_reproducibility(*, model_a: Mapping, model_b: Mapping,
                                                   maximum_mean_absolute_gap: float = 0.10,
                                                   maximum_single_gap: float = 0.25,
+                                                  minimum_paired_tasks: int = 3,
                                                   held: bool = False):
     """Compare two declared model score sets on identical task IDs and domains."""
     if held is not False:
@@ -183,26 +184,11 @@ def stage284_compare_cross_model_reproducibility(*, model_a: Mapping, model_b: M
             or not isinstance(model_b.get("scores"), Sequence)
             or isinstance(model_a.get("scores"), (str, bytes))
             or isinstance(model_b.get("scores"), (str, bytes))
+            or isinstance(minimum_paired_tasks, bool) or not isinstance(minimum_paired_tasks, int)
+            or minimum_paired_tasks < 3
             or not _number(maximum_mean_absolute_gap) or not 0 <= maximum_mean_absolute_gap <= 1
             or not _number(maximum_single_gap) or not 0 <= maximum_single_gap <= 1):
         return _blocked("model identities, shared task digest, scores or thresholds are invalid")
-
-    def index(rows):
-        result = {}
-        for row in rows:
-            if not isinstance(row, Mapping):
-                return None
-            key, score, evidence = (row.get("domain"), row.get("task_id"),
-                                   row.get("score"))
-            digest = row.get("evidence_digest")
-            if (not isinstance(key, str) or not key.strip()
-                    or not isinstance(score, (int, float)) or isinstance(score, bool)
-                    or not math.isfinite(score) or not 0 <= score <= 1
-                    or not isinstance(evidence, str) or not evidence.strip()
-                    or not _digest(digest) or (key, score, evidence) in result):
-                return None
-            result[(key, evidence)] = float(score)
-        return result
 
     # Evidence digest is used as a declared task-row key; task_id must also be present and unique.
     def keyed(rows):
@@ -222,6 +208,11 @@ def stage284_compare_cross_model_reproducibility(*, model_a: Mapping, model_b: M
     a, b = keyed(model_a["scores"]), keyed(model_b["scores"])
     if a is None or b is None or not a or set(a) != set(b):
         return _blocked("models must provide unique scores for the exact same non-empty domain/task pairs")
+    task_ids = sorted({task_id for _, task_id in a})
+    if len(task_ids) < minimum_paired_tasks:
+        return _blocked("paired task count is below the minimum")
+    if model_a["task_set_digest"] != _hash(task_ids):
+        return _blocked("declared task-set digest does not match the paired task IDs")
     if any(a[key][1] != b[key][1] for key in a):
         return _blocked("paired model scores must bind identical per-task evidence digests")
     gaps = [abs(a[key][0] - b[key][0]) for key in sorted(a)]
