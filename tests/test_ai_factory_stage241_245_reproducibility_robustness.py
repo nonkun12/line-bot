@@ -12,7 +12,7 @@ D1, D2, D3, D4 = ("a" * 64, "b" * 64, "c" * 64, "d" * 64)
 def _runs():
     common = {"artifact_digest": D1, "protocol_digest": D2, "dataset_digest": D3,
               "suite_digest": D4, "environment_id": "env-a"}
-    return [{**common, "run_id": f"r{i}", "run_digest": chr(101+i) * 64,
+    return [{**common, "run_id": f"r{i}", "run_digest": format(i + 10, "x") * 64,
              "primary_metric": 0.8} for i in range(3)]
 
 
