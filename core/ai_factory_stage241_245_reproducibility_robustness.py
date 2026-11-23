@@ -175,24 +175,25 @@ def stage243_safety_non_regression(
 def stage244_gain_attribution(
     *, design: Mapping, effect_estimate: float, lower_confidence_bound: float,
     evaluator_id: str, proposer_id: str, runner_id: str,
-    identity_digest: str, held: bool = False,
+    identity_digest: str, protocol_digest: str, held: bool = False,
 ):
     """Require distinct proposer/runner/evaluator identities and a valid lower bound."""
     if held is not False:
         return _blocked("HOLD state must be explicitly false")
-    if not isinstance(design, Mapping) or not _digest(identity_digest):
-        return _blocked("experiment design and identity digest are required")
+    if not isinstance(design, Mapping) or not _digest(identity_digest) or not _digest(protocol_digest):
+        return _blocked("experiment design, identity digest and protocol digest are required")
     required = ("design_type", "treatment_group", "control_group", "assignment_method", "preregistration_digest")
     if any(not isinstance(design.get(key), str) or not design[key].strip() for key in required):
         return _blocked("controlled design fields are incomplete")
     if design["design_type"] not in {"randomized_controlled", "matched_control"}:
         return _blocked("unsupported design type")
-    if design["assignment_method"] not in {"randomized", "matched"}:
-        return _blocked("assignment method must be randomized or matched")
+    expected_assignment = {"randomized_controlled": "randomized", "matched_control": "matched"}[design["design_type"]]
+    if design["assignment_method"] != expected_assignment:
+        return _blocked("assignment method must match the declared experiment design")
     if design["treatment_group"].strip() == design["control_group"].strip():
         return _blocked("treatment and control groups must differ")
-    if not _digest(design["preregistration_digest"]):
-        return _blocked("invalid preregistration digest")
+    if not _digest(design["preregistration_digest"]) or design["preregistration_digest"] != protocol_digest:
+        return _blocked("preregistration digest must match the evaluated protocol digest")
     identities = (evaluator_id, proposer_id, runner_id)
     if any(not isinstance(x, str) or not x.strip() for x in identities):
         return _blocked("proposer, runner and evaluator identities are required")
