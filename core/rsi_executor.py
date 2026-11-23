@@ -358,6 +358,47 @@ class EvidenceLedger:
                     if verify_producer_signature(producer_id, canonical_digest(source), signature) is not True:
                         raise RSIError("observation source evidence producer signature verification failed")
 
+                    evaluation_event_id = source.get("evaluation_event_id")
+                    evaluation_event_digest = source.get("evaluation_event_digest")
+                    evaluation_decision = source.get("evaluation_decision")
+                    if evaluation_event_id or evaluation_event_digest or evaluation_decision:
+                        if not all(isinstance(v, str) and v for v in (
+                            evaluation_event_id, evaluation_event_digest, evaluation_decision
+                        )):
+                            raise RSIError("independent evaluation binding is incomplete")
+                        _bounded_id(evaluation_event_id, "evaluation event id")
+                        _digest(evaluation_event_digest, "evaluation event")
+                        evaluation_row = db.execute(
+                            "SELECT event_type,payload,event_digest FROM rsi_evidence WHERE event_id=?",
+                            (evaluation_event_id,),
+                        ).fetchone()
+                        if evaluation_row is None or evaluation_row["event_type"] != "independent_evaluation":
+                            raise RSIError("independent evaluation event is missing or invalid")
+                        if evaluation_row["event_digest"] != evaluation_event_digest:
+                            raise RSIError("independent evaluation event digest mismatch")
+                        evaluation_payload = json.loads(evaluation_row["payload"])
+                        if not isinstance(evaluation_payload, dict):
+                            raise RSIError("independent evaluation payload is invalid")
+                        try:
+                            evaluation = IndependentEvaluation(**evaluation_payload)
+                        except (TypeError, ValueError) as exc:
+                            raise RSIError("independent evaluation schema is invalid") from exc
+                        if (evaluation.experiment_id != item.experiment_id
+                                or evaluation.result_digest != item.result_digest
+                                or evaluation.evaluator_id != producer_id
+                                or evaluation.decision != evaluation_decision):
+                            raise RSIError("independent evaluation identity binding mismatch")
+                        expected_outcome = {
+                            "IMPROVED": "PASS", "REGRESSED": "REGRESSED",
+                            "NO_CHANGE": "INCONCLUSIVE", "INCONCLUSIVE": "INCONCLUSIVE",
+                        }.get(evaluation.decision)
+                        if expected_outcome != item.outcome:
+                            raise RSIError("independent evaluation decision/outcome mismatch")
+                        if not callable(verify_evaluation) or verify_evaluation(evaluation) is not True:
+                            raise RSIError("independent evaluation signature verification failed")
+                    elif item.evaluation_event_id or item.evaluation_event_digest or item.evaluation_decision:
+                        raise RSIError("observation evaluation binding does not match source evidence")
+
                 for item in observations:
                     event_id = "observation:" + item.observation_id
                     if db.execute("SELECT 1 FROM rsi_evidence WHERE event_id=?", (event_id,)).fetchone():
@@ -458,7 +499,9 @@ class RSIExecutor:
             if not item.detail or len(item.detail) > 2000:
                 raise RSIError("observation detail invalid")
             groups.setdefault(item.capability, []).append(item)
-        self.ledger.append_verified_observations(observations, self.verify_evidence_signature)
+        self.ledger.append_verified_observations(
+            observations, self.verify_evidence_signature, self.verify_evaluation
+        )
         diagnoses = []
         for capability, rows in sorted(groups.items()):
             failures = [x for x in rows if x.outcome in {"FAIL", "REGRESSED"}]
