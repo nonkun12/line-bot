@@ -7,8 +7,8 @@ REQUIRED_INCIDENT = ("incident_id", "repair_ref", "failure_ref", "impact_scope")
 REQUIRED_RECOVERY = ("recovery_plan_ref", "rollback_ref", "verification_ref")
 
 
-def _missing(record: dict[str, Any], fields: tuple[str, ...]) -> list[str]:
-    return [field for field in fields if not record.get(field)]
+def _missing(record: dict[str, Any], required_fields: tuple[str, ...]) -> list[str]:
+    return [field for field in required_fields if not record.get(field)]
 
 
 def validate_recovery_record(record: dict[str, Any]) -> dict[str, Any]:
