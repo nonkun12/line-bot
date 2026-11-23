@@ -85,3 +85,23 @@ Compare against a frozen baseline and holdout tasks. Do not count more loop iter
 ## Current implementation boundary
 
 This document defines the intended collaboration contract. It does not itself connect ChatGPT to LINE, add an API integration, dispatch a workflow, resume the distributed Loop, or authorize code changes outside this documentation file. Existing app.py routing and GitHub workflows must be inspected and tested before claiming end-to-end availability.
+
+## Verified integration baseline (2026-11-23)
+
+Read-only inspection of the current branch found:
+
+- `app.py` already routes explicit Loop status requests through `request_distributed_loop` before general AI routing.
+- `line_development.py` already requires the configured LINE user allowlist before dispatching the governed development workflow.
+- The LINE development dispatcher generates a short `request_id` for logs and the LINE receipt, but its workflow_dispatch payload currently contains only `instruction` and `user_id`. The ID is therefore not yet a durable cross-system task ID.
+- `distributed-autonomous-loop.yml` already accepts an optional `request_id` input, but the LINE development dispatcher is a separate workflow path.
+- `core/pending_queue.py` is a SQLite queue intended for work waiting on a Mac-side worker; it is not, by itself, a shared hosted task ledger for ChatGPT and GitHub Actions.
+
+## Implementation order
+
+1. Introduce a durable, server-side task envelope and stable task ID before acknowledging a request.
+2. Propagate that ID through LINE dispatch, GitHub Actions run metadata/artifacts, and completion notifications.
+3. Add read-only LINE lookup by task ID and expose the same sanitized task record for ChatGPT-assisted analysis.
+4. Add a ChatGPT-to-LINE handoff format that carries the task ID, objective, acceptance criteria, test plan, risks, and allowed paths. Until a privacy-reviewed API bridge exists, this is a copy/share workflow, not an automated connection.
+5. Add end-to-end tests for identity continuity, duplicate delivery, replay rejection, status-only non-dispatch, and evidence-bound terminal states.
+
+Do not use the existing Mac-local pending queue as the canonical shared ledger without first proving that the hosted LINE and GitHub Actions runtimes can safely access the same durable store. Do not reuse the current ephemeral `request_id` as a durable task ID until uniqueness, persistence, and run/artifact propagation are implemented.
