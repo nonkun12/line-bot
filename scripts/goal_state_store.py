@@ -81,7 +81,9 @@ class GoalStateStore:
                     "result_missing_or_ambiguous", "success_evidence_rejected",
                 }
                 if (not isinstance(failure_evidence, dict)
+                        or not isinstance(failure_evidence.get("stage"), str)
                         or failure_evidence.get("stage") not in allowed_stages
+                        or not isinstance(failure_evidence.get("reason_code"), str)
                         or failure_evidence.get("reason_code") not in allowed_reasons
                         or set(failure_evidence) - {"stage", "reason_code", "child_exit_code", "result_status", "result_exit_code"}):
                     conn.rollback(); raise ValueError("failure evidence schema invalid")
