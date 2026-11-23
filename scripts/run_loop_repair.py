@@ -82,7 +82,7 @@ def run(task_id: str, recovery_state_path: str | Path, token: str) -> dict[str, 
             return _blocked("recovery_state_not_eligible_for_single_repair")
 
         from scripts.loop_rea_runner import run_pre_repair_rea
-        pre_rea = run_pre_repair_rea(ROOT, base_sha=base_sha)
+        pre_rea = run_pre_repair_rea(ROOT, base_sha=base_sha, allowed_paths=paths)
         if (
             pre_rea.get("status") != "PASS"
             or pre_rea.get("base_sha") != base_sha
