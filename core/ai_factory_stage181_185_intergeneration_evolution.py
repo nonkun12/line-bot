@@ -344,6 +344,7 @@ class Stage185EvolutionReadinessPackager:
               verify_report_signature: Callable[[str, str], bool],
               verify_variation_signature: Callable[[str, str], bool],
               verify_cohort_signature: Callable[[str, str], bool],
+              sign_certificate: Callable[[str], str] | None = None,
               hold_active: bool = False) -> EvolutionReadinessCertificate:
         if hold_active:
             raise EvolutionError("HOLD blocks Stage 185")
