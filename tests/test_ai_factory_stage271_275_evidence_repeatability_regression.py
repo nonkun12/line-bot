@@ -82,7 +82,7 @@ def test_274_detects_domain_regression_and_requires_same_domains():
     baseline, improved = make_multidomain(), make_multidomain(0.02)
     passed = stage274_detect_capability_regression(baseline=baseline, candidate=improved)
     assert passed["status"] == "CAPABILITY_REGRESSION_GUARD_PASSED"
-    regressed = make_multidomain(-0.10)
+    regressed = make_multidomain(-0.06)
     failed = stage274_detect_capability_regression(baseline=baseline, candidate=regressed)
     assert failed["status"] == "CAPABILITY_REGRESSION_DETECTED"
     assert failed["regressed_domains"]
