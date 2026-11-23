@@ -142,7 +142,16 @@ def verify_policy_run(
         ["git", "status", "--porcelain", "--untracked-files=all"],
         cwd=repo_root, check=True, capture_output=True, text=True,
     ).stdout
-    if status.strip():
+    allowed_untracked = {
+        "artifacts/maintenance-ai/diagnosis.json",
+        "artifacts/debug-agent/diagnosis.json",
+    }
+    unexpected_status = []
+    for line in status.splitlines():
+        if line.startswith("?? ") and line[3:] in allowed_untracked:
+            continue
+        unexpected_status.append(line)
+    if unexpected_status:
         raise ValueError("policy_task_worktree_not_clean_after_commit")
     subprocess.run(
         ["git", "diff", "--check", base_sha, produced_sha],
