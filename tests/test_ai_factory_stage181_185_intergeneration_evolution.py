@@ -1,4 +1,5 @@
 from dataclasses import replace
+from itertools import repeat
 import pytest
 
 from core.ai_factory_stage181_185_intergeneration_evolution import (
@@ -138,3 +139,40 @@ def test_hold_blocks_every_stage(stage):
                 verify_report_signature=lambda d, s: True,
                 verify_variation_signature=lambda d, s: True,
                 verify_cohort_signature=lambda d, s: True, hold_active=True)
+
+
+
+def test_stage181_and_stage182_bound_iterables_before_materialization():
+    with pytest.raises(EvolutionError, match="64-item bound"):
+        Stage181InterGenerationEvaluator().build(
+            source_generation=4, target_generation=5, baseline_candidate_id="baseline",
+            evaluations=repeat(evidence()[0]), verify_signature=lambda x: True,
+            sign_report=lambda d: "signed:" + d,
+        )
+    report, _, _, _ = pipeline()
+    with pytest.raises(EvolutionError, match="16-item bound"):
+        Stage182BoundedVariationPlanner().build(
+            report, recipes=repeat(("overflow", ("candidate-1",), "5" * 64, 1)),
+            sign_report=lambda d: "signed:" + d,
+        )
+
+
+def test_stage185_signed_checkpoint_verifier_binds_generation_and_candidate():
+    report, selection, variations, cohort = pipeline()
+    cert = Stage185EvolutionReadinessPackager().build(
+        report, selection, variations, cohort,
+        verify_report_signature=lambda d, s: s == "signed:" + d,
+        verify_variation_signature=lambda d, s: s == "signed:" + d,
+        verify_cohort_signature=lambda d, s: s == "signed:" + d,
+        sign_certificate=lambda d: "signed:" + d,
+    )
+    verify_parent = stage185_readiness_verifier(
+        cert, verify_signature=lambda d, s: s == "signed:" + d,
+    )
+    assert verify_parent(cert.certificate_digest, cert.proposed_generation, "candidate-1") is True
+    assert verify_parent(cert.certificate_digest, cert.proposed_generation + 1, "candidate-1") is False
+    assert verify_parent(cert.certificate_digest, cert.proposed_generation, "not-in-certificate") is False
+    forged = replace(cert, certificate_signature="forged")
+    assert stage185_readiness_verifier(
+        forged, verify_signature=lambda d, s: s == "signed:" + d,
+    )(forged.certificate_digest, forged.proposed_generation, "candidate-1") is False
