@@ -12,8 +12,9 @@ on:
         required: true
         type: string
       task_id:
-        description: "Stable cross-interface task ID from LINE"
-        required: true
+        description: "Stable cross-interface task ID from LINE (generated when omitted)"
+        required: false
+        default: ""
         type: string
       loop_count:
         description: "Sequential safe development passes (1-4)"
@@ -56,11 +57,11 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Prepare task-bound LINE execution approval
+        id: prepare_task
         env:
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
           DEV_TASK_ID: ${{ github.event.inputs.task_id }}
           DEV_USER_ID: ${{ github.event.inputs.user_id }}
-          DEV_TASK_ID: ${{ github.event.inputs.task_id }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_REF: ${{ github.ref }}
@@ -68,19 +69,22 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, os, re, subprocess
+          import hashlib, json, os, re, subprocess, uuid
           from scripts import line_development_worker_v2 as worker
 
           head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
           instruction = os.environ["DEV_INSTRUCTION"]
           user_id = os.environ["DEV_USER_ID"]
+          task_id = os.environ.get("DEV_TASK_ID", "").strip()
+          if not task_id:
+              task_id = uuid.uuid4().hex
           if (
               os.environ["GITHUB_EVENT_NAME"] != "workflow_dispatch"
               or os.environ["GITHUB_ACTOR"] != "nonkun12"
               or os.environ["GITHUB_REPOSITORY"] != "nonkun12/line-bot"
               or os.environ["GITHUB_REF"] != "refs/heads/main"
               or not user_id.strip()
-              or not re.fullmatch(r"[0-9a-f]{32}", os.environ.get("DEV_TASK_ID", ""))
+              or not re.fullmatch(r"[0-9a-f]{32}", task_id)
               or not re.fullmatch(r"[0-9a-f]{40}", head)
               or not instruction.strip()
           ):
@@ -101,7 +105,6 @@ jobs:
           if len(allowed_paths) > 40000:
               raise SystemExit("TASK_BOUND_APPROVAL=BLOCKED")
 
-          task_id = os.environ["DEV_TASK_ID"]
           values = {
               "AUTONOMOUS_START_SHA": head,
               "AUTONOMOUS_TASK_ID": task_id,
@@ -112,6 +115,8 @@ jobs:
               "AUTONOMOUS_APPROVAL_BASE_SHA": head,
               "AUTONOMOUS_APPROVAL_ALLOWED_PATHS_SHA256": hashlib.sha256(allowed_paths.encode("utf-8")).hexdigest(),
           }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"task_id={task_id}\n")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
               for name, value in values.items():
                   fh.write(f"{name}={value}\n")
@@ -222,7 +227,7 @@ jobs:
         if: always()
         env:
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
-          DEV_TASK_ID: ${{ github.event.inputs.task_id }}
+          DEV_TASK_ID: ${{ steps.prepare_task.outputs.task_id }}
           LOOP_COUNT: ${{ github.event.inputs.loop_count || '4' }}
           DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
           TEST_ONLY: ${{ steps.development.outputs.test_only }}
@@ -330,12 +335,21 @@ jobs:
           print("on-demand development result recorded to Google Sheets")
           PY
 
+      - name: Archive task-linked development report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: line-development-task-${{ steps.prepare_task.outputs.task_id || github.run_id }}
+          path: /tmp/line-development-final-report.txt
+          if-no-files-found: warn
+          retention-days: 90
+
       - name: Notify Slack of development result
         if: always()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DEV_INSTRUCTION: ${{ github.event.inputs.instruction }}
-          DEV_TASK_ID: ${{ github.event.inputs.task_id }}
+          DEV_TASK_ID: ${{ steps.prepare_task.outputs.task_id }}
           DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
           TEST_ONLY: ${{ steps.development.outputs.test_only }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
