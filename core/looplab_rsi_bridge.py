@@ -7,6 +7,8 @@ runs candidates, executes plans, patches source, clears HOLD/STOP, or deploys.
 from __future__ import annotations
 
 from collections.abc import Mapping
+import hashlib
+import json
 from typing import Any, Callable
 
 from core.rsi_executor import Observation, RSIExecutor, canonical_digest
@@ -66,12 +68,20 @@ def record_evaluation_as_rsi_observation(
         raise ValueError("evaluation_record_missing")
     if evaluation.get("status") != status:
         raise ValueError("evaluation_status_mismatch")
+    if evaluation_result.get("adapter_id") != "looplab.simulator_rsi_bridge.v1":
+        raise ValueError("untrusted_adapter_identity")
     baseline = record.get("baseline")
     challenger = record.get("challenger")
     held_out = record.get("held_out")
     evaluator = record.get("evaluator")
     if not all(isinstance(value, Mapping) for value in (baseline, challenger, held_out, evaluator)):
         raise ValueError("evaluation_record_schema_invalid")
+    if held_out.get("locked") is not True:
+        raise ValueError("held_out_fixture_not_locked")
+    if evaluator.get("evaluator_id") != "rsi.exact_match.v1" or evaluator.get("version") != "1":
+        raise ValueError("independent_evaluator_identity_mismatch")
+    if baseline.get("candidate_id") == challenger.get("candidate_id"):
+        raise ValueError("candidate_identity_collision")
 
     candidate_digest = challenger.get("artifact_sha256")
     result_digest = evaluation.get("evidence_sha256")
@@ -79,6 +89,9 @@ def record_evaluation_as_rsi_observation(
         raise ValueError("candidate_digest_invalid")
     if not isinstance(result_digest, str) or len(result_digest) != 64 or any(c not in "0123456789abcdef" for c in result_digest):
         raise ValueError("result_digest_invalid")
+    canonical_record = json.dumps(dict(record), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    if hashlib.sha256(canonical_record).hexdigest() != result_digest:
+        raise ValueError("evaluation_evidence_digest_mismatch")
     protocol_digest = canonical_digest({"evaluator": dict(evaluator), "held_out": dict(held_out)})
     observation_id = f"looplab-{experiment_id}-{result_digest[:16]}"
     event_id = f"looplab-source-{experiment_id}-{result_digest[:16]}"
