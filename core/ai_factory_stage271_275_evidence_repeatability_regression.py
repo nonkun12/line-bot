@@ -211,6 +211,8 @@ def stage274_detect_capability_regression(*, baseline: Mapping, candidate: Mappi
     cand_rows = {row.get("domain"): row for row in candidate.get("domains", []) if isinstance(row, Mapping)}
     if not base_rows or set(base_rows) != set(cand_rows):
         return _blocked("baseline and candidate must contain the exact same non-empty domains")
+    if baseline.get("protocol_family_digest") != candidate.get("protocol_family_digest"):
+        return _blocked("baseline and candidate must share the same preregistered protocol family")
     comparisons, regressions = [], []
     for domain in sorted(base_rows):
         before, after = base_rows[domain], cand_rows[domain]
@@ -219,6 +221,8 @@ def stage274_detect_capability_regression(*, baseline: Mapping, candidate: Mappi
         if any(isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x)
                for x in (old, new, threshold)):
             return _blocked("domain lower bounds and practical-gain thresholds must be finite")
+        if before.get("minimum_gain") != threshold:
+            return _blocked("baseline and candidate practical-gain thresholds must match")
         delta = float(new) - float(old)
         row = {"domain": domain, "baseline_lower_bound": float(old),
                "candidate_lower_bound": float(new), "lower_bound_delta": delta,
@@ -268,7 +272,8 @@ def stage275_generate_research_plan(*, regression_guard: Mapping, candidates: Se
         if cost > maximum_cost_units:
             continue
         weakness_rank = next(i for i, row in enumerate(weak_domains) if row["domain"] == domain)
-        priority = (gain * (1.0 + weakness_rank / max(1, len(weak_domains)))) / (cost * (1.0 + uncertainty))
+        weakness_weight = (len(weak_domains) - weakness_rank) / max(1, len(weak_domains))
+        priority = (gain * (1.0 + weakness_weight)) / (cost * (1.0 + uncertainty))
         ranked.append({
             "candidate_id": candidate_id, "target_domain": domain,
             "expected_information_gain": float(gain), "uncertainty": float(uncertainty),
