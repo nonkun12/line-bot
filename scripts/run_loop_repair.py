@@ -107,9 +107,22 @@ def run(task_id: str, recovery_state_path: str | Path, token: str) -> dict[str, 
             "repair_attempts": 0,
         }
         from scripts.loop_repair_executor import execute_one_repair
+        repair_executor = None
+        catalog_patch = task.get("repair_patch")
+        catalog_patch_sha = task.get("repair_patch_sha256")
+        if catalog_patch is not None or catalog_patch_sha is not None:
+            if (
+                not isinstance(catalog_patch, str)
+                or not isinstance(catalog_patch_sha, str)
+                or hashlib.sha256(catalog_patch.encode("utf-8")).hexdigest() != catalog_patch_sha
+            ):
+                return _blocked("catalog_repair_patch_hash_missing_or_invalid")
+            from scripts.loop_catalog_patch_adapter import create_catalog_patch_adapter
+            repair_executor = create_catalog_patch_adapter(ROOT, catalog_patch, catalog_patch_sha)
         result = execute_one_repair(
             evidence,
             token=token,
+            repair_executor=repair_executor,
             repo_root=ROOT,
         )
         return {
