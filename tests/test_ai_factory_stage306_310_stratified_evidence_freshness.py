@@ -51,6 +51,7 @@ def test_306_stratum_balance_and_minimum_counts():
     assert stage306_check_stratum_balance(
         baseline_counts={"easy": 10, "hard": 10},
         candidate_counts={"easy": 19, "hard": 1},
+        minimum_per_stratum=1,
     )["status"] == "STRATUM_BALANCE_FAILED"
     assert stage306_check_stratum_balance(
         baseline_counts={"easy": 2}, candidate_counts={"easy": 2}
