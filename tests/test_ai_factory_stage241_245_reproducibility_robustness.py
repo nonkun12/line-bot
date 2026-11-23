@@ -34,6 +34,9 @@ def test_242_robustness_requires_all_declared_strata_and_no_negative_slice():
             {"stratum_id": "b", "gain": 0.01, "sample_count": 12}]
     assert stage242_stratified_robustness(strata=rows, required_strata=["a", "b"])["status"] == "ROBUSTNESS_SUPPORTED"
     assert stage242_stratified_robustness(strata=rows[:1], required_strata=["a", "b"])["status"] == "ROBUSTNESS_INSUFFICIENT"
+    partial = stage242_stratified_robustness(strata=rows[:1], required_strata=["a", "b"], minimum_coverage=0.5)
+    assert partial["status"] == "ROBUSTNESS_SUPPORTED"
+    assert partial["missing_strata"] == ["b"]
     bad = [*rows[:1], {**rows[1], "gain": -0.1}]
     assert stage242_stratified_robustness(strata=bad, required_strata=["a", "b"])["status"] == "ROBUSTNESS_INSUFFICIENT"
 
