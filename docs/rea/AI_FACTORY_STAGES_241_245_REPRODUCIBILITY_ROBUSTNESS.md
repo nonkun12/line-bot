@@ -3,7 +3,7 @@
 All stages are deterministic evidence validators. They do not run experiments, alter models, or authorize execution.
 
 - **241 — Reproducibility:** requires at least three runs with unique run IDs and unique caller-supplied run digests, identical artifact/protocol/dataset/suite/environment identities, and bounded primary-metric spread.
-- **242 — Stratified robustness:** requires complete coverage of every declared stratum, a non-negative minimum gain, and at least two samples per stratum. Partial coverage cannot pass.
+- **242 — Stratified robustness:** requires complete coverage of every declared stratum, a strictly positive minimum gain, and at least two samples per stratum. Partial coverage cannot pass.
 - **243 — Safety non-regression:** each metric must explicitly declare `direction` (`higher` or `lower`) and `max_degradation`. Unknown directions fail closed.
 - **244 — Gain attribution:** requires a randomized or matched assignment method, distinct treatment/control groups, a valid preregistration digest, distinct proposer/runner/evaluator identities, an assignment method matching the design type, a preregistration digest equal to the evaluated protocol digest, and an ordered positive lower confidence bound.
 - **245 — Cycle evidence gate:** validates result digests, proposal-only/no-authority flags, expected statuses, and a common experiment identity before recommending separate review.
