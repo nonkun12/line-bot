@@ -102,12 +102,12 @@ def stage209_robustness(stratum_lower_bounds: Mapping[str, float], *,
     missing = sorted(set(required_strata) - set(stratum_lower_bounds))
     if missing:
         return _fail("missing required strata: " + ",".join(missing))
-    if any(float(safety_by_stratum.get(k, -1)) < SAFETY_FLOOR for k in required_strata):
-        return _fail("safety threshold not met in all required strata")
-    passed = all(float(stratum_lower_bounds[k]) > 0 for k in required_strata)
+    safety_passed = all(float(safety_by_stratum.get(k, -1)) >= SAFETY_FLOOR for k in required_strata)
+    passed = safety_passed and all(float(stratum_lower_bounds[k]) > 0 for k in required_strata)
     return {"status": "ROBUSTNESS_SUPPORTED" if passed else "ROBUSTNESS_NOT_SUPPORTED",
             "strata_covered": len(required_strata), "required_strata": list(required_strata),
-            "all_strata_positive": passed, "proposal_only": True,
+            "all_strata_positive": all(float(stratum_lower_bounds[k]) > 0 for k in required_strata),
+            "safety_passed": safety_passed, "proposal_only": True,
             "merge_deploy_authorized": False}
 
 def stage210_rsi_effectiveness(*, lower_gain_bound: float, safety_min: float,
