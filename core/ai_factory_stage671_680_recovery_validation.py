@@ -84,6 +84,7 @@ def validate_recovery_record(record):
             if not _text(dep.get(k)): issues.append(f"dependency_{k}_invalid")
         if _text(dep.get("dependency_ref")): dep_ids.append(dep["dependency_ref"])
         if dep.get("status") not in CHECK_STATES: issues.append("dependency_status_invalid")
+        elif dep.get("status") != "PASS_DECLARED": issues.append("dependency_not_pass_declared")
     if len(dep_ids)!=len(set(dep_ids)): issues.append("dependency_refs_duplicate")
 
     checks=record.get("integrity_checks")
@@ -97,6 +98,7 @@ def validate_recovery_record(record):
             if not _text(item.get(k)): issues.append(f"integrity_{k}_invalid")
         if _text(item.get("check_ref")): check_ids.append(item["check_ref"])
         if item.get("status") not in CHECK_STATES: issues.append("integrity_status_invalid")
+        elif item.get("status") != "PASS_DECLARED": issues.append("integrity_check_not_pass_declared")
         if item.get("bytes_verified") is not False: issues.append("artifact_byte_verification_must_not_be_claimed")
     if len(check_ids)!=len(set(check_ids)): issues.append("integrity_check_refs_duplicate")
 
@@ -107,6 +109,7 @@ def validate_recovery_record(record):
         for k in ("procedure_ref","result_evidence_ref","owner_ref"):
             if not _text(reconciliation.get(k)): issues.append(f"reconciliation_{k}_invalid")
         if reconciliation.get("status") not in CHECK_STATES: issues.append("reconciliation_status_invalid")
+        elif reconciliation.get("status") != "PASS_DECLARED": issues.append("reconciliation_not_pass_declared")
         if reconciliation.get("data_mutated_by_validator") is not False:
             issues.append("validator_data_mutation_must_be_false")
 
@@ -122,6 +125,7 @@ def validate_recovery_record(record):
                 if not _text(item.get(k)): issues.append(f"{field}_{k}_invalid")
             if _text(item.get("check_ref")): refs.append(item["check_ref"])
             if item.get("status") not in CHECK_STATES: issues.append(f"{field}_status_invalid")
+            elif item.get("status") != "PASS_DECLARED": issues.append(f"{field}_not_pass_declared")
         if len(refs)!=len(set(refs)): issues.append(f"{field}_refs_duplicate")
 
     fallback=record.get("fallback_plan")
@@ -140,6 +144,8 @@ def validate_recovery_record(record):
             if not _text(signoff.get(k)): issues.append(f"signoff_{k}_invalid")
         if signoff.get("decision") not in ("ACCEPT_DECLARED","REJECT_DECLARED","CONDITIONAL_DECLARED","PENDING"):
             issues.append("signoff_decision_invalid")
+        elif signoff.get("decision") != "ACCEPT_DECLARED":
+            issues.append("independent_signoff_not_accepted")
         if signoff.get("independent") is not True: issues.append("independent_signoff_required")
         if signoff.get("reviewer_authenticated") is not False:
             issues.append("reviewer_authentication_must_not_be_claimed")
@@ -157,6 +163,8 @@ def validate_recovery_record(record):
         if _text(risk.get("risk_ref")): risk_refs.append(risk["risk_ref"])
         if risk.get("disposition") not in ("ACCEPTED_DECLARED","MITIGATION_PLANNED","UNRESOLVED"):
             issues.append("residual_risk_disposition_invalid")
+        elif risk.get("disposition") == "UNRESOLVED":
+            issues.append("residual_risk_unresolved")
     if len(risk_refs)!=len(set(risk_refs)): issues.append("residual_risk_refs_duplicate")
 
     if record.get("automatic_restore") is not False:
