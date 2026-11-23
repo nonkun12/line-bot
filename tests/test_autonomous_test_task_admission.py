@@ -21,7 +21,7 @@ def _inputs(tmp_path: Path):
         f"{source_path}:target".encode("utf-8")
     ).hexdigest()[:10]
     fingerprint = hashlib.sha256(
-        f"{source_path}\0target\01\0"
+        f"{source_path}\0target\0{1}\0"
         f"{hashlib.sha256(source_text.encode()).hexdigest()}\0"
         f"{hashlib.sha256(test_text.encode()).hexdigest()}".encode()
     ).hexdigest()

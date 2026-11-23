@@ -134,7 +134,8 @@ def build_policy_admission(
     queued_ids = [item["id"] for item in existing_queue]
     if len(queued_ids) != len(set(queued_ids)):
         raise ValueError("runtime_queue_duplicate_ids")
-    catalog_tasks = [_validate_task(item) for item in catalog["tasks"]]
+    raw_catalog_tasks = catalog["tasks"]
+    catalog_tasks = [_validate_task(item) for item in raw_catalog_tasks]
     catalog_ids = [item["id"] for item in catalog_tasks]
     if len(catalog_ids) != len(set(catalog_ids)):
         raise ValueError("catalog_duplicate_ids")
@@ -186,6 +187,11 @@ def build_policy_admission(
 
     completed = set(state["completed"])
     recovery_tasks = recovery["tasks"]
+    for recovery_id, recovery_record in recovery_tasks.items():
+        if not isinstance(recovery_id, str) or not isinstance(recovery_record, dict):
+            raise ValueError("recovery_task_record_invalid")
+        if type(recovery_record.get("held", False)) is not bool or type(recovery_record.get("resume_requires_review", False)) is not bool:
+            raise ValueError("recovery_task_flags_invalid")
     registered = set(catalog_ids)
     excluded = registered | set(queued_ids) | completed | set(recovery_tasks)
     validated = None
@@ -206,7 +212,7 @@ def build_policy_admission(
 
     # Runtime-only approval: the tracked catalog and durable task state are untouched.
     ephemeral_entry = {**validated, "execution_approved": True}
-    base_catalog["tasks"] = [*catalog_tasks, ephemeral_entry]
+    base_catalog["tasks"] = [*raw_catalog_tasks, ephemeral_entry]
     base_queue["tasks"] = [{k: validated[k] for k in ("id", "instruction", "allowed_paths")}]
     base_queue["max_tasks_per_run"] = 1
 

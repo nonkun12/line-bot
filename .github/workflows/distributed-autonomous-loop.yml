@@ -524,7 +524,7 @@ jobs:
           if python -c 'from core.emergency_stop import get_status; import os; raise SystemExit(1 if get_status(os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"), os.environ["GITHUB_TOKEN"]) else 0)'; then
             python -m scripts.autonomous_test_task_admission \
               --repo-root . \
-              --report /tmp/catalog-exhaustion-review-report.json \
+              --report /tmp/catalog-exhaustion-report.json \
               --queue /tmp/autonomous-loop-runtime-queue.json \
               --catalog .github/autonomous-loop-task-catalog.json \
               --state /tmp/autonomous-loop-state.json \
@@ -551,7 +551,7 @@ jobs:
             exit 0
           fi
           python -m scripts.autonomous_task_issue_drafts \
-            --report /tmp/catalog-exhaustion-report.json \
+            --report /tmp/catalog-exhaustion-review-report.json \
             --issues /tmp/autonomous-loop-all-issues.json \
             --pull-requests /tmp/autonomous-loop-open-pulls.json \
             --output /tmp/autonomous-loop-task-issue-drafts.json \
@@ -912,7 +912,8 @@ jobs:
               raise SystemExit(0)
           queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", "/tmp/autonomous-loop-runtime-queue.json"))
           queue_data = json.loads(queue_path.read_text(encoding="utf-8"))
-          catalog_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_CATALOG", ".github/autonomous-loop-task-catalog.json"))\n          catalog_data = json.loads(catalog_path.read_text(encoding="utf-8"))
+          catalog_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_CATALOG", ".github/autonomous-loop-task-catalog.json"))
+          catalog_data = json.loads(catalog_path.read_text(encoding="utf-8"))
           base_sha = os.environ["GITHUB_SHA"]
           head_sha = subprocess.run(
               ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
