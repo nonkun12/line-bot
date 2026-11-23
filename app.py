@@ -97,7 +97,7 @@ from core.obsidian_bridge import enqueue_obsidian_request
 from agents.obsidian.intents import is_obsidian_intent
 from routes.voice_api import voice_api_bp
 from app_development import extract_app_development_request, dispatch_app_development_workflow
-from line_development import extract_development_instruction, dispatch_development_workflow
+from line_development import extract_development_instruction, dispatch_development_workflow, request_development_task_status
 from slack_command import register_slack_command
 from distributed_loop_trigger import request_distributed_loop
 from recovery_review_trigger import request_recovery_resume_review
@@ -382,6 +382,16 @@ def _handle_ai_gateway_request(ai_request):
             token=GITHUB_TOKEN,
             allowed_user_ids=os.environ.get("DEV_ALLOWED_USER_IDS", ""),
         )
+
+    # Task-ID lookup is read-only and runs before general/development routing.
+    task_status_reply = request_development_task_status(
+        message,
+        user_id=user_id,
+        token=GITHUB_TOKEN,
+        repository=AI_REPORT_GITHUB_REPO,
+    )
+    if task_status_reply is not None:
+        return task_status_reply
 
     # Resolve explicit read-only status requests and bounded Loop commands before
     # any general/development routing. Status aliases are handled by the same
