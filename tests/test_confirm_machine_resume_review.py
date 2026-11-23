@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -73,6 +74,7 @@ def _run(tmp_path, **overrides):
         "expected_workflow_run_id": "123456789",
         "expected_run_attempt": 1,
         "expected_nonce": "d" * 32,
+        "validation_now": datetime(2026, 11, 23, 3, 30, tzinfo=timezone.utc),
     }
     args.update(overrides)
     return module.confirm_if_machine_verified(**args), state, recovery
