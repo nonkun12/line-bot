@@ -61,7 +61,7 @@ class GoalStateStore:
             if cur.rowcount != 1: conn.rollback(); return {"decision":"HOLD","reason":"goal_revision_conflict"}
             conn.commit()
             return {**decision, "decision":"CLAIMED", "revision":revision+1}
-    def record_result(self, goal_id: str, task_id: str, *, status: str, completion_evidence: dict[str, Any] | None = None) -> int:
+    def record_result(self, goal_id: str, task_id: str, *, status: str, completion_evidence: dict[str, Any] | None = None, failure_evidence: dict[str, Any] | None = None) -> int:
         if status not in {"COMPLETED","FAILED","HELD"}: raise ValueError("unsupported terminal task status")
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -73,6 +73,24 @@ class GoalStateStore:
             if status == "COMPLETED":
                 task["completion_evidence"] = completion_evidence
                 if not _valid_completion_evidence(task): conn.rollback(); raise ValueError("verified task-bound completion evidence required")
+                task.pop("failure_evidence", None)
+            elif failure_evidence is not None:
+                allowed_stages = {"child_runner", "result_collection", "independent_evidence"}
+                allowed_reasons = {
+                    "runner_nonzero_exit", "guarded_runner_sentinel",
+                    "result_missing_or_ambiguous", "success_evidence_rejected",
+                }
+                if (not isinstance(failure_evidence, dict)
+                        or failure_evidence.get("stage") not in allowed_stages
+                        or failure_evidence.get("reason_code") not in allowed_reasons
+                        or set(failure_evidence) - {"stage", "reason_code", "child_exit_code", "result_status", "result_exit_code"}):
+                    conn.rollback(); raise ValueError("failure evidence schema invalid")
+                for key in ("child_exit_code", "result_exit_code"):
+                    if key in failure_evidence and (type(failure_evidence[key]) is not int or not -255 <= failure_evidence[key] <= 255):
+                        conn.rollback(); raise ValueError("failure evidence exit code invalid")
+                if "result_status" in failure_evidence and failure_evidence["result_status"] not in {"PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN", "INCOMPLETE"}:
+                    conn.rollback(); raise ValueError("failure evidence result status invalid")
+                task["failure_evidence"] = dict(failure_evidence)
             task["status"] = status
             payload = json.dumps(goal, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             cur = conn.execute("UPDATE goal_state SET revision=revision+1, document=? WHERE goal_id=? AND revision=?", (payload, goal_id, revision))
