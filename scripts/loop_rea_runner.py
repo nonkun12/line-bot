@@ -115,9 +115,11 @@ def _run_pytest(root: Path, allowed_paths: list[str] | None = None) -> dict[str,
         if isinstance(path, str) and path.startswith("tests/") and path.endswith(".py")
     })
     command = [sys.executable, "-m", "pytest", "-q", *test_paths]
+    env = os.environ.copy()
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     result = subprocess.run(
-        command,
-        cwd=root, stdin=subprocess.DEVNULL, capture_output=True,
+        [*command[:3], "-p", "no:cacheprovider", *command[3:]],
+        cwd=root, env=env, stdin=subprocess.DEVNULL, capture_output=True,
         text=True, check=False, timeout=DEFAULT_TEST_TIMEOUT,
     )
     return {
