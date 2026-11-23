@@ -66,7 +66,7 @@ def stage256_preregister_evaluation(*, protocol_id: str, metric_name: str,
         return _blocked("HOLD state must be explicitly false")
     if (not isinstance(protocol_id, str) or not protocol_id.strip()
             or not isinstance(metric_name, str) or not metric_name.strip()
-            or metric_direction not in {"higher_is_better", "lower_is_better"}
+            or not isinstance(metric_direction, str) or metric_direction not in {"higher_is_better", "lower_is_better"}
             or not _finite_number(minimum_gain) or minimum_gain <= 0
             or not _finite_number(alpha) or not 0 < alpha < 0.5
             or isinstance(minimum_pairs, bool) or not isinstance(minimum_pairs, int) or minimum_pairs < 30
