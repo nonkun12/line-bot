@@ -160,11 +160,13 @@ def _failure_evidence(child_returncode: int, row: dict[str, Any] | None) -> dict
             "reason_code": "result_missing_or_ambiguous",
             "child_exit_code": child_returncode,
         }
+    row_status = row.get("status")
+    safe_status = row_status if isinstance(row_status, str) and row_status in {
+        "PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN", "INCOMPLETE"
+    } else "NOT_RUN"
     result: dict[str, Any] = {
         "child_exit_code": child_returncode,
-        "result_status": row.get("status") if row.get("status") in {
-            "PASS", "NO_CHANGE", "FAIL", "BLOCKED", "NOT_RUN", "INCOMPLETE"
-        } else "NOT_RUN",
+        "result_status": safe_status,
     }
     row_exit = row.get("exit_code")
     if type(row_exit) is int and -255 <= row_exit <= 255:
