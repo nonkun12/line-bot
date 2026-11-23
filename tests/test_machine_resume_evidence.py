@@ -52,6 +52,7 @@ def _validate(task=TASK, evidence=None):
         expected_base_sha=BASE,
         expected_workflow_run_id=RUN_ID,
         expected_run_attempt=ATTEMPT,
+        expected_nonce="d" * 32,
         now=NOW,
     )
 
@@ -113,3 +114,15 @@ def test_rejects_stale_or_future_evidence():
 
 def test_rejects_unknown_manifest_fields():
     assert _validate(evidence={**_evidence(), "human_approved": True})["eligible"] is False
+
+
+def test_rejects_nonce_not_bound_to_current_workflow_context():
+    result = validate_machine_resume_evidence(
+        TASK, _evidence(),
+        expected_base_sha=BASE,
+        expected_workflow_run_id=RUN_ID,
+        expected_run_attempt=ATTEMPT,
+        expected_nonce="e" * 32,
+        now=NOW,
+    )
+    assert result["eligible"] is False
