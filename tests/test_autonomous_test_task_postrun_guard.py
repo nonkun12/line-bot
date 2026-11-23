@@ -47,21 +47,21 @@ def test_rejects_import_inside_new_test():
 
 
 def test_rejects_pathlib_filesystem_mutation():
-    before = "def test_existing():\\n    assert True\\n"
-    after = before + "\\n\\ndef test_new(tmp_path):\\n    tmp_path.joinpath('x').unlink(missing_ok=True)\\n"
+    before = "def test_existing():\n    assert True\n"
+    after = before + "\n\ndef test_new(tmp_path):\n    tmp_path.joinpath('x').unlink(missing_ok=True)\n"
     with pytest.raises(ValueError, match="new_test_uses_forbidden_attribute"):
         verify_append_only_test_change(before, after)
 
 
 def test_rejects_dynamic_attribute_escape_hatch():
-    before = "def test_existing():\\n    assert True\\n"
-    after = before + "\\n\\ndef test_new():\\n    getattr(__builtins__, 'eval')('1 + 1')\\n"
+    before = "def test_existing():\n    assert True\n"
+    after = before + "\n\ndef test_new():\n    getattr(__builtins__, 'eval')('1 + 1')\n"
     with pytest.raises(ValueError, match="new_test_uses_forbidden_escape_hatch|new_test_uses_forbidden_attribute"):
         verify_append_only_test_change(before, after)
 
 
 def test_rejects_os_rename_even_without_direct_os_root_check():
-    before = "def test_existing():\\n    assert True\\n"
-    after = before + "\\n\\ndef test_new():\\n    os.rename('a', 'b')\\n"
+    before = "def test_existing():\n    assert True\n"
+    after = before + "\n\ndef test_new():\n    os.rename('a', 'b')\n"
     with pytest.raises(ValueError, match="new_test_uses_forbidden_attribute|new_test_uses_forbidden_os_api"):
         verify_append_only_test_change(before, after)
