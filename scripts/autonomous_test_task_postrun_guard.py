@@ -26,7 +26,7 @@ FORBIDDEN_OS_CALLS = {
 # module or a pathlib object rather than a direct built-in call.
 FORBIDDEN_NAMES = {
     "eval", "exec", "compile", "__import__", "open", "getattr", "setattr",
-    "delattr", "globals", "locals", "vars", "breakpoint",
+    "delattr", "globals", "locals", "vars", "breakpoint", "__builtins__",
 }
 FORBIDDEN_ATTRIBUTES = {
     "open", "unlink", "rmdir", "mkdir", "makedirs", "removedirs",
