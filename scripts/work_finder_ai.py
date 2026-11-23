@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from scripts.autonomous_task_target_allowlist import TARGETS
+from scripts.autonomous_task_refill import _validate_task
 from scripts.catalog_exhaustion_analyzer import analyze
 
 
@@ -82,18 +83,16 @@ def find_work(
     completed_ids = set(completed)
     queued_by_id = {}
     for item in queue["tasks"]:
-        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
-            raise ValueError("invalid runtime queue task")
-        if item["id"] in queued_by_id:
+        normalized = _validate_task(item)
+        if normalized["id"] in queued_by_id:
             raise ValueError("duplicate runtime queue task ID")
-        queued_by_id[item["id"]] = item
+        queued_by_id[normalized["id"]] = normalized
     catalog_by_id = {}
     for item in catalog["tasks"]:
-        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
-            raise ValueError("invalid catalog task")
-        if item["id"] in catalog_by_id:
+        normalized = _validate_task(item)
+        if normalized["id"] in catalog_by_id:
             raise ValueError("duplicate catalog task ID")
-        catalog_by_id[item["id"]] = item
+        catalog_by_id[normalized["id"]] = normalized
 
     approved_ids = {
         task_id for task_id, item in catalog_by_id.items()
