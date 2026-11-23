@@ -46,8 +46,11 @@ def _valid(result, status):
     if any(result.get(k) is not v for k, v in _FALSE.items()):
         return False
     try:
+        excluded = {"result_digest"}
+        if status == "CAPABILITY_HISTORY_RECORD":
+            excluded.add("record_digest")
         return _digest(result.get("result_digest")) and result["result_digest"] == _hash(
-            {k: v for k, v in result.items() if k != "result_digest"}
+            {k: v for k, v in result.items() if k not in excluded}
         )
     except (TypeError, ValueError):
         return False
@@ -68,7 +71,7 @@ def _number(value):
 
 
 def stage276_append_capability_history(*, previous: Mapping | None, observation: Mapping,
-                                       held: bool = False):
+                                       recorded_at: str, held: bool = False):
     """Create a hash-linked longitudinal record from a sealed regression-guard result."""
     if held is not False:
         return _blocked("HOLD state must be explicitly false")
@@ -84,7 +87,6 @@ def stage276_append_capability_history(*, previous: Mapping | None, observation:
         if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1 or not _digest(previous_digest):
             return _blocked("previous sequence or digest is invalid")
         sequence += 1
-    recorded_at = observation.get("recorded_at")
     parsed = _time(recorded_at)
     if parsed is None:
         return _blocked("observation requires a timezone-aware recorded_at timestamp")
