@@ -29,10 +29,11 @@ def _evaluation(status="FAIL"):
     dataset_sha = hashlib.sha256(json.dumps(
         dataset, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode()).hexdigest()
+    challenger_score = 0.1 if status == "PASS" else 0.0
     record = {
         "experiment_id": "looplab-bridge-01",
         "baseline": {"candidate_id": "base", "artifact_sha256": "a" * 64, "score": 0.0},
-        "challenger": {"candidate_id": "candidate", "artifact_sha256": "b" * 64, "score": 0.0},
+        "challenger": {"candidate_id": "candidate", "artifact_sha256": "b" * 64, "score": challenger_score},
         "evaluator": {"evaluator_id": "rsi.exact_match.v1", "version": "1", "metric": "exact_match_rate", "direction": "higher", "minimum_delta": 0.0},
         "held_out": {"dataset_id": "fixture", "dataset_sha256": dataset_sha, "sample_count": 1, "locked": True},
         "safety": {"stop_state": "INACTIVE", "global_hold_state": "CLEAR"},
@@ -107,6 +108,22 @@ def test_global_hold_prevents_rsi_ingestion(tmp_path):
         )
     assert ledger.verify()
 
+
+
+def test_status_cannot_be_forged_even_when_both_status_fields_are_changed(tmp_path):
+    executor, ledger = _executor(tmp_path)
+    payload = _evaluation("FAIL")
+    payload["status"] = "PASS"
+    payload["evaluation"]["status"] = "PASS"
+    with pytest.raises(ValueError, match="status_not_reproducible"):
+        record_evaluation_as_rsi_observation(
+            evaluation_result=payload,
+            executor=executor,
+            producer_id="looplab-independent-evaluator",
+            sign_digest=lambda digest: "sig:" + digest,
+            created_at=123,
+        )
+    assert ledger.verify()
 
 def test_status_mismatch_is_rejected_before_ledger_write(tmp_path):
     executor, ledger = _executor(tmp_path)
