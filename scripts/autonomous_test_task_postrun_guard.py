@@ -126,6 +126,28 @@ def verify_policy_run(
     produced_sha = row.get("produced_sha")
     if base_sha != expected_base_sha or not isinstance(produced_sha, str):
         raise ValueError("policy_task_sha_evidence_invalid")
+    if not re.fullmatch(r"[0-9a-f]{40}", produced_sha):
+        raise ValueError("policy_task_produced_sha_malformed")
+    head_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo_root,
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    if head_sha != produced_sha:
+        raise ValueError("policy_task_produced_sha_is_not_checked_out_head")
+    subprocess.run(
+        ["git", "merge-base", "--is-ancestor", base_sha, produced_sha],
+        cwd=repo_root, check=True, capture_output=True, text=True,
+    )
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=repo_root, check=True, capture_output=True, text=True,
+    ).stdout
+    if status.strip():
+        raise ValueError("policy_task_worktree_not_clean_after_commit")
+    subprocess.run(
+        ["git", "diff", "--check", base_sha, produced_sha],
+        cwd=repo_root, check=True, capture_output=True, text=True,
+    )
     diff = subprocess.run(
         ["git", "diff", "--no-renames", "--name-only", base_sha, produced_sha],
         cwd=repo_root, check=True, capture_output=True, text=True,
