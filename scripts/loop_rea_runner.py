@@ -52,6 +52,10 @@ def _snapshot_commit(root: Path, base_sha: str, allowed_paths: list[str], expect
         index_path = str(Path(temp) / "index")
         env = os.environ.copy()
         env["GIT_INDEX_FILE"] = index_path
+        env["GIT_AUTHOR_NAME"] = "REA verifier"
+        env["GIT_AUTHOR_EMAIL"] = "rea-verifier@localhost.invalid"
+        env["GIT_COMMITTER_NAME"] = "REA verifier"
+        env["GIT_COMMITTER_EMAIL"] = "rea-verifier@localhost.invalid"
         _git(root, "read-tree", base_sha, env=env)
         _git(root, "add", "-A", "--", *sorted(set(allowed_paths)), env=env)
         tree_sha = _git(root, "write-tree", env=env)
