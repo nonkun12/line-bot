@@ -53,6 +53,10 @@ def test_311_inclusion_probabilities_are_paired_and_bounded():
         sampling_design="design", baseline_probabilities={"t1": 0.5},
         candidate_probabilities={"t2": 0.5},
     )["status"] == "INSUFFICIENT_EVIDENCE"
+    assert stage311_check_inclusion_probabilities(
+        sampling_design="design", baseline_probabilities={1: 0.5},
+        candidate_probabilities={1: 0.5},
+    )["status"] == "INSUFFICIENT_EVIDENCE"
 
 
 def test_312_evaluator_assignment_balance_and_malformed_inputs():
