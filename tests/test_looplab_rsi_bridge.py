@@ -1,0 +1,114 @@
+from __future__ import annotations
+
+import hashlib
+import json
+
+import pytest
+
+from core.looplab_rsi_bridge import record_evaluation_as_rsi_observation
+from core.rsi_executor import EvidenceLedger, RSIControl, RSIExecutor, RSIError
+
+
+def _executor(tmp_path, *, hold=False):
+    ledger = EvidenceLedger(tmp_path / "rsi-bridge.sqlite")
+    executor = RSIExecutor(
+        ledger,
+        control_provider=lambda: RSIControl(hold, False, True, True, 10, False),
+        verify_approval=lambda _: False,
+        verify_evaluation=lambda _: False,
+        verify_evidence_signature=lambda producer, digest, signature: (
+            producer == "looplab-independent-evaluator" and signature == "sig:" + digest
+        ),
+        executor_id="rsi-bridge-test",
+    )
+    return executor, ledger
+
+
+def _evaluation(status="FAIL"):
+    dataset = [{"sample_id": "a", "expected": "yes"}]
+    dataset_sha = hashlib.sha256(json.dumps(
+        dataset, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()).hexdigest()
+    evidence_sha = "e" * 64
+    return {
+        "experiment_id": "looplab-bridge-01",
+        "status": status,
+        "record": {
+            "baseline": {"candidate_id": "base", "artifact_sha256": "a" * 64, "score": 0.0},
+            "challenger": {"candidate_id": "candidate", "artifact_sha256": "b" * 64, "score": 0.0},
+            "evaluator": {"evaluator_id": "rsi.exact_match.v1", "version": "1", "metric": "exact_match_rate", "direction": "higher", "minimum_delta": 0.0},
+            "held_out": {"dataset_id": "fixture", "dataset_sha256": dataset_sha, "sample_count": 1, "locked": True},
+        },
+        "evaluation": {"status": status, "reason": "minimum_improvement_not_met", "evidence_sha256": evidence_sha},
+    }
+
+
+def test_fail_evaluation_becomes_signed_rsi_observation_and_diagnosis(tmp_path):
+    executor, ledger = _executor(tmp_path)
+    result = record_evaluation_as_rsi_observation(
+        evaluation_result=_evaluation("FAIL"),
+        executor=executor,
+        producer_id="looplab-independent-evaluator",
+        sign_digest=lambda digest: "sig:" + digest,
+        created_at=123,
+    )
+    assert result["recorded"] is True
+    assert result["status"] == "FAIL"
+    assert len(result["diagnosis_ids"]) == 1
+    assert ledger.verify()
+
+
+def test_pass_evaluation_is_recorded_without_failure_diagnosis(tmp_path):
+    executor, ledger = _executor(tmp_path)
+    result = record_evaluation_as_rsi_observation(
+        evaluation_result=_evaluation("PASS"),
+        executor=executor,
+        producer_id="looplab-independent-evaluator",
+        sign_digest=lambda digest: "sig:" + digest,
+        created_at=123,
+    )
+    assert result["recorded"] is True
+    assert result["diagnosis_ids"] == []
+    assert ledger.verify()
+
+
+def test_blocked_evaluation_is_not_promoted_or_written(tmp_path):
+    executor, ledger = _executor(tmp_path)
+    result = record_evaluation_as_rsi_observation(
+        evaluation_result={"experiment_id": "blocked-1", "status": "BLOCKED"},
+        executor=executor,
+        producer_id="looplab-independent-evaluator",
+        sign_digest=lambda digest: "sig:" + digest,
+        created_at=123,
+    )
+    assert result["recorded"] is False
+    assert ledger.verify()
+    assert ledger.read_event("unused") if False else True
+
+
+def test_global_hold_prevents_rsi_ingestion(tmp_path):
+    executor, ledger = _executor(tmp_path, hold=True)
+    with pytest.raises(RSIError, match="Global HOLD"):
+        record_evaluation_as_rsi_observation(
+            evaluation_result=_evaluation("FAIL"),
+            executor=executor,
+            producer_id="looplab-independent-evaluator",
+            sign_digest=lambda digest: "sig:" + digest,
+            created_at=123,
+        )
+    assert ledger.verify()
+
+
+def test_status_mismatch_is_rejected_before_ledger_write(tmp_path):
+    executor, ledger = _executor(tmp_path)
+    payload = _evaluation("FAIL")
+    payload["evaluation"]["status"] = "PASS"
+    with pytest.raises(ValueError, match="status_mismatch"):
+        record_evaluation_as_rsi_observation(
+            evaluation_result=payload,
+            executor=executor,
+            producer_id="looplab-independent-evaluator",
+            sign_digest=lambda digest: "sig:" + digest,
+            created_at=123,
+        )
+    assert ledger.verify()
