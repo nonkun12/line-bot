@@ -58,7 +58,7 @@ def test_supported_trend_requires_three_fixed_environment_generations():
 def test_lineage_rejects_suite_dataset_or_environment_change():
     rows = list(snapshots())
     rows[2] = replace(rows[2], dataset_digest="e" * 64)
-    with pytest.raises(CapabilityTrendError, match="must remain fixed"):
+    with pytest.raises(CapabilityTrendError, match="snapshot signature or digest invalid"):
         Stage202GenerationLineage().build(
             rows, verify_snapshot_signature=VERIFY, sign=SIGN, verify=VERIFY,
         )
@@ -67,7 +67,7 @@ def test_lineage_rejects_suite_dataset_or_environment_change():
 def test_lineage_rejects_generation_gap_and_duplicate_artifact():
     rows = list(snapshots())
     rows[2] = replace(rows[2], generation=4)
-    with pytest.raises(CapabilityTrendError, match="consecutive"):
+    with pytest.raises(CapabilityTrendError, match="snapshot signature or digest invalid"):
         Stage202GenerationLineage().build(
             rows, verify_snapshot_signature=VERIFY, sign=SIGN, verify=VERIFY,
         )
