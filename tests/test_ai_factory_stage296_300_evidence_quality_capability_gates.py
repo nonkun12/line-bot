@@ -42,7 +42,7 @@ def test_296_requires_complete_unique_records():
     assert completeness()["status"] == "EVIDENCE_COMPLETE"
     result = stage296_check_evidence_completeness(
         evidence_records=[{"record_id": "a", "evidence_digest": h("a"), "source": "x"}],
-        required_fields=["source", "result"])
+        required_fields=["source", "result"], minimum_records=1)
     assert result["status"] == "EVIDENCE_INCOMPLETE"
     assert stage296_check_evidence_completeness(
         evidence_records=[{"record_id": "a", "evidence_digest": h("a")}],
