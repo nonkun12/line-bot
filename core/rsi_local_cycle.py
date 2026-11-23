@@ -70,6 +70,10 @@ def run_local_rsi_cycle(
     evaluation = evaluator.evaluate(plan, result)
     if not isinstance(evaluation, IndependentEvaluation):
         raise RSIError("independent evaluator returned an invalid evaluation")
+    # Never let a caller-controlled evaluator object attest under a different
+    # identity than the identity embedded in its signed evaluation.
+    if evaluation.evaluator_id != evaluator_id:
+        raise RSIError("independent evaluator identity does not match its evaluation")
     executor.evaluate(result, evaluation)
 
     decision_to_outcome = {
