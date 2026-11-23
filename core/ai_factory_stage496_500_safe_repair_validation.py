@@ -1,5 +1,5 @@
 """Safe repair verification and containment gates for AI Factory stages 496-500."""
-from __future__ import annotations__
+from __future__ import annotations
 import hashlib,json,math
 from typing import Any,Mapping,Sequence
 
