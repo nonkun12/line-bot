@@ -122,7 +122,7 @@ def stage304_validate_evidence_lineage(*, records: Sequence[Mapping], root_diges
             or not isinstance(payload,Mapping) or not _digest(digest)):
             return _blocked("record identity, parent, payload or digest is invalid")
         body={"record_id":rid,"parent_digest":parent,"payload":dict(payload)}
-        if digest!=_hash(body): return _blocked("record digest does not match canonical record content")
+        try:\n            expected_digest=_hash(body)\n        except (TypeError, ValueError, OverflowError):\n            return _blocked("record payload is not canonical JSON data")\n        if digest!=expected_digest: return _blocked("record digest does not match canonical record content")
         ids.add(rid); validated.append(digest); previous=digest
     return _seal({"status":"EVIDENCE_LINEAGE_VALID","record_count":len(validated),
                   "root_digest":root_digest,"terminal_digest":previous,
