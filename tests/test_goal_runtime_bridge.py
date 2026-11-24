@@ -41,7 +41,7 @@ def test_preflight_rea_is_recorded_even_when_goal_claim_is_held(tmp_path, monkey
     monkeypatch.setattr(
         bridge,
         "_load_goal",
-        lambda *args, **kwargs: (1, {"tasks": [{"task_id": "approved-test-task", "status": "HELD"}]}),
+        lambda *args, **kwargs: (1, {"tasks": [{"task_id": "approved-test-task", "status": "HELD", "hold_reason": "review"}]}),
     )
     monkeypatch.setattr(
         bridge.GoalStateStore,
