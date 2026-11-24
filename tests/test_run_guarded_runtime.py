@@ -1056,3 +1056,41 @@ def test_run_local_policy_rejects_non_scheduler_dispatch_marker(tmp_path, monkey
 
     assert result["gate"] == "BLOCKED"
     assert result["execution_authorized"] is False
+
+
+def test_scheduler_dispatch_still_accepts_reviewed_catalog_task(monkeypatch, tmp_path):
+    task_id = "reviewed-task"
+    test_path = "tests/test_stocks.py"
+    base_sha = "f" * 40
+    instruction = "Run the reviewed test task."
+    event_path = tmp_path / "event.json"
+    event_path.write_text(json.dumps({
+        "sender": {"login": "github-actions[bot]"},
+        "repository": {"full_name": "nonkun12/line-bot"},
+        "inputs": {
+            "policy_dispatch": "30m_scheduler",
+            "max_tasks": "1",
+            "execution_approval": "DENY",
+        },
+    }), encoding="utf-8")
+    catalog = {"tasks": [{
+        "id": task_id,
+        "instruction": instruction,
+        "allowed_paths": [test_path],
+        "execution_approved": True,
+    }]}
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: json.dumps(catalog))
+    monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "false")
+    monkeypatch.setenv("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "30m_scheduler")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps([test_path]))
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_ACTOR", "github-actions[bot]")
+
+    result = guarded_runtime._verify_execution_approval(base_sha, instruction)
+
+    assert result["gate"] == "PASS"
+    assert result["scope"] == "catalog_preapproved_execution"
