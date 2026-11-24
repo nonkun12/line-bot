@@ -1562,7 +1562,7 @@ def _run_local_policy_catalog_fixture(tmp_path, monkeypatch, sha):
             "execution_approved": True,
         },
     ]}
-    catalog_bytes = (json.dumps(catalog, ensure_ascii=False, sort_keys=True, indent=2) + "\\n").encode()
+    catalog_bytes = (json.dumps(catalog, ensure_ascii=False, sort_keys=True, indent=2)).encode()
     catalog_path.write_bytes(catalog_bytes)
     report_path.write_text(json.dumps({
         "status": "POLICY_ADMITTED",
