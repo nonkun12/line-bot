@@ -225,29 +225,10 @@ def build_sandbox_command(
         source = str(mounts[destination])
         args.extend(["--ro-bind", source, destination])
 
-    # Bind the exact interpreter file as well as its containing directory.
-    # Hosted toolcache layouts may expose the directory through symlinked
-    # components; the explicit file bind makes exec resolution deterministic.
-    interpreter = Path(python).resolve(strict=True)
-    args.extend(["--ro-bind", str(interpreter), str(interpreter)])
-    readelf = shutil.which("readelf")
-    if readelf:
-        result = subprocess.run(
-            [readelf, "-l", str(interpreter)], text=True, capture_output=True,
-            timeout=10, env={"PATH": os.defpath, "LANG": "C"},
-        )
-        match = re.search(r"Requesting program interpreter:\s*(/[^\]]+)", result.stdout)
-        if result.returncode == 0 and match:
-            loader = Path(match.group(1))
-            if loader.is_file():
-                # The namespace starts with an empty tmpfs root. Create the
-                # loader's destination parent before binding the exact file;
-                # otherwise bubblewrap cannot create /lib64/loader itself.
-                for parent in _parents(str(loader)):
-                    if parent not in created:
-                        args.extend(["--dir", parent])
-                        created.add(parent)
-                args.extend(["--ro-bind", str(loader.resolve()), str(loader)])
+    # The interpreter and its PT_INTERP loader are already covered by the
+    # read-only runtime-directory mounts assembled above. Do not add a second
+    # file bind beneath those mounts: bubblewrap cannot create a missing file
+    # inside an already read-only mounted directory.
 
     args.extend([
         "--chdir", str(root),
