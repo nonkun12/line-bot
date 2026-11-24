@@ -1572,13 +1572,16 @@ def _run_local_policy_catalog_fixture(tmp_path, monkeypatch, sha):
         "base_sha": sha,
         "admitted_catalog_sha256": hashlib.sha256(catalog_bytes).hexdigest(),
     }), encoding="utf-8")
+    queue_path = tmp_path / "queue.json"
+    queue_path.write_text(json.dumps({"tasks": [{
+        "id": task_id, "instruction": instruction, "allowed_paths": [test_path],
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(loop, "QUEUE", queue_path)
     monkeypatch.setattr(loop, "POLICY_ADMISSION_CATALOG_PATH", catalog_path)
     monkeypatch.setattr(loop, "POLICY_ADMISSION_REPORT_PATH", report_path)
     monkeypatch.setattr(loop, "_git_checked", lambda *args: (0, json.dumps({"tasks": base_tasks})))
     monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "true")
     monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_CATALOG", str(catalog_path))
-    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)
-    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps([test_path]))
     return task_id
 
 
