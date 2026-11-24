@@ -1606,3 +1606,38 @@ def test_registered_catalog_rejects_mutated_run_local_policy_catalog(tmp_path, m
 
     with pytest.raises(ValueError, match="run_local_policy_evidence_mismatch"):
         loop._load_registered_catalog(sha)
+
+
+
+def test_valid_model_provider_block_remains_blocked(monkeypatch, tmp_path: Path):
+    task = {"id": "provider-block-test", "instruction": "test", "allowed_paths": ["tests/test_one.py"]}
+    sha = "a" * 40
+    monkeypatch.setattr(loop, "_git_head", lambda: sha)
+
+    def fake_popen(cmd, cwd, env, text, start_new_session):
+        summary = Path(env["AUTONOMOUS_SUMMARY_PATH"])
+        summary.write_text(json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "BLOCKED",
+            "exit_code": 83,
+            "base_sha": sha,
+            "produced_sha": sha,
+            "task_id": task["id"],
+            "run_nonce": env["AUTONOMOUS_RUN_NONCE"],
+            "failure_reason": "model_provider_gate:local_adapter_unavailable",
+            "gate_evidence": {
+                "gate": "BLOCKED", "gate_name": "model_provider",
+                "reason_code": "local_adapter_unavailable", "exit_code": 83,
+                "execution_authorized": False, "patch_authorized": False,
+                "hold_clear_authorized": False, "merge_deploy_authorized": False,
+            },
+        }), encoding="utf-8")
+        return _FakeProcess(env, lambda _: None, returncode=83)
+
+    monkeypatch.setattr(loop.subprocess, "Popen", fake_popen)
+    result = loop.run_task(task, 1, tmp_path / "stop", summary_dir=tmp_path)
+
+    assert result["status"] == "BLOCKED"
+    assert result["exit_code"] == 83
+    assert result["failure_reason"] == "model_provider_gate:local_adapter_unavailable"
+    assert result["gate_evidence"]["gate_name"] == "model_provider"

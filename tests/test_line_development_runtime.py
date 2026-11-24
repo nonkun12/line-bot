@@ -1480,3 +1480,28 @@ def test_provider_block_reason_allows_only_declared_provider_free_task(monkeypat
     task_id = "uhip-confidence-out-of-range-rejection"
     assert runtime._provider_block_reason(task_id) is None
     assert runtime._provider_block_reason("review-coverage-gap-703fa3c06b") == "external_model_provider_disabled_local_adapter_unavailable"
+
+
+
+def test_execute_reports_local_model_unavailable_as_blocked_without_provider(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "review-coverage-gap-812f52f5b3")
+
+    class _AllowedStopController:
+        def __init__(self, shared_status_checker=None):
+            self.shared_status_checker = shared_status_checker
+
+        def assert_can_execute(self):
+            return None
+
+    monkeypatch.setattr(runtime, "ImmediateStopController", _AllowedStopController)
+    monkeypatch.setattr(
+        runtime,
+        "_write_development_audit_to_google_sheets",
+        lambda **kwargs: captured.update(kwargs),
+    )
+
+    assert runtime.execute("Run the bounded review coverage task") == 83
+    assert captured["status"] == "BLOCKED"
+    assert captured["exit_detail"] == "external_model_provider_disabled_local_adapter_unavailable"

@@ -151,6 +151,19 @@ def record_loop_outcome(
         or failure_reason.startswith("control_tower_rea:")
         or failure_reason == "control_tower_head_changed"
         or (
+            failure_reason == "model_provider_gate:local_adapter_unavailable"
+            and type(result.get("exit_code")) is int
+            and result["exit_code"] == 83
+            and isinstance(result.get("gate_evidence"), dict)
+            and result["gate_evidence"].get("gate") == "BLOCKED"
+            and result["gate_evidence"].get("gate_name") == "model_provider"
+            and result["gate_evidence"].get("reason_code") == "local_adapter_unavailable"
+            and result["gate_evidence"].get("exit_code") == 83
+            and all(result["gate_evidence"].get(key) is False for key in (
+                "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"
+            ))
+        )
+        or (
             failure_reason.startswith("guarded_runtime_gate:")
             and type(result.get("exit_code")) is int
             and result["exit_code"] in {81, 82}

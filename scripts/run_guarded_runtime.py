@@ -506,6 +506,15 @@ def _write_summary(
             "patch_authorized": False, "hold_clear_authorized": False,
             "merge_deploy_authorized": False,
         }
+    if status == "BLOCKED" and exit_code == 83:
+        reason_code = "local_adapter_unavailable"
+        payload["failure_reason"] = "model_provider_gate:" + reason_code
+        payload["gate_evidence"] = {
+            "gate": "BLOCKED", "gate_name": "model_provider",
+            "reason_code": reason_code, "exit_code": 83,
+            "execution_authorized": False, "patch_authorized": False,
+            "hold_clear_authorized": False, "merge_deploy_authorized": False,
+        }
     postgen_status = os.environ.get("AUTONOMOUS_POSTGEN_REA_STATUS", "")
     if postgen_status:
         payload["post_generation_rea"] = {
@@ -654,6 +663,18 @@ def main() -> int:
         print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
         return 82
 
+    # Do not consume the one-time execution approval when the requested model
+    # provider is unavailable. This is a no-execution capability gate.
+    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    provider_block_reason = runtime._provider_block_reason(task_id)
+    if provider_block_reason is not None:
+        _write_summary("BLOCKED", 83, start_sha, summary_path, rea_evidence)
+        print(
+            "MODEL_PROVIDER=BLOCKED reason=local_adapter_unavailable; external or metered APIs are disabled",
+            flush=True,
+        )
+        return 83
+
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
     approval_evidence = _verify_execution_approval(start_sha, instruction)
     if approval_evidence.get("execution_authorized") is True:
@@ -681,7 +702,8 @@ def main() -> int:
         os.environ["AUTONOMOUS_RUNTIME_ERROR"] = f"{type(exc).__name__}: {exc}"
         raise
     finally:
-        _write_summary("PASS" if exit_code == 0 else "FAIL", exit_code, start_sha, summary_path, rea_evidence, approval_evidence)
+        summary_status = "PASS" if exit_code == 0 else ("BLOCKED" if exit_code == 83 else "FAIL")
+        _write_summary(summary_status, exit_code, start_sha, summary_path, rea_evidence, approval_evidence)
 
 
 if __name__ == "__main__":

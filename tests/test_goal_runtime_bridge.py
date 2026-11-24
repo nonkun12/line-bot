@@ -411,3 +411,23 @@ def test_validated_gate_block_is_not_turned_into_goal_hold():
         row["gate_evidence"], gate_name="rea", exit_code=80
     ))
     assert bridge._valid_no_execution_block(legacy_rea, "task-gate", 80) is False
+
+
+
+def test_validated_model_provider_block_is_not_turned_into_goal_hold():
+    row = {
+        "task_id": "task-provider", "status": "BLOCKED", "exit_code": 83,
+        "failure_reason": "model_provider_gate:local_adapter_unavailable",
+        "base_sha": "a" * 40, "produced_sha": "a" * 40, "run_nonce": "b" * 32,
+        "gate_evidence": {
+            "gate": "BLOCKED", "gate_name": "model_provider",
+            "reason_code": "local_adapter_unavailable", "exit_code": 83,
+            "execution_authorized": False, "patch_authorized": False,
+            "hold_clear_authorized": False, "merge_deploy_authorized": False,
+        },
+    }
+    assert bridge._valid_no_execution_block(row, "task-provider", 83) is True
+    assert bridge._valid_no_execution_block(row, "other-task", 83) is False
+    assert bridge._valid_no_execution_block(row, "task-provider", 1) is False
+    forged = dict(row, gate_evidence=dict(row["gate_evidence"], patch_authorized=True))
+    assert bridge._valid_no_execution_block(forged, "task-provider", 83) is False

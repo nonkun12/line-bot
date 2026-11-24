@@ -447,14 +447,15 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
     instruction = "safe test instruction"
     monkeypatch.setenv("DEV_INSTRUCTION", instruction)
-    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-test-task")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "uhip-confidence-out-of-range-rejection")
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
     monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
     monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
     event_path = tmp_path / "event.json"
-    event_path.write_text(json.dumps({"sender": {"login": "nonkun12"}, "repository": {"full_name": "nonkun12/line-bot"}, "inputs": {"execution_approval": "APPROVE_EXECUTION", "approval_task_id": "rsi-test-task", "approval_instruction_sha256": hashlib.sha256(instruction.encode()).hexdigest(), "approval_base_sha": sha, "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()}}), encoding="utf-8")
+    event_path.write_text(json.dumps({"sender": {"login": "nonkun12"}, "repository": {"full_name": "nonkun12/line-bot"}, "inputs": {"execution_approval": "APPROVE_EXECUTION", "approval_task_id": "uhip-confidence-out-of-range-rejection", "approval_instruction_sha256": hashlib.sha256(instruction.encode()).hexdigest(), "approval_base_sha": sha, "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()}}), encoding="utf-8")
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
     monkeypatch.delenv("GITHUB_ENV", raising=False)
 
@@ -544,7 +545,8 @@ def test_common_runtime_blocks_without_independent_approval_even_if_env_claims_a
     monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: False)
     monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
     monkeypatch.setenv("DEV_INSTRUCTION", "safe test instruction")
-    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-test-task")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "uhip-confidence-out-of-range-rejection")
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
     monkeypatch.setenv("AUTONOMOUS_EXECUTION_APPROVED", "true")
     monkeypatch.setenv("EXECUTION_APPROVED", "true")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
@@ -1079,3 +1081,48 @@ def test_blocked_summary_contains_explicit_no_authority_gate_evidence(
     assert all(payload["gate_evidence"][key] is False for key in (
         "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"
     ))
+
+
+
+def test_local_model_unavailable_blocks_before_consuming_execution_approval(monkeypatch, tmp_path):
+    from scripts import rea_control_tower_adapter
+    from core import emergency_stop
+
+    summary_path = tmp_path / "summary.json"
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "review-coverage-gap-812f52f5b3")
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(summary_path))
+    monkeypatch.setenv("DEV_INSTRUCTION", "Run the bounded review coverage task")
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: "a" * 40)
+    monkeypatch.setattr(emergency_stop, "local_stop_active", lambda _root: False)
+    monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: False)
+    monkeypatch.setattr(
+        rea_control_tower_adapter,
+        "prepare_rea_evidence",
+        lambda *_args, **_kwargs: {
+            "gate": "PASS", "reason_code": "clear",
+            "target_sha": "a" * 40, "scanner_status": "PASS",
+            "finding_count": 0, "critical_count": 0, "blocking_count": 0,
+            "findings": [], "execution_authorized": False,
+            "patch_authorized": False, "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
+        rea_control_tower_adapter,
+        "rea_evidence_is_valid_pass",
+        lambda *_args, **_kwargs: True,
+    )
+
+    def approval_must_not_be_consumed(*_args, **_kwargs):
+        raise AssertionError("provider capability gate must run before approval consumption")
+
+    monkeypatch.setattr(guarded_runtime, "_verify_execution_approval", approval_must_not_be_consumed)
+
+    assert guarded_runtime.main() == 83
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "BLOCKED"
+    assert summary["exit_code"] == 83
+    assert summary["failure_reason"] == "model_provider_gate:local_adapter_unavailable"
+    assert summary["gate_evidence"]["gate_name"] == "model_provider"
+    assert summary["gate_evidence"]["execution_authorized"] is False
