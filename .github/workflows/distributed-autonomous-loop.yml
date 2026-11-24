@@ -513,6 +513,11 @@ jobs:
         if: success() && env.TRIGGER_MODE == 'normal'
         run: |
           set -euo pipefail
+          if ! command -v prlimit >/dev/null 2>&1; then
+            echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY=false" >> "$GITHUB_ENV"
+            echo "POLICY_SANDBOX=BLOCKED reason=prlimit_unavailable" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           if ! command -v bwrap >/dev/null 2>&1; then
             if ! sudo apt-get update -qq || ! sudo apt-get install -y bubblewrap; then
               echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY=false" >> "$GITHUB_ENV"
@@ -520,7 +525,8 @@ jobs:
               exit 0
             fi
           fi
-          if bwrap --die-with-parent --new-session --unshare-net --unshare-pid \
+          if prlimit --nproc=64 --cpu=180 --fsize=1048576 --as=4294967296 -- \
+            bwrap --die-with-parent --new-session --unshare-net --unshare-pid \
             --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp -- \
             python -c 'import socket; names={name for _, name in socket.if_nameindex()}; raise SystemExit(0 if names <= {"lo"} else 1)' ; then
             echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY=true" >> "$GITHUB_ENV"
