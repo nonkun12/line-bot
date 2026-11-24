@@ -30,6 +30,14 @@ on:
         description: 'Exact base commit SHA shown by the blocked preflight'
         required: false
         type: string
+      policy_dispatch:
+        description: 'Internal scheduler source for bounded test-only policy admission'
+        required: false
+        default: 'manual'
+        type: choice
+        options:
+          - 'manual'
+          - '30m_scheduler'
       max_tasks:
         description: 'Manual run task limit (1–4 tasks; all safety gates still apply)'
         required: false
