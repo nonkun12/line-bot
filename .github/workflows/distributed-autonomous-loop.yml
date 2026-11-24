@@ -1643,6 +1643,28 @@ jobs:
             exit 1
           fi
 
+      - name: LoopLab post-run evaluation (fail closed)
+        if: always()
+        env:
+          LOOPLAB_SIMULATOR_HMAC_KEY: ${{ secrets.LOOPLAB_SIMULATOR_HMAC_KEY }}
+          LOOPLAB_DATASET_REGISTRY_HMAC_KEY: ${{ secrets.LOOPLAB_DATASET_REGISTRY_HMAC_KEY }}
+          LOOPLAB_SAFETY_HMAC_KEY: ${{ secrets.LOOPLAB_SAFETY_HMAC_KEY }}
+          LOOPLAB_ADAPTER_HMAC_KEY: ${{ secrets.LOOPLAB_ADAPTER_HMAC_KEY }}
+        run: |
+          set -euo pipefail
+          python scripts/looplab_postrun_gate.py | tee /tmp/looplab-postrun-status.txt
+          status="$(python -c 'import json; from pathlib import Path; print(json.loads(Path("/tmp/looplab-postrun-result.json").read_text(encoding="utf-8"))["status"])')"
+          reason="$(python -c 'import json; from pathlib import Path; print(json.loads(Path("/tmp/looplab-postrun-result.json").read_text(encoding="utf-8"))["reason"])')"
+          ingestion="$(python -c 'import json; from pathlib import Path; print(json.loads(Path("/tmp/looplab-postrun-result.json").read_text(encoding="utf-8"))["rsi_ingestion"])')"
+          {
+            echo
+            echo "### LoopLab post-run evaluation"
+            echo "- 評価: **${status}**"
+            echo "- 理由: ${reason}"
+            echo "- RSI取込: ${ingestion}"
+            echo "- 実行・パッチ・HOLD解除・STOP解除・マージ・デプロイ権限: 付与なし"
+          } | tee -a /tmp/distributed-final-report.txt >> "$GITHUB_STEP_SUMMARY"
+
       - name: Wake Render before LINE final report
         if: always()
         run: |
@@ -1733,5 +1755,6 @@ jobs:
             /tmp/autonomous-*.json
             /tmp/distributed-sheets-log-result.json
             /tmp/distributed-final-report.txt
+            /tmp/looplab-postrun-result.json
           if-no-files-found: ignore
 
