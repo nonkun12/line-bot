@@ -298,7 +298,7 @@ def test_sentinel_after_prior_success_rolls_back_unpublished_goal(
                 "run_nonce": "nonce-1",
             }
             with results.open("a") as stream:
-                stream.write(json.dumps(row) + "\\n")
+                stream.write(json.dumps(row) + "\n")
             return SimpleNamespace(returncode=0)
         return SimpleNamespace(returncode=sentinel)
 
