@@ -1073,10 +1073,22 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native", *paths]
             outputs.append("targeted pytest:")
         if os.environ.get("AUTONOMOUS_TEST_ADMISSION_SANDBOX_REQUIRED", "").strip().lower() == "true":
+            raw_scope = task_scope.get("AUTONOMOUS_ALLOWED_PATHS", missing)
+            try:
+                scoped_paths = json.loads(raw_scope) if isinstance(raw_scope, str) else []
+            except (TypeError, ValueError):
+                scoped_paths = []
+            sandbox_paths = list(touched or scoped_paths) if isinstance(scoped_paths, list) else list(touched or [])
+            if len(sandbox_paths) != 1 or not isinstance(sandbox_paths[0], str):
+                return False, "TEST_SANDBOX_BLOCKED: exact_single_task_path_required"
+            sandbox_cmd = [
+                sys.executable, "-m", "pytest", "-q", "--tb=native",
+                "-p", "no:cacheprovider", sandbox_paths[0],
+            ]
             tests = run_pytest_sandboxed(
-                test_cmd,
+                sandbox_cmd,
                 repo_root=ROOT,
-                test_paths=paths if not full_suite else list(touched or []),
+                test_paths=sandbox_paths,
                 timeout=900,
             )
         else:
