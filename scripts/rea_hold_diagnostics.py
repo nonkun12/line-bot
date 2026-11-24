@@ -62,13 +62,13 @@ def classify_hold_record(record: dict[str, Any]) -> dict[str, Any]:
         if isinstance(code, str) and code.replace("_", "").replace("-", "").isalnum():
             evidence_codes.append(code[:80])
 
-    repair_candidate_status = "NOT_PROPOSED"
+    recovery_path_status = "NOT_PROPOSED"
     if evidence_codes:
         # Prefer a recognized, specific failure code over a broad HOLD reason.
         for code in sorted(set(evidence_codes)):
             mapped = _FAILURE_CLASSES.get(code)
             if mapped:
-                category, next_action, repair_candidate_status = mapped
+                category, next_action, recovery_path_status = mapped
                 break
         else:
             if category == "UNKNOWN":
@@ -78,11 +78,11 @@ def classify_hold_record(record: dict[str, Any]) -> dict[str, Any]:
     return {
         "category": category,
         "next_action": next_action,
-        "repair_candidate_status": repair_candidate_status,
-        "repair_candidate_requires_human_review": repair_candidate_status == "REVIEW_REQUIRED",
+        "recovery_path_status": recovery_path_status,
+        "recovery_requires_human_review": recovery_path_status == "REVIEW_REQUIRED",
         "blocked_task_count": min(len(blocked), 100),
         "failure_reason_codes": sorted(set(evidence_codes))[:20],
-        "evidence_complete": bool(reason and record.get("stage") == "pre_execution"),
+        "diagnostic_stage_valid": record.get("stage") == "pre_execution",
         "automatic_repair_eligible": False,
         "execution_authorized": False,
         "patch_authorized": False,
