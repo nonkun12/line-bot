@@ -788,3 +788,103 @@ def test_schedule_execution_approval_rejects_wrong_actor_and_branch(monkeypatch)
     monkeypatch.setenv("GITHUB_REF", "refs/heads/unreviewed")
     evidence = guarded_runtime._verify_execution_approval("a" * 40, "catalog task instruction")
     assert evidence["gate"] == "BLOCKED"
+
+
+def _configure_run_local_policy_admission(tmp_path, monkeypatch, *, digest_override=None, sandbox_ready=True):
+    import json
+    import hashlib
+
+    base_sha = "a" * 40
+    task_id = "review-coverage-gap-1234567890"
+    instruction = "run one test-only append task"
+    paths = ["tests/test_stocks.py"]
+    tracked = {"max_additions_per_run": 4, "tasks": [{
+        "id": "existing-reviewed-task",
+        "instruction": "existing instruction",
+        "allowed_paths": ["tests/test_work_finder_ai.py"],
+        "execution_approved": True,
+    }]}
+    ephemeral_entry = {
+        "id": task_id,
+        "instruction": instruction,
+        "allowed_paths": paths,
+        "execution_approved": True,
+    }
+    ephemeral = {**tracked, "tasks": [*tracked["tasks"], ephemeral_entry]}
+    runner_temp = tmp_path / "runner-temp"
+    runner_temp.mkdir()
+    catalog_path = runner_temp / "autonomous-loop-policy-runtime-catalog.json"
+    report_path = runner_temp / "autonomous-loop-policy-admission.json"
+    catalog_bytes = json.dumps(ephemeral, sort_keys=True).encode("utf-8")
+    catalog_path.write_bytes(catalog_bytes)
+    report_path.write_text(json.dumps({
+        "status": "POLICY_ADMITTED",
+        "policy_version": "test-only-append-v1",
+        "admitted_task_id": task_id,
+        "admitted_allowed_path": paths[0],
+        "max_tasks_per_cycle": 1,
+        "persistent_catalog_modified": False,
+        "durable_state_modified": False,
+        "held_tasks_resumed": False,
+        "execution_scope": "one_test_file_append_only",
+    }), encoding="utf-8")
+    monkeypatch.setattr(
+        guarded_runtime,
+        "_git",
+        lambda *args: json.dumps(tracked) if args == ("show", base_sha + ":.github/autonomous-loop-task-catalog.json") else "",
+    )
+    monkeypatch.setattr(guarded_runtime.shutil, "which", lambda _: "/usr/bin/bwrap")
+    values = {
+        "GITHUB_EVENT_NAME": "schedule",
+        "GITHUB_REPOSITORY": "nonkun12/line-bot",
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_ACTOR": "nonkun12",
+        "GITHUB_SHA": base_sha,
+        "AUTONOMOUS_TASK_ID": task_id,
+        "AUTONOMOUS_ALLOWED_PATHS": json.dumps(paths),
+        "AUTONOMOUS_TEST_POLICY_ADMISSION": "true",
+        "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY": "true" if sandbox_ready else "false",
+        "AUTONOMOUS_TEST_ADMISSION_SANDBOX_REQUIRED": "true",
+        "RUNNER_TEMP": str(runner_temp),
+        "AUTONOMOUS_POLICY_CATALOG_PATH": str(catalog_path),
+        "AUTONOMOUS_POLICY_REPORT_PATH": str(report_path),
+        "AUTONOMOUS_POLICY_CATALOG_SHA256": digest_override or hashlib.sha256(catalog_bytes).hexdigest(),
+    }
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+    return base_sha, instruction
+
+
+def test_schedule_execution_approval_accepts_verified_run_local_policy_catalog(tmp_path, monkeypatch):
+    base_sha, instruction = _configure_run_local_policy_admission(tmp_path, monkeypatch)
+
+    evidence = guarded_runtime._verify_execution_approval(base_sha, instruction)
+
+    assert evidence["gate"] == "PASS"
+    assert evidence["execution_authorized"] is True
+    assert evidence["policy_admission"] is True
+    assert evidence["catalog_content_sha256"] == guarded_runtime.hashlib.sha256(
+        (tmp_path / "runner-temp" / "autonomous-loop-policy-runtime-catalog.json").read_bytes()
+    ).hexdigest()
+
+
+def test_schedule_execution_approval_rejects_run_local_catalog_digest_mismatch(tmp_path, monkeypatch):
+    base_sha, instruction = _configure_run_local_policy_admission(
+        tmp_path, monkeypatch, digest_override="0" * 64
+    )
+
+    evidence = guarded_runtime._verify_execution_approval(base_sha, instruction)
+
+    assert evidence["gate"] == "BLOCKED"
+    assert evidence["execution_authorized"] is False
+
+
+def test_schedule_execution_approval_rejects_run_local_policy_without_sandbox(tmp_path, monkeypatch):
+    base_sha, instruction = _configure_run_local_policy_admission(
+        tmp_path, monkeypatch, sandbox_ready=False
+    )
+
+    evidence = guarded_runtime._verify_execution_approval(base_sha, instruction)
+
+    assert evidence["gate"] == "BLOCKED"
+    assert evidence["execution_authorized"] is False
