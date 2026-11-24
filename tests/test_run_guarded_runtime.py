@@ -1004,3 +1004,64 @@ def test_schedule_execution_approval_rejects_wrong_actor_and_branch(monkeypatch)
     monkeypatch.setenv("GITHUB_REF", "refs/heads/unreviewed")
     evidence = guarded_runtime._verify_execution_approval("a" * 40, "catalog task instruction")
     assert evidence["gate"] == "BLOCKED"
+
+
+def _configure_policy_admission_fixture(tmp_path, monkeypatch, *, sandbox_ready="true", digest=None):
+    from scripts.autonomous_task_target_allowlist import TARGETS
+
+    task_id = "review-coverage-gap-0123456789"
+    test_path = TARGETS[0][1]
+    base_sha = "d" * 40
+    instruction = "Append one deterministic pytest test."
+    report_path = tmp_path / "policy-report.json"
+    catalog_path = tmp_path / "policy-catalog.json"
+    tracked_catalog = {"tasks": []}
+    catalog_bytes = json.dumps({"tasks": [{
+        "id": task_id, "instruction": instruction,
+        "allowed_paths": [test_path], "execution_approved": True,
+    }]}).encode("utf-8")
+    report_path.write_text(json.dumps({
+        "status": "POLICY_ADMITTED", "policy_version": "test-only-append-v1",
+        "admitted_task_id": task_id, "admitted_allowed_path": test_path,
+        "base_sha": base_sha, "max_tasks_per_cycle": 1,
+        "persistent_catalog_modified": False, "durable_state_modified": False,
+        "held_tasks_resumed": False, "execution_scope": "one_test_file_append_only",
+    }), encoding="utf-8")
+    catalog_path.write_bytes(catalog_bytes)
+    monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_REPORT_PATH", report_path)
+    monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_CATALOG_PATH", catalog_path)
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: json.dumps(tracked_catalog) if args == ("show", base_sha + ":.github/autonomous-loop-task-catalog.json") else "")
+    monkeypatch.setattr(guarded_runtime.shutil, "which", lambda _: "/usr/bin/bwrap")
+    for key, value in {
+        "AUTONOMOUS_TEST_ADMISSION_POLICY": "true",
+        "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY": sandbox_ready,
+        "AUTONOMOUS_TEST_ADMISSION_CATALOG_SHA256": digest or hashlib.sha256(catalog_bytes).hexdigest(),
+        "GITHUB_SHA": base_sha,
+        "AUTONOMOUS_LOOP_TASK_CATALOG": str(catalog_path),
+        "AUTONOMOUS_TASK_ID": task_id,
+        "AUTONOMOUS_ALLOWED_PATHS": json.dumps([test_path]),
+        "GITHUB_EVENT_NAME": "schedule",
+        "GITHUB_REPOSITORY": "nonkun12/line-bot",
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_ACTOR": "nonkun12",
+    }.items():
+        monkeypatch.setenv(key, value)
+    return base_sha, instruction
+
+
+def test_run_local_policy_catalog_rejects_digest_mismatch(tmp_path, monkeypatch):
+    base_sha, instruction = _configure_policy_admission_fixture(
+        tmp_path, monkeypatch, digest="0" * 64
+    )
+    result = guarded_runtime._verify_execution_approval(base_sha, instruction)
+    assert result["gate"] == "BLOCKED"
+    assert result["execution_authorized"] is False
+
+
+def test_run_local_policy_catalog_requires_verified_sandbox(tmp_path, monkeypatch):
+    base_sha, instruction = _configure_policy_admission_fixture(
+        tmp_path, monkeypatch, sandbox_ready="false"
+    )
+    result = guarded_runtime._verify_execution_approval(base_sha, instruction)
+    assert result["gate"] == "BLOCKED"
+    assert result["execution_authorized"] is False
