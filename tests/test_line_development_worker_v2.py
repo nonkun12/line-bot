@@ -588,6 +588,45 @@ def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     assert "full pytest:" in output
 
 
+def test_policy_admission_runs_only_one_target_in_network_isolated_bwrap(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_run(cmd, timeout=900, input_text=None, env=None):
+        calls.append((cmd, env))
+        return subprocess.CompletedProcess(cmd, 0, stdout="1 passed", stderr="")
+
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker, "run", fake_run)
+    monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/bin/bwrap")
+    monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "true")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_stocks.py"]')
+    monkeypatch.setenv("GITHUB_TOKEN", "must-not-leak")
+
+    passed, output = worker.run_tests(["tests/test_stocks.py"], full_suite=True)
+
+    assert passed
+    pytest_call, pytest_env = calls[-1]
+    assert pytest_call[0] == "bwrap"
+    assert "--unshare-net" in pytest_call
+    assert "--ro-bind" in pytest_call
+    assert "--tmpfs" in pytest_call
+    assert pytest_call[-1] == "tests/test_stocks.py"
+    assert pytest_env is not None
+    assert "GITHUB_TOKEN" not in pytest_env
+    assert "isolated pytest:" in output
+
+
+def test_policy_admission_rejects_multiple_or_mismatched_test_paths(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/bin/bwrap")
+    monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "true")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_stocks.py", "tests/test_other.py"]')
+
+    passed, output = worker.run_tests(["tests/test_stocks.py"], full_suite=False)
+
+    assert not passed
+    assert output == "isolated_policy_test_blocked:target_not_allowlisted"
+
 def test_run_tests_can_verify_only_allowlisted_target_for_no_change(monkeypatch, tmp_path):
     calls = []
 
@@ -1125,6 +1164,33 @@ def test_append_only_test_plan_constructs_eof_patch_without_rewriting_existing_t
     assert worker.validate_plan(plan, "tests/test_sample.py") == (True, "tests/test_sample.py")
     assert target.read_text(encoding="utf-8") == original
 
+
+def test_append_only_test_plan_adds_only_allowlisted_stock_import(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_stocks.py"
+    target.parent.mkdir()
+    original = "from agents.stocks.node import StocksAgent\n\n\ndef test_existing():\n    assert True\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    generated = (
+        "def test_safe_stock_quote_boundary():\n"
+        "    assert safe_stock_quote is not None\n"
+        "    assert StockQuote is not None\n"
+    )
+
+    plan, error = worker.build_append_only_test_plan(
+        FakeClient([generated]),
+        "Add one deterministic regression for safe_stock_quote",
+        "tests/test_stocks.py",
+        original,
+    )
+
+    assert error == ""
+    assert plan is not None
+    change = plan["changes"][0]
+    candidate = original.replace(change["old"], change["new"], 1)
+    assert candidate.count("from core.stocks import StockQuote, safe_stock_quote") == 1
+    assert "def test_safe_stock_quote_boundary():" in candidate
+    assert worker.validate_plan(plan, "tests/test_stocks.py") == (True, "tests/test_stocks.py")
 
 def test_append_only_test_plan_fails_closed_on_imports_and_multiple_functions(monkeypatch, tmp_path):
     target = tmp_path / "tests" / "test_sample.py"
