@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -212,7 +213,7 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
             if (
                 not isinstance(catalog_digest, str)
                 or not re.fullmatch(r"[a-f0-9]{64}", catalog_digest)
-                or not hashlib.compare_digest(hashlib.sha256(catalog_bytes).hexdigest(), catalog_digest)
+                or not hmac.compare_digest(hashlib.sha256(catalog_bytes).hexdigest(), catalog_digest)
             ):
                 return blocked
             from scripts.autonomous_task_target_allowlist import TARGETS
