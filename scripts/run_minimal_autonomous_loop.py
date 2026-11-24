@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -30,6 +31,8 @@ if str(ROOT) not in sys.path:
 
 from core.loop_failure_codes import extract_safe_failure_code, is_safe_failure_code
 QUEUE = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", str(ROOT / ".github" / "autonomous-loop-tasks.json"))).resolve()
+POLICY_ADMISSION_REPORT_PATH = Path("/tmp/autonomous-loop-policy-admission.json")
+POLICY_ADMISSION_CATALOG_PATH = Path("/tmp/autonomous-loop-policy-runtime-catalog.json")
 DEFAULT_STOP_FILE = Path("/tmp/line-bot-autonomous-loop.stop")
 ACTIVE_PROCESS: subprocess.Popen[str] | None = None
 
@@ -387,6 +390,7 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
         ".github/autonomous-loop-task-catalog.json",
     )
     definitions: dict[str, dict[str, object]] = {}
+    base_catalog_tasks: list[dict[str, object]] = []
     for path in catalog_paths:
         code, raw = _git_checked("show", f"{evidence_sha}:{path}")
         if code != 0:
@@ -398,6 +402,7 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
         tasks = payload.get("tasks") if isinstance(payload, dict) else None
         if not isinstance(tasks, list):
             raise ValueError("versioned task catalog has no task list")
+        base_catalog_tasks.extend(tasks)
         for entry in tasks:
             if not isinstance(entry, dict):
                 raise ValueError("versioned task definition is invalid")
@@ -429,6 +434,68 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
             if previous is not None and previous != normalized:
                 raise ValueError("conflicting versioned task definitions")
             definitions[task_id] = normalized
+
+    if os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true":
+        catalog_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_CATALOG", "")).resolve()
+        if catalog_path != POLICY_ADMISSION_CATALOG_PATH.resolve():
+            raise ValueError("run_local_policy_catalog_path_invalid")
+        try:
+            report = json.loads(POLICY_ADMISSION_REPORT_PATH.read_text(encoding="utf-8"))
+            catalog_bytes = catalog_path.read_bytes()
+            policy_catalog = json.loads(catalog_bytes.decode("utf-8"))
+            task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+            allowed_paths = json.loads(os.environ.get("AUTONOMOUS_ALLOWED_PATHS", ""))
+        except (OSError, UnicodeError, TypeError, ValueError) as exc:
+            raise ValueError("run_local_policy_evidence_unavailable") from exc
+        if not isinstance(report, dict) or not isinstance(policy_catalog, dict):
+            raise ValueError("run_local_policy_evidence_invalid")
+        digest = report.get("admitted_catalog_sha256")
+        if (
+            report.get("status") != "POLICY_ADMITTED"
+            or report.get("policy_version") != "test-only-append-v1"
+            or report.get("base_sha") != evidence_sha
+            or report.get("admitted_task_id") != task_id
+            or not isinstance(digest, str)
+            or not re.fullmatch(r"[a-f0-9]{64}", digest)
+            or not hmac.compare_digest(hashlib.sha256(catalog_bytes).hexdigest(), digest)
+            or not isinstance(allowed_paths, list)
+            or len(allowed_paths) != 1
+            or report.get("admitted_allowed_path") != allowed_paths[0]
+        ):
+            raise ValueError("run_local_policy_evidence_mismatch")
+        from scripts.autonomous_task_target_allowlist import TARGETS
+        allowed_test_paths = {test_path for _, test_path in TARGETS}
+        if (
+            not isinstance(task_id, str)
+            or not re.fullmatch(r"review-coverage-gap-[a-f0-9]{10}", task_id)
+            or allowed_paths[0] not in allowed_test_paths
+        ):
+            raise ValueError("run_local_policy_target_not_allowlisted")
+        policy_tasks = policy_catalog.get("tasks")
+        if (
+            not isinstance(policy_tasks, list)
+            or len(policy_tasks) != len(base_catalog_tasks) + 1
+            or policy_tasks[:-1] != base_catalog_tasks
+        ):
+            raise ValueError("run_local_policy_catalog_base_mismatch")
+        extra = policy_tasks[-1]
+        if (
+            not isinstance(extra, dict)
+            or extra.get("id") != task_id
+            or extra.get("execution_approved") is not True
+            or extra.get("allowed_paths") != allowed_paths
+            or not isinstance(extra.get("instruction"), str)
+            or not extra["instruction"].strip()
+            or task_id in definitions
+        ):
+            raise ValueError("run_local_policy_task_definition_invalid")
+        definitions[task_id] = {
+            "id": task_id,
+            "instruction": extra["instruction"],
+            "allowed_paths": list(allowed_paths),
+            "execution_approved": True,
+            "repair_approved": False,
+        }
     return list(definitions.values())
 
 
