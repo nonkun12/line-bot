@@ -1079,3 +1079,48 @@ def test_blocked_summary_contains_explicit_no_authority_gate_evidence(
     assert all(payload["gate_evidence"][key] is False for key in (
         "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"
     ))
+
+
+
+def test_local_model_unavailable_blocks_before_consuming_execution_approval(monkeypatch, tmp_path):
+    from scripts import rea_control_tower_adapter
+    from core import emergency_stop
+
+    summary_path = tmp_path / "summary.json"
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "review-coverage-gap-812f52f5b3")
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
+    monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(summary_path))
+    monkeypatch.setenv("DEV_INSTRUCTION", "Run the bounded review coverage task")
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: "a" * 40)
+    monkeypatch.setattr(emergency_stop, "local_stop_active", lambda _root: False)
+    monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: False)
+    monkeypatch.setattr(
+        rea_control_tower_adapter,
+        "prepare_rea_evidence",
+        lambda *_args, **_kwargs: {
+            "gate": "PASS", "reason_code": "clear",
+            "target_sha": "a" * 40, "scanner_status": "PASS",
+            "finding_count": 0, "critical_count": 0, "blocking_count": 0,
+            "findings": [], "execution_authorized": False,
+            "patch_authorized": False, "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
+        rea_control_tower_adapter,
+        "rea_evidence_is_valid_pass",
+        lambda *_args, **_kwargs: True,
+    )
+
+    def approval_must_not_be_consumed(*_args, **_kwargs):
+        raise AssertionError("provider capability gate must run before approval consumption")
+
+    monkeypatch.setattr(guarded_runtime, "_verify_execution_approval", approval_must_not_be_consumed)
+
+    assert guarded_runtime.main() == 83
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "BLOCKED"
+    assert summary["exit_code"] == 83
+    assert summary["failure_reason"] == "model_provider_gate:local_adapter_unavailable"
+    assert summary["gate_evidence"]["gate_name"] == "model_provider"
+    assert summary["gate_evidence"]["execution_authorized"] is False
