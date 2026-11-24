@@ -1,0 +1,97 @@
+name: Test Admission Sandbox Preflight
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/test-admission-sandbox-preflight.yml"
+      - ".github/workflows/distributed-autonomous-loop.yml"
+      - "scripts/line_development_worker_v2.py"
+      - "scripts/run_guarded_runtime.py"
+      - "tests/test_line_development_worker_v2.py"
+      - "tests/test_run_guarded_runtime.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-admission-sandbox-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-hosted-runner-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Install sandbox prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v bwrap >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y bubblewrap
+          fi
+          command -v bwrap
+          command -v prlimit
+          command -v python3
+
+      - name: Verify the real OS isolation boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe=$(cat <<'PY'
+          import os
+          import resource
+          import socket
+          from pathlib import Path
+
+          interfaces = {name for _, name in socket.if_nameindex()}
+          if not interfaces or interfaces - {"lo"}:
+              raise SystemExit(f"network_not_isolated:{sorted(interfaces)}")
+
+          try:
+              Path("/sandbox-preflight-write-probe").write_text("blocked", encoding="utf-8")
+          except OSError:
+              pass
+          else:
+              raise SystemExit("repository_root_is_writable")
+
+          temp = Path("/tmp/sandbox-preflight-write-probe")
+          temp.write_text("ok", encoding="utf-8")
+          if temp.read_text(encoding="utf-8") != "ok":
+              raise SystemExit("tmpfs_write_failed")
+
+          forbidden = {
+              "GITHUB_TOKEN",
+              "GH_TOKEN",
+              "ACTIONS_RUNTIME_TOKEN",
+              "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+          }
+          leaked = sorted(name for name in forbidden if os.environ.get(name))
+          if leaked:
+              raise SystemExit(f"credential_environment_leaked:{leaked}")
+
+          expected = {
+              resource.RLIMIT_NPROC: 64,
+              resource.RLIMIT_CPU: 180,
+              resource.RLIMIT_FSIZE: 1048576,
+              resource.RLIMIT_AS: 4294967296,
+          }
+          for key, maximum in expected.items():
+              soft, hard = resource.getrlimit(key)
+              if soft > maximum or hard > maximum:
+                  raise SystemExit(f"resource_limit_missing:{key}:{soft}:{hard}")
+
+          print("SANDBOX_PREFLIGHT=PASS")
+          print("network=loopback_only")
+          print("filesystem=root_read_only,tmpfs_writable")
+          print("credentials=cleared")
+          print("limits=nproc64,cpu180,fsize1MiB,address_space4GiB")
+          PY
+          )
+          prlimit --nproc=64 --cpu=180 --fsize=1048576 --as=4294967296 -- \
+            bwrap --die-with-parent --new-session --unshare-net --unshare-pid \
+              --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp \
+              --clearenv --setenv PATH "$PATH" --setenv HOME /tmp \
+              --setenv TMPDIR /tmp --setenv PYTHONDONTWRITEBYTECODE 1 \
+              --setenv LANG C.UTF-8 -- /usr/bin/python3 -c "$probe"
