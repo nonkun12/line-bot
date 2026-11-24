@@ -160,7 +160,7 @@ def _record_preflight_rea(path: Path, expected_sha: str) -> None:
         row = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "stage": "pre_execution",
-            "target_sha": expected_sha if isinstance(expected_sha, str) and len(expected_sha) == 40 else None,
+            "target_sha": evidence.get("target_sha"),
             "gate": gate,
             "reason_code": evidence.get("reason_code") if gate == "BLOCKED" else None,
             "scanner_status": evidence.get("scanner_status", "BLOCKED"),
@@ -175,7 +175,7 @@ def _record_preflight_rea(path: Path, expected_sha: str) -> None:
         row["evidence_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\\n")
+            stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
         print(f"REA_PREFLIGHT={gate} reason={row['reason_code'] or 'none'}", flush=True)
     except Exception:
         # Diagnostics must never leak exception details or acquire execution authority.
