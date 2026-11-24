@@ -1169,13 +1169,13 @@ def test_append_only_test_plan_constructs_eof_patch_without_rewriting_existing_t
 def test_append_only_test_plan_adds_only_allowlisted_stock_import(monkeypatch, tmp_path):
     target = tmp_path / "tests" / "test_stocks.py"
     target.parent.mkdir()
-    original = "from agents.stocks.node import StocksAgent\\n\\n\\ndef test_existing():\\n    assert True\\n"
+    original = "from agents.stocks.node import StocksAgent\n\n\ndef test_existing():\n    assert True\n"
     target.write_text(original, encoding="utf-8")
     monkeypatch.setattr(worker, "ROOT", tmp_path)
     generated = (
-        "def test_safe_stock_quote_boundary():\\n"
-        "    assert safe_stock_quote is not None\\n"
-        "    assert StockQuote is not None\\n"
+        "def test_safe_stock_quote_boundary():\n"
+        "    assert safe_stock_quote is not None\n"
+        "    assert StockQuote is not None\n"
     )
 
     plan, error = worker.build_append_only_test_plan(
