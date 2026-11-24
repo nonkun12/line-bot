@@ -24,12 +24,10 @@ def _runtime_directories(python: str) -> list[Path]:
     executable = Path(python).resolve(strict=True)
     candidates.add(executable.parent)
 
-    # setup-python installs a self-contained interpreter prefix under the
-    # hosted toolcache. Mount that exact prefix read-only so symlink targets,
-    # stdlib, extension modules, and interpreter support files stay resolvable.
-    prefix = Path(sys.prefix).resolve(strict=True)
-    if prefix.is_dir() and prefix != Path("/") and prefix != Path.home():
-        candidates.add(prefix)
+    # Mount only the interpreter's executable directory plus the explicit
+    # stdlib/site-packages/library directories below. Mounting the entire
+    # prefix first can mask nested executable-directory binds in bwrap's
+    # initially empty namespace and leave the interpreter path unresolved.
 
     configured = sysconfig.get_paths()
     # Some hosted Python builds depend on libpython in LIBDIR via
