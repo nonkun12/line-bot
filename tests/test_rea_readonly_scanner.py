@@ -109,6 +109,36 @@ class ReadonlyScannerTests(unittest.TestCase):
         self.assertEqual(report["findings_count"], 0)
         self.assertEqual(report["changed_paths"], ["line_development.py"])
 
+    def test_commit_diff_allows_only_dev_notes_schema_file(self) -> None:
+        base = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        self._write("dev_notes/schema.py", "VALUE = 2\n")
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+
+        report = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["findings_count"], 0)
+        self.assertEqual(report["changed_paths"], ["dev_notes/schema.py"])
+
+        base = target
+        self._write("dev_notes/other.py", "VALUE = 3\n")
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        blocked = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(blocked["status"], "FINDINGS")
+        finding = next(
+            item for item in blocked["findings"]
+            if item["category"] == "path_policy"
+        )
+        self.assertEqual(finding["evidence"]["path"], "dev_notes/other.py")
+        self.assertEqual(finding["severity"], "CRITICAL")
+
     def test_commit_diff_still_blocks_other_repository_root_files(self) -> None:
         base = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
