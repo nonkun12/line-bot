@@ -64,3 +64,37 @@ def test_guarded_runner_sentinel_is_never_a_repair_candidate():
     assert result["recovery_path_status"] == "NO_REPAIR"
     assert result["automatic_repair_eligible"] is False
     assert result["hold_clear_authorized"] is False
+
+
+
+def test_replay_run_1092_all_pending_tasks_held_evidence():
+    # Reconstructed only from the retained Run #1092 state and final report.
+    # The original run predates the diagnostic producer, so no JSONL record exists.
+    record = {
+        "stage": "pre_execution",
+        "decision": "HOLD",
+        "reason": "all_pending_tasks_held",
+        "task_id": None,
+        "task_ids": [],
+        "task_counts": {"HELD": 1},
+        "blocked_tasks": [{
+            "task_id": "review-coverage-gap-4f1b715515",
+            "status": "HELD",
+            "hold_reason": "guarded_runtime_or_evidence_gate_failed",
+        }],
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    result = classify_hold_record(record)
+    assert result["category"] == "QUEUE_HELD"
+    assert result["next_action"] == "inspect_held_task_evidence"
+    assert result["blocked_task_count"] == 1
+    assert result["diagnostic_stage_valid"] is True
+    assert result["automatic_repair_eligible"] is False
+    assert result["execution_authorized"] is False
+    assert result["patch_authorized"] is False
+    assert result["hold_clear_authorized"] is False
+    assert result["task_resume_authorized"] is False
+    assert result["merge_deploy_authorized"] is False
