@@ -223,10 +223,11 @@ def build_sandbox_command(
         source = str(mounts[destination])
         args.extend(["--ro-bind", source, destination])
 
-    # The interpreter and its PT_INTERP loader are already covered by the
-    # read-only runtime-directory mounts assembled above. Do not add a second
-    # file bind beneath those mounts: bubblewrap cannot create a missing file
-    # inside an already read-only mounted directory.
+    # Expose the selected interpreter at a stable path at the namespace root.
+    # This avoids relying on deep hosted-toolcache destination paths while
+    # retaining the exact host interpreter binary as a read-only bind.
+    interpreter = Path(python).resolve(strict=True)
+    args.extend(["--ro-bind", str(interpreter), "/python"])
 
     args.extend([
         "--chdir", str(root),
@@ -243,7 +244,7 @@ def build_sandbox_command(
         ),
         "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
         "--",
-        str(Path(python).resolve(strict=True)), "-m", "pytest", "-q",
+        "/python", "-m", "pytest", "-q",
         "--tb=native", "-p", "no:cacheprovider", test_path,
     ])
     return args
