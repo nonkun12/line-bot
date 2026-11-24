@@ -10,6 +10,7 @@ from scripts.produce_looplab_simulator_artifact import (
     build_payload,
     canonical,
     write_signed_artifact,
+    ensure_output_is_separate,
 )
 
 
@@ -108,11 +109,8 @@ def test_producer_rejects_missing_candidate_artifact(tmp_path):
         _build(paths)
 
 
-def test_producer_never_overwrites_input_dataset(tmp_path):
+
+def test_producer_refuses_output_path_that_aliases_an_input(tmp_path):
     paths = _fixture(tmp_path)
-    payload = _build(paths)
-    original = paths["dataset"].read_bytes()
-    write_signed_artifact(payload, paths["dataset"], b"s" * 40)
-    assert paths["dataset"].read_bytes() != original
-    # This test documents that callers must use a distinct output path; the
-    # CLI defaults to /tmp and the workflow gate reads a separate dataset path.
+    with pytest.raises(ValueError, match="output_path_must_not_overwrite_input"):
+        ensure_output_is_separate(paths["dataset"], list(paths.values()))
