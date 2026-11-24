@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 
@@ -23,12 +24,28 @@ def _runtime_directories(python: str) -> list[Path]:
     executable = Path(python).resolve(strict=True)
     candidates.add(executable.parent)
 
+    configured = sysconfig.get_paths()
+    runtime_roots: list[Path] = []
+    for key in ("stdlib", "platstdlib", "purelib", "platlib"):
+        raw = configured.get(key)
+        if raw:
+            path = Path(raw)
+            if path.exists() and path.is_dir():
+                resolved = path.resolve()
+                candidates.add(resolved)
+                runtime_roots.append(resolved)
+    # Include the interpreter's extension-module directory only when it is
+    # nested under the configured standard library, never arbitrary PYTHONPATH
+    # or user-site directories inherited from the host process.
     for raw in sys.path:
         if not raw:
             continue
         path = Path(raw)
-        if path.exists() and path.is_dir():
-            candidates.add(path.resolve())
+        if not path.exists() or not path.is_dir():
+            continue
+        resolved = path.resolve()
+        if any(resolved.is_relative_to(base) for base in runtime_roots):
+            candidates.add(resolved)
 
     # Include only the standard command directory and git when present; some
     # allowlisted regression tests create temporary local git repositories.
