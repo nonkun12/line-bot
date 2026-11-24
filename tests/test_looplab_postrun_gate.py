@@ -25,6 +25,7 @@ def _inputs(tmp_path):
         "LOOPLAB_DATASET_REGISTRY_HMAC_KEY": "r" * 40,
         "LOOPLAB_SAFETY_HMAC_KEY": "t" * 40,
         "LOOPLAB_ADAPTER_HMAC_KEY": "a" * 40,
+        "LOOPLAB_RSI_EVIDENCE_HMAC_KEY": "e" * 40,
     }
     dataset = [
         {"sample_id": "one", "input": "1+1", "expected": "2"},
@@ -65,6 +66,11 @@ def _inputs(tmp_path):
         "global_hold_state": "CLEAR",
         "issued_at": 900,
         "expires_at": 1100,
+        "execution_enabled": False,
+        "free_only": True,
+        "budget_known": True,
+        "budget_remaining_units": 1,
+        "paid_fallback_enabled": False,
     }
     paths = {
         "simulator": tmp_path / "simulator.json",
@@ -93,7 +99,9 @@ def test_signed_postrun_inputs_evaluate_but_do_not_ingest_into_rsi(tmp_path):
     )
     assert result["status"] == "PASS"
     assert result["evaluation"]["adapter_signature"]
-    assert result["rsi_ingestion"] == "NOT_ATTEMPTED_TRUSTED_RUNTIME_REQUIRED"
+    assert result["rsi_ingestion"] == "RECORDED"
+    assert result["rsi"]["recorded"] is True
+    assert result["rsi_ledger"]
     assert result["authority"]["execution_authorized"] is False
     assert json.loads(paths["output"].read_text())["status"] == "PASS"
 
@@ -136,6 +144,11 @@ def test_active_hold_or_stop_blocks_evaluation(tmp_path):
         "global_hold_state": "ACTIVE",
         "issued_at": 900,
         "expires_at": 1100,
+        "execution_enabled": False,
+        "free_only": True,
+        "budget_known": True,
+        "budget_remaining_units": 1,
+        "paid_fallback_enabled": False,
     }
     _write(paths["safety"], _signed(active, keys["LOOPLAB_SAFETY_HMAC_KEY"]))
     result = evaluate_postrun(
