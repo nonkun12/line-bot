@@ -31,6 +31,7 @@ def test_command_uses_empty_root_and_never_mounts_host_root_or_target_writable(t
     assert "--ro-bind / /" not in joined
     assert "--bind" not in command
     assert str(root) in command
+    assert str(Path(sys.prefix).resolve()) in command
     assert "tests/test_one.py" in command
 
 
