@@ -443,8 +443,13 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
             report = json.loads(POLICY_ADMISSION_REPORT_PATH.read_text(encoding="utf-8"))
             catalog_bytes = catalog_path.read_bytes()
             policy_catalog = json.loads(catalog_bytes.decode("utf-8"))
-            task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
-            allowed_paths = json.loads(os.environ.get("AUTONOMOUS_ALLOWED_PATHS", ""))
+            runtime_queue = json.loads(QUEUE.read_text(encoding="utf-8"))
+            queued_tasks = runtime_queue.get("tasks") if isinstance(runtime_queue, dict) else None
+            if not isinstance(queued_tasks, list) or len(queued_tasks) != 1 or not isinstance(queued_tasks[0], dict):
+                raise ValueError("run_local_policy_runtime_queue_invalid")
+            task_id = queued_tasks[0].get("id")
+            allowed_paths = queued_tasks[0].get("allowed_paths")
+            queued_instruction = queued_tasks[0].get("instruction")
         except (OSError, UnicodeError, TypeError, ValueError) as exc:
             raise ValueError("run_local_policy_evidence_unavailable") from exc
         if not isinstance(report, dict) or not isinstance(policy_catalog, dict):
@@ -484,6 +489,7 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
             or extra.get("id") != task_id
             or extra.get("execution_approved") is not True
             or extra.get("allowed_paths") != allowed_paths
+            or extra.get("instruction") != queued_instruction
             or not isinstance(extra.get("instruction"), str)
             or not extra["instruction"].strip()
             or task_id in definitions
