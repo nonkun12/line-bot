@@ -94,7 +94,7 @@ jobs:
                       counts = row.get("task_counts", {})
                       if not isinstance(counts, dict):
                           counts = {}
-                      safe_counts = {str(k)[:24]: max(0, min(int(v), 10000)) for k, v in list(counts.items())[:12] if str(k)[:24].isalnum() and isinstance(v, int)}
+                      safe_counts = {str(k)[:24]: max(0, min(int(v), 10000)) for k, v in list(counts.items())[:12] if str(k)[:24].replace("_", "").replace("-", "").isalnum() and isinstance(v, int)}
                       blocked = row.get("blocked_tasks", [])
                       hold_diagnostics.append({
                           "decision": row.get("decision") if row.get("decision") in {"HOLD", "INVALID", "COMPLETE"} else "UNKNOWN",
