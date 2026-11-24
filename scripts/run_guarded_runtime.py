@@ -494,12 +494,11 @@ def _write_summary(
         payload["rea"] = rea_evidence
     if approval_evidence is not None:
         payload["execution_approval"] = approval_evidence
-    if status == "BLOCKED" and exit_code in {80, 81, 82}:
-        source = approval_evidence if exit_code in {81, 82} else rea_evidence
-        reason_code = source.get("reason_code") if isinstance(source, dict) else None
+    if status == "BLOCKED" and exit_code in {81, 82}:
+        reason_code = approval_evidence.get("reason_code") if isinstance(approval_evidence, dict) else None
         if not isinstance(reason_code, str) or not reason_code.strip():
             reason_code = "guarded_runtime_gate_blocked"
-        gate_name = {80: "rea", 81: "execution_approval", 82: "emergency_stop"}[exit_code]
+        gate_name = "execution_approval" if exit_code == 81 else "emergency_stop"
         payload["failure_reason"] = f"guarded_runtime_gate:{gate_name}:{reason_code}"
         payload["gate_evidence"] = {
             "gate": "BLOCKED", "gate_name": gate_name, "reason_code": reason_code,
