@@ -440,6 +440,7 @@ class RSIExecutor:
         executor_id: str,
         verify_adapter_signature: Callable[[str, str, str], bool] | None = None,
         resolve_locked_dataset: Callable[[str], Mapping[str, Any] | None] | None = None,
+        safety_state_provider: Callable[[], Mapping[str, Any] | None] | None = None,
         max_experiments_per_cycle: int = 4,
     ) -> None:
         _bounded_id(executor_id, "executor id")
