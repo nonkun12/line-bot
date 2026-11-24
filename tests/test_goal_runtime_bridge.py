@@ -393,6 +393,7 @@ def test_run_scoped_goal_still_blocks_global_kill_switch_and_inflight_work(tmp_p
 def test_validated_gate_block_is_not_turned_into_goal_hold():
     row = {
         "task_id": "task-gate", "status": "BLOCKED", "exit_code": 81,
+        "failure_reason": "guarded_runtime_gate:execution_approval:approval_missing",
         "base_sha": "a" * 40, "produced_sha": "a" * 40, "run_nonce": "b" * 32,
         "gate_evidence": {
             "gate": "BLOCKED", "gate_name": "execution_approval",
