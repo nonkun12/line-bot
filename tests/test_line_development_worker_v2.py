@@ -1670,7 +1670,7 @@ def test_run_tests_uses_os_sandbox_for_policy_admitted_task(monkeypatch, tmp_pat
 
     assert passed
     assert len(host_calls) == 1
-    assert host_calls[0][1:3] == ["-m", "py_compile"]
+    assert host_calls[0][1:3] == ["-B", "-c"]
     assert len(sandbox_calls) == 1
     command, root, paths, timeout = sandbox_calls[0]
     assert command[-1] == "tests/test_stocks.py"
