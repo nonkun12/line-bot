@@ -1650,6 +1650,7 @@ jobs:
           LOOPLAB_DATASET_REGISTRY_HMAC_KEY: ${{ secrets.LOOPLAB_DATASET_REGISTRY_HMAC_KEY }}
           LOOPLAB_SAFETY_HMAC_KEY: ${{ secrets.LOOPLAB_SAFETY_HMAC_KEY }}
           LOOPLAB_ADAPTER_HMAC_KEY: ${{ secrets.LOOPLAB_ADAPTER_HMAC_KEY }}
+          LOOPLAB_RSI_EVIDENCE_HMAC_KEY: ${{ secrets.LOOPLAB_RSI_EVIDENCE_HMAC_KEY }}
         run: |
           set -euo pipefail
           python scripts/looplab_postrun_gate.py | tee /tmp/looplab-postrun-status.txt
