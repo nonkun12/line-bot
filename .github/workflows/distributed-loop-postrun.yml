@@ -76,12 +76,39 @@ jobs:
                               tasks.append(item)
                       except json.JSONDecodeError:
                           pass
-          sheets = {}
-          if sheets_files:
-              try:
-                  sheets = json.loads(sheets_files[0].read_text(encoding="utf-8"))
-              except Exception:
-                  sheets = {}
+          # Read pre-execution GoalAutopilot diagnostics as evidence only.
+          hold_diag_files = [p for p in files if p.name == "goal-autopilot-hold-evaluations.jsonl"]
+          hold_diagnostics = []
+          hold_diag_invalid = 0
+          allowed_reasons = {"guarded_runtime_or_evidence_gate_failed", "all_pending_tasks_held", "review_required", "execution_not_authorized", "unknown"}
+          for path in hold_diag_files[:1]:
+              for line in path.read_text(encoding="utf-8").splitlines()[:100]:
+                  if not line.strip():
+                      continue
+                  try:
+                      row = json.loads(line)
+                      if not isinstance(row, dict) or row.get("stage") != "pre_execution":
+                          hold_diag_invalid += 1
+                          continue
+                      reason = str(row.get("reason", "unknown"))[:80]
+                      counts = row.get("task_status_counts", {})
+                      if not isinstance(counts, dict):
+                          counts = {}
+                      safe_counts = {str(k)[:24]: max(0, min(int(v), 10000)) for k, v in list(counts.items())[:12] if str(k)[:24].isalnum() and isinstance(v, int)}
+                      blocked = row.get("blocked_tasks", [])
+                      hold_diagnostics.append({
+                          "reason": reason if reason in allowed_reasons else "other",
+                          "task_status_counts": safe_counts,
+                          "blocked_task_count": min(len(blocked), 100) if isinstance(blocked, list) else 0,
+                          "execution_authorized": row.get("execution_authorized") is True,
+                          "patch_authorized": row.get("patch_authorized") is True,
+                          "hold_clear_authorized": row.get("hold_clear_authorized") is True,
+                          "merge_deploy_authorized": row.get("merge_deploy_authorized") is True,
+                      })
+                  except Exception:
+                      hold_diag_invalid += 1
+          hold_summary = {"diagnostic_records": len(hold_diagnostics), "invalid_records": hold_diag_invalid, "records": hold_diagnostics, "remediation_authorized": False, "hold_clear_authorized": False, "task_resume_authorized": False}
+          Path("goal-autopilot-hold-diagnostics-summary.json").write_text(json.dumps(hold_summary, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
           statuses = [str(x.get("status", "UNKNOWN")) for x in tasks]
           # Independently validate the per-task post-generation REA attestation.
           # A changed PASS without exact SHA/diff-bound pre-publish evidence is
@@ -193,6 +220,7 @@ jobs:
               f"- Task count in evidence: {len(tasks)}",
               f"- Task statuses: {', '.join(statuses) if statuses else 'NO EVIDENCE'}",
               f"- Post-generation REA: {', '.join(rea_states) if rea_states else 'NO TASK REA EVIDENCE'}",
+              f"- GoalAutopilot pre-execution HOLD diagnostics: {len(hold_diagnostics)} records ({hold_diag_invalid} invalid)",
               f"- Queue state: {'CATALOG_BLOCKED (human review required; no task executed)' if catalog_blocked else ('QUEUE_EMPTY (no task executed)' if queue_empty else ('TASK_RESULTS_PRESENT' if tasks else 'UNKNOWN'))}",
               f"- Google Sheets artifact result: {sheets_result}",
               f"- Sheets artifact task ID: {sheets.get('task_id', 'unknown')}",
