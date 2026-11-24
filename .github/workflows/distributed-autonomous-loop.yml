@@ -1757,5 +1757,6 @@ jobs:
             /tmp/distributed-sheets-log-result.json
             /tmp/distributed-final-report.txt
             /tmp/looplab-postrun-result.json
+            /tmp/looplab-rsi-evidence.sqlite
           if-no-files-found: ignore
 
