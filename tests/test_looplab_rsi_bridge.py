@@ -12,6 +12,7 @@ from core.rsi_executor import EvidenceLedger, RSIControl, RSIExecutor, RSIError,
 
 def _executor(tmp_path, *, hold=False):
     ledger = EvidenceLedger(tmp_path / "rsi-bridge.sqlite")
+    trust = _trust_kwargs()
     executor = RSIExecutor(
         ledger,
         control_provider=lambda: RSIControl(hold, False, True, True, 10, False),
@@ -20,8 +21,9 @@ def _executor(tmp_path, *, hold=False):
         verify_evidence_signature=lambda producer, digest, signature: (
             producer == "looplab-independent-evaluator" and signature == "sig:" + digest
         ),
-        verify_adapter_signature=_trust_kwargs()["verify_adapter_signature"],
-        resolve_locked_dataset=_trust_kwargs()["resolve_locked_dataset"],
+        verify_adapter_signature=trust["verify_adapter_signature"],
+        resolve_locked_dataset=trust["resolve_locked_dataset"],
+        safety_state_provider=trust["safety_state_provider"],
         executor_id="rsi-bridge-test",
     )
     return executor, ledger
@@ -71,6 +73,9 @@ def _trust_kwargs():
             "dataset_sha256": dataset_sha, "sample_count": 1,
             "minimum_sample_count": 1, "locked": True,
         } if dataset_id == "fixture" else None),
+        "safety_state_provider": lambda: {
+            "stop_state": "INACTIVE", "global_hold_state": "CLEAR",
+        },
     }
 
 
@@ -202,5 +207,23 @@ def test_unregistered_or_mismatched_dataset_is_rejected(tmp_path):
             producer_id="looplab-independent-evaluator",
             sign_digest=lambda digest: "sig:" + digest, created_at=123,
         )
+    with sqlite3.connect(ledger.path) as db:
+        assert db.execute("SELECT COUNT(*) FROM rsi_evidence").fetchone()[0] == 0
+
+
+def test_untrusted_or_stale_stop_state_blocks_observation_ingestion(tmp_path):
+    executor, ledger = _executor(tmp_path)
+    executor.safety_state_provider = lambda: {
+        "stop_state": "ACTIVE", "global_hold_state": "CLEAR",
+    }
+    with pytest.raises(ValueError, match="safety_state_not_current_or_trusted"):
+        record_evaluation_as_rsi_observation(
+            evaluation_result=_evaluation("FAIL"),
+            executor=executor,
+            producer_id="looplab-independent-evaluator",
+            sign_digest=lambda digest: "sig:" + digest,
+            created_at=123,
+        )
+    assert ledger.verify()
     with sqlite3.connect(ledger.path) as db:
         assert db.execute("SELECT COUNT(*) FROM rsi_evidence").fetchone()[0] == 0
