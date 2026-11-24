@@ -30,6 +30,14 @@ on:
         description: 'Exact base commit SHA shown by the blocked preflight'
         required: false
         type: string
+      policy_dispatch:
+        description: 'Internal scheduler source for bounded test-only policy admission'
+        required: false
+        default: 'manual'
+        type: choice
+        options:
+          - 'manual'
+          - '30m_scheduler'
       max_tasks:
         description: 'Manual run task limit (1–4 tasks; all safety gates still apply)'
         required: false
@@ -501,6 +509,92 @@ jobs:
             echo "::warning::Work Finder AI discovery failed (exit=$rc); bounded loop outcome classification will continue."
           fi
 
+      - name: Provision and verify network-isolated test sandbox
+        if: success() && env.TRIGGER_MODE == 'normal'
+        run: |
+          set -euo pipefail
+          if ! command -v prlimit >/dev/null 2>&1; then
+            echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY=false" >> "$GITHUB_ENV"
+            echo "POLICY_SANDBOX=BLOCKED reason=prlimit_unavailable" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! command -v bwrap >/dev/null 2>&1; then
+            if ! sudo apt-get update -qq || ! sudo apt-get install -y bubblewrap; then
+              echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY=false" >> "$GITHUB_ENV"
+              echo "POLICY_SANDBOX=BLOCKED reason=bubblewrap_unavailable" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+          if prlimit --nproc=64 --cpu=180 --fsize=1048576 --as=4294967296 -- \
+            bwrap --die-with-parent --new-session --unshare-net --unshare-pid \
+            --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp -- \
+            python -c 'import socket; names={name for _, name in socket.if_nameindex()}; raise SystemExit(0 if names <= {"lo"} else 1)' ; then
+            echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY=true" >> "$GITHUB_ENV"
+            echo "POLICY_SANDBOX=PASS network_namespace=isolated filesystem=read_only tempfs=/tmp" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY=false" >> "$GITHUB_ENV"
+            echo "POLICY_SANDBOX=BLOCKED reason=isolation_probe_failed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Policy-admit one verified test-only task (run-local only)
+        if: success() && env.TRIGGER_MODE == 'normal'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          POLICY_DISPATCH_SOURCE: ${{ github.event_name == 'schedule' && 'schedule' || inputs.policy_dispatch || 'manual' }}
+        run: |
+          set -euo pipefail
+          POLICY_QUEUE=/tmp/autonomous-loop-policy-runtime-queue.json
+          POLICY_CATALOG=/tmp/autonomous-loop-policy-runtime-catalog.json
+          REVIEW_REPORT=/tmp/catalog-exhaustion-review-report.json
+          POLICY_REPORT=/tmp/autonomous-loop-policy-admission.json
+          cp /tmp/autonomous-loop-runtime-queue.json "$POLICY_QUEUE"
+          cp .github/autonomous-loop-task-catalog.json "$POLICY_CATALOG"
+          if [ -s /tmp/catalog-exhaustion-report.json ]; then
+            cp /tmp/catalog-exhaustion-report.json "$REVIEW_REPORT"
+          else
+            printf '{"status":"NO_SAFE_CANDIDATE","candidate_count":0,"candidates":[]}\n' > "$REVIEW_REPORT"
+          fi
+          # Do not execute model-generated test code until a verified isolated sandbox exists.
+          # Static AST checks are defense-in-depth, not an execution boundary.
+          if [ "${AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY:-false}" != "true" ]; then
+            reason=sandbox_not_provisioned
+            printf '{"version":1,"policy_version":"test-only-append-v1","status":"POLICY_SKIPPED","reason":"%s","persistent_catalog_modified":false,"durable_state_modified":false,"held_tasks_resumed":false}\n' "$reason" > "$POLICY_REPORT"
+          elif [ -s /tmp/catalog-exhaustion-report.json ] && python -c 'from core.emergency_stop import get_status; import os; raise SystemExit(1 if get_status(os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"), os.environ["GITHUB_TOKEN"]) else 0)'; then
+            if ! python -m scripts.autonomous_test_task_admission \
+              --repo-root . \
+              --report /tmp/catalog-exhaustion-report.json \
+              --queue /tmp/autonomous-loop-runtime-queue.json \
+              --catalog "${AUTONOMOUS_LOOP_TASK_CATALOG:-.github/autonomous-loop-task-catalog.json}" \
+              --state /tmp/autonomous-loop-state.json \
+              --output-queue "$POLICY_QUEUE" \
+              --output-catalog "$POLICY_CATALOG" \
+              --output-review-report "$REVIEW_REPORT" \
+              --output-report "$POLICY_REPORT"; then
+              cp /tmp/autonomous-loop-runtime-queue.json "$POLICY_QUEUE"
+              cp .github/autonomous-loop-task-catalog.json "$POLICY_CATALOG"
+              cp /tmp/catalog-exhaustion-report.json "$REVIEW_REPORT"
+              printf '{"version":1,"policy_version":"test-only-append-v1","status":"POLICY_BLOCKED","reason":"admission_validation_failed","persistent_catalog_modified":false,"durable_state_modified":false,"held_tasks_resumed":false}\n' > "$POLICY_REPORT"
+            fi
+          else
+            if [ -s /tmp/catalog-exhaustion-report.json ]; then
+              cp /tmp/catalog-exhaustion-report.json "$REVIEW_REPORT"
+              reason=emergency_stop_active_or_unverifiable
+            else
+              reason=analyzer_report_missing
+            fi
+            printf '{"version":1,"policy_version":"test-only-append-v1","status":"POLICY_SKIPPED","reason":"%s","persistent_catalog_modified":false,"durable_state_modified":false,"held_tasks_resumed":false}\n' "$reason" > "$POLICY_REPORT"
+          fi
+          if python -c 'import json, os; from pathlib import Path; p=Path("/tmp/autonomous-loop-policy-admission.json"); d=json.loads(p.read_text(encoding="utf-8")); d["base_sha"]=os.environ["GITHUB_SHA"]; p.write_text(json.dumps(d, ensure_ascii=False, sort_keys=True)+"\\n", encoding="utf-8") if d.get("status")=="POLICY_ADMITTED" else None; raise SystemExit(0 if d.get("status")=="POLICY_ADMITTED" else 1)'; then
+            echo "AUTONOMOUS_TEST_ADMISSION_POLICY=true" >> "$GITHUB_ENV"
+          else
+            echo "AUTONOMOUS_TEST_ADMISSION_POLICY=false" >> "$GITHUB_ENV"
+          fi
+          echo "AUTONOMOUS_POLICY_DISPATCH_SOURCE=$POLICY_DISPATCH_SOURCE" >> "$GITHUB_ENV"
+          echo "AUTONOMOUS_LOOP_TASK_QUEUE=$POLICY_QUEUE" >> "$GITHUB_ENV"
+          echo "AUTONOMOUS_LOOP_TASK_CATALOG=$POLICY_CATALOG" >> "$GITHUB_ENV"
+          echo "CATALOG_EXHAUSTION_REVIEW_REPORT_PATH=$REVIEW_REPORT" >> "$GITHUB_ENV"
+          cat "$POLICY_REPORT" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Create bounded review-only task issues from analyzer findings
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
@@ -512,7 +606,7 @@ jobs:
             exit 0
           fi
           python -m scripts.autonomous_task_issue_drafts \
-            --report /tmp/catalog-exhaustion-report.json \
+            --report /tmp/catalog-exhaustion-review-report.json \
             --issues /tmp/autonomous-loop-all-issues.json \
             --pull-requests /tmp/autonomous-loop-open-pulls.json \
             --output /tmp/autonomous-loop-task-issue-drafts.json \
@@ -708,6 +802,30 @@ jobs:
           python -m scripts.recovery_rag_state --mode export --state /tmp/recovery-rag-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
           python -m scripts.recovery_rag_state --mode export --kind rea --state /tmp/rea-rag-state.json --db "$RECOVERY_RAG_DB_PATH" --namespace "$RECOVERY_RAG_NAMESPACE"
 
+      - name: Verify policy-admitted test change is append-only
+        if: success() && env.TRIGGER_MODE == 'normal'
+        run: |
+          set -euo pipefail
+          python -m scripts.autonomous_test_task_postrun_guard \
+            --repo-root . \
+            --policy-report /tmp/autonomous-loop-policy-admission.json \
+            --results /tmp/minimal-autonomous-loop.jsonl \
+            --base-sha "$GITHUB_SHA" | tee /tmp/autonomous-test-postrun-guard.json
+          cat /tmp/autonomous-test-postrun-guard.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Archive bounded policy and execution evidence
+        if: always() && env.TRIGGER_MODE == 'normal'
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-loop-policy-evidence-${{ github.run_id }}
+          path: |
+            /tmp/autonomous-loop-policy-admission.json
+            /tmp/autonomous-test-postrun-guard.json
+            /tmp/minimal-autonomous-loop.jsonl
+            /tmp/autonomous-loop-refill-report.json
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Publish verified development branch
         id: publish
         if: success()
@@ -876,7 +994,8 @@ jobs:
               raise SystemExit(0)
           queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", "/tmp/autonomous-loop-runtime-queue.json"))
           queue_data = json.loads(queue_path.read_text(encoding="utf-8"))
-          catalog_data = json.loads(Path(".github/autonomous-loop-task-catalog.json").read_text(encoding="utf-8"))
+          catalog_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_CATALOG", ".github/autonomous-loop-task-catalog.json"))
+          catalog_data = json.loads(catalog_path.read_text(encoding="utf-8"))
           base_sha = os.environ["GITHUB_SHA"]
           head_sha = subprocess.run(
               ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True

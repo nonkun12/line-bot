@@ -10,6 +10,7 @@ import ast
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import traceback
@@ -684,7 +685,14 @@ The function name must start with test_. Keep the test focused and concise."""
     if function.name in existing_names:
         return None, "append_only_test_name_exists"
 
-    addition_text = generated.rstrip("\r\n") + "\n"
+    required_import = ""
+    if chosen == "tests/test_stocks.py" and "safe_stock_quote" in instruction:
+        required_import = "from core.stocks import StockQuote, safe_stock_quote"
+        if required_import not in original:
+            required_import += "\n\n"
+        else:
+            required_import = ""
+    addition_text = required_import + generated.rstrip("\r\n") + "\n"
     original_lines = original.splitlines(keepends=True)
     for start in range(len(original_lines) - 1, -1, -1):
         old = "".join(original_lines[start:])
@@ -1025,6 +1033,30 @@ def apply_plan(plan: dict) -> tuple[bool, str, list[str]]:
 
 def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> tuple[bool, str]:
     outputs: list[str] = []
+    policy_mode = os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true"
+    policy_paths: list[str] = []
+    if policy_mode:
+        try:
+            raw_paths = json.loads(os.environ.get("AUTONOMOUS_ALLOWED_PATHS", ""))
+        except (TypeError, ValueError):
+            return False, "isolated_policy_test_blocked:allowed_paths_invalid"
+        if (
+            not isinstance(raw_paths, list)
+            or len(raw_paths) != 1
+            or not isinstance(raw_paths[0], str)
+            or not raw_paths[0].startswith("tests/")
+            or not raw_paths[0].endswith(".py")
+            or Path(raw_paths[0]).is_absolute()
+            or ".." in Path(raw_paths[0]).parts
+        ):
+            return False, "isolated_policy_test_blocked:target_not_allowlisted"
+        policy_paths = raw_paths
+        if touched and touched != policy_paths:
+            return False, "isolated_policy_test_blocked:touched_path_mismatch"
+        if shutil.which("bwrap") is None or shutil.which("prlimit") is None:
+            return False, "isolated_policy_test_blocked:sandbox_runtime_unavailable"
+        full_suite = False
+
     for path in touched or []:
         if not path.endswith(".py"):
             continue
@@ -1040,11 +1072,6 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             outputs.append(compile_result.stderr)
         if compile_result.returncode != 0:
             return False, "\n".join(outputs)[-8000:]
-    # Runtime task context constrains the worker, not the independent full test
-    # suite. Tests must not inherit the current task identity/prompt/allowlist:
-    # repo_files() may be tested against temporary fixtures, and test subprocesses
-    # should never inherit the task's prompt or summary path. Restore all values
-    # in the parent process even when pytest raises or times out.
     task_scoped_names = (
         "AUTONOMOUS_ALLOWED_PATHS",
         "AUTONOMOUS_TASK_ID",
@@ -1056,9 +1083,42 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
     missing = object()
     task_scope = {name: os.environ.pop(name, missing) for name in task_scoped_names}
     try:
-        if full_suite:
+        if policy_mode:
+            clean_env = _test_process_env()
+            clean_env.update({
+                "HOME": "/tmp",
+                "TMPDIR": "/tmp",
+                "PYTHONDONTWRITEBYTECODE": "1",
+            })
+            test_cmd = [
+                "prlimit",
+                "--nproc=64",
+                "--cpu=180",
+                "--fsize=1048576",
+                "--as=4294967296",
+                "--",
+                "bwrap",
+                "--die-with-parent",
+                "--new-session",
+                "--unshare-net",
+                "--unshare-pid",
+                "--ro-bind", "/", "/",
+                "--dev", "/dev",
+                "--proc", "/proc",
+                "--tmpfs", "/tmp",
+                "--chdir", str(ROOT),
+                "--setenv", "HOME", "/tmp",
+                "--setenv", "TMPDIR", "/tmp",
+                "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
+                "--",
+                sys.executable, "-m", "pytest", "-q", "--tb=native",
+                "-p", "no:cacheprovider", *policy_paths,
+            ]
+            outputs.append("isolated pytest: network disabled; repository read-only; process/CPU/memory/file limits; one allowlisted test file")
+        elif full_suite:
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native"]
             outputs.append("full pytest:")
+            clean_env = _test_process_env()
         else:
             paths = list(touched or [])
             if not paths or any(
@@ -1071,7 +1131,8 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 return False, "targeted pytest requires safe relative Python test paths"
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native", *paths]
             outputs.append("targeted pytest:")
-        tests = run(test_cmd, timeout=900, env=_test_process_env())
+            clean_env = _test_process_env()
+        tests = run(test_cmd, timeout=900, env=clean_env)
     finally:
         for name, value in task_scope.items():
             if value is missing:
