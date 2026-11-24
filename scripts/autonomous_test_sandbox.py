@@ -60,11 +60,12 @@ def _runtime_directories(python: str) -> list[Path]:
 def _parents(destination: str) -> list[str]:
     parts = Path(destination).parts
     result: list[str] = []
-    current = ""
-    for part in parts[:-1]:
-        current = str(Path(current) / part) if current else part
-        if current not in ("/", ".") and current not in result:
-            result.append(current)
+    current = Path("/")
+    for part in parts[1:-1]:
+        current = current / part
+        value = str(current)
+        if value not in result:
+            result.append(value)
     return result
 
 
