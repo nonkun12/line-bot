@@ -35,9 +35,23 @@ def test_command_uses_empty_root_and_never_mounts_host_root_or_target_writable(t
     assert str(Path(sys.prefix).resolve()) in command
     library_dir = sysconfig.get_config_var("LIBDIR")
     if library_dir:
-        assert str(Path(library_dir).resolve()) in command
+        resolved_library_dir = Path(library_dir).resolve()
+        prefix = Path(sys.prefix).resolve()
+        expected_library_dir = (
+            str(Path("/python-runtime") / resolved_library_dir.relative_to(prefix))
+            if resolved_library_dir.is_relative_to(prefix)
+            else str(resolved_library_dir)
+        )
+        assert expected_library_dir in command
         assert "--setenv" in command
         assert "LD_LIBRARY_PATH" in command
+    assert "--symlink" in command
+    if Path("/usr/lib").is_dir():
+        assert "usr/lib" in command and "/lib" in command
+    if Path("/usr/lib64").is_dir():
+        assert "usr/lib64" in command and "/lib64" in command
+    if Path("/usr/bin").is_dir():
+        assert "usr/bin" in command and "/bin" in command
     assert "tests/test_one.py" in command
 
 
