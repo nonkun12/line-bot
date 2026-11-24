@@ -903,29 +903,32 @@ def run_task(
             failure_reason = "summary_produced_sha_mismatch"
         elif payload.get("status") == "NO_CHANGE" and produced_sha != base_sha:
             failure_reason = "summary_no_change_but_head_moved"
-    elif payload and exit_code in {80, 81, 82} and not failure_reason:
-        evidence = payload.get("gate_evidence")
-        expected_gate = {80: "rea", 81: "execution_approval", 82: "emergency_stop"}[exit_code]
-        if payload.get("status") != "BLOCKED":
-            failure_reason = "blocked_summary_status_invalid"
-        elif payload.get("produced_sha") != produced_sha or produced_sha != base_sha:
-            failure_reason = "blocked_summary_head_mismatch"
-        elif not isinstance(evidence, dict):
-            failure_reason = "blocked_summary_gate_evidence_missing"
+    elif payload and exit_code == 80 and not failure_reason:
+        # Preserve the existing REA block contract.
+        rea = payload.get("rea")
+        if payload.get("status") != "BLOCKED" or payload.get("produced_sha") != produced_sha or produced_sha != base_sha:
+            failure_reason = "summary_status_or_head_invalid"
         elif (
-            evidence.get("gate") != "BLOCKED"
-            or evidence.get("gate_name") != expected_gate
+            not isinstance(rea, dict) or rea.get("gate") != "BLOCKED"
+            or not isinstance(rea.get("reason_code"), str) or not rea["reason_code"].strip()
+            or any(rea.get(key) is not False for key in ("execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"))
+            or payload.get("failure_reason") != f"control_tower_rea:{rea['reason_code']}"
+        ):
+            failure_reason = "blocked_summary_rea_evidence_invalid"
+    elif payload and exit_code in {81, 82} and not failure_reason:
+        evidence = payload.get("gate_evidence")
+        expected_gate = {81: "execution_approval", 82: "emergency_stop"}[exit_code]
+        if (
+            payload.get("status") != "BLOCKED"
+            or payload.get("produced_sha") != produced_sha or produced_sha != base_sha
+            or not isinstance(evidence, dict)
+            or evidence.get("gate") != "BLOCKED" or evidence.get("gate_name") != expected_gate
             or evidence.get("exit_code") != exit_code
-            or not isinstance(evidence.get("reason_code"), str)
-            or not evidence.get("reason_code").strip()
+            or not isinstance(evidence.get("reason_code"), str) or not evidence["reason_code"].strip()
             or any(evidence.get(key) is not False for key in ("execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"))
-            or payload.get("failure_reason") != "guarded_runtime_gate:" + expected_gate + ":" + evidence.get("reason_code")
+            or payload.get("failure_reason") != f"guarded_runtime_gate:{expected_gate}:{evidence['reason_code']}"
         ):
             failure_reason = "blocked_summary_gate_evidence_invalid"
-        elif exit_code == 80 and (not isinstance(payload.get("rea"), dict) or payload["rea"].get("gate") != "BLOCKED" or payload["rea"].get("execution_authorized") is not False):
-            failure_reason = "blocked_summary_rea_evidence_invalid"
-        elif exit_code == 81 and (not isinstance(payload.get("execution_approval"), dict) or payload["execution_approval"].get("execution_authorized") is not False):
-            failure_reason = "blocked_summary_approval_evidence_invalid"
     # A changed successful task must carry the exact post-generation REA
     # attestation from the guarded runtime. Without it, the loop cannot prove
     # that the immutable base..produced commit was scanned before publication.
@@ -1726,7 +1729,7 @@ def main() -> int:
                 f"MINIMAL_LOOP:HALT task={task['id']} reason={orchestration.get('reason_code', 'orchestration_blocked')}",
                 flush=True,
             )
-            if result.get("status") == "BLOCKED" and result.get("exit_code") in {80, 81, 82}:
+            if result.get("status") == "BLOCKED" and result.get("exit_code") in {81, 82} and isinstance(result.get("gate_evidence"), dict):
                 return int(result["exit_code"])
             return 1
 
