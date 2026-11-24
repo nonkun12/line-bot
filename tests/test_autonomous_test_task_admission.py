@@ -91,6 +91,28 @@ def test_recovery_record_prevents_re_admission(tmp_path):
     assert catalog["tasks"] == []
 
 
+def test_goal_autopilot_held_task_is_never_re_admitted(tmp_path):
+    report, queue, catalog, state, task_id, _ = _inputs(tmp_path)
+    state["goal_autopilot"] = {
+        "tasks": [{"task_id": task_id, "status": "HELD"}],
+    }
+
+    result = build_policy_admission(report, queue, catalog, state, tmp_path)
+
+    assert result["report"]["status"] == "POLICY_SKIPPED"
+    assert result["queue"]["tasks"] == []
+    assert catalog["tasks"] == []
+
+
+def test_malformed_goal_autopilot_state_fails_closed(tmp_path):
+    report, queue, catalog, state, _, _ = _inputs(tmp_path)
+    state["goal_autopilot"] = {"tasks": "not-a-list"}
+
+    import pytest
+    with pytest.raises(ValueError, match="goal_autopilot_state_invalid"):
+        build_policy_admission(report, queue, catalog, state, tmp_path)
+
+
 def test_stale_fingerprint_is_not_admitted(tmp_path):
     report, queue, catalog, state, _, _ = _inputs(tmp_path)
     report["candidates"][0]["fingerprint"] = "0" * 64
