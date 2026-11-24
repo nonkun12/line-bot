@@ -47,6 +47,96 @@ def test_run_local_policy_catalog_requires_exact_task_path_and_base_sha(monkeypa
     assert result["scope"] == "run_local_test_policy"
 
 
+def test_run_local_policy_catalog_accepts_only_scheduler_dispatch(monkeypatch, tmp_path):
+    from scripts.autonomous_task_target_allowlist import TARGETS
+
+    task_id = "review-coverage-gap-0123456789"
+    test_path = TARGETS[0][1]
+    base_sha = "c" * 40
+    instruction = "Append one deterministic pytest test."
+    report_path = tmp_path / "policy-report.json"
+    catalog_path = tmp_path / "policy-catalog.json"
+    event_path = tmp_path / "event.json"
+    report_path.write_text(json.dumps({
+        "status": "POLICY_ADMITTED",
+        "admitted_task_id": task_id,
+        "admitted_allowed_path": test_path,
+        "base_sha": base_sha,
+    }), encoding="utf-8")
+    catalog_path.write_text(json.dumps({"tasks": [{
+        "id": task_id,
+        "instruction": instruction,
+        "allowed_paths": [test_path],
+        "execution_approved": True,
+    }]}), encoding="utf-8")
+    event_path.write_text(json.dumps({
+        "sender": {"login": "github-actions[bot]"},
+        "inputs": {
+            "policy_dispatch": "30m_scheduler",
+            "max_tasks": "1",
+            "execution_approval": "DENY",
+        },
+    }), encoding="utf-8")
+    monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_REPORT_PATH", report_path)
+    monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_CATALOG_PATH", catalog_path)
+    monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "true")
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_CATALOG", str(catalog_path))
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps([test_path]))
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_ACTOR", "github-actions[bot]")
+
+    result = guarded_runtime._verify_catalog_execution_approval(base_sha, instruction)
+
+    assert result["gate"] == "PASS"
+    assert result["scope"] == "run_local_test_policy"
+
+
+def test_run_local_policy_catalog_rejects_user_spoofed_scheduler_dispatch(monkeypatch, tmp_path):
+    from scripts.autonomous_task_target_allowlist import TARGETS
+
+    task_id = "review-coverage-gap-0123456789"
+    test_path = TARGETS[0][1]
+    catalog_path = tmp_path / "policy-catalog.json"
+    report_path = tmp_path / "policy-report.json"
+    event_path = tmp_path / "event.json"
+    report_path.write_text(json.dumps({
+        "status": "POLICY_ADMITTED",
+        "admitted_task_id": task_id,
+        "admitted_allowed_path": test_path,
+        "base_sha": "d" * 40,
+    }), encoding="utf-8")
+    catalog_path.write_text(json.dumps({"tasks": [{
+        "id": task_id,
+        "instruction": "Append one deterministic pytest test.",
+        "allowed_paths": [test_path],
+        "execution_approved": True,
+    }]}), encoding="utf-8")
+    event_path.write_text(json.dumps({
+        "sender": {"login": "nonkun12"},
+        "inputs": {"policy_dispatch": "30m_scheduler", "max_tasks": "1"},
+    }), encoding="utf-8")
+    monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_REPORT_PATH", report_path)
+    monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_CATALOG_PATH", catalog_path)
+    monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "true")
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_CATALOG", str(catalog_path))
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps([test_path]))
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
+
+    result = guarded_runtime._verify_catalog_execution_approval("d" * 40, "Append one deterministic pytest test.")
+
+    assert result["gate"] == "BLOCKED"
+    assert result["execution_authorized"] is False
+
+
 def test_run_local_policy_catalog_rejects_stale_base_sha(monkeypatch, tmp_path):
     from scripts.autonomous_task_target_allowlist import TARGETS
 
