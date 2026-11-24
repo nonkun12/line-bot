@@ -223,10 +223,17 @@ def _record_preflight_rea(path: Path, expected_sha: str) -> None:
 
 def _valid_no_execution_block(row: dict[str, Any] | None, task_id: str, child_returncode: int) -> bool:
     """Accept only an identity-bound guarded gate denial."""
-    if not isinstance(row, dict) or child_returncode not in {81, 82}:
+    if not isinstance(row, dict) or child_returncode not in {81, 82, 83}:
         return False
     evidence = row.get("gate_evidence")
-    expected_gate = {81: "execution_approval", 82: "emergency_stop"}[child_returncode]
+    expected_gate = {81: "execution_approval", 82: "emergency_stop", 83: "model_provider"}[child_returncode]
+    expected_failure_reason = (
+        "model_provider_gate:" + str(evidence.get("reason_code", ""))
+        if child_returncode == 83 and isinstance(evidence, dict)
+        else "guarded_runtime_gate:" + expected_gate + ":" + str(evidence.get("reason_code", ""))
+        if isinstance(evidence, dict)
+        else ""
+    )
     base_sha, produced_sha, nonce = row.get("base_sha"), row.get("produced_sha"), row.get("run_nonce")
     return bool(
         row.get("task_id") == task_id and row.get("status") == "BLOCKED"
@@ -240,7 +247,8 @@ def _valid_no_execution_block(row: dict[str, Any] | None, task_id: str, child_re
         and evidence.get("gate_name") == expected_gate
         and evidence.get("exit_code") == child_returncode
         and isinstance(evidence.get("reason_code"), str) and bool(evidence.get("reason_code").strip())
-        and row.get("failure_reason") == "guarded_runtime_gate:" + expected_gate + ":" + evidence.get("reason_code")
+        and row.get("failure_reason") == expected_failure_reason
+        and (child_returncode != 83 or evidence.get("reason_code") == "local_adapter_unavailable")
         and all(evidence.get(key) is False for key in (
             "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"
         ))
