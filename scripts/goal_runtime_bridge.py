@@ -175,15 +175,26 @@ def _record_preflight_rea(path: Path, expected_sha: str) -> None:
     if not isinstance(reason, str) or not reason or len(reason) > 80 or not reason.replace("_", "").isalnum():
         reason = "rea_preflight_blocked" if gate == "BLOCKED" else None
     scanner_status = evidence.get("scanner_status")
-    if scanner_status not in {"PASS", "FINDINGS"}:
+    scanner_status_valid = scanner_status in {"PASS", "FINDINGS"}
+    if not scanner_status_valid:
         scanner_status = "BLOCKED"
     finding_count = evidence.get("finding_count")
     blocking_count = evidence.get("blocking_count")
-    if type(finding_count) is not int or not 0 <= finding_count <= 10000:
+    counts_valid = (
+        type(finding_count) is int and 0 <= finding_count <= 10000
+        and type(blocking_count) is int and 0 <= blocking_count <= 10000
+        and blocking_count <= finding_count
+    )
+    if not counts_valid:
         finding_count = 0
-    if type(blocking_count) is not int or not 0 <= blocking_count <= 10000:
         blocking_count = 0
-    if blocking_count:
+    if (
+        not scanner_status_valid
+        or not counts_valid
+        or (scanner_status == "PASS" and finding_count != 0)
+        or (scanner_status == "FINDINGS" and finding_count == 0)
+        or blocking_count
+    ):
         gate = "BLOCKED"
     row = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
