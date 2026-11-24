@@ -170,15 +170,8 @@ def build_sandbox_command(
         raise SandboxError("sandbox_runtime_unavailable")
 
     runtime_dirs = _runtime_directories(python)
-    # Preserve both the caller-visible executable directory and the resolved
-    # target directory. Hosted toolcache Python may be reached through a
-    # symlink whose path is the one execvp must resolve inside the namespace.
-    visible_python_dir = Path(python).absolute().parent
-    if visible_python_dir.is_dir() and visible_python_dir != Path("/") and visible_python_dir != Path.home():
-        runtime_dirs = sorted(
-            set(runtime_dirs) | {visible_python_dir},
-            key=lambda item: (len(item.parts), str(item)),
-        )
+    interpreter = Path(python).resolve(strict=True)
+    interpreter_dir = interpreter.parent
     library_dir_raw = sysconfig.get_config_var("LIBDIR")
     library_dir = Path(library_dir_raw).resolve() if library_dir_raw else None
     if library_dir and (
@@ -217,6 +210,9 @@ def build_sandbox_command(
     if git_templates.is_dir():
         mounts[str(git_templates)] = git_templates.resolve()
     mounts[str(root)] = root
+    # Mount the interpreter directory at a fresh namespace path. Bubblewrap
+    # does not create a missing file target for --ro-bind.
+    mounts["/python-runtime"] = interpreter_dir
 
     destinations = sorted(mounts, key=lambda value: (len(Path(value).parts), value))
     created: set[str] = {"/", "/proc", "/dev", "/tmp", "/run", "/var", "/var/run", "/home"}
@@ -232,10 +228,6 @@ def build_sandbox_command(
         source = str(mounts[destination])
         args.extend(["--ro-bind", source, destination])
 
-    # Expose the selected interpreter at a stable path at the namespace root.
-    # This avoids relying on deep hosted-toolcache destination paths while
-    # retaining the exact host interpreter binary as a read-only bind.
-    interpreter = Path(python).resolve(strict=True)
     args.extend(["--ro-bind", str(interpreter), "/python"])
 
     args.extend([
@@ -253,7 +245,7 @@ def build_sandbox_command(
         ),
         "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
         "--",
-        "/python", "-m", "pytest", "-q",
+        f"/python-runtime/{interpreter.name}", "-m", "pytest", "-q",
         "--tb=native", "-p", "no:cacheprovider", test_path,
     ])
     return args
