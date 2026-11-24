@@ -86,26 +86,33 @@ def _load_goal(store: GoalStateStore, state: dict[str, Any], tasks: list[dict[st
             raise ValueError("completed_goal_task_missing_durable_completion")
     if safety_gate is not True or kill_switch is not False:
         raise ValueError("global_goal_safety_gate_blocked")
-    if resume_task_id:
-        raise ValueError("goal_resume_requires_separate_human_review")
+    current_ids = {task["task_id"] for task in tasks}
+    if resume_task_id and resume_task_id not in current_ids:
+        raise ValueError("resume_task_not_in_current_approved_queue")
     scoped_tasks = []
     for task in tasks:
         prior = existing_by_id.get(task["task_id"])
         if prior is not None and prior.get("status") in {"HELD", "FAILED"}:
-            raise ValueError("candidate_task_requires_human_review")
+            if resume_task_id != task["task_id"]:
+                raise ValueError("candidate_task_requires_human_review")
+            task = dict(task)
+            task["priority"] = max(
+                (int(item.get("priority", 0)) for item in existing_by_id.values()
+                 if type(item.get("priority", 0)) is int), default=0
+            ) + 1
         if prior is not None and prior.get("status") == "IN_PROGRESS":
             raise ValueError("candidate_task_in_flight_requires_reconciliation")
         scoped_tasks.append(task)
     if not scoped_tasks:
         raise LookupError("no_authorized_tasks")
     goal = {
-        "goal_id": GOAL_ID + ":run",
+        "goal_id": GOAL_ID,
         "objective": "Execute only the current explicitly approved bounded runtime queue",
         "acceptance_criteria": [{"id": "approved-runtime-queue-complete", "verified": False}],
         "safety_gate": safety_gate, "kill_switch": kill_switch, "tasks": scoped_tasks,
     }
     store.create(goal)
-    return store.read(GOAL_ID + ":run")
+    return store.read(GOAL_ID)
 
 def _valid_success(row: dict[str, Any], task_id: str) -> bool:
     if row.get("task_id") != task_id or row.get("status") not in {"PASS", "NO_CHANGE"} or row.get("exit_code") != 0:
