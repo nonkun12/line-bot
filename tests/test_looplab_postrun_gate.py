@@ -33,7 +33,14 @@ def _inputs(tmp_path):
     ]
     digest = hashlib.sha256(_canonical(dataset)).hexdigest()
     simulator = {
+        "schema_version": 1,
+        "producer_id": "distributed-loop-simulator-producer.v1",
         "experiment_id": "looplab-ci-001",
+        "dataset_id": "looplab-ci-001:held-out",
+        "dataset_sha256": digest,
+        "source_run_id": "12345",
+        "source_commit_sha": "a" * 40,
+        "created_at": 1000,
         "baseline": {
             "candidate_id": "baseline",
             "artifact_sha256": "1" * 64,
@@ -83,6 +90,8 @@ def _inputs(tmp_path):
     _write(paths["dataset"], dataset)
     _write(paths["registry"], _signed(registry, keys["LOOPLAB_DATASET_REGISTRY_HMAC_KEY"]))
     _write(paths["safety"], _signed(safety, keys["LOOPLAB_SAFETY_HMAC_KEY"]))
+    keys["GITHUB_RUN_ID"] = "12345"
+    keys["GITHUB_SHA"] = "a" * 40
     return keys, paths
 
 
