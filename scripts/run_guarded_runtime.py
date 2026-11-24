@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -172,11 +173,69 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
         json.dumps(canonical_paths, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
-    raw_catalog = _git("show", f"{start_sha}:.github/autonomous-loop-task-catalog.json")
-    try:
-        catalog = json.loads(raw_catalog)
-    except (TypeError, ValueError):
-        return blocked
+    policy_admission = os.environ.get("AUTONOMOUS_TEST_POLICY_ADMISSION", "").strip().lower() == "true"
+    catalog_digest = ""
+    if policy_admission:
+        runner_temp = Path(os.environ.get("RUNNER_TEMP", "")).resolve()
+        expected_catalog = runner_temp / "autonomous-loop-policy-runtime-catalog.json"
+        expected_report = runner_temp / "autonomous-loop-policy-admission.json"
+        catalog_path_raw = os.environ.get("AUTONOMOUS_POLICY_CATALOG_PATH", "")
+        report_path_raw = os.environ.get("AUTONOMOUS_POLICY_REPORT_PATH", "")
+        try:
+            catalog_path = Path(catalog_path_raw)
+            report_path = Path(report_path_raw)
+            if (
+                not str(runner_temp)
+                or catalog_path.is_symlink()
+                or report_path.is_symlink()
+                or catalog_path.resolve(strict=True) != expected_catalog
+                or report_path.resolve(strict=True) != expected_report
+                or os.environ.get("AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY", "").lower() != "true"
+                or os.environ.get("AUTONOMOUS_TEST_ADMISSION_SANDBOX_REQUIRED", "").lower() != "true"
+                or not shutil.which("bwrap")
+                or os.environ.get("GITHUB_SHA", "") != start_sha
+            ):
+                return blocked
+            catalog_bytes = catalog_path.read_bytes()
+            catalog_digest = hashlib.sha256(catalog_bytes).hexdigest()
+            if catalog_digest != os.environ.get("AUTONOMOUS_POLICY_CATALOG_SHA256", "").lower():
+                return blocked
+            policy_report = json.loads(report_path.read_text(encoding="utf-8"))
+            if (
+                not isinstance(policy_report, dict)
+                or policy_report.get("status") != "POLICY_ADMITTED"
+                or policy_report.get("policy_version") != "test-only-append-v1"
+                or policy_report.get("admitted_task_id") != task_id
+                or policy_report.get("admitted_allowed_path") != canonical_paths[0]
+                or policy_report.get("max_tasks_per_cycle") != 1
+                or policy_report.get("persistent_catalog_modified") is not False
+                or policy_report.get("durable_state_modified") is not False
+                or policy_report.get("held_tasks_resumed") is not False
+                or policy_report.get("execution_scope") != "one_test_file_append_only"
+            ):
+                return blocked
+            raw_catalog = catalog_bytes.decode("utf-8")
+            tracked_raw = _git("show", f"{start_sha}:.github/autonomous-loop-task-catalog.json")
+            tracked_catalog = json.loads(tracked_raw)
+            catalog = json.loads(raw_catalog)
+            tracked_tasks = tracked_catalog.get("tasks") if isinstance(tracked_catalog, dict) else None
+            runtime_tasks = catalog.get("tasks") if isinstance(catalog, dict) else None
+            if (
+                not isinstance(tracked_tasks, list)
+                or not isinstance(runtime_tasks, list)
+                or len(runtime_tasks) != len(tracked_tasks) + 1
+                or catalog != {**tracked_catalog, "tasks": runtime_tasks}
+                or runtime_tasks[:-1] != tracked_tasks
+            ):
+                return blocked
+        except (OSError, UnicodeError, TypeError, ValueError):
+            return blocked
+    else:
+        raw_catalog = _git("show", f"{start_sha}:.github/autonomous-loop-task-catalog.json")
+        try:
+            catalog = json.loads(raw_catalog)
+        except (TypeError, ValueError):
+            return blocked
     definitions = catalog.get("tasks") if isinstance(catalog, dict) else None
     if not isinstance(definitions, list):
         return blocked
@@ -187,6 +246,8 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
     if len(matches) != 1:
         return blocked
     definition = matches[0]
+    if policy_admission and definition.get("execution_approved") is not True:
+        return blocked
     catalog_paths = definition.get("allowed_paths")
     if (
         definition.get("execution_approved") is not True
@@ -207,6 +268,7 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
         "allowed_paths_sha256": paths_digest,
         "base_sha": start_sha,
         "catalog_sha": start_sha,
+        **({"catalog_content_sha256": catalog_digest, "policy_admission": True} if policy_admission else {}),
     }
 
 
