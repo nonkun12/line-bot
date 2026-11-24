@@ -1726,6 +1726,8 @@ def main() -> int:
                 f"MINIMAL_LOOP:HALT task={task['id']} reason={orchestration.get('reason_code', 'orchestration_blocked')}",
                 flush=True,
             )
+            if result.get("status") == "BLOCKED" and result.get("exit_code") in {80, 81, 82}:
+                return int(result["exit_code"])
             return 1
 
         if result["exit_code"] != 0 or result["status"] not in {"PASS", "NO_CHANGE"}:
