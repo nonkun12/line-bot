@@ -293,6 +293,8 @@ def _append_hold_diagnostic(path: Path, decision: dict[str, Any], goal: dict[str
         if item:
             blocked_tasks.append(item)
     reason = decision.get("reason")
+    if not isinstance(reason, str) or not reason:
+        reason = "failed_or_held_task_requires_review" if blocked_tasks else "unclassified_goal_decision"
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "stage": "pre_execution",
