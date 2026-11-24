@@ -172,11 +172,35 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
         json.dumps(canonical_paths, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
-    raw_catalog = _git("show", f"{start_sha}:.github/autonomous-loop-task-catalog.json")
-    try:
-        catalog = json.loads(raw_catalog)
-    except (TypeError, ValueError):
-        return blocked
+    if os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true":
+        # The run-local policy catalog is trusted only when its companion report
+        # binds this exact task, allowlisted test path, and checkout SHA.
+        policy_report_path = Path("/tmp/autonomous-loop-policy-admission.json")
+        policy_catalog_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_CATALOG", ""))
+        if policy_catalog_path != Path("/tmp/autonomous-loop-policy-runtime-catalog.json"):
+            return blocked
+        try:
+            policy_report = json.loads(policy_report_path.read_text(encoding="utf-8"))
+            from scripts.autonomous_task_target_allowlist import TARGETS
+            allowed_test_paths = {test_path for _, test_path in TARGETS}
+            admitted_path = policy_report.get("admitted_allowed_path")
+            if (
+                policy_report.get("status") != "POLICY_ADMITTED"
+                or policy_report.get("admitted_task_id") != task_id
+                or policy_report.get("base_sha") != start_sha
+                or admitted_path not in allowed_test_paths
+                or paths != [admitted_path]
+            ):
+                return blocked
+            catalog = json.loads(policy_catalog_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, TypeError, ValueError):
+            return blocked
+    else:
+        raw_catalog = _git("show", f"{start_sha}:.github/autonomous-loop-task-catalog.json")
+        try:
+            catalog = json.loads(raw_catalog)
+        except (TypeError, ValueError):
+            return blocked
     definitions = catalog.get("tasks") if isinstance(catalog, dict) else None
     if not isinstance(definitions, list):
         return blocked
