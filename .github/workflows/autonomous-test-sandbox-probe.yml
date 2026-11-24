@@ -1,0 +1,88 @@
+name: Autonomous Test Admission Sandbox Probe
+
+on:
+  pull_request:
+    paths:
+      - "scripts/autonomous_test_task_admission.py"
+      - "scripts/autonomous_test_task_postrun_guard.py"
+      - "scripts/line_development_worker_v2.py"
+      - "scripts/run_guarded_runtime.py"
+      - "scripts/run_minimal_autonomous_loop.py"
+      - ".github/workflows/distributed-autonomous-loop.yml"
+      - ".github/workflows/distributed-loop-30m-scheduler.yml"
+      - ".github/workflows/autonomous-test-sandbox-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install bubblewrap
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y bubblewrap
+          command -v bwrap
+          command -v prlimit
+
+      - name: Execute pytest inside the exact network-isolated boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          host_net_ns="$(readlink /proc/self/ns/net)"
+          prlimit --nproc=64 --cpu=180 --fsize=1048576 --as=4294967296 -- \
+            bwrap --die-with-parent --new-session --unshare-net --unshare-pid \
+            --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp \
+            --chdir "$GITHUB_WORKSPACE" \
+            --setenv HOME /tmp \
+            --setenv TMPDIR /tmp \
+            --setenv PYTHONDONTWRITEBYTECODE 1 \
+            -- python - "$host_net_ns" <<'PY'
+          import sys
+          from pathlib import Path
+
+          import pytest
+
+          host_net_ns = sys.argv[1]
+          probe = Path("/tmp/test_autonomous_sandbox_probe.py")
+          probe.write_text(
+              "import os, socket\\n"
+              "from pathlib import Path\\n"
+              "def test_network_namespace_isolated():\\n"
+              "    assert os.readlink('/proc/self/ns/net') != " + repr(host_net_ns) + "\\n"
+              "    assert {name for _, name in socket.if_nameindex()} <= {'lo'}\\n"
+              "    sock = socket.socket()\\n"
+              "    try:\\n"
+              "        sock.settimeout(1)\\n"
+              "        try:\\n"
+              "            sock.connect(('1.1.1.1', 53))\\n"
+              "        except OSError:\\n"
+              "            pass\\n"
+              "        else:\\n"
+              "            raise AssertionError('outbound network remained reachable')\\n"
+              "    finally:\\n"
+              "        sock.close()\\n"
+              "def test_workspace_is_read_only_and_tmp_is_writable():\\n"
+              "    target = Path.cwd() / '.autonomous-sandbox-write-probe'\\n"
+              "    try:\\n"
+              "        target.write_text('must fail')\\n"
+              "    except OSError:\\n"
+              "        pass\\n"
+              "    else:\\n"
+              "        target.unlink(missing_ok=True)\\n"
+              "        raise AssertionError('workspace is writable')\\n"
+              "    temp = Path('/tmp/autonomous-sandbox-tmp-probe')\\n"
+              "    temp.write_text('ok')\\n"
+              "    assert temp.read_text() == 'ok'\\n"
+              "    temp.unlink()\\n",
+              encoding="utf-8",
+          )
+          raise SystemExit(pytest.main(["-q", "-p", "no:cacheprovider", str(probe)]))
+          PY
