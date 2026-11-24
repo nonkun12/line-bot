@@ -27,12 +27,12 @@ def validate_simulator_provenance(
     """Raise ValueError unless signed simulator metadata is bound to this run."""
     if not isinstance(simulator, Mapping):
         raise ValueError("simulator_payload_invalid")
-    if simulator.get("schema_version") != 1:
+    if type(simulator.get("schema_version")) is not int or simulator.get("schema_version") != 1:
         raise ValueError("simulator_schema_version_unsupported")
     if simulator.get("producer_id") != _PRODUCER_ID:
         raise ValueError("simulator_producer_identity_invalid")
     experiment_id = simulator.get("experiment_id")
-    if not isinstance(experiment_id, str) or not experiment_id.strip():
+    if not isinstance(experiment_id, str) or not experiment_id.strip() or len(experiment_id) > 100:
         raise ValueError("simulator_experiment_id_invalid")
     if simulator.get("dataset_id") != experiment_id + ":held-out":
         raise ValueError("simulator_dataset_identity_mismatch")
@@ -68,10 +68,20 @@ def validate_simulator_provenance(
     if len(expected_ids) != len(set(expected_ids)):
         raise ValueError("held_out_dataset_sample_ids_duplicate")
 
+    candidate_ids = set()
     for candidate_name in ("baseline", "challenger"):
         candidate = simulator.get(candidate_name)
         if not isinstance(candidate, Mapping):
             raise ValueError("simulator_candidate_missing")
+        candidate_id = candidate.get("candidate_id")
+        artifact_sha256 = candidate.get("artifact_sha256")
+        if not isinstance(candidate_id, str) or not candidate_id.strip() or len(candidate_id) > 200:
+            raise ValueError("simulator_candidate_identity_invalid")
+        if candidate_id in candidate_ids:
+            raise ValueError("simulator_candidate_identity_duplicate")
+        candidate_ids.add(candidate_id)
+        if not isinstance(artifact_sha256, str) or not _SHA64.fullmatch(artifact_sha256):
+            raise ValueError("simulator_candidate_artifact_digest_invalid")
         predictions = candidate.get("predictions")
         if not isinstance(predictions, list) or len(predictions) != len(expected_ids):
             raise ValueError("simulator_prediction_coverage_incomplete")
@@ -80,7 +90,14 @@ def validate_simulator_provenance(
             if not isinstance(prediction, Mapping):
                 raise ValueError("simulator_prediction_invalid")
             sample_id = prediction.get("sample_id")
-            if not isinstance(sample_id, str) or not isinstance(prediction.get("output"), str):
+            output = prediction.get("output")
+            if (
+                not isinstance(sample_id, str)
+                or not sample_id.strip()
+                or not isinstance(output, str)
+                or not output.strip()
+                or len(output) > 100_000
+            ):
                 raise ValueError("simulator_prediction_schema_invalid")
             actual_ids.append(sample_id)
         if len(actual_ids) != len(set(actual_ids)):
