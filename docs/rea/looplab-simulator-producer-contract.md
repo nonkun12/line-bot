@@ -2,11 +2,13 @@
 
 ## Status
 
-This is the required interface for a future independent Simulator Producer. The
-producer is **not implemented or enabled yet**. Until a real producer supplies
-the signed artifact and trusted holdout inputs, the post-run gate must report
-`BLOCKED`. Do not create production-looking artifacts from the synthetic
-retrieval fixture.
+This is the interface for the independent Simulator Producer. A standalone
+artifact-signing CLI is implemented at
+scripts/produce_looplab_simulator_artifact.py; it is **not wired into or enabled
+by the Distributed Loop workflow**. Until an authorized runtime supplies genuine
+predictions, the locked production holdout, registry, and safety snapshot, the
+post-run gate must report BLOCKED. Never use synthetic retrieval fixtures as
+production evidence.
 
 The producer is separate from LoopLab. It may obtain Baseline and Challenger
 predictions from an explicitly configured local inference host, but it must
@@ -99,3 +101,48 @@ The CI synthetic fixture remains a diagnostic only. Its result must retain
 
 No production producer, holdout registry, trust keys, or safety authority is
 created by this contract document.
+
+
+## Standalone producer CLI
+
+The producer accepts predictions from an independently invoked inference
+process; it does not execute a model, create a dataset registry, or mint a
+safety snapshot. Inputs are JSON arrays:
+
+- Dataset: rows with unique sample_id values.
+- Baseline and Challenger predictions: exactly one non-empty output per
+  dataset sample_id.
+- Candidate artifacts: immutable regular files whose SHA-256 digests identify
+  the exact candidate versions.
+
+Example (run in the same trusted execution context as the Distributed Loop):
+
+    GITHUB_RUN_ID=123456 GITHUB_SHA=<current-commit-sha> LOOPLAB_SIMULATOR_HMAC_KEY=<externally-provisioned-secret> python -m scripts.produce_looplab_simulator_artifact --dataset /path/to/locked-held-out-dataset.json --baseline-predictions /path/to/baseline-predictions.json --challenger-predictions /path/to/challenger-predictions.json --baseline-artifact /path/to/baseline-model-artifact --challenger-artifact /path/to/challenger-model-artifact --experiment-id <stable-experiment-id> --output /tmp/looplab-simulator-output.json
+
+The CLI validates run/commit binding, dataset uniqueness, exact prediction
+coverage, candidate artifact files, and a minimum 32-byte externally supplied
+HMAC key. It writes the signed envelope atomically and refuses to overwrite
+any input. It prints metadata only, never the key or predictions. Exit code 2
+means BLOCKED and no success artifact is produced.
+
+## Remaining activation work
+
+1. Connect an explicitly authorized local inference process to produce the two
+   prediction arrays. The producer itself deliberately does not invoke Ollama
+   or any hosted model API.
+2. Run this producer on a trusted runner that has access to the locked dataset
+   and externally provisioned signing key; bind its artifact to the current
+   workflow run.
+3. Supply the independently signed dataset registry and short-lived safety
+   snapshot. The producer must never create or sign either trust input.
+4. Upload the artifact to the same workflow run; never reuse artifacts from a
+   prior run.
+5. Test wrong-run, wrong-commit, stale artifact, dataset substitution,
+   duplicate/missing predictions, invalid signature, and local inference
+   unavailability.
+6. Keep hosted inference and paid fallback disabled. If the local inference
+   host is unavailable, produce no signed success artifact; the gate remains
+   BLOCKED.
+
+This implementation creates no production holdout, registry, trust keys, or
+safety authority, and it is not yet invoked by the Distributed Loop workflow.
