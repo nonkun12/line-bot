@@ -1,6 +1,7 @@
 from agents.stocks.node import StocksAgent
 from core.agents import AgentRequest
 from core.stocks import StockQuote, safe_stock_quote
+from core.stocks import StockQuote, safe_stock_quote
 
 
 def test_normalize_japanese_ticker():
@@ -205,3 +206,33 @@ def test_safe_stock_quote_validates_provider_output_and_normalizes_ticker():
     empty_provider = FakeProvider(valid_quote)
     assert safe_stock_quote(empty_provider, "   ") is None
     assert empty_provider.requested == []
+
+
+def test_safe_stock_quote_normalizes_and_rejects_invalid_provider_responses():
+    class FakeProvider:
+        def __init__(self, result=None, error=None):
+            self.result = result
+            self.error = error
+            self.requested = []
+
+        def get_quote(self, ticker):
+            self.requested.append(ticker)
+            if self.error is not None:
+                raise self.error
+            return self.result
+
+    valid = StockQuote(ticker="7203.T", price=3000.0, currency="JPY")
+    provider = FakeProvider(result=valid)
+    assert safe_stock_quote(provider, " 7203 ") is valid
+    assert provider.requested == ["7203.T"]
+
+    assert safe_stock_quote(FakeProvider(result=object()), "7203") is None
+    mismatched = StockQuote(ticker="AAPL", price=3000.0, currency="USD")
+    assert safe_stock_quote(FakeProvider(result=mismatched), "7203") is None
+    negative = StockQuote(ticker="7203.T", price=-1.0, currency="JPY")
+    assert safe_stock_quote(FakeProvider(result=negative), "7203") is None
+    assert safe_stock_quote(FakeProvider(error=RuntimeError("provider failure")), "7203") is None
+
+    empty = FakeProvider(result=valid)
+    assert safe_stock_quote(empty, "   ") is None
+    assert empty.requested == []
