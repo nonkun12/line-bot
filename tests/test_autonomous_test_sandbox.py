@@ -104,13 +104,31 @@ def test_real_sandbox_denies_host_writes_credentials_sockets_and_network(tmp_pat
         encoding="utf-8",
     )
 
+    command = build_sandbox_command(root, "tests/test_boundary.py")
+    # Probe the same namespace with its known-good shell before diagnosing an
+    # interpreter ENOENT. This distinguishes a missing bind target from a
+    # missing ELF loader without relaxing the production sandbox.
+    separator = command.index("--", command.index("bwrap") + 1)
+    probe = command[:separator + 1] + [
+        "/bin/sh", "-c",
+        "ls -ld /python-runtime /python-runtime/bin; "
+        "ls -l /python-runtime/bin/python*; "
+        "ls -l /lib64/ld-linux* /usr/lib/x86_64-linux-gnu/ld-linux* 2>/dev/null || true; "
+        "test -x /python-runtime/bin/python3.13 && echo interpreter-executable || echo interpreter-missing",
+    ]
+    probe_result = subprocess.run(
+        probe, cwd=root, text=True, capture_output=True, timeout=30,
+        env={"PATH": os.defpath, "LANG": "C"},
+    )
     result = run_sandboxed_pytest(root, "tests/test_boundary.py", timeout=120)
     assert result.returncode == 0, (
         result.stdout + result.stderr
+        + "\\nprobe_stdout=" + probe_result.stdout
+        + "\\nprobe_stderr=" + probe_result.stderr
         + "\\npython=" + repr(sys.executable)
         + " prefix=" + repr(sys.prefix)
         + " resolved=" + repr(str(Path(sys.executable).resolve()))
-        + "\\ncommand=" + repr(build_sandbox_command(root, "tests/test_boundary.py"))
+        + "\\ncommand=" + repr(command)
     )
     assert not host_marker.exists()
     assert "must-not-cross-boundary" not in result.stdout + result.stderr
