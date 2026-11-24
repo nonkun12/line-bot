@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from core.looplab_experiment_adapter import evaluate_simulator_run
+from core.looplab_simulator_contract import validate_simulator_provenance
 from core.looplab_rsi_bridge import record_evaluation_as_rsi_observation
 from core.rsi_executor import EvidenceLedger, RSIControl, RSIExecutor
 
@@ -126,6 +127,15 @@ def evaluate_postrun(
             or sample_count < entry["minimum_sample_count"]
         ):
             raise ValueError("held_out_dataset_registry_mismatch")
+
+        validate_simulator_provenance(
+            simulator,
+            dataset,
+            dataset_sha256=dataset_digest,
+            expected_run_id=env.get("GITHUB_RUN_ID", ""),
+            expected_commit_sha=env.get("GITHUB_SHA", ""),
+            now=now,
+        )
 
         issued_at = safety.get("issued_at")
         expires_at = safety.get("expires_at")
