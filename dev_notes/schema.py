@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-from datetime import datetime
 
 
 DEFAULT_CATEGORY = "agent_execution_log"
@@ -16,7 +16,7 @@ class ExecutionLogEntry:
 
     category: str = DEFAULT_CATEGORY
     agent_name: str = ""
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     state: Dict[str, Any] = field(default_factory=dict)
     result: Any = None
     error: Optional[BaseException] = None

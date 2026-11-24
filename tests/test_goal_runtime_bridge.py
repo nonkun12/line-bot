@@ -15,6 +15,87 @@ def _inputs(tmp_path: Path):
     state.write_text(json.dumps({"version":1,"completed":[]}))
     return queue,catalog,state,results,stop
 
+def test_preflight_rea_is_recorded_even_when_goal_claim_is_held(tmp_path, monkeypatch):
+    queue, catalog, state, results, stop = _inputs(tmp_path)
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+    monkeypatch.setenv("GITHUB_SHA", "a" * 40)
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
+    evidence_path = tmp_path / "rea-preflight-evaluations.jsonl"
+    monkeypatch.setenv("REA_PREFLIGHT_EVIDENCE_PATH", str(evidence_path))
+    import scripts.rea_control_tower_adapter as rea_adapter
+    monkeypatch.setattr(
+        rea_adapter,
+        "prepare_rea_evidence",
+        lambda root, expected_sha: {
+            "gate": "PASS",
+            "target_sha": expected_sha,
+            "scanner_status": "PASS",
+            "finding_count": 0,
+            "blocking_count": 0,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_load_goal",
+        lambda *args, **kwargs: (1, {"tasks": [{"task_id": "approved-test-task", "status": "HELD"}]}),
+    )
+    monkeypatch.setattr(
+        bridge.GoalStateStore,
+        "claim_next",
+        lambda self, goal_id: {"decision": "HOLD"},
+    )
+    def unexpected_child(*args, **kwargs):
+        raise AssertionError("held task must not launch the child runner")
+    monkeypatch.setattr(bridge.subprocess, "run", unexpected_child)
+    args = SimpleNamespace(
+        catalog=catalog,
+        state=state,
+        results=results,
+        stop_file=stop,
+        goal_state_output=tmp_path / "goal-pending.json",
+        max_tasks=1,
+    )
+
+    assert bridge.run(args) == 79
+    record = json.loads(evidence_path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["stage"] == "pre_execution"
+    assert record["target_sha"] == "a" * 40
+    assert record["gate"] == "PASS"
+    assert record["execution_authorized"] is False
+    assert record["hold_clear_authorized"] is False
+    assert len(record["evidence_sha256"]) == 64
+
+
+def test_preflight_rea_scan_exception_is_recorded_as_blocked(tmp_path, monkeypatch):
+    import scripts.rea_control_tower_adapter as rea_adapter
+
+    evidence_path = tmp_path / "rea-preflight-evaluations.jsonl"
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        rea_adapter,
+        "prepare_rea_evidence",
+        lambda root, expected_sha: (_ for _ in ()).throw(RuntimeError("private detail")),
+    )
+
+    bridge._record_preflight_rea(evidence_path, "b" * 40)
+    record = json.loads(evidence_path.read_text(encoding="utf-8").splitlines()[0])
+
+    assert record["target_sha"] == "b" * 40
+    assert record["gate"] == "BLOCKED"
+    assert record["reason_code"] == "rea_preflight_failed"
+    assert record["scanner_status"] == "BLOCKED"
+    assert record["execution_authorized"] is False
+    assert record["patch_authorized"] is False
+    assert record["hold_clear_authorized"] is False
+    assert record["merge_deploy_authorized"] is False
+    assert "private detail" not in evidence_path.read_text(encoding="utf-8")
+    assert len(record["evidence_sha256"]) == 64
+
+
 def test_only_exact_approved_catalog_tasks_enter_goal(tmp_path):
     queue,catalog,state,results,stop = _inputs(tmp_path)
     assert bridge._authorized_queue(queue,catalog,set())[0]["execution_authorized"] is True
@@ -63,7 +144,16 @@ def test_failed_guarded_task_is_held_and_not_retried(tmp_path,monkeypatch):
                          goal_state_output=goal_output,max_tasks=1)
     assert bridge.run(args)==1
     assert goal_output.exists()
-    assert json.loads(goal_output.read_text())["tasks"][0]["status"] == "HELD"
+    held_task = json.loads(goal_output.read_text())["tasks"][0]
+    assert held_task["status"] == "HELD"
+    assert held_task["hold_reason"] == "guarded_runtime_or_evidence_gate_failed"
+    assert held_task["failure_evidence"] == {
+        "stage": "child_runner",
+        "reason_code": "runner_nonzero_exit",
+        "child_exit_code": 1,
+        "result_status": "FAIL",
+        "result_exit_code": 1,
+    }
     assert "goal_autopilot" not in json.loads(state.read_text())
 
 

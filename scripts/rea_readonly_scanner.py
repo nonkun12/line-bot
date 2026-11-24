@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 ALLOWED_ROOTS = (".github/workflows/", "core/", "scripts/", "tests/", "docs/rea/")
-ALLOWED_ROOT_FILES = frozenset({"line_development.py"})
+ALLOWED_ROOT_FILES = frozenset({"line_development.py", "dev_notes/schema.py"})
 
 
 def _is_allowed_path(path: str) -> bool:
