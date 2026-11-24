@@ -6,11 +6,11 @@ It never merges weights, advances generations, activates models, or deploys.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 import hashlib
 import json
-from contextlib import closing
+from contextlib import closing, nullcontext
 import math
 import sqlite3
 import time
@@ -179,28 +179,35 @@ class EvidenceLedger:
         db.row_factory = sqlite3.Row
         return db
 
-    def append(self, event_id: str, event_type: str, payload: Mapping[str, object]) -> str:
+    def _append_event_in_transaction(
+        self, db: sqlite3.Connection, event_id: str, event_type: str,
+        payload: Mapping[str, object],
+    ) -> str:
         _bounded_id(event_id, "event id")
         _bounded_id(event_type, "event type")
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
         if len(encoded.encode("utf-8")) > self.max_payload_bytes:
             raise RSIError("evidence payload exceeds configured bound")
+        if db.execute("SELECT 1 FROM rsi_evidence WHERE event_id=?", (event_id,)).fetchone():
+            raise RSIError("duplicate evidence event")
+        row = db.execute("SELECT event_digest FROM rsi_evidence ORDER BY seq DESC LIMIT 1").fetchone()
+        previous = row["event_digest"] if row else "0" * 64
+        created_at = int(time.time())
+        digest = canonical_digest({
+            "event_id": event_id, "event_type": event_type, "payload": json.loads(encoded),
+            "previous_digest": previous, "created_at": created_at,
+        })
+        db.execute(
+            "INSERT INTO rsi_evidence(event_id,event_type,payload,previous_digest,event_digest,created_at) VALUES(?,?,?,?,?,?)",
+            (event_id, event_type, encoded, previous, digest, created_at),
+        )
+        return digest
+
+    def append(self, event_id: str, event_type: str, payload: Mapping[str, object]) -> str:
         with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             try:
-                if db.execute("SELECT 1 FROM rsi_evidence WHERE event_id=?", (event_id,)).fetchone():
-                    raise RSIError("duplicate evidence event")
-                row = db.execute("SELECT event_digest FROM rsi_evidence ORDER BY seq DESC LIMIT 1").fetchone()
-                previous = row["event_digest"] if row else "0" * 64
-                created_at = int(time.time())
-                digest = canonical_digest({
-                    "event_id": event_id, "event_type": event_type, "payload": json.loads(encoded),
-                    "previous_digest": previous, "created_at": created_at,
-                })
-                db.execute(
-                    "INSERT INTO rsi_evidence(event_id,event_type,payload,previous_digest,event_digest,created_at) VALUES(?,?,?,?,?,?)",
-                    (event_id, event_type, encoded, previous, digest, created_at),
-                )
+                digest = self._append_event_in_transaction(db, event_id, event_type, payload)
                 db.execute("COMMIT")
                 return digest
             except Exception:
@@ -251,6 +258,7 @@ class EvidenceLedger:
         self, event_id: str, *, observation: Observation, experiment_id: str,
         candidate_digest: str, protocol_digest: str, result_digest: str,
         producer_id: str, sign_digest: Callable[[str], str],
+        _db: sqlite3.Connection | None = None,
     ) -> str:
         """Append externally signed, plan-bound source evidence for an observation."""
         _bounded_id(event_id, "source evidence event id")
@@ -278,20 +286,63 @@ class EvidenceLedger:
         signature = sign_digest(canonical_digest(payload))
         if not isinstance(signature, str) or not signature.strip() or len(signature) > 4096:
             raise RSIError("evidence producer signer returned an invalid signature")
-        return self.append(event_id, "trusted_observation_evidence", {
-            **payload, "producer_signature": signature,
-        })
+        signed_payload = {**payload, "producer_signature": signature}
+        if _db is not None:
+            return self._append_event_in_transaction(
+                _db, event_id, "trusted_observation_evidence", signed_payload
+            )
+        return self.append(event_id, "trusted_observation_evidence", signed_payload)
+
+    def append_observation_and_verify_atomically(
+        self, event_id: str, *, observation: Observation, experiment_id: str,
+        candidate_digest: str, protocol_digest: str, result_digest: str,
+        producer_id: str, sign_digest: Callable[[str], str],
+        verify_producer_signature: Callable[[str, str, str], bool],
+        verify_evaluation: Callable[[IndependentEvaluation], bool] | None = None,
+    ) -> str:
+        """Atomically append signed source evidence and its verified observation.
+
+        Both hash-chain events share one BEGIN IMMEDIATE transaction. Any
+        signature, provenance, schema, duplicate, or insertion failure rolls
+        back both events.
+        """
+        with closing(self._connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                evidence_digest = self.append_observation_evidence(
+                    event_id, observation=observation, experiment_id=experiment_id,
+                    candidate_digest=candidate_digest, protocol_digest=protocol_digest,
+                    result_digest=result_digest, producer_id=producer_id,
+                    sign_digest=sign_digest, _db=db,
+                )
+                from dataclasses import replace
+                verified_observation = replace(
+                    observation, evidence_digest=evidence_digest
+                )
+                self.append_verified_observations(
+                    (verified_observation,), verify_producer_signature,
+                    verify_evaluation, _db=db,
+                )
+                db.execute("COMMIT")
+                return evidence_digest
+            except Exception:
+                db.execute("ROLLBACK")
+                raise
 
     def append_verified_observations(
         self, observations: tuple[Observation, ...],
         verify_producer_signature: Callable[[str, str, str], bool],
         verify_evaluation: Callable[[IndependentEvaluation], bool] | None = None,
+        _db: sqlite3.Connection | None = None,
     ) -> None:
         """Verify source provenance and append observations in one SQLite transaction."""
         if not callable(verify_producer_signature):
             raise RSIError("independent evidence producer verifier is required")
-        with closing(self._connect()) as db:
-            db.execute("BEGIN IMMEDIATE")
+        manager = closing(self._connect()) if _db is None else nullcontext(_db)
+        with manager as db:
+            owns_transaction = _db is None
+            if owns_transaction:
+                db.execute("BEGIN IMMEDIATE")
             try:
                 previous = "0" * 64
                 rows = db.execute("SELECT * FROM rsi_evidence ORDER BY seq").fetchall()
@@ -420,9 +471,11 @@ class EvidenceLedger:
                         (event_id, "observation", encoded, previous, digest, created_at),
                     )
                     previous = digest
-                db.execute("COMMIT")
+                if owns_transaction:
+                    db.execute("COMMIT")
             except Exception:
-                db.execute("ROLLBACK")
+                if owns_transaction:
+                    db.execute("ROLLBACK")
                 raise
 
 
@@ -491,8 +544,8 @@ class RSIExecutor:
         """
         return self._control()
 
-    def observe(self, observations: tuple[Observation, ...]) -> tuple[Diagnosis, ...]:
-        self._control()
+
+    def _validate_observations(self, observations: tuple[Observation, ...]) -> dict[str, list[Observation]]:
         if not observations:
             raise RSIError("at least one observation is required")
         if len(observations) > 100:
@@ -517,21 +570,48 @@ class RSIExecutor:
             if not item.detail or len(item.detail) > 2000:
                 raise RSIError("observation detail invalid")
             groups.setdefault(item.capability, []).append(item)
-        self.ledger.append_verified_observations(
-            observations, self.verify_evidence_signature, self.verify_evaluation
-        )
+        return groups
+
+    def _diagnose_observations(self, groups: dict[str, list[Observation]]) -> tuple[Diagnosis, ...]:
         diagnoses = []
         for capability, rows in sorted(groups.items()):
             failures = [x for x in rows if x.outcome in {"FAIL", "REGRESSED"}]
             if not failures:
                 continue
-            # Deterministic pattern; never upgrades an inferred cause into a fact.
             pattern = "repeated_failure" if len(failures) > 1 else "single_failure"
             did = canonical_digest({"capability": capability, "evidence": sorted(x.evidence_digest for x in failures)})
             diagnoses.append(Diagnosis(did[:32], capability, pattern, 0.5 if len(failures) == 1 else 0.7,
                 tuple(x.observation_id for x in failures), "root cause is unverified; diagnosis is a testable lead"))
             self.ledger.append("diagnosis:" + did[:32], "diagnosis", asdict(diagnoses[-1]))
         return tuple(diagnoses)
+
+    def observe(self, observations: tuple[Observation, ...]) -> tuple[Diagnosis, ...]:
+        self._control()
+        groups = self._validate_observations(observations)
+        self.ledger.append_verified_observations(
+            observations, self.verify_evidence_signature, self.verify_evaluation
+        )
+        return self._diagnose_observations(groups)
+
+    def observe_with_source_evidence(
+        self, event_id: str, *, observation: Observation, experiment_id: str,
+        candidate_digest: str, protocol_digest: str, result_digest: str,
+        producer_id: str, sign_digest: Callable[[str], str],
+    ) -> tuple[str, tuple[Diagnosis, ...]]:
+        """Atomically ingest source evidence and observation before diagnosis."""
+        self._control()
+        groups = self._validate_observations((observation,))
+        evidence_digest = self.ledger.append_observation_and_verify_atomically(
+            event_id, observation=observation, experiment_id=experiment_id,
+            candidate_digest=candidate_digest, protocol_digest=protocol_digest,
+            result_digest=result_digest, producer_id=producer_id,
+            sign_digest=sign_digest,
+            verify_producer_signature=self.verify_evidence_signature,
+            verify_evaluation=self.verify_evaluation,
+        )
+        verified = replace(observation, evidence_digest=evidence_digest)
+        verified_groups = self._validate_observations((verified,))
+        return evidence_digest, self._diagnose_observations(verified_groups)
 
     def hypothesize(self, diagnoses: tuple[Diagnosis, ...]) -> tuple[Hypothesis, ...]:
         self._control()
