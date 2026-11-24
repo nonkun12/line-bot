@@ -27,7 +27,10 @@ def test_scoring_counts_negative_false_positives():
     assert _metrics(rows, 5)["negative_false_positive_rate"] == 1.0
 
 
-def test_one_command_launcher_has_valid_shell_syntax():
-    script = Path(__file__).resolve().parents[1] / "scripts" / "start_looplab_local.sh"
-    result = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True, check=False)
-    assert result.returncode == 0, result.stderr
+def test_one_command_launcher_help_does_not_contact_model():
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.start_looplab_local", "--help"],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0
+    assert "--model" in result.stdout
