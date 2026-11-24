@@ -87,12 +87,43 @@ def build_proposals(
     queued = queue.get("tasks")
     completed = state.get("completed", [])
     recovery = state.get("recovery_ai")
+    goal_autopilot = state.get("goal_autopilot")
     if not isinstance(queued, list) or not isinstance(completed, list) or not all(isinstance(x, str) for x in completed):
         raise ValueError("invalid queue or completion state")
     if not isinstance(recovery, dict) or recovery.get("schema_version") != 1 or not isinstance(recovery.get("tasks"), dict) or "checkpoint" not in recovery:
         raise ValueError("Recovery AI state is invalid")
 
-    excluded = {x.get("id") for x in queued if isinstance(x, dict) and isinstance(x.get("id"), str)} | set(completed)
+    # GoalAutopilot is a second durable source of task lifecycle state. Never
+    # propose an ID already represented there (including HELD/FAILED tasks):
+    # otherwise the proposal queue can repeatedly feed a task the runtime
+    # correctly refuses to claim. Malformed state blocks proposal generation.
+    goal_task_ids = set()
+    if goal_autopilot is not None:
+        if (
+            not isinstance(goal_autopilot, dict)
+            or goal_autopilot.get("goal_id") != "distributed-loop-main-goal-v1"
+            or not isinstance(goal_autopilot.get("tasks"), list)
+        ):
+            raise ValueError("GoalAutopilot state is invalid")
+        for record in goal_autopilot["tasks"]:
+            if (
+                not isinstance(record, dict)
+                or not isinstance(record.get("task_id"), str)
+                or not record["task_id"].strip()
+                or not isinstance(record.get("status"), str)
+                or not record["status"].strip()
+            ):
+                raise ValueError("GoalAutopilot task record is invalid")
+            task_id = record["task_id"]
+            if task_id in goal_task_ids:
+                raise ValueError("duplicate GoalAutopilot task ID")
+            goal_task_ids.add(task_id)
+
+    excluded = (
+        {x.get("id") for x in queued if isinstance(x, dict) and isinstance(x.get("id"), str)}
+        | set(completed)
+        | goal_task_ids
+    )
     recovery_tasks = recovery["tasks"]
     for task_id, record in recovery_tasks.items():
         if not isinstance(task_id, str) or not isinstance(record, dict):
