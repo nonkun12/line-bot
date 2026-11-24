@@ -105,7 +105,13 @@ def test_real_sandbox_denies_host_writes_credentials_sockets_and_network(tmp_pat
     )
 
     result = run_sandboxed_pytest(root, "tests/test_boundary.py", timeout=120)
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 0, (
+        result.stdout + result.stderr
+        + "\\npython=" + repr(sys.executable)
+        + " prefix=" + repr(sys.prefix)
+        + " resolved=" + repr(str(Path(sys.executable).resolve()))
+        + "\\ncommand=" + repr(build_sandbox_command(root, "tests/test_boundary.py"))
+    )
     assert not host_marker.exists()
     assert "must-not-cross-boundary" not in result.stdout + result.stderr
 
