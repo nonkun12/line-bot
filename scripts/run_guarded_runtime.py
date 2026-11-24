@@ -295,6 +295,7 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
     if event_name == "schedule" or (
         event_name == "workflow_dispatch"
         and os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true"
+        and os.environ.get("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "") == "30m_scheduler"
     ):
         return _verify_catalog_execution_approval(start_sha, instruction)
     if event_name not in {"workflow_dispatch", "issue_comment"}:
