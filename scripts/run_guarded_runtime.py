@@ -663,6 +663,18 @@ def main() -> int:
         print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
         return 82
 
+    # Do not consume the one-time execution approval when the requested model
+    # provider is unavailable. This is a no-execution capability gate.
+    task_id = os.environ.get("AUTONOMOUS_TASK_ID", "").strip()
+    provider_block_reason = runtime._provider_block_reason(task_id)
+    if provider_block_reason is not None:
+        _write_summary("BLOCKED", 83, start_sha, summary_path, rea_evidence)
+        print(
+            "MODEL_PROVIDER=BLOCKED reason=local_adapter_unavailable; external or metered APIs are disabled",
+            flush=True,
+        )
+        return 83
+
     instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
     approval_evidence = _verify_execution_approval(start_sha, instruction)
     if approval_evidence.get("execution_authorized") is True:
