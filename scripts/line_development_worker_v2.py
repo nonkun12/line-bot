@@ -26,6 +26,8 @@ if str(_ROOT) not in sys.path:
 
 from core.local_model_client import LocalModelClient, LocalModelError, create_local_model_client_from_env
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
+from scripts.autonomous_task_target_allowlist import TARGETS
+from scripts.autonomous_test_sandbox import run_pytest_sandboxed
 
 ROOT = _ROOT
 MODEL = os.environ.get("RSI_LOCAL_MODEL_NAME", "")
@@ -1044,8 +1046,7 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             not isinstance(raw_paths, list)
             or len(raw_paths) != 1
             or not isinstance(raw_paths[0], str)
-            or not raw_paths[0].startswith("tests/")
-            or not raw_paths[0].endswith(".py")
+            or raw_paths[0] not in {test_path for _, test_path in TARGETS}
             or Path(raw_paths[0]).is_absolute()
             or ".." in Path(raw_paths[0]).parts
         ):
@@ -1060,8 +1061,16 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
     for path in touched or []:
         if not path.endswith(".py"):
             continue
+        if policy_mode:
+            compile_command = [
+                sys.executable, "-B", "-c",
+                "import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'), filename=sys.argv[1])",
+                path,
+            ]
+        else:
+            compile_command = [sys.executable, "-m", "py_compile", path]
         compile_result = run(
-            [sys.executable, "-m", "py_compile", path],
+            compile_command,
             timeout=120,
             env=_test_process_env(),
         )
@@ -1084,37 +1093,11 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
     task_scope = {name: os.environ.pop(name, missing) for name in task_scoped_names}
     try:
         if policy_mode:
-            clean_env = _test_process_env()
-            clean_env.update({
-                "HOME": "/tmp",
-                "TMPDIR": "/tmp",
-                "PYTHONDONTWRITEBYTECODE": "1",
-            })
             test_cmd = [
-                "prlimit",
-                "--nproc=64",
-                "--cpu=180",
-                "--fsize=1048576",
-                "--as=4294967296",
-                "--",
-                "bwrap",
-                "--die-with-parent",
-                "--new-session",
-                "--unshare-net",
-                "--unshare-pid",
-                "--ro-bind", "/", "/",
-                "--dev", "/dev",
-                "--proc", "/proc",
-                "--tmpfs", "/tmp",
-                "--chdir", str(ROOT),
-                "--setenv", "HOME", "/tmp",
-                "--setenv", "TMPDIR", "/tmp",
-                "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
-                "--",
                 sys.executable, "-m", "pytest", "-q", "--tb=native",
-                "-p", "no:cacheprovider", *policy_paths,
+                "-p", "no:cacheprovider", policy_paths[0],
             ]
-            outputs.append("isolated pytest: network disabled; repository read-only; process/CPU/memory/file limits; one allowlisted test file")
+            outputs.append("isolated pytest: network namespace disabled; repository read-only; process/CPU/memory/file limits; one allowlisted test file")
         elif full_suite:
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native"]
             outputs.append("full pytest:")
@@ -1132,7 +1115,12 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native", *paths]
             outputs.append("targeted pytest:")
             clean_env = _test_process_env()
-        tests = run(test_cmd, timeout=900, env=clean_env)
+        if policy_mode:
+            tests = run_pytest_sandboxed(
+                test_cmd, repo_root=ROOT, test_paths=policy_paths, timeout=900,
+            )
+        else:
+            tests = run(test_cmd, timeout=900, env=clean_env)
     finally:
         for name, value in task_scope.items():
             if value is missing:
