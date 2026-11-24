@@ -210,6 +210,7 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
             or policy_report_path.is_symlink()
             or os.environ.get("AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY", "").lower() != "true"
             or not shutil.which("bwrap")
+            or not shutil.which("prlimit")
             or os.environ.get("GITHUB_SHA", "") != start_sha
         ):
             return blocked
