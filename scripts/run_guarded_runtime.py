@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+POLICY_ADMISSION_REPORT_PATH = Path("/tmp/autonomous-loop-policy-admission.json")
+POLICY_ADMISSION_CATALOG_PATH = Path("/tmp/autonomous-loop-policy-runtime-catalog.json")
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -172,11 +174,37 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
         json.dumps(canonical_paths, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
-    raw_catalog = _git("show", f"{start_sha}:.github/autonomous-loop-task-catalog.json")
-    try:
-        catalog = json.loads(raw_catalog)
-    except (TypeError, ValueError):
-        return blocked
+    if os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true":
+        # Trust run-local catalog approval only when the report binds this exact
+        # task, allowlisted test file, and checkout SHA.
+        policy_report_path = POLICY_ADMISSION_REPORT_PATH
+        policy_catalog_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_CATALOG", ""))
+        if policy_catalog_path != POLICY_ADMISSION_CATALOG_PATH:
+            return blocked
+        try:
+            policy_report = json.loads(policy_report_path.read_text(encoding="utf-8"))
+            if not isinstance(policy_report, dict):
+                return blocked
+            from scripts.autonomous_task_target_allowlist import TARGETS
+            allowed_test_paths = {test_path for _, test_path in TARGETS}
+            admitted_path = policy_report.get("admitted_allowed_path")
+            if (
+                policy_report.get("status") != "POLICY_ADMITTED"
+                or policy_report.get("admitted_task_id") != task_id
+                or policy_report.get("base_sha") != start_sha
+                or admitted_path not in allowed_test_paths
+                or paths != [admitted_path]
+            ):
+                return blocked
+            catalog = json.loads(policy_catalog_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, TypeError, ValueError):
+            return blocked
+    else:
+        raw_catalog = _git("show", f"{start_sha}:.github/autonomous-loop-task-catalog.json")
+        try:
+            catalog = json.loads(raw_catalog)
+        except (TypeError, ValueError):
+            return blocked
     definitions = catalog.get("tasks") if isinstance(catalog, dict) else None
     if not isinstance(definitions, list):
         return blocked
@@ -196,12 +224,13 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
         or sorted(catalog_paths) != canonical_paths
     ):
         return blocked
+    policy_admission = os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true"
     return {
         "gate": "PASS",
-        "reason_code": "reviewed_catalog_preapproval",
+        "reason_code": "run_local_test_policy_admission" if policy_admission else "reviewed_catalog_preapproval",
         "execution_authorized": True,
-        "scope": "catalog_preapproved_execution",
-        "actor": "catalog-preapproved",
+        "scope": "run_local_test_policy" if policy_admission else "catalog_preapproved_execution",
+        "actor": "policy-admission" if policy_admission else "catalog-preapproved",
         "task_id": task_id,
         "instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
         "allowed_paths_sha256": paths_digest,
