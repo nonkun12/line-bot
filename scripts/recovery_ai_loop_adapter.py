@@ -152,8 +152,22 @@ def record_loop_outcome(
         or failure_reason == "control_tower_head_changed"
         or (
             failure_reason.startswith("guarded_runtime_gate:")
+            and type(result.get("exit_code")) is int
+            and result["exit_code"] in {81, 82}
             and isinstance(result.get("gate_evidence"), dict)
             and result["gate_evidence"].get("gate") == "BLOCKED"
+            and result["gate_evidence"].get("gate_name") == {
+                81: "execution_approval", 82: "emergency_stop"
+            }[result["exit_code"]]
+            and result["gate_evidence"].get("exit_code") == result["exit_code"]
+            and isinstance(result["gate_evidence"].get("reason_code"), str)
+            and bool(result["gate_evidence"]["reason_code"].strip())
+            and failure_reason == (
+                "guarded_runtime_gate:"
+                + result["gate_evidence"]["gate_name"]
+                + ":"
+                + result["gate_evidence"]["reason_code"]
+            )
             and all(result["gate_evidence"].get(key) is False for key in (
                 "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"
             ))
