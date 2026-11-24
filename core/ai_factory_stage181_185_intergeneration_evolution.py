@@ -383,11 +383,23 @@ class Stage185EvolutionReadinessPackager:
             raise EvolutionError("cohort evidence lineage mismatch")
         if (cohort.source_generation, cohort.target_generation) != (report.source_generation, report.target_generation):
             raise EvolutionError("cohort generation mismatch")
-        if not cohort.cohort_candidate_ids or not set(cohort.cohort_candidate_ids).issubset(
-            set(selection.selected_candidate_ids) | {p.candidate_id for p in variations.proposals}
+        cohort_ids = cohort.cohort_candidate_ids
+        if (
+            not isinstance(cohort_ids, tuple)
+            or not 1 <= len(cohort_ids) <= 32
+            or any(not isinstance(candidate_id, str) for candidate_id in cohort_ids)
+            or len(set(cohort_ids)) != len(cohort_ids)
         ):
+            raise EvolutionError("cohort candidate identity bounds invalid")
+        for candidate_id in cohort_ids:
+            _check_id(candidate_id, "cohort candidate id")
+        approved_ids = set(selection.selected_candidate_ids) | {
+            proposal.candidate_id for proposal in variations.proposals
+        }
+        if not set(cohort_ids).issubset(approved_ids):
             raise EvolutionError("cohort contains unapproved candidate lineage")
-        candidate_ids = tuple(sorted(set(selection.selected_candidate_ids) | {p.candidate_id for p in variations.proposals}))
+        # Stage 186 may continue only with candidates actually admitted to the cohort.
+        candidate_ids = tuple(sorted(cohort_ids))
         payload = {"report": report.report_digest, "selection": selection.selection_digest,
                    "variations": variations.proposal_set_digest, "cohort": cohort.cohort_digest,
                    "source": report.source_generation, "target": report.target_generation,
@@ -400,13 +412,20 @@ class Stage185EvolutionReadinessPackager:
                 raise EvolutionError("Stage 185 readiness checkpoint signing failed")
         return EvolutionReadinessCertificate(report.source_generation, report.target_generation,
             report.report_digest, selection.selection_digest, variations.proposal_set_digest,
-            cohort.cohort_digest, digest, bool(selection.selected_candidate_ids or variations.proposals),
+            cohort.cohort_digest, digest, bool(candidate_ids),
             candidate_ids=candidate_ids, certificate_signature=signature)
 
 
-def stage185_readiness_verifier(certificate: EvolutionReadinessCertificate, *,
-                                verify_signature: Callable[[str, str], bool]) -> Callable[[str, int, str], bool]:
-    """Adapt a signed Stage 185 certificate to the Stage 186 trusted-parent callback."""
+def stage185_readiness_verifier(
+    certificate: EvolutionReadinessCertificate,
+    *,
+    verify_signature: Callable[[str, str], bool],
+    verify_current_checkpoint: Callable[[str, int, str], bool],
+) -> Callable[[str, int, str], bool]:
+    """Verify the signed certificate and its current read-only trust-store status."""
+    if not callable(verify_signature) or not callable(verify_current_checkpoint):
+        raise EvolutionError("trusted Stage 185 signature and current-checkpoint verifiers are required")
+
     def verify(digest: str, generation: int, candidate_id: str) -> bool:
         if not isinstance(certificate, EvolutionReadinessCertificate):
             return False
@@ -429,7 +448,10 @@ def stage185_readiness_verifier(certificate: EvolutionReadinessCertificate, *,
         if expected != certificate.certificate_digest or not certificate.certificate_signature:
             return False
         try:
-            return verify_signature(certificate.certificate_digest, certificate.certificate_signature) is True
+            if verify_signature(certificate.certificate_digest, certificate.certificate_signature) is not True:
+                return False
+            # This callback must be read-only and must reject stale/replayed checkpoints.
+            return verify_current_checkpoint(digest, generation, candidate_id) is True
         except Exception:
             return False
     return verify
