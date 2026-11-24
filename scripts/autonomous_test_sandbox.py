@@ -50,7 +50,7 @@ def _runtime_directories(python: str) -> list[Path]:
             )
             if result.returncode == 0:
                 for line in result.stdout.splitlines():
-                    match = re.search(r"=>\\s+(/[^\\s]+)|^\\s*(/[^\\s]+)", line)
+                    match = re.search(r"=>\s+(/[^\s]+)|^\s*(/[^\s]+)", line)
                     if match:
                         library = Path(match.group(1) or match.group(2))
                         if library.exists():
@@ -135,13 +135,14 @@ def build_sandbox_command(
     # /bin is commonly a symlink to /usr/bin on hosted Ubuntu runners. The
     # namespace starts empty, so provide both conventional command paths.
     if Path("/usr/bin").is_dir():
+        mounts["/usr/bin"] = Path("/usr/bin").resolve()
         mounts["/bin"] = Path("/usr/bin").resolve()
-    if git_dir := Path("/usr/lib/git-core"):
-        if git_dir.is_dir():
-            mounts[str(git_dir)] = git_dir.resolve()
-    if git_templates := Path("/usr/share/git-core"):
-        if git_templates.is_dir():
-            mounts[str(git_templates)] = git_templates.resolve()
+    git_dir = Path("/usr/lib/git-core")
+    if git_dir.is_dir():
+        mounts[str(git_dir)] = git_dir.resolve()
+    git_templates = Path("/usr/share/git-core")
+    if git_templates.is_dir():
+        mounts[str(git_templates)] = git_templates.resolve()
     mounts[str(root)] = root
 
     destinations = sorted(mounts, key=lambda value: (len(Path(value).parts), value))
