@@ -40,6 +40,68 @@ _REASON_CLASSES = {
 }
 
 
+def normalize_hold_diagnostic(record: dict[str, Any]) -> dict[str, Any]:
+    """Normalize producer JSONL to the classifier schema using bounded allowlists."""
+    if not isinstance(record, dict):
+        return {"stage": "invalid", "reason": "unknown", "blocked_tasks": []}
+
+    def safe_token(value: Any, limit: int = 100) -> str | None:
+        if not isinstance(value, str) or not value or len(value) > limit:
+            return None
+        if not value.replace("_", "").replace("-", "").isalnum():
+            return None
+        return value
+
+    raw_counts = record.get("task_counts")
+    task_counts: dict[str, int] = {}
+    if isinstance(raw_counts, dict):
+        for key, value in list(raw_counts.items())[:12]:
+            safe_key = safe_token(key, 24)
+            if safe_key and type(value) is int:
+                task_counts[safe_key] = max(0, min(value, 10000))
+
+    raw_blocked = record.get("blocked_tasks")
+    blocked_tasks: list[dict[str, Any]] = []
+    if isinstance(raw_blocked, list):
+        for task in raw_blocked[:50]:
+            if not isinstance(task, dict):
+                continue
+            item: dict[str, Any] = {}
+            for key, limit in (("task_id", 120), ("status", 40), ("hold_reason", 100)):
+                value = safe_token(task.get(key), limit)
+                if value is not None:
+                    item[key] = value
+            evidence = task.get("failure_evidence")
+            if isinstance(evidence, dict):
+                safe_evidence: dict[str, Any] = {}
+                for key in ("stage", "reason_code", "result_status"):
+                    value = safe_token(evidence.get(key), 80)
+                    if value is not None:
+                        safe_evidence[key] = value
+                for key in ("child_exit_code", "result_exit_code"):
+                    value = evidence.get(key)
+                    if type(value) is int and -255 <= value <= 255:
+                        safe_evidence[key] = value
+                if safe_evidence:
+                    item["failure_evidence"] = safe_evidence
+            if item:
+                blocked_tasks.append(item)
+
+    decision = record.get("decision")
+    return {
+        "stage": "pre_execution" if record.get("stage") == "pre_execution" else "invalid",
+        "decision": decision if decision in {"HOLD", "INVALID", "COMPLETE"} else "UNKNOWN",
+        "reason": safe_token(record.get("reason"), 100) or "unknown",
+        "task_counts": task_counts,
+        "blocked_tasks": blocked_tasks,
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "task_resume_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+
+
 def classify_hold_record(record: dict[str, Any]) -> dict[str, Any]:
     """Return a bounded deterministic classification; never infer permission."""
     reason = record.get("reason")
