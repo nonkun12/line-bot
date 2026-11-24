@@ -1,5 +1,6 @@
 from agents.stocks.node import StocksAgent
 from core.agents import AgentRequest
+from core.stocks import StockQuote, safe_stock_quote
 
 
 def test_normalize_japanese_ticker():
@@ -165,3 +166,42 @@ def test_yahoo_japan_html_fallback(monkeypatch):
     assert quote["currency"] == "JPY"
     assert calls[-1] == "https://finance.yahoo.co.jp/quote/7203.T"
 
+
+
+def test_safe_stock_quote_validates_provider_output_and_normalizes_ticker():
+    class FakeProvider:
+        def __init__(self, quote=None, error=None):
+            self.quote = quote
+            self.error = error
+            self.requested = []
+
+        def get_quote(self, ticker):
+            self.requested.append(ticker)
+            if self.error is not None:
+                raise self.error
+            return self.quote
+
+    valid_quote = StockQuote(ticker="7203.T", price=100.0, currency="JPY")
+    valid_provider = FakeProvider(valid_quote)
+    assert safe_stock_quote(valid_provider, " 7203 ") == valid_quote
+    assert valid_provider.requested == ["7203.T"]
+
+    mismatched_provider = FakeProvider(
+        StockQuote(ticker="AAPL", price=100.0, currency="USD")
+    )
+    assert safe_stock_quote(mismatched_provider, "7203") is None
+
+    negative_price_provider = FakeProvider(
+        StockQuote(ticker="7203.T", price=-1.0, currency="JPY")
+    )
+    assert safe_stock_quote(negative_price_provider, "7203") is None
+
+    malformed_provider = FakeProvider("not-a-StockQuote")
+    assert safe_stock_quote(malformed_provider, "7203") is None
+
+    failing_provider = FakeProvider(error=RuntimeError("provider unavailable"))
+    assert safe_stock_quote(failing_provider, "7203") is None
+
+    empty_provider = FakeProvider(valid_quote)
+    assert safe_stock_quote(empty_provider, "   ") is None
+    assert empty_provider.requested == []
