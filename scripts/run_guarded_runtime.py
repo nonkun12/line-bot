@@ -494,6 +494,19 @@ def _write_summary(
         payload["rea"] = rea_evidence
     if approval_evidence is not None:
         payload["execution_approval"] = approval_evidence
+    if status == "BLOCKED" and exit_code in {80, 81, 82}:
+        source = approval_evidence if exit_code in {81, 82} else rea_evidence
+        reason_code = source.get("reason_code") if isinstance(source, dict) else None
+        if not isinstance(reason_code, str) or not reason_code.strip():
+            reason_code = "guarded_runtime_gate_blocked"
+        gate_name = {80: "rea", 81: "execution_approval", 82: "emergency_stop"}[exit_code]
+        payload["failure_reason"] = f"guarded_runtime_gate:{gate_name}:{reason_code}"
+        payload["gate_evidence"] = {
+            "gate": "BLOCKED", "gate_name": gate_name, "reason_code": reason_code,
+            "exit_code": exit_code, "execution_authorized": False,
+            "patch_authorized": False, "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        }
     postgen_status = os.environ.get("AUTONOMOUS_POSTGEN_REA_STATUS", "")
     if postgen_status:
         payload["post_generation_rea"] = {
