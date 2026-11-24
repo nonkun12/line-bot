@@ -534,6 +534,7 @@ jobs:
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          POLICY_DISPATCH_SOURCE: ${{ github.event_name == 'schedule' && 'schedule' || inputs.policy_dispatch || 'manual' }}
         run: |
           set -euo pipefail
           POLICY_QUEUE=/tmp/autonomous-loop-policy-runtime-queue.json
@@ -582,6 +583,7 @@ jobs:
           else
             echo "AUTONOMOUS_TEST_ADMISSION_POLICY=false" >> "$GITHUB_ENV"
           fi
+          echo "AUTONOMOUS_POLICY_DISPATCH_SOURCE=$POLICY_DISPATCH_SOURCE" >> "$GITHUB_ENV"
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=$POLICY_QUEUE" >> "$GITHUB_ENV"
           echo "AUTONOMOUS_LOOP_TASK_CATALOG=$POLICY_CATALOG" >> "$GITHUB_ENV"
           echo "CATALOG_EXHAUSTION_REVIEW_REPORT_PATH=$REVIEW_REPORT" >> "$GITHUB_ENV"
