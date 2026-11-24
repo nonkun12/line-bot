@@ -149,11 +149,40 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
         "task_id": task_id,
         "base_sha": start_sha,
     }
+    event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+    repository_ok = (
+        os.environ.get("GITHUB_REPOSITORY") == "nonkun12/line-bot"
+        and os.environ.get("GITHUB_REF") == "refs/heads/main"
+    )
+    trusted_trigger = False
+    if event_name == "schedule":
+        trusted_trigger = os.environ.get("GITHUB_ACTOR") == "nonkun12"
+    elif event_name == "workflow_dispatch":
+        # The 30-minute scheduler dispatches with the repository GITHUB_TOKEN.
+        # Accept only that bot actor plus its exact one-task marker; a manual
+        # workflow_dispatch cannot self-assert this provenance.
+        event_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
+        try:
+            event = json.loads(Path(event_path).read_text(encoding="utf-8"))
+            sender = event.get("sender") if isinstance(event, dict) else None
+            repository = event.get("repository") if isinstance(event, dict) else None
+            inputs = event.get("inputs") if isinstance(event, dict) else None
+            trusted_trigger = (
+                isinstance(sender, dict)
+                and sender.get("login") == "github-actions[bot]"
+                and os.environ.get("GITHUB_ACTOR") == "github-actions[bot]"
+                and isinstance(repository, dict)
+                and repository.get("full_name") == "nonkun12/line-bot"
+                and isinstance(inputs, dict)
+                and inputs.get("policy_dispatch") == "30m_scheduler"
+                and str(inputs.get("max_tasks", "1")) == "1"
+                and str(inputs.get("execution_approval", "DENY")) == "DENY"
+            )
+        except (OSError, UnicodeError, TypeError, ValueError):
+            trusted_trigger = False
     if (
-        os.environ.get("GITHUB_EVENT_NAME") != "schedule"
-        or os.environ.get("GITHUB_REPOSITORY") != "nonkun12/line-bot"
-        or os.environ.get("GITHUB_REF") != "refs/heads/main"
-        or os.environ.get("GITHUB_ACTOR") != "nonkun12"
+        not repository_ok
+        or not trusted_trigger
         or not task_id
         or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", task_id)
     ):
