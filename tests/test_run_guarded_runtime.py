@@ -1002,3 +1002,44 @@ def test_schedule_execution_approval_rejects_wrong_actor_and_branch(monkeypatch)
     monkeypatch.setenv("GITHUB_REF", "refs/heads/unreviewed")
     evidence = guarded_runtime._verify_execution_approval("a" * 40, "catalog task instruction")
     assert evidence["gate"] == "BLOCKED"
+
+
+def test_run_local_policy_catalog_rejects_catalog_digest_mismatch(monkeypatch, tmp_path):
+    from scripts.autonomous_task_target_allowlist import TARGETS
+
+    task_id = "review-coverage-gap-0123456789"
+    test_path = TARGETS[0][1]
+    base_sha = "f" * 40
+    instruction = "Append one deterministic pytest test."
+    report_path = tmp_path / "policy-report.json"
+    catalog_path = tmp_path / "policy-catalog.json"
+    report_path.write_text(json.dumps({
+        "status": "POLICY_ADMITTED",
+        "admitted_task_id": task_id,
+        "admitted_allowed_path": test_path,
+        "base_sha": base_sha,
+    }), encoding="utf-8")
+    catalog_path.write_text(json.dumps({"tasks": [{
+        "id": task_id,
+        "instruction": instruction,
+        "allowed_paths": [test_path],
+        "execution_approved": True,
+    }]}), encoding="utf-8")
+    _bind_policy_catalog_digest(report_path, catalog_path)
+    catalog_path.write_text(json.dumps({"tasks": []}), encoding="utf-8")
+
+    monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_REPORT_PATH", report_path)
+    monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_CATALOG_PATH", catalog_path)
+    monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "true")
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_CATALOG", str(catalog_path))
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps([test_path]))
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
+
+    result = guarded_runtime._verify_catalog_execution_approval(base_sha, instruction)
+
+    assert result["gate"] == "BLOCKED"
+    assert result["execution_authorized"] is False
