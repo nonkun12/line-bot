@@ -970,3 +970,89 @@ def test_run_local_policy_catalog_requires_verified_sandbox(monkeypatch, tmp_pat
 
     assert result["gate"] == "BLOCKED"
     assert result["execution_authorized"] is False
+
+
+def _configure_scheduler_policy_dispatch(tmp_path, monkeypatch, *, marker="30m_scheduler", actor="github-actions[bot]"):
+    from scripts.autonomous_task_target_allowlist import TARGETS
+
+    task_id = "review-coverage-gap-0123456789"
+    test_path = TARGETS[0][1]
+    base_sha = "e" * 40
+    instruction = "Append one deterministic pytest test."
+    report_path = tmp_path / "policy-report.json"
+    catalog_path = tmp_path / "policy-catalog.json"
+    tracked_catalog = {"tasks": []}
+    catalog_bytes = json.dumps({"tasks": [{
+        "id": task_id, "instruction": instruction,
+        "allowed_paths": [test_path], "execution_approved": True,
+    }]}).encode("utf-8")
+    report_path.write_text(json.dumps({
+        "status": "POLICY_ADMITTED", "policy_version": "test-only-append-v1",
+        "admitted_task_id": task_id, "admitted_allowed_path": test_path,
+        "base_sha": base_sha, "max_tasks_per_cycle": 1,
+        "persistent_catalog_modified": False, "durable_state_modified": False,
+        "held_tasks_resumed": False, "execution_scope": "one_test_file_append_only",
+    }), encoding="utf-8")
+    catalog_path.write_bytes(catalog_bytes)
+    event_path = tmp_path / "event.json"
+    event_path.write_text(json.dumps({
+        "sender": {"login": actor},
+        "repository": {"full_name": "nonkun12/line-bot"},
+        "inputs": {
+            "policy_dispatch": marker,
+            "max_tasks": "1",
+            "execution_approval": "DENY",
+        },
+    }), encoding="utf-8")
+    monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_REPORT_PATH", report_path)
+    monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_CATALOG_PATH", catalog_path)
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: json.dumps(tracked_catalog) if args == ("show", base_sha + ":.github/autonomous-loop-task-catalog.json") else "")
+    monkeypatch.setattr(guarded_runtime.shutil, "which", lambda _: "/usr/bin/bwrap")
+    for key, value in {
+        "AUTONOMOUS_TEST_ADMISSION_POLICY": "true",
+        "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY": "true",
+        "AUTONOMOUS_TEST_ADMISSION_CATALOG_SHA256": hashlib.sha256(catalog_bytes).hexdigest(),
+        "GITHUB_SHA": base_sha,
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_EVENT_PATH": str(event_path),
+        "GITHUB_ACTOR": actor,
+        "GITHUB_REPOSITORY": "nonkun12/line-bot",
+        "GITHUB_REF": "refs/heads/main",
+        "AUTONOMOUS_LOOP_TASK_CATALOG": str(catalog_path),
+        "AUTONOMOUS_TASK_ID": task_id,
+        "AUTONOMOUS_ALLOWED_PATHS": json.dumps([test_path]),
+    }.items():
+        monkeypatch.setenv(key, value)
+    return base_sha, instruction
+
+
+def test_run_local_policy_accepts_only_trusted_30m_scheduler_dispatch(tmp_path, monkeypatch):
+    base_sha, instruction = _configure_scheduler_policy_dispatch(tmp_path, monkeypatch)
+
+    result = guarded_runtime._verify_catalog_execution_approval(base_sha, instruction)
+
+    assert result["gate"] == "PASS"
+    assert result["execution_authorized"] is True
+    assert result["scope"] == "run_local_test_policy"
+
+
+def test_run_local_policy_rejects_manual_dispatch_even_with_scheduler_marker(tmp_path, monkeypatch):
+    base_sha, instruction = _configure_scheduler_policy_dispatch(
+        tmp_path, monkeypatch, actor="nonkun12"
+    )
+
+    result = guarded_runtime._verify_catalog_execution_approval(base_sha, instruction)
+
+    assert result["gate"] == "BLOCKED"
+    assert result["execution_authorized"] is False
+
+
+def test_run_local_policy_rejects_non_scheduler_dispatch_marker(tmp_path, monkeypatch):
+    base_sha, instruction = _configure_scheduler_policy_dispatch(
+        tmp_path, monkeypatch, marker="manual"
+    )
+
+    result = guarded_runtime._verify_catalog_execution_approval(base_sha, instruction)
+
+    assert result["gate"] == "BLOCKED"
+    assert result["execution_authorized"] is False
