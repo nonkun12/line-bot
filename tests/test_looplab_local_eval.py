@@ -1,5 +1,5 @@
 import subprocess
-from pathlib import Path
+import sys
 
 from scripts.run_looplab_local_eval import _metrics, _score, run
 
