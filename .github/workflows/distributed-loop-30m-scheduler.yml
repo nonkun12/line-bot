@@ -75,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           gh workflow run distributed-autonomous-loop.yml \
-            --repo "$REPOSITORY" --ref main -f max_tasks=1
+            --repo "$REPOSITORY" --ref main -f max_tasks=1 -f policy_dispatch=30m_scheduler
           echo "Dispatched exactly one bounded cycle; queue approval, HOLD, evidence, and publish gates remain in the target workflow." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report scheduler decision
