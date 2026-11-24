@@ -482,3 +482,40 @@ def test_final_outcome_preserves_gate_blocked_and_real_fail_wins():
     assert classify_final_outcome(["BLOCKED", "FAIL"], **common) == (
         "FAILED", "task_status:FAIL"
     )
+
+
+
+def test_validated_model_provider_block_does_not_increment_failure_streak(tmp_path):
+    path = tmp_path / "recovery.json"
+    store = RecoveryStore(path)
+    store.record_failure("task-provider-gate", "timeout")
+    before = store.task_status("task-provider-gate")
+    result = record_loop_outcome(path, {
+        "task_id": "task-provider-gate", "status": "BLOCKED", "exit_code": 83,
+        "failure_reason": "model_provider_gate:local_adapter_unavailable",
+        "gate_evidence": {
+            "gate": "BLOCKED", "gate_name": "model_provider",
+            "reason_code": "local_adapter_unavailable", "exit_code": 83,
+            "execution_authorized": False, "patch_authorized": False,
+            "hold_clear_authorized": False, "merge_deploy_authorized": False,
+        },
+    })
+    assert result == {"recorded": False, "reason": "preflight_blocked_not_task_failure"}
+    assert store.task_status("task-provider-gate") == before
+
+
+def test_forged_model_provider_block_is_counted_as_failure(tmp_path):
+    path = tmp_path / "recovery.json"
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-forged-provider-gate", "status": "BLOCKED", "exit_code": 83,
+        "failure_reason": "model_provider_gate:local_adapter_unavailable",
+        "gate_evidence": {
+            "gate": "BLOCKED", "gate_name": "model_provider",
+            "reason_code": "local_adapter_unavailable", "exit_code": 83,
+            "execution_authorized": True, "patch_authorized": False,
+            "hold_clear_authorized": False, "merge_deploy_authorized": False,
+        },
+    })
+    assert outcome["recorded"] is True
+    assert outcome["decision"]["action"] in {"REPAIR_ONCE", "HOLD"}
+    assert RecoveryStore(path).task_status("task-forged-provider-gate")["consecutive_failures"] == 1
