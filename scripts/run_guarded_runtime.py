@@ -183,6 +183,8 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
             return blocked
         try:
             policy_report = json.loads(policy_report_path.read_text(encoding="utf-8"))
+            if not isinstance(policy_report, dict):
+                return blocked
             from scripts.autonomous_task_target_allowlist import TARGETS
             allowed_test_paths = {test_path for _, test_path in TARGETS}
             admitted_path = policy_report.get("admitted_allowed_path")
@@ -222,12 +224,13 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
         or sorted(catalog_paths) != canonical_paths
     ):
         return blocked
+    policy_admission = os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true"
     return {
         "gate": "PASS",
-        "reason_code": "reviewed_catalog_preapproval",
+        "reason_code": "run_local_test_policy_admission" if policy_admission else "reviewed_catalog_preapproval",
         "execution_authorized": True,
-        "scope": "catalog_preapproved_execution",
-        "actor": "catalog-preapproved",
+        "scope": "run_local_test_policy" if policy_admission else "catalog_preapproved_execution",
+        "actor": "policy-admission" if policy_admission else "catalog-preapproved",
         "task_id": task_id,
         "instruction_sha256": hashlib.sha256(instruction.encode("utf-8")).hexdigest(),
         "allowed_paths_sha256": paths_digest,
