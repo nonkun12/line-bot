@@ -170,6 +170,15 @@ def build_sandbox_command(
         raise SandboxError("sandbox_runtime_unavailable")
 
     runtime_dirs = _runtime_directories(python)
+    # Preserve both the caller-visible executable directory and the resolved
+    # target directory. Hosted toolcache Python may be reached through a
+    # symlink whose path is the one execvp must resolve inside the namespace.
+    visible_python_dir = Path(python).absolute().parent
+    if visible_python_dir.is_dir() and visible_python_dir != Path("/") and visible_python_dir != Path.home():
+        runtime_dirs = sorted(
+            set(runtime_dirs) | {visible_python_dir},
+            key=lambda item: (len(item.parts), str(item)),
+        )
     library_dir_raw = sysconfig.get_config_var("LIBDIR")
     library_dir = Path(library_dir_raw).resolve() if library_dir_raw else None
     if library_dir and (
