@@ -173,8 +173,20 @@ def evaluate_goal(goal: Any) -> dict[str, Any]:
 
     blocked = [task for task in tasks if task["status"] in {"FAILED", "HELD"}]
     if blocked:
-        return {"decision": "HOLD", "reason": "failed_or_held_task_requires_review",
-                "task_ids": [task["task_id"] for task in blocked]}
+        # Keep the global HOLD unchanged. Expose dependency-ready pending work
+        # as diagnostics only; this does not authorize or dispatch execution.
+        dependency_ready = sorted(
+            task["task_id"] for task in tasks
+            if task["status"] == "PENDING"
+            and set(graph[task["task_id"]]).issubset(completed)
+        )
+        return {
+            "decision": "HOLD",
+            "reason": "failed_or_held_task_requires_review",
+            "task_ids": [task["task_id"] for task in blocked],
+            "dependency_ready_pending_task_ids": dependency_ready,
+            "execution_authorized": False,
+        }
 
     criteria_complete = all(
         criterion.get("verified") is True and _valid_criterion_evidence(criterion.get("evidence_ref"))
