@@ -25,9 +25,8 @@ def merge_candidates(history: object, report: object) -> list[dict[str, Any]]:
     if not isinstance(report, dict):
         raise ValueError("catalog analyzer report must be a JSON object")
 
-    result = [row for row in history[:MAX_HISTORY_CANDIDATES] if isinstance(row, dict)]
     if report.get("status") != "REVIEW_REQUIRED":
-        return result
+        return [row for row in history[:MAX_HISTORY_CANDIDATES] if isinstance(row, dict)]
     safety = report.get("safety")
     if not isinstance(safety, dict) or safety.get("read_only") is not True or safety.get("requires_human_review") is not True or safety.get("candidates_executable") is not False:
         raise ValueError("catalog analyzer safety contract is invalid")
@@ -37,6 +36,10 @@ def merge_candidates(history: object, report: object) -> list[dict[str, Any]]:
     if report.get("candidate_count") != len(candidates):
         raise ValueError("catalog analyzer candidate count mismatch")
 
+    # Reserve room for the bounded analyzer candidates so a full REA/task
+    # history cannot crowd fresh coverage-gap proposals out of the next stage.
+    history_limit = max(0, MAX_HISTORY_CANDIDATES - min(len(candidates), MAX_ANALYZER_CANDIDATES))
+    result = [row for row in history[:history_limit] if isinstance(row, dict)]
     existing = {row.get("source_id") for row in result if row.get("source") == "self_improvement"}
     for candidate in candidates:
         if not isinstance(candidate, dict):

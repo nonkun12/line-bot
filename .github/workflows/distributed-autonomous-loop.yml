@@ -2,10 +2,6 @@ name: Distributed Autonomous Development Loop
 run-name: Distributed Loop (continuation_depth=${{ inputs.continuation_depth || '0' }}, request_id=${{ inputs.request_id || 'scheduled' }})
 
 on:
-  schedule:
-    - cron: "0,30 * * * *"
-  issue_comment:
-    types: [created]
   workflow_dispatch:
     inputs:
       execution_approval:
@@ -33,15 +29,12 @@ on:
         required: false
         type: string
       max_tasks:
-        description: 'Manual run task limit (1–4 tasks; all safety gates still apply)'
+        description: 'Exactly one task per independently approved execution'
         required: false
         default: '1'
         type: choice
         options:
           - '1'
-          - '2'
-          - '3'
-          - '4'
       request_id:
         description: 'Optional correlation ID for a LINE-queued request'
         required: false
@@ -106,10 +99,10 @@ on:
         type: boolean
 
 permissions:
-  actions: write
-  contents: write
-  pull-requests: write
-  issues: write
+  actions: read
+  contents: read
+  pull-requests: read
+  issues: read
 
 concurrency:
   group: distributed-autonomous-loop
@@ -121,34 +114,18 @@ concurrency:
 jobs:
   minimal-loop:
     if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request &&
-        (github.event.comment.body == '/distributed-loop' ||
-         github.event.comment.body == '/distributed-loop max_tasks=1' ||
-         github.event.comment.body == '/distributed-loop max_tasks=2' ||
-         github.event.comment.body == '/distributed-loop max_tasks=3' ||
-         github.event.comment.body == '/distributed-loop max_tasks=4' ||
-         startsWith(github.event.comment.body, '/distributed-loop resume_task_id=')) &&
-        (
-          github.event.comment.author_association == 'OWNER' ||
-          github.event.comment.author_association == 'MEMBER' ||
-          github.event.comment.author_association == 'COLLABORATOR'
-        )
-      ) ||
-      (
-        github.event_name == 'pull_request_target' &&
-        github.event.action == 'labeled' &&
-        github.event.label.name == 'distributed-loop-max4' &&
-        github.event.sender.login == 'nonkun12' &&
-        github.event.pull_request.user.login == 'nonkun12'
-      )
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.execution_approval == 'APPROVE_EXECUTION' &&
+      github.event.inputs.mode == 'normal'
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: read
+      issues: read
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      MAX_TASKS: ${{ github.event_name == 'schedule' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.execution_approval == 'APPROVE_EXECUTION' && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id && '1' || github.event_name == 'workflow_dispatch' && github.event.inputs.max_tasks || github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id=') && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=1' && '1' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=2' && '2' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=3' && '3' || github.event_name == 'issue_comment' && github.event.comment.body == '/distributed-loop max_tasks=4' && '4' || github.event_name == 'pull_request_target' && '4' || '1' }}
+      MAX_TASKS: ${{ github.event.inputs.max_tasks || '1' }}
       TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
       INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
       INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
@@ -322,73 +299,11 @@ jobs:
             exit 1
           fi
 
-      - name: Validate held-task resume request
-        if: >-
-          success() && (
-            (github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '') ||
-            (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id='))
-          )
-        id: validate_resume_request
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          RESUME_TASK_ID_INPUT: ${{ github.event.inputs.resume_task_id || '' }}
-          CONFIRM_CAUSE_FIXED_INPUT: ${{ github.event.inputs.confirm_cause_fixed || 'false' }}
-          CONFIRM_RESUME_REVIEW_INPUT: ${{ github.event.inputs.confirm_resume_review || 'false' }}
-          RESUME_COMMENT: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
+      - name: Block held-task resume until task-bound resume approval is implemented
+        if: success() && github.event.inputs.resume_task_id != ''
         run: |
-          set -euo pipefail
-          python - <<'PY'
-          import os, re
-          event = os.environ.get("EVENT_NAME", "")
-          task_id = ""
-          cause_fixed = False
-          reviewed = False
-          if event == "issue_comment":
-              match = re.fullmatch(
-                  r"/distributed-loop resume_task_id=([A-Za-z0-9._-]{1,100}) confirm_cause_fixed=true reviewed=true",
-                  os.environ.get("RESUME_COMMENT", ""),
-              )
-              if not match:
-                  raise SystemExit("resume comment must explicitly confirm cause_fixed and reviewed")
-              task_id = match.group(1)
-              cause_fixed = reviewed = True
-          elif event == "workflow_dispatch":
-              task_id = os.environ.get("RESUME_TASK_ID_INPUT", "")
-              cause_fixed = os.environ.get("CONFIRM_CAUSE_FIXED_INPUT", "false").lower() == "true"
-              reviewed = os.environ.get("CONFIRM_RESUME_REVIEW_INPUT", "false").lower() == "true"
-          if task_id:
-              if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", task_id):
-                  raise SystemExit("invalid resume task ID")
-              if not cause_fixed or not reviewed:
-                  raise SystemExit("resume requires explicit cause-fixed and post-resume review confirmations")
-              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-                  out.write("task_id=" + task_id + "\n")
-          elif cause_fixed or reviewed:
-              raise SystemExit("resume confirmations require a task ID")
-          PY
-
-      - name: Resume one explicitly approved held task
-        if: >-
-          success() && (
-            (github.event_name == 'workflow_dispatch' && github.event.inputs.resume_task_id != '') ||
-            (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/distributed-loop resume_task_id='))
-          ) && steps.validate_resume_request.outputs.task_id != ''
-        env:
-          RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id }}
-        run: |
-          set -euo pipefail
-          # Resume validates membership against the reviewed catalog, because
-          # held tasks are intentionally absent from the tracked runtime queue.
-          python -m scripts.resume_held_task \
-            --state /tmp/autonomous-loop-state.json \
-            --recovery-state /tmp/recovery-ai-state.json \
-            --queue .github/autonomous-loop-task-catalog.json \
-            --task-id "$RESUME_TASK_ID" \
-            --cause-fixed
-          python -m scripts.confirm_recovery_resume_review \
-            --state-file /tmp/autonomous-loop-state.json \
-            --recovery-state-file /tmp/recovery-ai-state.json \
-            --task-id "$RESUME_TASK_ID"
+          echo "::error::Held-task resume is temporarily disabled; use a separately approved task-bound execution after the resume gate is implemented."
+          exit 1
 
       - name: Restore durable Recovery RAG history
         if: success()
@@ -407,19 +322,51 @@ jobs:
           python scripts/self_improvement_state.py import \
             --state /tmp/autonomous-loop-state.json \
             --history /tmp/line-bot-self-improvement.jsonl
+          python -m scripts.rea_self_improvement_history import \
+            --state /tmp/autonomous-loop-state.json \
+            --history /tmp/line-bot-rea-self-improvement.jsonl
 
       - name: Prepare bounded runtime task refill
         if: success() && env.TRIGGER_MODE == 'normal'
         run: |
           set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          source = json.loads(Path(".github/autonomous-loop-tasks.json").read_text(encoding="utf-8"))
+          source["max_tasks_per_run"] = 1
+          Path("/tmp/autonomous-loop-one-task-queue.json").write_text(
+              json.dumps(source, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
           python -m scripts.autonomous_task_refill \
-            --queue .github/autonomous-loop-tasks.json \
+            --queue /tmp/autonomous-loop-one-task-queue.json \
             --catalog .github/autonomous-loop-task-catalog.json \
             --completed-state /tmp/autonomous-loop-state.json \
             --output /tmp/autonomous-loop-runtime-queue.json \
             --history /tmp/line-bot-self-improvement.jsonl \
             | tee /tmp/autonomous-loop-refill-report.json
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=/tmp/autonomous-loop-runtime-queue.json" >> "$GITHUB_ENV"
+
+      - name: Verify one-shot task-bound execution approval
+        id: execution_approval
+        if: success() && env.TRIGGER_MODE == 'normal'
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          APPROVAL_BASE_SHA: ${{ env.AUTONOMOUS_START_SHA }}
+          RESUME_TASK_ID: ''
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m scripts.distributed_loop_execution_approval \
+            --queue /tmp/autonomous-loop-runtime-queue.json \
+            --event "$GITHUB_EVENT_PATH" \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --base-sha "$APPROVAL_BASE_SHA"
 
       - name: Load all existing issues for candidate deduplication
         if: success() && env.TRIGGER_MODE == 'normal'
@@ -481,57 +428,8 @@ jobs:
           cat /tmp/autonomous-loop-task-proposals.json >> "$GITHUB_STEP_SUMMARY"
           echo "TASK_PROPOSALS_PATH=/tmp/autonomous-loop-task-proposals.json" >> "$GITHUB_ENV"
 
-      - name: Analyze catalog exhaustion without changing execution state (Work Finder AI)
-        if: success() && env.TRIGGER_MODE == 'normal'
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          if python -m scripts.work_finder_ai \
-            --repo-root . \
-            --catalog .github/autonomous-loop-task-catalog.json \
-            --queue /tmp/autonomous-loop-runtime-queue.json \
-            --state /tmp/autonomous-loop-state.json \
-            --runtime core/line_development_runtime.py \
-            --existing-issues /tmp/autonomous-loop-all-issues.json \
-            --output /tmp/catalog-exhaustion-report.json \
-            | tee /tmp/catalog-exhaustion-summary.json; then
-            cat /tmp/catalog-exhaustion-report.json >> "$GITHUB_STEP_SUMMARY"
-            echo "CATALOG_EXHAUSTION_REPORT_PATH=/tmp/catalog-exhaustion-report.json" >> "$GITHUB_ENV"
-          else
-            rc=$?
-            printf '{"status":"WORK_FINDER_BLOCKED","reason":"discovery_failed","exit_code":%s}\\n' "$rc" >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::Work Finder AI discovery failed (exit=$rc); bounded loop outcome classification will continue."
-          fi
-
-      - name: Create bounded review-only task issues from analyzer findings
-        if: success() && env.TRIGGER_MODE == 'normal'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ ! -s /tmp/catalog-exhaustion-report.json ]; then
-            echo "No validated catalog-exhaustion report; issue generation skipped."
-            exit 0
-          fi
-          python -m scripts.autonomous_task_issue_drafts \
-            --report /tmp/catalog-exhaustion-report.json \
-            --issues /tmp/autonomous-loop-all-issues.json \
-            --pull-requests /tmp/autonomous-loop-open-pulls.json \
-            --output /tmp/autonomous-loop-task-issue-drafts.json \
-            | tee /tmp/autonomous-loop-task-issue-draft-summary.json
-          cat /tmp/autonomous-loop-task-issue-draft-summary.json >> "$GITHUB_STEP_SUMMARY"
-          count="$(python -c 'import json; from pathlib import Path; print(len(json.loads(Path("/tmp/autonomous-loop-task-issue-drafts.json").read_text(encoding="utf-8"))))')"
-          if [ "$count" -eq 0 ]; then
-            echo "No new review-only task issues to create; see status and backlog diagnostics above."
-            exit 0
-          fi
-          gh label create autonomous-task-candidate --color 0E8A16 --description "AI-generated task candidate; human review required" --force
-          while IFS= read -r draft; do
-            title="$(printf '%s' "$draft" | jq -r '.title')"
-            body="$(printf '%s' "$draft" | jq -r '.body')"
-            gh issue create --title "$title" --body "$body" --label autonomous-task-candidate
-          done < <(jq -c '.[]' /tmp/autonomous-loop-task-issue-drafts.json)
-          echo "Created $count review-only task candidate issue(s); no execution approval was granted."
+      # Automatic candidate creation is intentionally excluded from execution runs.
+      # Candidate discovery remains in the read-only observation/reporting path.
 
       - name: Run one bounded autonomous task
         id: run_task
@@ -547,7 +445,7 @@ jobs:
           INCIDENT_DETAIL: ${{ env.INCIDENT_DETAIL }}
           INCIDENT_JOB_ID: ${{ env.INCIDENT_JOB_ID }}
           # Populated only after cause-fixed and post-resume-review confirmations pass.
-          GOAL_RESUME_TASK_ID: ${{ steps.validate_resume_request.outputs.task_id || '' }}
+          GOAL_RESUME_TASK_ID: ''
         run: |
           set -euo pipefail
           : > /tmp/minimal-autonomous-loop.jsonl
@@ -1098,9 +996,18 @@ jobs:
             --publish-outcome "${PUBLISH_OUTCOME:-}" \
             --state-outcome "${STATE_OUTCOME:-}" \
             --cycle-id "${GITHUB_RUN_ID}"
+          # REA gate outcomes are persisted separately; they never train task-failure priority.
+          python -m scripts.rea_self_improvement_history append \
+            --history /tmp/line-bot-rea-self-improvement.jsonl \
+            --results /tmp/minimal-autonomous-loop.jsonl \
+            --catalog .github/autonomous-loop-task-catalog.json \
+            --cycle-id "${GITHUB_RUN_ID}"
           python scripts/self_improvement_state.py export \
             --state /tmp/autonomous-loop-state.json \
             --history /tmp/line-bot-self-improvement.jsonl
+          python -m scripts.rea_self_improvement_history export \
+            --state /tmp/autonomous-loop-state.json \
+            --history /tmp/line-bot-rea-self-improvement.jsonl
           python - <<'PY'
           import json
           from pathlib import Path
@@ -1190,6 +1097,14 @@ jobs:
           except ValueError as exc:
               raise SystemExit(f'self-improvement history failed schema validation: {exc}') from exc
           data['self_improvement_history'] = self_improvement
+          from scripts.rea_self_improvement_history import validate_durable_rea_observations
+          try:
+              rea_observations = validate_durable_rea_observations(
+                  local_state.get('rea_observations', [])
+              )
+          except ValueError as exc:
+              raise SystemExit(f'REA self-improvement history failed schema validation: {exc}') from exc
+          data['rea_observations'] = rea_observations
           data['version'] = 1
           state_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           PY
@@ -1237,6 +1152,8 @@ jobs:
           local_state = json.loads(Path('/tmp/autonomous-loop-state.json').read_text(encoding='utf-8'))
           if durable.get('self_improvement_history') != local_state.get('self_improvement_history'):
               raise SystemExit('self-improvement durable read-back mismatch')
+          if durable.get('rea_observations', []) != local_state.get('rea_observations', []):
+              raise SystemExit('REA self-improvement durable read-back mismatch')
           if durable.get('goal_autopilot') != local_state.get('goal_autopilot'):
               raise SystemExit('Goal Autopilot durable read-back mismatch')
           print('Recovery AI, RAG, self-improvement, and Goal Autopilot durable state read-back verified.')
@@ -1313,6 +1230,15 @@ jobs:
             --input /tmp/review-candidate-input.json \
             --store artifacts/self-improvement-candidates/candidates.jsonl \
             --summary artifacts/self-improvement-candidates/summary.md
+
+      - name: Include catalog exhaustion evidence for review publication
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -s /tmp/catalog-exhaustion-report.json ]; then
+            mkdir -p artifacts/self-improvement-candidates
+            cp /tmp/catalog-exhaustion-report.json artifacts/self-improvement-candidates/catalog-exhaustion-report.json
+          fi
 
       - name: Upload review-only self-improvement candidates
         if: always()
@@ -1476,7 +1402,7 @@ jobs:
           RECOVERY_OUTCOME: ${{ steps.persist_recovery_ai.outcome }}
           SHEETS_OUTCOME: ${{ steps.sheets.outcome }}
           JOB_STATUS: ${{ job.status }}
-          PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event_name == 'pull_request_target' && github.event.pull_request.number || '' }}
+          PR_NUMBER: ''
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
@@ -1732,3 +1658,56 @@ jobs:
             /tmp/distributed-final-report.txt
           if-no-files-found: ignore
 
+  publish-review-issues:
+    name: Publish bounded review-only candidate issues
+    needs: minimal-loop
+    if: needs.minimal-loop.result == 'success'
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download review-only candidate evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: self-improvement-review-candidates-${{ github.run_id }}
+          path: /tmp/review-candidates
+      - name: Fetch existing issues and pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --jq '.[] | select(has("pull_request") | not)' "repos/${GITHUB_REPOSITORY}/issues?state=all&per_page=100" > /tmp/issues.jsonl
+          gh api --paginate --jq '.[]' "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" > /tmp/pulls.jsonl
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for src, dst in (("/tmp/issues.jsonl", "/tmp/issues.json"), ("/tmp/pulls.jsonl", "/tmp/pulls.json")):
+              rows = [json.loads(line) for line in Path(src).read_text().splitlines() if line.strip()]
+              Path(dst).write_text(json.dumps(rows, ensure_ascii=False) + "\n")
+          PY
+      - name: Build bounded review-only issue drafts
+        run: |
+          set -euo pipefail
+          test -s /tmp/review-candidates/catalog-exhaustion-report.json
+          python -m scripts.autonomous_task_issue_drafts \
+            --report /tmp/review-candidates/catalog-exhaustion-report.json \
+            --issues /tmp/issues.json \
+            --pull-requests /tmp/pulls.json \
+            --output /tmp/review-issue-drafts.json
+      - name: Publish issues without granting execution authority
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m scripts.publish_autonomous_task_issue_drafts \
+            --drafts /tmp/review-issue-drafts.json \
+            --repo "$GITHUB_REPOSITORY"

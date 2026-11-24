@@ -125,14 +125,12 @@ def test_chain_job_ai_is_the_workflow_continuation_decision_owner():
     assert "python - <<'PY'" not in source
 
 
-def test_continuation_depth_is_passed_from_chain_job_ai_and_incremented():
+def test_continuation_depth_is_only_observability_metadata_not_execution_authority():
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "GATE_DEPTH: ${{ steps.gate.outputs.depth }}" in source
     assert 'depth="$GATE_DEPTH"' in source
-    assert '-f continuation_depth="${{ steps.active.outputs.next_depth }}"' in source
-    assert "continuation_depth:" in (
-        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
-    ).read_text(encoding="utf-8")
+    assert "gh workflow run distributed-autonomous-observation.yml" in source
+    assert "gh workflow run distributed-autonomous-loop.yml" not in source
 
 
 def test_continuation_depth_zero_dispatches_depth_one(tmp_path):
@@ -162,23 +160,29 @@ def test_continuation_stops_when_another_loop_is_queued_or_running(tmp_path):
     assert "next_depth=" not in output
 
 
-def test_distributed_loop_has_bounded_manual_and_scheduled_triggers():
-    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
-    source = path.read_text(encoding="utf-8")
-    assert "workflow_dispatch:" in source
-    assert "schedule:" in source
-    assert 'cron: "0,30 * * * *"' in source
-    assert "timezone: 'Asia/Tokyo'" not in source
-    assert "default: '1'" in source
-    assert "          - '4'" in source
+def test_distributed_loop_is_manual_approved_and_observation_is_scheduled():
+    root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    execution = (root / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    observation = (root / "distributed-autonomous-observation.yml").read_text(encoding="utf-8")
+    trigger_block = execution.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert "workflow_dispatch:" in trigger_block
+    assert "schedule:" not in trigger_block
+    assert "issue_comment:" not in trigger_block
+    assert "pull_request_target:" not in trigger_block
+    assert "execution_approval:" in trigger_block
+    assert "default: 'DENY'" in trigger_block
+    assert 'cron: "0,30 * * * *"' in observation
 
 
-def test_only_continuous_workflow_owns_automatic_dispatch():
+def test_automatic_continuations_can_dispatch_observation_but_never_execution():
     root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
     continuous = (root / "continuous-distributed-loop.yml").read_text(encoding="utf-8")
+    safe = (root / "distributed-loop-safe-continuation.yml").read_text(encoding="utf-8")
     postrun = (root / "distributed-loop-postrun.yml").read_text(encoding="utf-8")
     distributed = (root / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    assert "gh workflow run distributed-autonomous-loop.yml" in continuous
+    for source in (continuous, safe):
+        assert "gh workflow run distributed-autonomous-observation.yml" in source
+        assert "gh workflow run distributed-autonomous-loop.yml" not in source
     assert "gh workflow run distributed-autonomous-loop.yml" not in postrun
     assert "actions/workflows/distributed-autonomous-loop.yml/dispatches" not in distributed
     assert "Dispatch next bounded job when verified work remains" not in distributed
@@ -195,3 +199,40 @@ def test_line_notification_failure_does_not_block_verified_continuation():
     source = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
     notification = source.split("      - name: Notify LINE of distributed loop final report", 1)[1].split("      - name:", 1)[0]
     assert "continue-on-error: true" in notification
+
+def test_continuation_is_triggered_by_completed_distributed_loop_workflow():
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert 'workflow_run:' in source
+    assert 'workflows: ["Distributed Autonomous Development Loop"]' in source
+    assert 'types: [completed]' in source
+    assert "github.event_name == 'workflow_run'" in source
+    assert "github.event.workflow_run.name == 'Distributed Autonomous Development Loop'" in source
+    assert "github.event.workflow_run.conclusion == 'success'" in source
+    assert "workflow_dispatch:" not in source.split("permissions:", 1)[0]
+
+
+def test_continuation_checks_both_execution_and_observation_for_duplicates():
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert "actions/workflows/distributed-autonomous-loop.yml/runs?per_page=20" in source
+    assert "actions/workflows/distributed-autonomous-observation.yml/runs?per_page=20" in source
+    assert 'active_loop" -gt 0' in source
+    assert 'active_observation" -gt 0' in source
+    assert "another_loop_is_active" in source
+
+
+def test_continuation_only_has_dispatch_permission_and_never_writes_repository():
+    source = WORKFLOW.read_text(encoding="utf-8")
+    permissions = source.split("permissions:", 1)[1].split("concurrency:", 1)[0]
+    # actions:write is required only to dispatch the read-only observation workflow.
+    assert "actions: write" in permissions
+    assert "contents: read" in permissions
+    assert "contents: write" not in permissions
+    assert "issues: write" not in permissions
+    assert "pull-requests: write" not in permissions
+    assert "gh workflow run distributed-autonomous-observation.yml" in source
+    assert "gh workflow run distributed-autonomous-loop.yml" not in source
+
+
+def test_legacy_safe_continuation_dispatcher_remains_disabled():
+    legacy = (WORKFLOW.parent / "distributed-loop-safe-continuation.yml").read_text(encoding="utf-8")
+    assert "if: github.event.workflow_run.run_attempt < 0" in legacy

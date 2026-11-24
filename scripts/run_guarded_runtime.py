@@ -211,7 +211,8 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
 
 
 def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, object]:
-    """Verify approval against the exact task, instruction, base, and path scope."""
+    """Verify approval against the normalized task, instruction, base, and path scope."""
+    instruction = instruction.strip()[:worker.MAX_INSTRUCTION_LENGTH]
     instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
     raw_allowed_paths = os.environ.get("AUTONOMOUS_ALLOWED_PATHS", "")
     try:
@@ -459,8 +460,14 @@ def _write_summary(
 def _consume_execution_approval(approval_evidence: dict[str, object], start_sha: str) -> dict[str, object]:
     """Atomically consume a task-bound approval using a unique Git ref.
 
-    GitHub's create-ref endpoint rejects an existing ref, making the marker a
-    durable, repository-native single-use ledger without a database or new secret.
+    GitHub's create-ref endpoint rejects an existing ref, providing an atomic
+    repository-native single-use marker without a database or new secret.
+
+    This is not tamper-proof against repository actors who can delete refs. Until
+    an administrator enables a protected ruleset, treat the ledger as fail-closed
+    operational protection, not immutable audit storage. A consumed approval is
+    never restored after cancellation or failure; the operator must issue a new
+    task-bound approval against the new base SHA.
     """
     if approval_evidence.get("execution_authorized") is not True:
         return {"gate": "BLOCKED", "reason_code": "approval_not_verified"}
@@ -579,7 +586,12 @@ def main() -> int:
         print("EMERGENCY_STOP=ACTIVE; runtime not started", flush=True)
         return 82
 
-    instruction = os.environ.get("DEV_INSTRUCTION", "").strip()[: worker.MAX_INSTRUCTION_LENGTH]
+    # The approved text is the sole executable instruction. Ignore any
+    # augmented DEV_INSTRUCTION supplied by RAG/history or another caller.
+    approval_instruction = os.environ.get("AUTONOMOUS_APPROVED_INSTRUCTION")
+    if approval_instruction is None:
+        approval_instruction = os.environ.get("DEV_INSTRUCTION", "")
+    instruction = str(approval_instruction).strip()[: worker.MAX_INSTRUCTION_LENGTH]
     approval_evidence = _verify_execution_approval(start_sha, instruction)
     if approval_evidence.get("execution_authorized") is True:
         consumption = _consume_execution_approval(approval_evidence, start_sha)
@@ -595,9 +607,8 @@ def main() -> int:
 
     worker.ask = guarded_ask
     worker.ask_text = guarded_ask_text
-    history_path = Path(os.environ.get("SELF_IMPROVEMENT_HISTORY_PATH", "/tmp/line-bot-self-improvement.jsonl"))
-    instruction = _augment_instruction_with_history(instruction, history_path)
-    instruction = _augment_with_hermes_advice(instruction, history_path)
+    # Approval covers the exact instruction passed to the runtime. Historical
+    # and Hermes augmentation is deliberately excluded from executable input.
     exit_code = 1
     try:
         exit_code = runtime.execute(instruction)

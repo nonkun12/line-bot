@@ -9,7 +9,10 @@ import argparse
 import ast
 import hashlib
 import json
+import os
 import re
+import stat
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -210,6 +213,40 @@ def register_approved_candidate(
     }, True
 
 
+
+def _atomic_write_json(path: Path, payload: object) -> None:
+    """Replace the catalog atomically so an interrupted registration cannot truncate it."""
+    path = Path(path)
+    if path.is_symlink():
+        raise ValueError("catalog path must not be a symlink")
+    if not path.parent.is_dir():
+        raise ValueError("catalog parent directory is unavailable")
+    encoded = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    existing_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o600
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, existing_mode)
+        os.replace(temporary, path)
+        # Persist the directory entry where supported by the host filesystem.
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--issue", type=Path, required=True)
@@ -225,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
         if changed:
             updated = dict(catalog)
             updated["tasks"] = [*catalog["tasks"], result["catalog_entry"]]
-            args.catalog.write_text(json.dumps(updated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            _atomic_write_json(args.catalog, updated)
         result.pop("catalog_entry", None)
     except (OSError, ValueError) as exc:
         print(f"AUTONOMOUS_TASK_CATALOG_REGISTRATION_BLOCKED: {type(exc).__name__}: {exc}")

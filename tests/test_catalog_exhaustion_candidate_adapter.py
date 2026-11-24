@@ -132,3 +132,40 @@ def test_distributed_workflow_wires_analyzer_adapter_before_review_pool(tmp_path
     assert "--summary artifacts/self-improvement-candidates/summary.md" in step
     assert "if [ -s /tmp/catalog-exhaustion-report.json ]; then" in step
     assert "cp /tmp/self-improvement-review-candidates.json /tmp/review-candidate-input.json" in step
+
+
+def test_rea_history_replenishes_review_only_candidate_pool(tmp_path):
+    from scripts.self_improvement_candidate_adapter import candidates_from_history
+
+    rea_history = [{
+        "record_type": "rea_observation", "cycle_id": "30001", "task_id": "task-a",
+        "gate": "BLOCKED", "scanner_status": "FINDINGS", "category": "finding_block",
+        "finding_count": 1, "critical_count": 1, "blocking_count": 1,
+        "target_sha": "a" * 40,
+    }]
+    candidates = candidates_from_history([], rea_history)
+    source = tmp_path / "input.json"
+    store = tmp_path / "pool.jsonl"
+    summary = tmp_path / "summary.md"
+    source.write_text(json.dumps(candidates), encoding="utf-8")
+
+    result = build_pool(source, store, summary)
+    stored = [json.loads(line) for line in store.read_text(encoding="utf-8").splitlines()]
+    assert result == {"stored": 1, "added": 1, "rejected": 0}
+    assert stored[0]["source"] == "self_improvement"
+    assert stored[0]["title"] == "Review REA high-severity evidence"
+    assert stored[0]["execution_authorized"] is False
+    assert "Queue / issue / PR creation: **not performed**" in summary.read_text(encoding="utf-8")
+    assert "task-a" not in json.dumps(stored)
+
+
+def test_catalog_candidate_is_reserved_when_history_is_full():
+    history = [{
+        "source": "self_improvement", "source_id": f"old-{i}",
+        "title": f"Old candidate {i}", "rationale": "Historical review only",
+        "status": "proposed",
+    } for i in range(200)]
+    rows = merge_candidates(history, _report())
+    assert len(rows) == 200
+    assert rows[-1]["source_id"] == "catalog-exhaustion:review-coverage-gap-0123456789"
+    assert rows[-1]["status"] == "proposed"
