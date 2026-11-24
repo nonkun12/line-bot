@@ -5,6 +5,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,11 @@ def test_command_uses_empty_root_and_never_mounts_host_root_or_target_writable(t
     assert "--bind" not in command
     assert str(root) in command
     assert str(Path(sys.prefix).resolve()) in command
+    library_dir = sysconfig.get_config_var("LIBDIR")
+    if library_dir:
+        assert str(Path(library_dir).resolve()) in command
+        assert "--setenv" in command
+        assert "LD_LIBRARY_PATH" in command
     assert "tests/test_one.py" in command
 
 
