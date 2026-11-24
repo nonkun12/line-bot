@@ -1029,7 +1029,7 @@ def _configure_scheduler_policy_dispatch(tmp_path, monkeypatch, *, marker="30m_s
 def test_run_local_policy_accepts_only_trusted_30m_scheduler_dispatch(tmp_path, monkeypatch):
     base_sha, instruction = _configure_scheduler_policy_dispatch(tmp_path, monkeypatch)
 
-    result = guarded_runtime._verify_catalog_execution_approval(base_sha, instruction)
+    result = guarded_runtime._verify_execution_approval(base_sha, instruction)
 
     assert result["gate"] == "PASS"
     assert result["execution_authorized"] is True
