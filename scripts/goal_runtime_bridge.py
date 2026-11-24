@@ -52,68 +52,60 @@ def _authorized_queue(queue_path: Path, catalog_path: Path, completed: set[str])
     return result
 
 def _load_goal(store: GoalStateStore, state: dict[str, Any], tasks: list[dict[str, Any]], completed: set[str], resume_task_id: str = ""):
+    """Build a run-scoped goal without mutating unrelated durable HOLD state.
+
+    Global safety controls and unresolved in-flight work remain authoritative.
+    Existing HELD/FAILED tasks stay held; they only block a candidate with the
+    same ID. The transient goal is never written back as the durable main goal.
+    """
     existing = state.get("goal_autopilot")
     if existing is None:
-        if not tasks:
-            raise LookupError("no_authorized_tasks")
-        goal = {
-            "goal_id": GOAL_ID,
-            "objective": "Complete the versioned, explicitly approved distributed-loop task queue",
-            "acceptance_criteria": [{"id": "approved-runtime-queue-complete", "verified": False}],
-            "safety_gate": True, "kill_switch": False, "tasks": tasks,
+        safety_gate, kill_switch = True, False
+        existing_by_id = {}
+    else:
+        if not isinstance(existing, dict) or existing.get("goal_id") != GOAL_ID:
+            raise ValueError("durable_goal_state_invalid")
+        if evaluate_goal(existing)["decision"] == "INVALID":
+            raise ValueError("durable_goal_state_invalid")
+        safety_gate = existing.get("safety_gate")
+        kill_switch = existing.get("kill_switch")
+        existing_tasks = existing.get("tasks", [])
+        if not isinstance(existing_tasks, list):
+            raise ValueError("durable_goal_tasks_invalid")
+        existing_by_id = {
+            item.get("task_id"): item for item in existing_tasks
+            if isinstance(item, dict) and isinstance(item.get("task_id"), str)
         }
-        store.create(goal)
-        return store.read(GOAL_ID)
-    if not isinstance(existing, dict) or existing.get("goal_id") != GOAL_ID:
-        raise ValueError("durable_goal_state_invalid")
-    if evaluate_goal(existing)["decision"] == "INVALID":
-        raise ValueError("durable_goal_state_invalid")
-    store.create(existing)
-    loaded = store.read(GOAL_ID)
-    assert loaded is not None
-    revision, goal = loaded
-    by_id = {t["task_id"]: t for t in goal["tasks"]}
-    current_ids = {t["task_id"] for t in tasks}
-    changed = False
-    for old in goal["tasks"]:
-        if old["status"] == "PENDING" and old["task_id"] not in current_ids:
-            old["status"] = "HELD"
-            old["hold_reason"] = "task_missing_from_current_approved_runtime_queue"
-            changed = True
-        if old["status"] == "PENDING" and old["task_id"] in completed:
-            old["status"] = "HELD"
-            old["hold_reason"] = "completion_state_missing_goal_evidence"
-            changed = True
-    for task in tasks:
-        old = by_id.get(task["task_id"])
-        if old is None:
-            goal["tasks"].append(task)
-            changed = True
-        elif any(old.get(k) != task.get(k) for k in ("instruction", "allowed_paths", "kind", "execution_authorized")):
-            if old["status"] == "PENDING":
-                old["status"] = "HELD"
-                old["hold_reason"] = "registered_task_definition_changed"
-                changed = True
+        if any(item.get("status") == "IN_PROGRESS" for item in existing_tasks if isinstance(item, dict)):
+            raise ValueError("in_flight_task_requires_reconciliation")
+        completed_goal_ids = {
+            item["task_id"] for item in existing_tasks
+            if isinstance(item, dict) and item.get("status") == "COMPLETED"
+        }
+        if not completed_goal_ids.issubset(completed):
+            raise ValueError("completed_goal_task_missing_durable_completion")
+    if safety_gate is not True or kill_switch is not False:
+        raise ValueError("global_goal_safety_gate_blocked")
     if resume_task_id:
-        if resume_task_id not in current_ids:
-            raise ValueError("resume_task_not_in_current_approved_queue")
-        resume_target = next((t for t in goal["tasks"] if t["task_id"] == resume_task_id), None)
-        if resume_target is None:
-            raise ValueError("resume_task_missing_from_goal")
-        if resume_target["status"] in {"HELD", "FAILED"}:
-            resume_target["status"] = "PENDING"
-            resume_target.pop("hold_reason", None)
-            resume_target["priority"] = max(
-                (int(t.get("priority", 0)) for t in goal["tasks"]), default=0
-            ) + 1
-            changed = True
-    if changed:
-        for criterion in goal["acceptance_criteria"]:
-            criterion["verified"] = False
-            criterion.pop("evidence_ref", None)
-        store.compare_and_swap(GOAL_ID, revision, goal)
-        loaded = store.read(GOAL_ID)
-    return loaded
+        raise ValueError("goal_resume_requires_separate_human_review")
+    scoped_tasks = []
+    for task in tasks:
+        prior = existing_by_id.get(task["task_id"])
+        if prior is not None and prior.get("status") in {"HELD", "FAILED"}:
+            raise ValueError("candidate_task_requires_human_review")
+        if prior is not None and prior.get("status") == "IN_PROGRESS":
+            raise ValueError("candidate_task_in_flight_requires_reconciliation")
+        scoped_tasks.append(task)
+    if not scoped_tasks:
+        raise LookupError("no_authorized_tasks")
+    goal = {
+        "goal_id": GOAL_ID + ":run",
+        "objective": "Execute only the current explicitly approved bounded runtime queue",
+        "acceptance_criteria": [{"id": "approved-runtime-queue-complete", "verified": False}],
+        "safety_gate": safety_gate, "kill_switch": kill_switch, "tasks": scoped_tasks,
+    }
+    store.create(goal)
+    return store.read(GOAL_ID + ":run")
 
 def _valid_success(row: dict[str, Any], task_id: str) -> bool:
     if row.get("task_id") != task_id or row.get("status") not in {"PASS", "NO_CHANGE"} or row.get("exit_code") != 0:
