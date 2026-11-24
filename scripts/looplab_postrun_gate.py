@@ -1,8 +1,9 @@
 """Fail-closed post-run LoopLab evaluation gate for Distributed Loop.
 
-This stage only verifies signed inputs and evaluates supplied predictions.
-It never runs candidates, invokes a model, writes RSI observations, changes
-source/queue state, clears HOLD/STOP, or authorizes execution/patch/merge/deploy.
+This stage verifies signed inputs, evaluates supplied predictions, and
+records eligible PASS/FAIL observations in the local append-only RSI evidence
+ledger. It never runs candidates, invokes a model, changes source/queue state,
+clears HOLD/STOP, or authorizes execution/patch/merge/deploy.
 """
 from __future__ import annotations
 
