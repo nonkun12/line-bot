@@ -145,11 +145,27 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         if review_required:
             review_required_ids.add(task_id)
 
+    goal = state.get("goal_autopilot")
+    goal_blocked_ids = set()
+    if goal is not None:
+        if not isinstance(goal, dict) or not isinstance(goal.get("tasks"), list):
+            raise ValueError("GoalAutopilot state is invalid")
+        for goal_task in goal["tasks"]:
+            if not isinstance(goal_task, dict):
+                raise ValueError("invalid GoalAutopilot task state")
+            task_id, status = goal_task.get("task_id"), goal_task.get("status")
+            if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id):
+                raise ValueError("invalid GoalAutopilot task ID")
+            if status not in {"PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "HELD"}:
+                raise ValueError("invalid GoalAutopilot task status")
+            if status in {"FAILED", "HELD"}:
+                goal_blocked_ids.add(task_id)
+
     completed_ids = set(completed)
-    # HOLD and post-resume review requirements both remain authoritative in
-    # Recovery AI. A resumed task is not eligible until explicit review clears
-    # resume_requires_review; queue refill must not reintroduce it prematurely.
-    ineligible_ids = held_ids | review_required_ids | completed_ids
+    # Recovery AI and GoalAutopilot maintain separate durable safety state.
+    # Respect both: a task held by either system must never be reintroduced
+    # from the catalog until an explicit, reviewed recovery changes that state.
+    ineligible_ids = held_ids | review_required_ids | completed_ids | goal_blocked_ids
     # The version-controlled catalog is the sole approval authority. Runtime
     # queue files intentionally omit approval metadata, so reconcile each
     # existing entry by ID and exact definition against the catalog on every run.
@@ -176,6 +192,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     skipped_held_ids = sorted(original_ids.intersection(held_ids))
     skipped_review_ids = sorted(original_ids.intersection(review_required_ids))
     skipped_completed_ids = sorted(original_ids.intersection(completed_ids))
+    skipped_goal_blocked_ids = sorted(original_ids.intersection(goal_blocked_ids))
     priority_scores, history_counts = _history_priority(history_path, catalog_ids)
     eligible_additions = [
         task for task in normalized_catalog
@@ -200,6 +217,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     skipped_catalog_held_ids = sorted(catalog_ids_set.intersection(held_ids))
     skipped_catalog_review_ids = sorted(catalog_ids_set.intersection(review_required_ids))
     skipped_catalog_completed_ids = sorted(catalog_ids_set.intersection(completed_ids))
+    skipped_catalog_goal_blocked_ids = sorted(catalog_ids_set.intersection(goal_blocked_ids))
     skipped_catalog_already_queued_ids = sorted(catalog_ids_set.intersection(original_ids))
     execution_approved_catalog_ids = {
         task["id"] for task in normalized_catalog if task["execution_approved"] is True
@@ -211,6 +229,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         - completed_ids
         - held_ids
         - review_required_ids
+        - goal_blocked_ids
         - (catalog_ids_set - execution_approved_catalog_ids)
     )
     return {
@@ -222,10 +241,12 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         "skipped_definition_mismatch_ids": sorted(skipped_definition_mismatch_ids),
         "skipped_review_ids": skipped_review_ids,
         "skipped_completed_ids": skipped_completed_ids,
+        "skipped_goal_blocked_ids": skipped_goal_blocked_ids,
         # Explain catalog exhaustion separately from the legacy queue fields.
         "skipped_catalog_held_ids": skipped_catalog_held_ids,
         "skipped_catalog_review_ids": skipped_catalog_review_ids,
         "skipped_catalog_completed_ids": skipped_catalog_completed_ids,
+        "skipped_catalog_goal_blocked_ids": skipped_catalog_goal_blocked_ids,
         "skipped_catalog_unapproved_ids": skipped_catalog_unapproved_ids,
         "skipped_catalog_already_queued_ids": skipped_catalog_already_queued_ids,
         "eligible_catalog_count": len(eligible_catalog_ids),
