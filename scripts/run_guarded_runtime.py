@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -196,12 +197,21 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
         json.dumps(canonical_paths, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
-    if os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true":
-        # Trust run-local catalog approval only when the report binds this exact
-        # task, allowlisted test file, and checkout SHA.
+    policy_admission = os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true"
+    catalog_digest = ""
+    if policy_admission:
+        # Trust the ephemeral catalog only when its exact bytes, policy report,
+        # sandbox probe, and task scope are bound to this checkout.
         policy_report_path = POLICY_ADMISSION_REPORT_PATH
         policy_catalog_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_CATALOG", ""))
-        if policy_catalog_path != POLICY_ADMISSION_CATALOG_PATH:
+        if (
+            policy_catalog_path != POLICY_ADMISSION_CATALOG_PATH
+            or policy_catalog_path.is_symlink()
+            or policy_report_path.is_symlink()
+            or os.environ.get("AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY", "").lower() != "true"
+            or not shutil.which("bwrap")
+            or os.environ.get("GITHUB_SHA", "") != start_sha
+        ):
             return blocked
         try:
             policy_report = json.loads(policy_report_path.read_text(encoding="utf-8"))
@@ -212,13 +222,35 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
             admitted_path = policy_report.get("admitted_allowed_path")
             if (
                 policy_report.get("status") != "POLICY_ADMITTED"
+                or policy_report.get("policy_version") != "test-only-append-v1"
                 or policy_report.get("admitted_task_id") != task_id
                 or policy_report.get("base_sha") != start_sha
+                or policy_report.get("max_tasks_per_cycle") != 1
+                or policy_report.get("persistent_catalog_modified") is not False
+                or policy_report.get("durable_state_modified") is not False
+                or policy_report.get("held_tasks_resumed") is not False
+                or policy_report.get("execution_scope") != "one_test_file_append_only"
                 or admitted_path not in allowed_test_paths
                 or paths != [admitted_path]
             ):
                 return blocked
-            catalog = json.loads(policy_catalog_path.read_text(encoding="utf-8"))
+            catalog_bytes = policy_catalog_path.read_bytes()
+            catalog_digest = hashlib.sha256(catalog_bytes).hexdigest()
+            if catalog_digest != os.environ.get("AUTONOMOUS_TEST_ADMISSION_CATALOG_SHA256", "").lower():
+                return blocked
+            catalog = json.loads(catalog_bytes.decode("utf-8"))
+            tracked_raw = _git("show", f"{start_sha}:.github/autonomous-loop-task-catalog.json")
+            tracked_catalog = json.loads(tracked_raw)
+            tracked_tasks = tracked_catalog.get("tasks") if isinstance(tracked_catalog, dict) else None
+            runtime_tasks = catalog.get("tasks") if isinstance(catalog, dict) else None
+            if (
+                not isinstance(tracked_tasks, list)
+                or not isinstance(runtime_tasks, list)
+                or len(runtime_tasks) != len(tracked_tasks) + 1
+                or runtime_tasks[:-1] != tracked_tasks
+                or catalog != {**tracked_catalog, "tasks": runtime_tasks}
+            ):
+                return blocked
         except (OSError, UnicodeError, TypeError, ValueError):
             return blocked
     else:
@@ -246,7 +278,6 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
         or sorted(catalog_paths) != canonical_paths
     ):
         return blocked
-    policy_admission = os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true"
     return {
         "gate": "PASS",
         "reason_code": "run_local_test_policy_admission" if policy_admission else "reviewed_catalog_preapproval",
@@ -258,6 +289,7 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
         "allowed_paths_sha256": paths_digest,
         "base_sha": start_sha,
         "catalog_sha": start_sha,
+        **({"catalog_content_sha256": catalog_digest} if policy_admission else {}),
     }
 
 
