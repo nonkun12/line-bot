@@ -110,6 +110,20 @@ def test_failed_or_held_tasks_are_never_silently_retried():
     ])
     assert evaluate_goal(g)["reason"] == "failed_or_held_task_requires_review"
 
+def test_held_task_reports_independent_pending_candidates_without_authorizing_them():
+    g = goal(tasks=[
+        {"task_id": "held", "status": "HELD", "kind": "TEST"},
+        {"task_id": "independent", "status": "PENDING", "kind": "TEST",
+         "execution_authorized": True, "allowed_paths": []},
+        {"task_id": "dependent", "status": "PENDING", "kind": "TEST",
+         "execution_authorized": True, "allowed_paths": [], "depends_on": ["held"]},
+    ])
+    result = evaluate_goal(g)
+    assert result["decision"] == "HOLD"
+    assert result["task_ids"] == ["held"]
+    assert result["dependency_ready_pending_task_ids"] == ["independent"]
+    assert result["execution_authorized"] is False
+
 
 def test_dependency_order_requires_task_bound_completion_evidence():
     g = goal(tasks=[
