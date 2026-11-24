@@ -226,3 +226,46 @@ def test_stale_simulator_artifact_blocks_before_evaluation(tmp_path):
     )
     assert result["status"] == "BLOCKED"
     assert result["reason"] == "simulator_artifact_stale_or_future"
+
+
+
+def test_duplicate_candidate_identity_blocks_evaluation(tmp_path):
+    keys, paths = _inputs(tmp_path)
+    payload = json.loads(paths["simulator"].read_text(encoding="utf-8"))["payload"]
+    payload["challenger"]["candidate_id"] = payload["baseline"]["candidate_id"]
+    _write(paths["simulator"], _signed(payload, keys["LOOPLAB_SIMULATOR_HMAC_KEY"]))
+    result = evaluate_postrun(
+        simulator_path=paths["simulator"], dataset_path=paths["dataset"],
+        registry_path=paths["registry"], safety_path=paths["safety"],
+        output_path=paths["output"], env=keys, now=1000,
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["reason"] == "simulator_candidate_identity_duplicate"
+
+
+def test_candidate_artifact_digest_must_be_sha256(tmp_path):
+    keys, paths = _inputs(tmp_path)
+    payload = json.loads(paths["simulator"].read_text(encoding="utf-8"))["payload"]
+    payload["challenger"]["artifact_sha256"] = "not-a-digest"
+    _write(paths["simulator"], _signed(payload, keys["LOOPLAB_SIMULATOR_HMAC_KEY"]))
+    result = evaluate_postrun(
+        simulator_path=paths["simulator"], dataset_path=paths["dataset"],
+        registry_path=paths["registry"], safety_path=paths["safety"],
+        output_path=paths["output"], env=keys, now=1000,
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["reason"] == "simulator_candidate_artifact_digest_invalid"
+
+
+def test_boolean_schema_version_is_rejected(tmp_path):
+    keys, paths = _inputs(tmp_path)
+    payload = json.loads(paths["simulator"].read_text(encoding="utf-8"))["payload"]
+    payload["schema_version"] = True
+    _write(paths["simulator"], _signed(payload, keys["LOOPLAB_SIMULATOR_HMAC_KEY"]))
+    result = evaluate_postrun(
+        simulator_path=paths["simulator"], dataset_path=paths["dataset"],
+        registry_path=paths["registry"], safety_path=paths["safety"],
+        output_path=paths["output"], env=keys, now=1000,
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["reason"] == "simulator_schema_version_unsupported"
