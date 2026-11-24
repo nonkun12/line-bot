@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from core.looplab_experiment_adapter import evaluate_simulator_run
+from core.looplab_rsi_bridge import record_evaluation_as_rsi_observation
+from core.rsi_executor import EvidenceLedger, RSIControl, RSIExecutor
 
 _FORBIDDEN = {
     "execution_authorized": False,
@@ -93,6 +95,7 @@ def evaluate_postrun(
         registry_key = _key(env, "LOOPLAB_DATASET_REGISTRY_HMAC_KEY")
         safety_key = _key(env, "LOOPLAB_SAFETY_HMAC_KEY")
         adapter_key = _key(env, "LOOPLAB_ADAPTER_HMAC_KEY")
+        evidence_key = _key(env, "LOOPLAB_RSI_EVIDENCE_HMAC_KEY")
 
         simulator = _read_signed_payload(Path(simulator_path), simulator_key, "simulator_artifact")
         registry = _read_signed_payload(Path(registry_path), registry_key, "dataset_registry")
@@ -138,6 +141,13 @@ def evaluate_postrun(
             raise ValueError("stop_active_or_unverified")
         if safety.get("global_hold_state") != "CLEAR":
             raise ValueError("global_hold_active_or_unverified")
+        if (safety.get("execution_enabled") is not False
+                or safety.get("free_only") is not True
+                or safety.get("budget_known") is not True
+                or safety.get("paid_fallback_enabled") is not False
+                or type(safety.get("budget_remaining_units")) is not int
+                or not 1 <= safety["budget_remaining_units"] <= 1_000_000):
+            raise ValueError("rsi_control_snapshot_missing_or_unsafe")
 
         evaluated = evaluate_simulator_run(
             simulator_output=simulator,
@@ -161,13 +171,79 @@ def evaluate_postrun(
             )
             result["evaluation"] = evaluated
         else:
+            ledger_path = Path(output_path).with_name("looplab-rsi-evidence.sqlite")
+            ledger = EvidenceLedger(ledger_path)
+            safety_state = {
+                "stop_state": safety["stop_state"],
+                "global_hold_state": safety["global_hold_state"],
+            }
+            registry_entry = dict(entry)
+
+            def _sign_evidence(digest: str) -> str:
+                return hmac.new(evidence_key, digest.encode("ascii"), hashlib.sha256).hexdigest()
+
+            def _verify_evidence(producer_id: str, digest: str, signature: str) -> bool:
+                expected = _sign_evidence(digest)
+                return (
+                    producer_id == "looplab-independent-evaluator"
+                    and isinstance(signature, str)
+                    and hmac.compare_digest(signature, expected)
+                )
+
+            def _verify_adapter(adapter_id: str, digest: str, signature: str) -> bool:
+                expected = hmac.new(
+                    adapter_key, (adapter_id + ":" + digest).encode("utf-8"), hashlib.sha256
+                ).hexdigest()
+                return (
+                    adapter_id == "looplab.simulator_rsi_bridge.v1"
+                    and isinstance(signature, str)
+                    and hmac.compare_digest(signature, expected)
+                )
+
+            executor = RSIExecutor(
+                ledger,
+                control_provider=lambda: RSIControl(
+                    global_hold=False,
+                    execution_enabled=False,
+                    free_only=True,
+                    budget_known=True,
+                    budget_remaining_units=safety["budget_remaining_units"],
+                    paid_fallback_enabled=False,
+                ),
+                verify_approval=lambda _approval: False,
+                verify_evaluation=lambda _evaluation: False,
+                verify_evidence_signature=_verify_evidence,
+                executor_id="looplab-postrun-bridge",
+                verify_adapter_signature=_verify_adapter,
+                resolve_locked_dataset=lambda requested_id: (
+                    registry_entry if requested_id == dataset_id else None
+                ),
+                safety_state_provider=lambda: dict(safety_state),
+            )
+            try:
+                ingestion = record_evaluation_as_rsi_observation(
+                    evaluation_result=evaluated,
+                    executor=executor,
+                    producer_id="looplab-independent-evaluator",
+                    sign_digest=_sign_evidence,
+                    created_at=now,
+                )
+                ingestion_status = "RECORDED" if ingestion.get("recorded") is True else "BLOCKED"
+                ingestion_reason = ingestion.get("reason", "")
+            except (TypeError, ValueError, OverflowError) as exc:
+                ingestion = None
+                ingestion_status = "BLOCKED"
+                ingestion_reason = type(exc).__name__
             result = {
                 "schema_version": 1,
                 "status": status,
                 "reason": str((evaluated.get("evaluation") or {}).get("reason") or status)[:120],
                 "experiment_id": experiment_id,
                 "evaluation": evaluated,
-                "rsi_ingestion": "NOT_ATTEMPTED_TRUSTED_RUNTIME_REQUIRED",
+                "rsi_ingestion": ingestion_status,
+                "rsi_ingestion_reason": ingestion_reason,
+                "rsi": ingestion,
+                "rsi_ledger": str(ledger_path) if ingestion_status == "RECORDED" else None,
                 "authority": dict(_FORBIDDEN),
             }
     except (OSError, TypeError, ValueError, OverflowError) as exc:
