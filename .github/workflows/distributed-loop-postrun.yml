@@ -59,7 +59,6 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-          from pathlib import Path
 
           files = list(Path("evidence").rglob("*"))
           files = [p for p in files if p.is_file()]
@@ -76,11 +75,26 @@ jobs:
                               tasks.append(item)
                       except json.JSONDecodeError:
                           pass
-          # Read pre-execution GoalAutopilot diagnostics as evidence only.
+          # Read and validate the run-scoped Sheets evidence artifact.
+          sheets = {"result": "MISSING"}
+          for path in sheets_files[:1]:
+              try:
+                  candidate = json.loads(path.read_text(encoding="utf-8"))
+                  if (
+                      isinstance(candidate, dict)
+                      and str(candidate.get("run_id", "")) == str(os.environ.get("RUN_ID", ""))
+                  ):
+                      sheets = candidate
+                  else:
+                      sheets = {"result": "INVALID_OR_MISMATCHED_ARTIFACT"}
+              except (OSError, json.JSONDecodeError):
+                  sheets = {"result": "INVALID_ARTIFACT"}
+
+          # Normalize producer JSONL to the classifier's canonical schema.
           hold_diag_files = [p for p in files if p.name == "goal-autopilot-hold-evaluations.jsonl"]
           hold_diagnostics = []
           hold_diag_invalid = 0
-          allowed_reasons = {"guarded_runtime_or_evidence_gate_failed", "all_pending_tasks_held", "review_required", "execution_not_authorized", "unknown", "failed_or_held_task_requires_review", "unclassified_goal_decision"}
+          from scripts.rea_hold_diagnostics import normalize_hold_diagnostic
           for path in hold_diag_files[:1]:
               for line in path.read_text(encoding="utf-8").splitlines()[:100]:
                   if not line.strip():
@@ -90,49 +104,8 @@ jobs:
                       if not isinstance(row, dict) or row.get("stage") != "pre_execution":
                           hold_diag_invalid += 1
                           continue
-                      reason = str(row.get("reason", "unknown"))[:80]
-                      counts = row.get("task_counts", {})
-                      if not isinstance(counts, dict):
-                          counts = {}
-                      safe_counts = {str(k)[:24]: max(0, min(int(v), 10000)) for k, v in list(counts.items())[:12] if str(k)[:24].replace("_", "").replace("-", "").isalnum() and isinstance(v, int)}
-                      blocked = row.get("blocked_tasks", [])
-                      blocked_details = []
-                      if isinstance(blocked, list):
-                          for task in blocked[:50]:
-                              if not isinstance(task, dict):
-                                  continue
-                              detail = {}
-                              for key in ("status", "hold_reason"):
-                                  value = task.get(key)
-                                  if isinstance(value, str) and len(value) <= 100 and value.replace("_", "").replace("-", "").isalnum():
-                                      detail[key] = value
-                              evidence = task.get("failure_evidence", {})
-                              if isinstance(evidence, dict):
-                                  safe_evidence = {}
-                                  for key in ("stage", "reason_code", "result_status"):
-                                      value = evidence.get(key)
-                                      if isinstance(value, str) and len(value) <= 80 and value.replace("_", "").replace("-", "").isalnum():
-                                          safe_evidence[key] = value
-                                  for key in ("child_exit_code", "result_exit_code"):
-                                      value = evidence.get(key)
-                                      if type(value) is int and -255 <= value <= 255:
-                                          safe_evidence[key] = value
-                                  if safe_evidence:
-                                      detail["failure_evidence"] = safe_evidence
-                              if detail:
-                                  blocked_details.append(detail)
-                      hold_diagnostics.append({
-                          "decision": row.get("decision") if row.get("decision") in {"HOLD", "INVALID", "COMPLETE"} else "UNKNOWN",
-                          "reason": reason if reason in allowed_reasons else "other",
-                          "task_status_counts": safe_counts,
-                          "blocked_task_count": min(len(blocked), 100) if isinstance(blocked, list) else 0,
-                          "blocked_task_details": blocked_details,
-                          "execution_authorized": row.get("execution_authorized") is True,
-                          "patch_authorized": row.get("patch_authorized") is True,
-                          "hold_clear_authorized": row.get("hold_clear_authorized") is True,
-                          "merge_deploy_authorized": row.get("merge_deploy_authorized") is True,
-                      })
-                  except Exception:
+                      hold_diagnostics.append(normalize_hold_diagnostic(row))
+                  except (json.JSONDecodeError, OSError, TypeError, ValueError):
                       hold_diag_invalid += 1
           from scripts.rea_hold_diagnostics import assess_hold_diagnostics
           hold_assessment = assess_hold_diagnostics(hold_diagnostics)
