@@ -309,7 +309,7 @@ def _append_hold_diagnostic(path: Path, decision: dict[str, Any], goal: dict[str
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as stream:
-        stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\\n")
+        stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
 
 def _reconcile_claimed_tasks(store: GoalStateStore, task_ids: set[str], output: Path,
