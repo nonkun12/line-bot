@@ -481,6 +481,14 @@ class RSIExecutor:
             raise RSIError("BLOCKED: execution is disabled")
         return control
 
+    def assert_observation_ingestion_allowed(self) -> RSIControl:
+        """Public fail-closed gate for ingesting independently verified observations.
+
+        This deliberately checks the same global HOLD, FREE-only, and budget
+        invariants as the rest of the RSI pipeline without enabling execution.
+        """
+        return self._control()
+
     def observe(self, observations: tuple[Observation, ...]) -> tuple[Diagnosis, ...]:
         self._control()
         if not observations:
