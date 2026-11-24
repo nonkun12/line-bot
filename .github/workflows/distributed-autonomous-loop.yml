@@ -572,6 +572,7 @@ jobs:
             printf '{"version":1,"policy_version":"test-only-append-v1","status":"POLICY_SKIPPED","reason":"%s","persistent_catalog_modified":false,"durable_state_modified":false,"held_tasks_resumed":false}\n' "$reason" > "$POLICY_REPORT"
           fi
           if python -c 'import json, os; from pathlib import Path; p=Path("/tmp/autonomous-loop-policy-admission.json"); d=json.loads(p.read_text(encoding="utf-8")); d["base_sha"]=os.environ["GITHUB_SHA"]; p.write_text(json.dumps(d, ensure_ascii=False, sort_keys=True)+chr(10), encoding="utf-8") if d.get("status")=="POLICY_ADMITTED" else None; raise SystemExit(0 if d.get("status")=="POLICY_ADMITTED" else 1)'; then
+            # Guarded Runtime independently verifies this digest before execution.
             catalog_sha="$(sha256sum "$POLICY_CATALOG" | awk '{print $1}')"
             {
               echo "AUTONOMOUS_TEST_ADMISSION_POLICY=true"
