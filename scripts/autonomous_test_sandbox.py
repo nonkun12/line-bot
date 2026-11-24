@@ -32,6 +32,14 @@ def _runtime_directories(python: str) -> list[Path]:
         candidates.add(prefix)
 
     configured = sysconfig.get_paths()
+    # Some hosted Python builds depend on libpython in LIBDIR via
+    # LD_LIBRARY_PATH. Keep that one runtime directory explicit instead of
+    # inheriting the runner's environment.
+    library_dir_raw = sysconfig.get_config_var("LIBDIR")
+    library_dir = Path(library_dir_raw).resolve() if library_dir_raw else None
+    if library_dir and library_dir.is_dir() and library_dir != Path("/") and library_dir != Path.home():
+        candidates.add(library_dir)
+
     runtime_roots: list[Path] = []
     for key in ("stdlib", "platstdlib", "purelib", "platlib"):
         raw = configured.get(key)
@@ -201,6 +209,11 @@ def build_sandbox_command(
         "--setenv", "TMP", "/tmp",
         "--setenv", "PATH", os.defpath,
         "--setenv", "LANG", "C.UTF-8",
+        *(
+            ["--setenv", "LD_LIBRARY_PATH", str(library_dir)]
+            if library_dir and library_dir.is_dir()
+            else []
+        ),
         "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
         "--",
         str(Path(python).resolve(strict=True)), "-m", "pytest", "-q",
