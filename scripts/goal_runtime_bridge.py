@@ -374,16 +374,21 @@ def run(args: argparse.Namespace) -> int:
                 if child.returncode != 0:
                     return child.returncode
             else:
+                # Runner sentinels 78/79 mean the guarded child did not execute
+                # this task (queue exhaustion or an upstream HOLD/STOP gate).
+                # Preserve the sentinel and return the claim to PENDING: marking
+                # it HELD here would create a second, stale GoalAutopilot hold
+                # that survives after the upstream gate is independently reviewed.
+                # This does not clear or bypass Recovery AI / STOP / approval gates.
+                if child.returncode in {78, 79}:
+                    _reconcile_claimed_tasks(store, claimed_this_run, goal_output)
+                    return child.returncode
                 failure_evidence = _failure_evidence(child.returncode, row)
                 store.record_result(
                     GOAL_ID, selected["task_id"], status="HELD",
                     failure_evidence=failure_evidence,
                 )
                 _reconcile_claimed_tasks(store, claimed_this_run, goal_output, selected["task_id"])
-                # Preserve guarded runner sentinels: the parent workflow maps
-                # 78 to queue exhaustion and 79 to a held-task marker.
-                if child.returncode in {78, 79}:
-                    return child.returncode
                 if row is None:
                     _append_blocked(results_path, selected["task_id"], "goal_runtime_result_missing_or_ambiguous")
                 elif child.returncode == 0:

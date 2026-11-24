@@ -234,7 +234,7 @@ def test_partial_workflow_failure_does_not_durably_complete_unpublished_prior_ta
 
 
 @pytest.mark.parametrize("sentinel", [78, 79])
-def test_guarded_runner_sentinel_outcome_is_preserved_without_synthetic_failure(
+def test_guarded_runner_sentinel_preserves_upstream_gate_without_creating_goal_hold(
     tmp_path, monkeypatch, sentinel
 ):
     queue, catalog, state, results, stop = _inputs(tmp_path)
@@ -258,10 +258,67 @@ def test_guarded_runner_sentinel_outcome_is_preserved_without_synthetic_failure(
     assert bridge.run(args) == sentinel
     assert not results.exists()
     goal = json.loads(goal_output.read_text())
-    assert goal["tasks"][0]["status"] == "HELD"
-    assert goal["tasks"][0]["hold_reason"] == "guarded_runtime_or_evidence_gate_failed"
-    assert goal["tasks"][0]["failure_evidence"] == {
-        "stage": "child_runner",
-        "reason_code": "guarded_runner_sentinel",
-        "child_exit_code": sentinel,
+    # The child did not execute the task; its upstream HOLD/STOP gate remains
+    # authoritative. Do not turn that into a persistent second-layer Goal HOLD.
+    assert goal["tasks"][0]["status"] == "PENDING"
+    assert "hold_reason" not in goal["tasks"][0]
+
+
+@pytest.mark.parametrize("sentinel", [78, 79])
+def test_sentinel_after_prior_success_rolls_back_unpublished_goal(
+    tmp_path, monkeypatch, sentinel
+):
+    queue, catalog, state, results, stop = _inputs(tmp_path)
+    queue_data = json.loads(queue.read_text())
+    catalog_data = json.loads(catalog.read_text())
+    second = {
+        "id": "approved-test-task-2",
+        "instruction": "Run a second bounded test-only task",
+        "allowed_paths": ["tests/test_second.py"],
     }
+    queue_data["tasks"].append(second)
+    catalog_data["tasks"].append({**second, "execution_approved": True})
+    queue.write_text(json.dumps(queue_data))
+    catalog.write_text(json.dumps(catalog_data))
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+    monkeypatch.setattr(bridge, "_valid_success", lambda row, task_id: row.get("status") == "PASS")
+    calls = {"count": 0}
+
+    def fake_run(command, *, cwd, env, check):
+        calls["count"] += 1
+        selected = json.loads(Path(env["AUTONOMOUS_LOOP_TASK_QUEUE"]).read_text())["tasks"][0]
+        if calls["count"] == 1:
+            row = {
+                "task_id": selected["id"],
+                "status": "PASS",
+                "exit_code": 0,
+                "base_sha": "a" * 40,
+                "produced_sha": "b" * 40,
+                "run_nonce": "nonce-1",
+            }
+            with results.open("a") as stream:
+                stream.write(json.dumps(row) + "\n")
+            return SimpleNamespace(returncode=0)
+        return SimpleNamespace(returncode=sentinel)
+
+    monkeypatch.setattr(bridge.subprocess, "run", fake_run)
+    goal_output = tmp_path / "goal-pending.json"
+    args = SimpleNamespace(
+        catalog=catalog,
+        state=state,
+        results=results,
+        stop_file=stop,
+        goal_state_output=goal_output,
+        max_tasks=2,
+    )
+
+    assert bridge.run(args) == sentinel
+    rows = [json.loads(line) for line in results.read_text().splitlines()]
+    assert [row["task_id"] for row in rows] == ["approved-test-task"]
+    goal = json.loads(goal_output.read_text())
+    assert {task["task_id"]: task["status"] for task in goal["tasks"]} == {
+        "approved-test-task": "PENDING",
+        "approved-test-task-2": "PENDING",
+    }
+    assert all("completion_evidence" not in task for task in goal["tasks"])
