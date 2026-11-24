@@ -597,5 +597,13 @@ def test_stage185_signed_checkpoint_connects_to_stage186_and_rejects_tampering()
             snapshots(parent=forged.certificate_digest),
             parent_readiness_digest=forged.certificate_digest,
             parent_generation=forged.proposed_generation,
-            verify_parent_readiness=stage185_checkpoint_verifier(forged, verify_signature=VERIFY),
+            verify_parent_readiness=stage185_checkpoint_verifier(
+                forged,
+                verify_signature=VERIFY,
+                verify_current_checkpoint=lambda digest, generation, candidate_id: (
+                    digest == checkpoint.certificate_digest
+                    and generation == checkpoint.proposed_generation
+                    and candidate_id in checkpoint.candidate_ids
+                ),
+            ),
         )
