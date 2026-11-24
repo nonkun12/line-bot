@@ -35,8 +35,8 @@ def test_unknown_reason_uses_allowlisted_failure_evidence():
     })
     assert result["category"] == "RESULT_COLLECTION_FAILURE"
     assert result["next_action"] == "inspect_result_collection"
-    assert result["repair_candidate_status"] == "REVIEW_REQUIRED"
-    assert result["repair_candidate_requires_human_review"] is True
+    assert result["recovery_path_status"] == "REVIEW_REQUIRED"
+    assert result["recovery_requires_human_review"] is True
     assert result["failure_reason_codes"] == ["result_missing_or_ambiguous"]
 
 
@@ -61,6 +61,6 @@ def test_guarded_runner_sentinel_is_never_a_repair_candidate():
         }],
     })
     assert result["category"] == "SAFETY_GATE"
-    assert result["repair_candidate_status"] == "NO_REPAIR"
+    assert result["recovery_path_status"] == "NO_REPAIR"
     assert result["automatic_repair_eligible"] is False
     assert result["hold_clear_authorized"] is False
