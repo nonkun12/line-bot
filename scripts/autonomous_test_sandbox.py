@@ -82,7 +82,14 @@ def _runtime_directories(python: str) -> list[Path]:
             )
             match = re.search(r"Requesting program interpreter:\s*(/[^\]]+)", result.stdout)
             if result.returncode == 0 and match:
-                loader = Path(match.group(1)).resolve()
+                # Preserve the interpreter's literal PT_INTERP parent (for
+                # example /lib64) as a mount destination. Resolving it first
+                # can leave the namespace without the path the ELF loader
+                # itself requests when /lib64 is a host-side symlink.
+                loader_path = Path(match.group(1))
+                if loader_path.parent != Path("/") and loader_path.parent != Path.home():
+                    candidates.add(loader_path.parent)
+                loader = loader_path.resolve()
                 if loader.is_file() and loader != Path("/") and loader.parent != Path.home():
                     candidates.add(loader.parent)
 
