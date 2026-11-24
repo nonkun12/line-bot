@@ -11,8 +11,11 @@ def write(path: Path, data):
     return path
 
 
-def state(completed=None, tasks=None):
-    return {"completed": completed or [], "recovery_ai": {"schema_version": 1, "tasks": tasks or {}, "checkpoint": None}}
+def state(completed=None, tasks=None, goal_autopilot=None):
+    result = {"completed": completed or [], "recovery_ai": {"schema_version": 1, "tasks": tasks or {}, "checkpoint": None}}
+    if goal_autopilot is not None:
+        result["goal_autopilot"] = goal_autopilot
+    return result
 
 
 def issue(task_id="fresh-task", labels=("autonomous-task-candidate",), path="tests/test_example.py",
@@ -362,4 +365,39 @@ def test_proposals_reject_conflicting_registered_definitions_for_same_task_id(tm
                 registered("conflicting-task"),
                 registered("conflicting-task", instruction="A different registered instruction."),
             ],
+        )
+
+
+@pytest.mark.parametrize("status", ["PENDING", "IN_PROGRESS", "HELD", "FAILED", "COMPLETED"])
+def test_task_already_in_goal_autopilot_is_not_reproposed_or_requeued(tmp_path, status):
+    task_id = "goal-state-task"
+    goal = {
+        "goal_id": "distributed-loop-main-goal-v1",
+        "tasks": [{"task_id": task_id, "status": status}],
+    }
+    approved = issue(task_id, labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))
+    result, qp = run(
+        tmp_path, [approved], state(goal_autopilot=goal),
+        registered_tasks=[registered(task_id)],
+    )
+
+    assert result["approved_count"] == 0
+    assert result["proposal_count"] == 0
+    assert result["diagnostics"]["excluded_task_count"] == 1
+    assert json.loads(qp.read_text(encoding="utf-8"))["tasks"] == []
+
+
+@pytest.mark.parametrize("goal", [
+    [],
+    {"goal_id": "wrong-goal", "tasks": []},
+    {"goal_id": "distributed-loop-main-goal-v1", "tasks": {}},
+    {"goal_id": "distributed-loop-main-goal-v1", "tasks": [{"task_id": "x"}]},
+    {"goal_id": "distributed-loop-main-goal-v1", "tasks": [{"task_id": "x", "status": "HELD"}, {"task_id": "x", "status": "PENDING"}]},
+])
+def test_fails_closed_on_invalid_goal_autopilot_state(tmp_path, goal):
+    approved = issue("new-approved-task", labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))
+    with pytest.raises(ValueError, match="GoalAutopilot"):
+        run(
+            tmp_path, [approved], state(goal_autopilot=goal),
+            registered_tasks=[registered("new-approved-task")],
         )
