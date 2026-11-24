@@ -210,9 +210,8 @@ def build_sandbox_command(
     if git_templates.is_dir():
         mounts[str(git_templates)] = git_templates.resolve()
     mounts[str(root)] = root
-    # Mount the interpreter directory at a fresh namespace path. Bubblewrap
-    # does not create a missing file target for --ro-bind.
-    mounts["/python-runtime"] = interpreter_dir
+    # The interpreter parent is already mounted read-only at its original
+    # absolute path above; execute it there rather than relying on an alias.
 
     destinations = sorted(mounts, key=lambda value: (len(Path(value).parts), value))
     created: set[str] = {"/", "/proc", "/dev", "/tmp", "/run", "/var", "/var/run", "/home"}
@@ -228,7 +227,6 @@ def build_sandbox_command(
         source = str(mounts[destination])
         args.extend(["--ro-bind", source, destination])
 
-    args.extend(["--ro-bind", str(interpreter), "/python"])
 
     args.extend([
         "--chdir", str(root),
@@ -245,7 +243,7 @@ def build_sandbox_command(
         ),
         "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
         "--",
-        f"/python-runtime/{interpreter.name}", "-m", "pytest", "-q",
+        str(interpreter), "-m", "pytest", "-q",
         "--tb=native", "-p", "no:cacheprovider", test_path,
     ])
     return args
