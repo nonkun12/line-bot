@@ -80,16 +80,23 @@ def verify_append_only_test_change(original_text: str, produced_text: str) -> st
     new_nodes = after.body
     # One narrowly allowlisted module-level import is needed by the safe_stock_quote
     # regression test. Imports inside the generated test body remain forbidden.
-    allowed_imports = [
-        node for node in new_nodes
-        if isinstance(node, ast.ImportFrom)
-        and node.module == "core.stocks"
-        and [(alias.name, alias.asname) for alias in node.names]
-        == [("StockQuote", None), ("safe_stock_quote", None)]
-    ]
-    if len(allowed_imports) > 1:
+    def is_allowed_stock_import(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.ImportFrom)
+            and node.module == "core.stocks"
+            and [(alias.name, alias.asname) for alias in node.names]
+            == [("StockQuote", None), ("safe_stock_quote", None)]
+        )
+
+    old_import_count = sum(1 for node in old_nodes if is_allowed_stock_import(node))
+    new_import_nodes = [node for node in new_nodes if is_allowed_stock_import(node)]
+    if old_import_count > 1 or len(new_import_nodes) > 1:
         raise ValueError("new_test_module_import_not_allowlisted")
-    retained_nodes = [node for node in new_nodes if node not in allowed_imports]
+    if len(new_import_nodes) not in {old_import_count, old_import_count + 1}:
+        raise ValueError("new_test_module_import_not_allowlisted")
+    retained_nodes = list(new_nodes)
+    if len(new_import_nodes) == old_import_count + 1:
+        retained_nodes.remove(new_import_nodes[0])
     if len(retained_nodes) != len(old_nodes) + 1:
         raise ValueError("change_must_append_exactly_one_top_level_test_function")
 
