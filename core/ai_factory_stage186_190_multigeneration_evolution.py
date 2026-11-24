@@ -96,11 +96,17 @@ def _signed(digest: str, signature: str, verifier: Callable[[str, str], bool], l
 
 
 def stage185_checkpoint_verifier(
-    certificate: EvolutionReadinessCertificate, *,
+    certificate: EvolutionReadinessCertificate,
+    *,
     verify_signature: Callable[[str, str], bool],
+    verify_current_checkpoint: Callable[[str, int, str], bool],
 ) -> Callable[[str, int, str], bool]:
-    """Connect a signed Stage 185 readiness certificate to Stage 186 lineage checks."""
-    return stage185_readiness_verifier(certificate, verify_signature=verify_signature)
+    """Connect a signed certificate to a read-only current-checkpoint verifier."""
+    return stage185_readiness_verifier(
+        certificate,
+        verify_signature=verify_signature,
+        verify_current_checkpoint=verify_current_checkpoint,
+    )
 
 
 def _trusted_checkpoint(digest: str, generation: int,
