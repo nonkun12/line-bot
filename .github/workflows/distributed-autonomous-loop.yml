@@ -503,6 +503,25 @@ jobs:
             echo "::warning::Work Finder AI discovery failed (exit=$rc); bounded loop outcome classification will continue."
           fi
 
+      - name: Provision and verify OS-level test sandbox
+        if: success() && env.TRIGGER_MODE == 'normal'
+        shell: bash
+        run: |
+          set +e
+          ready=false
+          if sudo apt-get update -qq && sudo apt-get install -y bubblewrap; then
+            if bwrap --unshare-all --die-with-parent --new-session \
+              --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp -- /bin/true; then
+              ready=true
+            fi
+          fi
+          echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY=$ready" >> "$GITHUB_ENV"
+          if [ "$ready" = "true" ]; then
+            echo "OS-level test sandbox verified: network namespace + read-only root filesystem."
+          else
+            echo "::warning::OS-level test sandbox unavailable; analyzer-generated test admission remains skipped."
+          fi
+
       - name: Policy-admit one verified test-only task (run-local only)
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
@@ -510,9 +529,9 @@ jobs:
         run: |
           set -euo pipefail
           POLICY_QUEUE=/tmp/autonomous-loop-policy-runtime-queue.json
-          POLICY_CATALOG=/tmp/autonomous-loop-policy-runtime-catalog.json
+          POLICY_CATALOG="${RUNNER_TEMP}/autonomous-loop-policy-runtime-catalog.json"
           REVIEW_REPORT=/tmp/catalog-exhaustion-review-report.json
-          POLICY_REPORT=/tmp/autonomous-loop-policy-admission.json
+          POLICY_REPORT="${RUNNER_TEMP}/autonomous-loop-policy-admission.json"
           cp /tmp/autonomous-loop-runtime-queue.json "$POLICY_QUEUE"
           cp .github/autonomous-loop-task-catalog.json "$POLICY_CATALOG"
           if [ -s /tmp/catalog-exhaustion-report.json ]; then
@@ -553,6 +572,16 @@ jobs:
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=$POLICY_QUEUE" >> "$GITHUB_ENV"
           echo "AUTONOMOUS_LOOP_TASK_CATALOG=$POLICY_CATALOG" >> "$GITHUB_ENV"
           echo "CATALOG_EXHAUSTION_REVIEW_REPORT_PATH=$REVIEW_REPORT" >> "$GITHUB_ENV"
+          if jq -e '.status == "POLICY_ADMITTED"' "$POLICY_REPORT" >/dev/null 2>&1; then
+            catalog_sha="$(sha256sum "$POLICY_CATALOG" | awk '{print $1}')"
+            {
+              echo "AUTONOMOUS_TEST_POLICY_ADMISSION=true"
+              echo "AUTONOMOUS_POLICY_CATALOG_PATH=$POLICY_CATALOG"
+              echo "AUTONOMOUS_POLICY_REPORT_PATH=$POLICY_REPORT"
+              echo "AUTONOMOUS_POLICY_CATALOG_SHA256=$catalog_sha"
+              echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_REQUIRED=true"
+            } >> "$GITHUB_ENV"
+          fi
           cat "$POLICY_REPORT" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create bounded review-only task issues from analyzer findings
