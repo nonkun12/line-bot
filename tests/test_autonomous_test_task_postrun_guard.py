@@ -18,6 +18,23 @@ def test_accepts_exactly_one_appended_test_function():
     assert verify_append_only_test_change(before, after) == "test_new_boundary"
 
 
+def test_accepts_only_the_exact_safe_stock_module_import():
+    before = "def test_existing():\\n    assert True\\n"
+    after = (
+        "from core.stocks import StockQuote, safe_stock_quote\\n"
+        + before
+        + "\\ndef test_new():\\n    assert safe_stock_quote is not None\\n"
+    )
+    assert verify_append_only_test_change(before, after) == "test_new"
+
+
+def test_rejects_other_module_level_imports():
+    before = "def test_existing():\\n    assert True\\n"
+    after = "import os\\n" + before + "\\ndef test_new():\\n    assert True\\n"
+    with pytest.raises(ValueError, match="change_must_append_exactly_one"):
+        verify_append_only_test_change(before, after)
+
+
 def test_rejects_modification_of_existing_test():
     before = "def test_existing():\n    assert True\n"
     after = "def test_existing():\n    assert False\n\n\ndef test_new():\n    assert True\n"
