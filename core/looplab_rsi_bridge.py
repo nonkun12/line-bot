@@ -64,10 +64,13 @@ def record_evaluation_as_rsi_observation(
         raise ValueError("independent_evidence_signer_required")
     verify_adapter_signature = executor.verify_adapter_signature
     resolve_locked_dataset = executor.resolve_locked_dataset
+    safety_state_provider = executor.safety_state_provider
     if not callable(verify_adapter_signature):
         raise ValueError("trusted_adapter_signature_verifier_required")
     if not callable(resolve_locked_dataset):
         raise ValueError("trusted_dataset_registry_required")
+    if not callable(safety_state_provider):
+        raise ValueError("trusted_safety_state_provider_required")
 
     record = evaluation_result.get("record")
     evaluation = evaluation_result.get("evaluation")
@@ -99,6 +102,11 @@ def record_evaluation_as_rsi_observation(
         raise ValueError("evaluation_record_schema_invalid")
     if record.get("experiment_id") != experiment_id:
         raise ValueError("record_experiment_id_mismatch")
+    safety = record.get("safety")
+    trusted_safety = safety_state_provider()
+    if (not isinstance(safety, Mapping) or not isinstance(trusted_safety, Mapping)
+            or dict(safety) != dict(trusted_safety)):
+        raise ValueError("safety_state_not_current_or_trusted")
     if held_out.get("locked") is not True:
         raise ValueError("held_out_fixture_not_locked")
     dataset_id = held_out.get("dataset_id")
