@@ -7,6 +7,12 @@ from scripts import run_guarded_runtime as guarded_runtime
 from scripts.run_guarded_runtime import guarded_ask
 
 
+def _bind_policy_catalog_digest(report_path, catalog_path):
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["admitted_catalog_sha256"] = hashlib.sha256(catalog_path.read_bytes()).hexdigest()
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+
 def test_run_local_policy_catalog_requires_exact_task_path_and_base_sha(monkeypatch, tmp_path):
     from scripts.autonomous_task_target_allowlist import TARGETS
 
@@ -28,6 +34,7 @@ def test_run_local_policy_catalog_requires_exact_task_path_and_base_sha(monkeypa
         "allowed_paths": [test_path],
         "execution_approved": True,
     }]}), encoding="utf-8")
+    _bind_policy_catalog_digest(report_path, catalog_path)
     monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_REPORT_PATH", report_path)
     monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_CATALOG_PATH", catalog_path)
     monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "true")
@@ -77,6 +84,7 @@ def test_run_local_policy_catalog_accepts_only_scheduler_dispatch(monkeypatch, t
             "execution_approval": "DENY",
         },
     }), encoding="utf-8")
+    _bind_policy_catalog_digest(report_path, catalog_path)
     monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_REPORT_PATH", report_path)
     monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_CATALOG_PATH", catalog_path)
     monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "true")
@@ -158,6 +166,7 @@ def test_run_local_policy_catalog_rejects_user_spoofed_scheduler_dispatch(monkey
         "sender": {"login": "nonkun12"},
         "inputs": {"policy_dispatch": "30m_scheduler", "max_tasks": "1"},
     }), encoding="utf-8")
+    _bind_policy_catalog_digest(report_path, catalog_path)
     monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_REPORT_PATH", report_path)
     monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_CATALOG_PATH", catalog_path)
     monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "true")
@@ -195,6 +204,7 @@ def test_run_local_policy_catalog_rejects_stale_base_sha(monkeypatch, tmp_path):
         "allowed_paths": [test_path],
         "execution_approved": True,
     }]}), encoding="utf-8")
+    _bind_policy_catalog_digest(report_path, catalog_path)
     monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_REPORT_PATH", report_path)
     monkeypatch.setattr(guarded_runtime, "POLICY_ADMISSION_CATALOG_PATH", catalog_path)
     monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "true")
