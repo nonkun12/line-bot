@@ -331,3 +331,59 @@ def test_sentinel_after_prior_success_rolls_back_unpublished_goal(
         "approved-test-task-2": "PENDING",
     }
     assert all("completion_evidence" not in task for task in goal["tasks"])
+
+
+def _durable_goal(task_id="old-held", status="HELD"):
+    return {
+        "goal_id": bridge.GOAL_ID,
+        "objective": "preserve existing goal state",
+        "acceptance_criteria": [{"id": "existing-goal-complete", "verified": False}],
+        "safety_gate": True,
+        "kill_switch": False,
+        "tasks": [{
+            "task_id": task_id, "status": status, "kind": "TEST",
+            "execution_authorized": True, "allowed_paths": ["tests/test_example.py"],
+            **({"hold_reason": "human_review"} if status == "HELD" else {}),
+        }],
+    }
+
+
+def test_run_scoped_goal_ignores_unrelated_held_task_without_mutating_durable_goal(tmp_path):
+    state = {"version": 1, "completed": [], "goal_autopilot": _durable_goal()}
+    original = json.loads(json.dumps(state["goal_autopilot"]))
+    queue, catalog, durable, results, stop = _inputs(tmp_path)
+    authorized = bridge._authorized_queue(queue, catalog, set())
+    store = bridge.GoalStateStore(tmp_path / "scoped.db")
+
+    revision, scoped = bridge._load_goal(store, state, authorized, set())
+
+    assert revision == 0
+    assert scoped["goal_id"] == bridge.GOAL_ID
+    assert [task["task_id"] for task in scoped["tasks"]] == ["approved-test-task"]
+    assert state["goal_autopilot"] == original
+    assert scoped["safety_gate"] is True
+    assert scoped["kill_switch"] is False
+
+
+def test_run_scoped_goal_never_retries_a_candidate_already_held(tmp_path):
+    state = {"version": 1, "completed": [], "goal_autopilot": _durable_goal("approved-test-task")}
+    queue, catalog, durable, results, stop = _inputs(tmp_path)
+    authorized = bridge._authorized_queue(queue, catalog, set())
+    store = bridge.GoalStateStore(tmp_path / "scoped.db")
+
+    with pytest.raises(ValueError, match="candidate_task_requires_human_review"):
+        bridge._load_goal(store, state, authorized, set())
+
+
+def test_run_scoped_goal_still_blocks_global_kill_switch_and_inflight_work(tmp_path):
+    queue, catalog, durable, results, stop = _inputs(tmp_path)
+    authorized = bridge._authorized_queue(queue, catalog, set())
+    store = bridge.GoalStateStore(tmp_path / "scoped.db")
+    stopped = {"version": 1, "completed": [], "goal_autopilot": _durable_goal()}
+    stopped["goal_autopilot"]["kill_switch"] = True
+    with pytest.raises(ValueError, match="durable_goal_state_invalid|global_goal_safety_gate_blocked"):
+        bridge._load_goal(store, stopped, authorized, set())
+
+    inflight = {"version": 1, "completed": [], "goal_autopilot": _durable_goal("old-inflight", "IN_PROGRESS")}
+    with pytest.raises(ValueError, match="in_flight_task_requires_reconciliation"):
+        bridge._load_goal(store, inflight, authorized, set())
