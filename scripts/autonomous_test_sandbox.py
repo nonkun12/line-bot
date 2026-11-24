@@ -71,6 +71,21 @@ def _runtime_directories(python: str) -> list[Path]:
         candidates.add(git_executable.parent)
         executables.append(git_executable)
 
+    # ELF PT_INTERP (the dynamic loader) is not reliably listed by ldd.
+    # Discover and mount only that exact loader and its containing directory.
+    readelf = shutil.which("readelf")
+    if readelf:
+        for binary in executables:
+            result = subprocess.run(
+                [readelf, "-l", str(binary)], text=True, capture_output=True,
+                timeout=10, env={"PATH": os.defpath, "LANG": "C"},
+            )
+            match = re.search(r"Requesting program interpreter:\s*(/[^\]]+)", result.stdout)
+            if result.returncode == 0 and match:
+                loader = Path(match.group(1)).resolve()
+                if loader.is_file() and loader != Path("/") and loader.parent != Path.home():
+                    candidates.add(loader.parent)
+
     # Bind only directories containing actual ELF dependencies, rather than
     # exposing the host root, all of /etc, or the whole Python prefix.
     ldd = shutil.which("ldd")
@@ -208,6 +223,17 @@ def build_sandbox_command(
     # components; the explicit file bind makes exec resolution deterministic.
     interpreter = Path(python).resolve(strict=True)
     args.extend(["--ro-bind", str(interpreter), str(interpreter)])
+    readelf = shutil.which("readelf")
+    if readelf:
+        result = subprocess.run(
+            [readelf, "-l", str(interpreter)], text=True, capture_output=True,
+            timeout=10, env={"PATH": os.defpath, "LANG": "C"},
+        )
+        match = re.search(r"Requesting program interpreter:\s*(/[^\]]+)", result.stdout)
+        if result.returncode == 0 and match:
+            loader = Path(match.group(1))
+            if loader.is_file():
+                args.extend(["--ro-bind", str(loader.resolve()), str(loader)])
 
     args.extend([
         "--chdir", str(root),
