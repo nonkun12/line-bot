@@ -503,6 +503,27 @@ jobs:
             echo "::warning::Work Finder AI discovery failed (exit=$rc); bounded loop outcome classification will continue."
           fi
 
+      - name: Provision and verify network-isolated test sandbox
+        if: success() && env.TRIGGER_MODE == 'normal'
+        run: |
+          set -euo pipefail
+          if ! command -v bwrap >/dev/null 2>&1; then
+            if ! sudo apt-get update -qq || ! sudo apt-get install -y bubblewrap; then
+              echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY=false" >> "$GITHUB_ENV"
+              echo "POLICY_SANDBOX=BLOCKED reason=bubblewrap_unavailable" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+          if bwrap --die-with-parent --new-session --unshare-net --unshare-pid \
+            --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp -- \
+            python -c 'import socket; s=socket.socket(); s.settimeout(1);\ntry:\n s.connect(("1.1.1.1", 53)); raise SystemExit(1)\nexcept OSError: pass' ; then
+            echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY=true" >> "$GITHUB_ENV"
+            echo "POLICY_SANDBOX=PASS network_namespace=isolated filesystem=read_only tempfs=/tmp" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY=false" >> "$GITHUB_ENV"
+            echo "POLICY_SANDBOX=BLOCKED reason=isolation_probe_failed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Policy-admit one verified test-only task (run-local only)
         if: success() && env.TRIGGER_MODE == 'normal'
         env:
@@ -549,6 +570,11 @@ jobs:
               reason=analyzer_report_missing
             fi
             printf '{"version":1,"policy_version":"test-only-append-v1","status":"POLICY_SKIPPED","reason":"%s","persistent_catalog_modified":false,"durable_state_modified":false,"held_tasks_resumed":false}\n' "$reason" > "$POLICY_REPORT"
+          fi
+          if python -c 'import json, os; from pathlib import Path; p=Path("/tmp/autonomous-loop-policy-admission.json"); d=json.loads(p.read_text(encoding="utf-8")); d["base_sha"]=os.environ["GITHUB_SHA"]; p.write_text(json.dumps(d, ensure_ascii=False, sort_keys=True)+"\\n", encoding="utf-8") if d.get("status")=="POLICY_ADMITTED" else None; raise SystemExit(0 if d.get("status")=="POLICY_ADMITTED" else 1)'; then
+            echo "AUTONOMOUS_TEST_ADMISSION_POLICY=true" >> "$GITHUB_ENV"
+          else
+            echo "AUTONOMOUS_TEST_ADMISSION_POLICY=false" >> "$GITHUB_ENV"
           fi
           echo "AUTONOMOUS_LOOP_TASK_QUEUE=$POLICY_QUEUE" >> "$GITHUB_ENV"
           echo "AUTONOMOUS_LOOP_TASK_CATALOG=$POLICY_CATALOG" >> "$GITHUB_ENV"
