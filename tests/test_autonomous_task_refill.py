@@ -762,3 +762,60 @@ def test_refill_rejects_non_list_tasks_in_queue_or_catalog(tmp_path: Path, targe
         build_queue(queue, catalog, completed, output)
 
     assert not output.exists()
+
+
+def test_refill_skips_goal_autopilot_held_catalog_tasks_without_clearing_hold(tmp_path: Path):
+    queue, catalog, _ = _inputs(
+        tmp_path,
+        existing=[_task("task-goal-held")],
+        candidates=[_task("task-goal-held"), _task("task-independent-ready")],
+    )
+    state = _write(
+        tmp_path / "state.json",
+        {
+            "version": 1,
+            "completed": [],
+            "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None},
+            "goal_autopilot": {
+                "goal_id": "goal-1",
+                "tasks": [
+                    {"task_id": "task-goal-held", "status": "HELD"},
+                    {"task_id": "task-independent-ready", "status": "PENDING"},
+                ],
+            },
+        },
+    )
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, state, output)
+    runtime = json.loads(output.read_text(encoding="utf-8"))
+    persisted = json.loads(state.read_text(encoding="utf-8"))
+
+    assert report["skipped_goal_blocked_ids"] == ["task-goal-held"]
+    assert report["skipped_catalog_goal_blocked_ids"] == ["task-goal-held"]
+    assert report["added_ids"] == ["task-independent-ready"]
+    assert [task["id"] for task in runtime["tasks"]] == ["task-independent-ready"]
+    assert persisted["goal_autopilot"]["tasks"][0]["status"] == "HELD"
+
+
+@pytest.mark.parametrize(
+    "goal_autopilot",
+    [[], {"tasks": "not-a-list"}, {"tasks": [{"task_id": "bad id", "status": "HELD"}]}],
+)
+def test_refill_fails_closed_on_malformed_goal_autopilot_state(tmp_path: Path, goal_autopilot):
+    queue, catalog, _ = _inputs(tmp_path, candidates=[_task("task-ready-one")])
+    state = _write(
+        tmp_path / "state.json",
+        {
+            "version": 1,
+            "completed": [],
+            "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None},
+            "goal_autopilot": goal_autopilot,
+        },
+    )
+    output = tmp_path / "runtime.json"
+
+    with pytest.raises(ValueError, match="GoalAutopilot"):
+        build_queue(queue, catalog, state, output)
+
+    assert not output.exists()
