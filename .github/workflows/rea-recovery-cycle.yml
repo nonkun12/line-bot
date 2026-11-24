@@ -1,0 +1,94 @@
+name: REA Recovery Cycle - Verified Fix to Fresh Loop
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: rea-recovery-cycle-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch-fresh-loop:
+    # Merging a specifically labelled recovery PR is the human approval boundary.
+    # This workflow never approves a task, clears HOLD, merges, or deploys.
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.user.login == 'nonkun12' &&
+      contains(github.event.pull_request.labels.*.name, 'rea-recovery-approved')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify merged recovery PR checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${REPOSITORY}/commits/${MERGE_SHA}/check-runs" > checks.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("checks.json").read_text(encoding="utf-8"))
+          checks = data.get("check_runs", [])
+          if not checks:
+              raise SystemExit("BLOCKED: merged recovery PR has no check-run evidence")
+          bad = [
+              (item.get("name", "unknown"), item.get("status"), item.get("conclusion"))
+              for item in checks
+              if item.get("status") != "completed"
+              or item.get("conclusion") not in {"success", "skipped"}
+          ]
+          successful = [item for item in checks if item.get("conclusion") == "success"]
+          if bad or not successful:
+              raise SystemExit(f"BLOCKED: recovery PR checks are not clean: {bad[:20]}")
+          print(f"Verified {len(checks)} completed check runs; {len(successful)} successful.")
+          PY
+
+      - name: Refuse duplicate or overlapping Loop runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${REPOSITORY}/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=100" > runs.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("runs.json").read_text(encoding="utf-8"))
+          active = [
+              (run.get("id"), run.get("status"), run.get("event"))
+              for run in data.get("workflow_runs", [])
+              if run.get("status") in {"queued", "in_progress", "waiting", "requested"}
+          ]
+          if active:
+              raise SystemExit(f"BLOCKED: an existing Distributed Loop is active: {active[:10]}")
+          PY
+
+      - name: Dispatch one fresh Distributed Loop after verified fix
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          MERGED_PR: ${{ github.event.pull_request.number }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          REQUEST_ID="$(python - <<'PY'
+          import hashlib, os
+          value = f"rea-recovery:{os.environ['MERGED_PR']}:{os.environ['MERGE_SHA']}"
+          print(hashlib.sha256(value.encode()).hexdigest()[:32])
+          PY
+          )"
+          gh workflow run distributed-autonomous-loop.yml --repo "${REPOSITORY}" --ref main \
+            -f execution_approval=DENY \
+            -f max_tasks=1 \
+            -f request_id="${REQUEST_ID}"
+          echo "Dispatched one fresh Loop with execution_approval=DENY and max_tasks=1."
+          echo "The Loop's own task-level authorization and HOLD gates remain authoritative."
