@@ -1043,3 +1043,39 @@ def test_run_local_policy_catalog_rejects_catalog_digest_mismatch(monkeypatch, t
 
     assert result["gate"] == "BLOCKED"
     assert result["execution_authorized"] is False
+
+
+@pytest.mark.parametrize(
+    "exit_code,gate_name,reason_code",
+    [(80, "rea", "rea_denied"), (81, "execution_approval", "approval_missing"),
+     (82, "emergency_stop", "emergency_stop_active")],
+)
+def test_blocked_summary_contains_explicit_no_authority_gate_evidence(
+    monkeypatch, tmp_path, exit_code, gate_name, reason_code
+):
+    monkeypatch.setattr(guarded_runtime, "_git", lambda *args: "a" * 40)
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "task-gate")
+    monkeypatch.setenv("AUTONOMOUS_RUN_NONCE", "b" * 32)
+    rea = {
+        "gate": "BLOCKED", "reason_code": "rea_denied",
+        "execution_authorized": False, "patch_authorized": False,
+        "hold_clear_authorized": False, "merge_deploy_authorized": False,
+    }
+    approval = {
+        "gate": "BLOCKED", "reason_code": reason_code,
+        "execution_authorized": False, "patch_authorized": False,
+        "hold_clear_authorized": False, "merge_deploy_authorized": False,
+    }
+    summary = tmp_path / "summary.json"
+    guarded_runtime._write_summary(
+        "BLOCKED", exit_code, "a" * 40, summary, rea, approval
+    )
+    payload = json.loads(summary.read_text(encoding="utf-8"))
+    assert payload["status"] == "BLOCKED"
+    assert payload["failure_reason"] == f"guarded_runtime_gate:{gate_name}:{reason_code}"
+    assert payload["gate_evidence"]["gate"] == "BLOCKED"
+    assert payload["gate_evidence"]["gate_name"] == gate_name
+    assert payload["gate_evidence"]["exit_code"] == exit_code
+    assert all(payload["gate_evidence"][key] is False for key in (
+        "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"
+    ))
