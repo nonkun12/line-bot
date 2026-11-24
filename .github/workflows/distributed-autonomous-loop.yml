@@ -1631,10 +1631,6 @@ jobs:
             fi
           } | tee /tmp/distributed-final-report.txt >> "$GITHUB_STEP_SUMMARY"
 
-          if { [ "${GITHUB_EVENT_NAME}" = "issue_comment" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request_target" ]; } && [ -n "${PR_NUMBER:-}" ] && command -v gh >/dev/null 2>&1; then
-            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/distributed-final-report.txt || true
-          fi
-
           # A BLOCKED report must fail the source workflow too. Otherwise workflow_run
           # consumers may see conclusion=success and trust the Sheets artifact despite
           # invalid queue-progress evidence.
@@ -1665,6 +1661,11 @@ jobs:
             echo "- RSI取込: ${ingestion}"
             echo "- 実行・パッチ・HOLD解除・STOP解除・マージ・デプロイ権限: 付与なし"
           } | tee -a /tmp/distributed-final-report.txt >> "$GITHUB_STEP_SUMMARY"
+
+          # Publish only after LoopLab has appended its final status to the report.
+          if { [ "${GITHUB_EVENT_NAME}" = "issue_comment" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request_target" ]; } && [ -n "${PR_NUMBER:-}" ] && command -v gh >/dev/null 2>&1; then
+            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/distributed-final-report.txt || true
+          fi
 
       - name: Wake Render before LINE final report
         if: always()
