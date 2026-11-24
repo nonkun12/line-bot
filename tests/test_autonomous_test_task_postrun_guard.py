@@ -139,6 +139,22 @@ def _policy_git_repo(tmp_path: Path):
     return repo, target, base, produced, policy, rows
 
 
+def test_policy_run_skips_when_policy_task_was_not_executed(tmp_path):
+    repo, target, base, produced, policy, _ = _policy_git_repo(tmp_path)
+    result = verify_policy_run(policy, [], repo, base)
+    assert result["status"] == "POLICY_GUARD_SKIPPED"
+    assert result["reason"] == "policy_task_not_executed"
+
+
+def test_policy_run_skips_when_policy_task_failed_before_commit(tmp_path):
+    repo, target, base, produced, policy, rows = _policy_git_repo(tmp_path)
+    rows[0]["status"] = "BLOCKED"
+    rows[0]["exit_code"] = 80
+    result = verify_policy_run(policy, rows, repo, base)
+    assert result["status"] == "POLICY_GUARD_SKIPPED"
+    assert result["reason"] == "policy_task_did_not_complete_successfully"
+
+
 def test_policy_run_requires_produced_commit_to_be_checked_out_head(tmp_path):
     repo, target, base, produced, policy, rows = _policy_git_repo(tmp_path)
     _git(repo, "checkout", "--detach", base)
