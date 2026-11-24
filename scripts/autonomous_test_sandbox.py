@@ -24,6 +24,18 @@ def _runtime_directories(python: str) -> list[Path]:
     executable = Path(python).resolve(strict=True)
     candidates.add(executable.parent)
 
+    # Mount the dedicated Python installation prefix as one read-only tree.
+    # This preserves interpreter symlinks and avoids nested runtime mounts
+    # masking the executable inside bubblewrap's empty root.
+    prefix = Path(sys.prefix).resolve()
+    if (
+        prefix.is_dir()
+        and prefix != Path("/")
+        and prefix != Path.home()
+        and executable.is_relative_to(prefix)
+    ):
+        candidates.add(prefix)
+
     # Mount only the interpreter's executable directory plus the explicit
     # stdlib/site-packages/library directories below. Mounting the entire
     # prefix first can mask nested executable-directory binds in bwrap's
@@ -111,6 +123,14 @@ def _runtime_directories(python: str) -> list[Path]:
                             # target directory for symlinked library layouts.
                             candidates.add(library.parent)
                             candidates.add(library.resolve().parent)
+
+    # Prefer the single Python prefix over nested stdlib/site-packages/bin
+    # mounts. Keep external library/loader directories separate.
+    if prefix in candidates:
+        candidates = {
+            path for path in candidates
+            if path == prefix or not path.is_relative_to(prefix)
+        }
 
     # Never mount filesystem roots or broad user/credential locations.
     safe: set[Path] = set()
