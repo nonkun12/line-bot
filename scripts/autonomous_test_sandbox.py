@@ -23,28 +23,38 @@ def _runtime_directories(python: str) -> list[Path]:
     executable = Path(python).resolve(strict=True)
     candidates.add(executable.parent)
 
-    for raw in (sys.prefix, sys.base_prefix, *sys.path):
+    for raw in sys.path:
         if not raw:
             continue
         path = Path(raw)
         if path.exists() and path.is_dir():
             candidates.add(path.resolve())
 
-    # Bind only directories containing the interpreter's actual ELF
-    # dependencies, rather than exposing the host root or all of /etc.
+    # Include only the standard command directory and git when present; some
+    # allowlisted regression tests create temporary local git repositories.
+    git = shutil.which("git")
+    executables = [executable]
+    if git:
+        git_executable = Path(git).resolve(strict=True)
+        candidates.add(git_executable.parent)
+        executables.append(git_executable)
+
+    # Bind only directories containing actual ELF dependencies, rather than
+    # exposing the host root, all of /etc, or the whole Python prefix.
     ldd = shutil.which("ldd")
     if ldd:
-        result = subprocess.run(
-            [ldd, str(executable)], text=True, capture_output=True, timeout=10,
-            env={"PATH": os.defpath, "LANG": "C"},
-        )
-        if result.returncode == 0:
-            for line in result.stdout.splitlines():
-                match = re.search(r"=>\s+(/[^\s]+)|^\s*(/[^\s]+)", line)
-                if match:
-                    library = Path(match.group(1) or match.group(2))
-                    if library.exists():
-                        candidates.add(library.resolve().parent)
+        for binary in executables:
+            result = subprocess.run(
+                [ldd, str(binary)], text=True, capture_output=True, timeout=10,
+                env={"PATH": os.defpath, "LANG": "C"},
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    match = re.search(r"=>\\s+(/[^\\s]+)|^\\s*(/[^\\s]+)", line)
+                    if match:
+                        library = Path(match.group(1) or match.group(2))
+                        if library.exists():
+                            candidates.add(library.resolve().parent)
 
     # Never mount filesystem roots or broad user/credential locations.
     safe: set[Path] = set()
@@ -122,6 +132,16 @@ def build_sandbox_command(
     mounts: dict[str, Path] = {}
     for directory in runtime_dirs:
         mounts[str(directory)] = directory
+    # /bin is commonly a symlink to /usr/bin on hosted Ubuntu runners. The
+    # namespace starts empty, so provide both conventional command paths.
+    if Path("/usr/bin").is_dir():
+        mounts["/bin"] = Path("/usr/bin").resolve()
+    if git_dir := Path("/usr/lib/git-core"):
+        if git_dir.is_dir():
+            mounts[str(git_dir)] = git_dir.resolve()
+    if git_templates := Path("/usr/share/git-core"):
+        if git_templates.is_dir():
+            mounts[str(git_templates)] = git_templates.resolve()
     mounts[str(root)] = root
 
     destinations = sorted(mounts, key=lambda value: (len(Path(value).parts), value))
