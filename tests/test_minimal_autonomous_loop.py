@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1536,3 +1537,69 @@ def test_artifact_stop_state_unknown_when_shared_status_cannot_be_verified(monke
 
     monkeypatch.setattr(emergency_stop, "get_status", unavailable)
     assert loop.artifact_stop_state(tmp_path / "missing-stop-file") == "UNKNOWN"
+
+
+def _run_local_policy_catalog_fixture(tmp_path, monkeypatch, sha):
+    from scripts.autonomous_task_target_allowlist import TARGETS
+
+    task_id = "review-coverage-gap-0123456789"
+    test_path = TARGETS[0][1]
+    instruction = "Append one deterministic pytest test."
+    base_tasks = [{
+        "id": "reviewed-existing-task",
+        "instruction": "Existing reviewed task.",
+        "allowed_paths": ["tests/test_example.py"],
+        "execution_approved": True,
+    }]
+    catalog_path = tmp_path / "policy-catalog.json"
+    report_path = tmp_path / "policy-report.json"
+    catalog = {"version": 1, "tasks": [
+        *base_tasks,
+        {
+            "id": task_id,
+            "instruction": instruction,
+            "allowed_paths": [test_path],
+            "execution_approved": True,
+        },
+    ]}
+    catalog_bytes = (json.dumps(catalog, ensure_ascii=False, sort_keys=True, indent=2) + "\\n").encode()
+    catalog_path.write_bytes(catalog_bytes)
+    report_path.write_text(json.dumps({
+        "status": "POLICY_ADMITTED",
+        "policy_version": "test-only-append-v1",
+        "admitted_task_id": task_id,
+        "admitted_allowed_path": test_path,
+        "base_sha": sha,
+        "admitted_catalog_sha256": hashlib.sha256(catalog_bytes).hexdigest(),
+    }), encoding="utf-8")
+    monkeypatch.setattr(loop, "POLICY_ADMISSION_CATALOG_PATH", catalog_path)
+    monkeypatch.setattr(loop, "POLICY_ADMISSION_REPORT_PATH", report_path)
+    monkeypatch.setattr(loop, "_git_checked", lambda *args: (0, json.dumps({"tasks": base_tasks})))
+    monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "true")
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_CATALOG", str(catalog_path))
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps([test_path]))
+    return task_id
+
+
+def test_registered_catalog_accepts_only_digest_bound_run_local_test_task(tmp_path, monkeypatch):
+    sha = "b" * 40
+    task_id = _run_local_policy_catalog_fixture(tmp_path, monkeypatch, sha)
+
+    registered = loop._load_registered_catalog(sha)
+
+    assert [task["id"] for task in registered] == ["reviewed-existing-task", task_id]
+    assert registered[-1]["execution_approved"] is True
+    assert registered[-1]["repair_approved"] is False
+
+
+def test_registered_catalog_rejects_mutated_run_local_policy_catalog(tmp_path, monkeypatch):
+    sha = "c" * 40
+    _run_local_policy_catalog_fixture(tmp_path, monkeypatch, sha)
+    catalog_path = loop.POLICY_ADMISSION_CATALOG_PATH
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog["tasks"][-1]["instruction"] = "tampered instruction"
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="run_local_policy_evidence_mismatch"):
+        loop._load_registered_catalog(sha)
