@@ -1029,8 +1029,16 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
     for path in touched or []:
         if not path.endswith(".py"):
             continue
+        if os.environ.get("AUTONOMOUS_TEST_ADMISSION_SANDBOX_REQUIRED", "").strip().lower() == "true":
+            compile_command = [
+                sys.executable, "-B", "-c",
+                "import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'), filename=sys.argv[1])",
+                path,
+            ]
+        else:
+            compile_command = [sys.executable, "-m", "py_compile", path]
         compile_result = run(
-            [sys.executable, "-m", "py_compile", path],
+            compile_command,
             timeout=120,
             env=_test_process_env(),
         )
@@ -1085,6 +1093,8 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 sys.executable, "-m", "pytest", "-q", "--tb=native",
                 "-p", "no:cacheprovider", sandbox_paths[0],
             ]
+            if outputs:
+                outputs[-1] = "OS-isolated targeted pytest:"
             tests = run_pytest_sandboxed(
                 sandbox_cmd,
                 repo_root=ROOT,
