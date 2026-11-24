@@ -150,6 +150,14 @@ def record_loop_outcome(
         failure_reason.startswith("control_tower_gate:")
         or failure_reason.startswith("control_tower_rea:")
         or failure_reason == "control_tower_head_changed"
+        or (
+            failure_reason.startswith("guarded_runtime_gate:")
+            and isinstance(result.get("gate_evidence"), dict)
+            and result["gate_evidence"].get("gate") == "BLOCKED"
+            and all(result["gate_evidence"].get(key) is False for key in (
+                "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"
+            ))
+        )
     ):
         return {
             "recorded": False,

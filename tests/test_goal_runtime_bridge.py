@@ -387,3 +387,23 @@ def test_run_scoped_goal_still_blocks_global_kill_switch_and_inflight_work(tmp_p
     inflight = {"version": 1, "completed": [], "goal_autopilot": _durable_goal("old-inflight", "IN_PROGRESS")}
     with pytest.raises(ValueError, match="in_flight_task_requires_reconciliation"):
         bridge._load_goal(store, inflight, authorized, set())
+
+
+
+def test_validated_gate_block_is_not_turned_into_goal_hold():
+    row = {
+        "task_id": "task-gate", "status": "BLOCKED", "exit_code": 81,
+        "failure_reason": "guarded_runtime_gate:execution_approval:approval_missing",
+        "base_sha": "a" * 40, "produced_sha": "a" * 40, "run_nonce": "b" * 32,
+        "gate_evidence": {
+            "gate": "BLOCKED", "gate_name": "execution_approval",
+            "reason_code": "approval_missing", "exit_code": 81,
+            "execution_authorized": False, "patch_authorized": False,
+            "hold_clear_authorized": False, "merge_deploy_authorized": False,
+        },
+    }
+    assert bridge._valid_no_execution_block(row, "task-gate", 81) is True
+    assert bridge._valid_no_execution_block(row, "other-task", 81) is False
+    assert bridge._valid_no_execution_block(row, "task-gate", 1) is False
+    forged = dict(row, gate_evidence=dict(row["gate_evidence"], execution_authorized=True))
+    assert bridge._valid_no_execution_block(forged, "task-gate", 81) is False

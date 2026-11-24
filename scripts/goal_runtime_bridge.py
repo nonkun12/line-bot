@@ -221,6 +221,32 @@ def _record_preflight_rea(path: Path, expected_sha: str) -> None:
         print("REA_PREFLIGHT=BLOCKED reason=rea_preflight_record_failed", flush=True)
 
 
+def _valid_no_execution_block(row: dict[str, Any] | None, task_id: str, child_returncode: int) -> bool:
+    """Accept only an identity-bound guarded gate denial."""
+    if not isinstance(row, dict) or child_returncode not in {80, 81, 82}:
+        return False
+    evidence = row.get("gate_evidence")
+    expected_gate = {80: "rea", 81: "execution_approval", 82: "emergency_stop"}[child_returncode]
+    base_sha, produced_sha, nonce = row.get("base_sha"), row.get("produced_sha"), row.get("run_nonce")
+    return bool(
+        row.get("task_id") == task_id and row.get("status") == "BLOCKED"
+        and row.get("exit_code") == child_returncode
+        and isinstance(base_sha, str) and len(base_sha) == 40
+        and all(ch in "0123456789abcdef" for ch in base_sha)
+        and produced_sha == base_sha
+        and isinstance(nonce, str) and len(nonce) == 32
+        and all(ch in "0123456789abcdef" for ch in nonce)
+        and isinstance(evidence, dict) and evidence.get("gate") == "BLOCKED"
+        and evidence.get("gate_name") == expected_gate
+        and evidence.get("exit_code") == child_returncode
+        and isinstance(evidence.get("reason_code"), str) and bool(evidence.get("reason_code").strip())
+        and row.get("failure_reason") == "guarded_runtime_gate:" + expected_gate + ":" + evidence.get("reason_code")
+        and all(evidence.get(key) is False for key in (
+            "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"
+        ))
+    )
+
+
 def _failure_evidence(child_returncode: int, row: dict[str, Any] | None) -> dict[str, Any]:
     """Persist only bounded, allowlisted failure metadata; never copy raw logs."""
     if row is None:
@@ -446,6 +472,9 @@ def run(args: argparse.Namespace) -> int:
                 if child.returncode in {78, 79}:
                     _reconcile_claimed_tasks(store, claimed_this_run, goal_output)
                     return child.returncode
+                if _valid_no_execution_block(row, selected["task_id"], child.returncode):
+                    _reconcile_claimed_tasks(store, claimed_this_run, goal_output)
+                    return 0
                 failure_evidence = _failure_evidence(child.returncode, row)
                 store.record_result(
                     GOAL_ID, selected["task_id"], status="HELD",
