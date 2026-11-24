@@ -180,6 +180,12 @@ def build_sandbox_command(
         source = str(mounts[destination])
         args.extend(["--ro-bind", source, destination])
 
+    # Bind the exact interpreter file as well as its containing directory.
+    # Hosted toolcache layouts may expose the directory through symlinked
+    # components; the explicit file bind makes exec resolution deterministic.
+    interpreter = Path(python).resolve(strict=True)
+    args.extend(["--ro-bind", str(interpreter), str(interpreter)])
+
     args.extend([
         "--chdir", str(root),
         "--clearenv",
