@@ -148,11 +148,33 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
         "task_id": task_id,
         "base_sha": start_sha,
     }
+    event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+    actor = os.environ.get("GITHUB_ACTOR", "")
+    if event_name == "schedule":
+        actor_valid = actor == "nonkun12"
+    elif event_name == "workflow_dispatch":
+        event_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
+        try:
+            event_payload = json.loads(Path(event_path).read_text(encoding="utf-8"))
+            sender = event_payload.get("sender") if isinstance(event_payload, dict) else None
+            inputs = event_payload.get("inputs") if isinstance(event_payload, dict) else None
+            actor_valid = (
+                isinstance(sender, dict)
+                and sender.get("login") == "github-actions[bot]"
+                and actor == "github-actions[bot]"
+                and isinstance(inputs, dict)
+                and str(inputs.get("policy_dispatch", "")) == "30m_scheduler"
+                and str(inputs.get("max_tasks", "")) == "1"
+                and str(inputs.get("execution_approval", "DENY")) == "DENY"
+            )
+        except (OSError, UnicodeError, TypeError, ValueError):
+            actor_valid = False
+    else:
+        actor_valid = False
     if (
-        os.environ.get("GITHUB_EVENT_NAME") != "schedule"
+        not actor_valid
         or os.environ.get("GITHUB_REPOSITORY") != "nonkun12/line-bot"
         or os.environ.get("GITHUB_REF") != "refs/heads/main"
-        or os.environ.get("GITHUB_ACTOR") != "nonkun12"
         or not task_id
         or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", task_id)
     ):
@@ -270,7 +292,10 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "expected_base_sha": start_sha,
     }
     event_name = os.environ.get("GITHUB_EVENT_NAME", "")
-    if event_name == "schedule":
+    if event_name == "schedule" or (
+        event_name == "workflow_dispatch"
+        and os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true"
+    ):
         return _verify_catalog_execution_approval(start_sha, instruction)
     if event_name not in {"workflow_dispatch", "issue_comment"}:
         return blocked
