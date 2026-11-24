@@ -255,6 +255,65 @@ def _failure_evidence(child_returncode: int, row: dict[str, Any] | None) -> dict
         result.update(stage="independent_evidence", reason_code="success_evidence_rejected")
     return result
 
+def _append_hold_diagnostic(path: Path, decision: dict[str, Any], goal: dict[str, Any]) -> None:
+    """Persist bounded pre-execution HOLD evidence for REA; never changes authorization."""
+    raw_tasks = goal.get("tasks", [])
+    tasks = raw_tasks if isinstance(raw_tasks, list) else []
+    counts: dict[str, int] = {}
+    blocked_tasks: list[dict[str, Any]] = []
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        status = task.get("status")
+        if isinstance(status, str):
+            counts[status] = counts.get(status, 0) + 1
+        if status not in {"HELD", "FAILED", "IN_PROGRESS"}:
+            continue
+        item: dict[str, Any] = {}
+        for key in ("task_id", "status"):
+            value = task.get(key)
+            if isinstance(value, str) and value:
+                item[key] = value[:120]
+        reason = task.get("hold_reason")
+        if isinstance(reason, str) and reason and len(reason) <= 100 and reason.replace("_", "").replace("-", "").isalnum():
+            item["hold_reason"] = reason
+        evidence = task.get("failure_evidence")
+        if isinstance(evidence, dict):
+            safe_evidence: dict[str, Any] = {}
+            for key in ("stage", "reason_code", "result_status"):
+                value = evidence.get(key)
+                if isinstance(value, str) and len(value) <= 80 and value.replace("_", "").replace("-", "").isalnum():
+                    safe_evidence[key] = value
+            for key in ("child_exit_code", "result_exit_code"):
+                value = evidence.get(key)
+                if type(value) is int and -255 <= value <= 255:
+                    safe_evidence[key] = value
+            if safe_evidence:
+                item["failure_evidence"] = safe_evidence
+        if item:
+            blocked_tasks.append(item)
+    reason = decision.get("reason")
+    if not isinstance(reason, str) or not reason:
+        reason = "failed_or_held_task_requires_review" if blocked_tasks else "unclassified_goal_decision"
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "stage": "pre_execution",
+        "decision": decision.get("decision") if decision.get("decision") in {"HOLD", "INVALID", "COMPLETE"} else "HOLD",
+        "reason": reason if isinstance(reason, str) and len(reason) <= 100 and reason.replace("_", "").replace("-", "").isalnum() else "unclassified_goal_decision",
+        "task_id": decision.get("task_id") if isinstance(decision.get("task_id"), str) else None,
+        "task_ids": decision.get("task_ids") if isinstance(decision.get("task_ids"), list) and all(isinstance(x, str) for x in decision["task_ids"]) else [],
+        "task_counts": counts,
+        "blocked_tasks": blocked_tasks[:50],
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+
+
 def _reconcile_claimed_tasks(store: GoalStateStore, task_ids: set[str], output: Path,
                             failed_task_id: str | None = None) -> None:
     if not task_ids:
@@ -319,6 +378,11 @@ def run(args: argparse.Namespace) -> int:
             if claim.get("decision") == "COMPLETE":
                 break
             if claim.get("decision") != "CLAIMED":
+                diagnostics_path = Path(os.environ.get(
+                    "GOAL_AUTOPILOT_DIAGNOSTICS_PATH",
+                    str(goal_output.with_name("goal-autopilot-hold-evaluations.jsonl")),
+                ))
+                _append_hold_diagnostic(diagnostics_path, claim, goal)
                 if claimed_this_run:
                     _reconcile_claimed_tasks(store, claimed_this_run, goal_output)
                     return 80

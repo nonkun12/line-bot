@@ -41,7 +41,7 @@ def test_preflight_rea_is_recorded_even_when_goal_claim_is_held(tmp_path, monkey
     monkeypatch.setattr(
         bridge,
         "_load_goal",
-        lambda *args, **kwargs: (1, {"tasks": [{"task_id": "approved-test-task", "status": "HELD"}]}),
+        lambda *args, **kwargs: (1, {"tasks": [{"task_id": "approved-test-task", "status": "HELD", "hold_reason": "review"}]}),
     )
     monkeypatch.setattr(
         bridge.GoalStateStore,
@@ -68,6 +68,15 @@ def test_preflight_rea_is_recorded_even_when_goal_claim_is_held(tmp_path, monkey
     assert record["execution_authorized"] is False
     assert record["hold_clear_authorized"] is False
     assert len(record["evidence_sha256"]) == 64
+    diagnostic_path = tmp_path / "goal-autopilot-hold-evaluations.jsonl"
+    diagnostic = json.loads(diagnostic_path.read_text(encoding="utf-8").splitlines()[0])
+    assert diagnostic["stage"] == "pre_execution"
+    assert diagnostic["decision"] == "HOLD"
+    assert diagnostic["reason"] == "failed_or_held_task_requires_review"
+    assert diagnostic["blocked_tasks"][0]["task_id"] == "approved-test-task"
+    assert diagnostic["blocked_tasks"][0]["hold_reason"] == "review"
+    assert diagnostic["execution_authorized"] is False
+    assert diagnostic["hold_clear_authorized"] is False
 
 
 def test_preflight_rea_scan_exception_is_recorded_as_blocked(tmp_path, monkeypatch):
