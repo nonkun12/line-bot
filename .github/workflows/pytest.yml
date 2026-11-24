@@ -47,17 +47,23 @@ jobs:
           from pathlib import Path
           from scripts.autonomous_test_sandbox import run_pytest_sandboxed
 
-          probe = (
-              "import socket; from pathlib import Path; "
-              "assert {name for _, name in socket.if_nameindex()} <= {'lo'}; "
-              "Path('/tmp/policy-sandbox-smoke').write_text('ok'); "
-              "try: Path('README.md').write_text('must-not-write')\n"
-              "except OSError: pass\n"
-              "else: raise AssertionError('repository filesystem is writable'); "
-              "try: socket.create_connection(('1.1.1.1', 53), timeout=0.5)\n"
-              "except OSError: pass\n"
-              "else: raise AssertionError('network access is available')"
-          )
+          probe = """import socket
+          from pathlib import Path
+          assert {name for _, name in socket.if_nameindex()} <= {"lo"}
+          Path("/tmp/policy-sandbox-smoke").write_text("ok")
+          try:
+              Path("README.md").write_text("must-not-write")
+          except OSError:
+              pass
+          else:
+              raise AssertionError("repository filesystem is writable")
+          try:
+              socket.create_connection(("1.1.1.1", 53), timeout=0.5)
+          except OSError:
+              pass
+          else:
+              raise AssertionError("network access is available")
+          """
           result = run_pytest_sandboxed(
               [sys.executable, "-c", probe],
               repo_root=Path.cwd(),
