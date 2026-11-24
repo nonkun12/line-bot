@@ -229,7 +229,12 @@ def build_sandbox_command(
         if use_runtime_prefix and directory == runtime_prefix:
             mounts["/python-runtime"] = runtime_prefix
         else:
-            mounts[str(directory)] = directory
+            # Mount real directories at their canonical /usr/... paths.
+            # In the empty namespace, recreate the host's merged-/usr aliases
+            # (/lib, /lib64, /bin) as symlinks rather than mounting through
+            # host symlink paths onto newly-created ordinary directories.
+            resolved_directory = directory.resolve()
+            mounts[str(resolved_directory)] = resolved_directory
     python_command = (
         str(Path("/python-runtime") / interpreter.relative_to(runtime_prefix))
         if use_runtime_prefix
@@ -243,11 +248,11 @@ def build_sandbox_command(
         if use_runtime_prefix and library_dir and library_dir.is_relative_to(runtime_prefix)
         else str(library_dir) if library_dir else None
     )
-    # /bin is commonly a symlink to /usr/bin on hosted Ubuntu runners. The
-    # namespace starts empty, so provide both conventional command paths.
+    # Bind canonical merged-/usr targets, then recreate their conventional
+    # aliases as symlinks in the empty root. This preserves absolute PT_INTERP
+    # paths such as /lib64/ld-linux-x86-64.so.2 and /bin/sh.
     if Path("/usr/bin").is_dir():
         mounts["/usr/bin"] = Path("/usr/bin").resolve()
-        mounts["/bin"] = Path("/usr/bin").resolve()
     git_dir = Path("/usr/lib/git-core")
     if git_dir.is_dir():
         mounts[str(git_dir)] = git_dir.resolve()
@@ -272,6 +277,15 @@ def build_sandbox_command(
         source = str(mounts[destination])
         args.extend(["--ro-bind", source, destination])
 
+    # The source tree is a normal merged-/usr layout on the hosted Ubuntu
+    # runner. Recreate only the three standard aliases; no additional host
+    # directories or writable paths are exposed.
+    if Path("/usr/lib").is_dir():
+        args.extend(["--symlink", "usr/lib", "/lib"])
+    if Path("/usr/lib64").is_dir():
+        args.extend(["--symlink", "usr/lib64", "/lib64"])
+    if Path("/usr/bin").is_dir():
+        args.extend(["--symlink", "usr/bin", "/bin"])
 
     args.extend([
         "--chdir", str(root),
