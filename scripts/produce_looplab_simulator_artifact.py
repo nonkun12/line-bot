@@ -141,6 +141,12 @@ def write_signed_artifact(payload: dict[str, Any], output_path: Path, key: bytes
         raise
 
 
+def ensure_output_is_separate(output_path: Path, input_paths: list[Path]) -> None:
+    output_resolved = output_path.resolve()
+    if any(output_resolved == item.resolve() for item in input_paths):
+        raise ValueError("output_path_must_not_overwrite_input")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", required=True)
@@ -155,7 +161,12 @@ def main() -> int:
     if len(key_text.encode("utf-8")) < 32:
         print("BLOCKED: simulator_signing_key_missing_or_too_short", file=sys.stderr)
         return 2
+    input_paths = [
+        Path(args.dataset), Path(args.baseline_predictions), Path(args.challenger_predictions),
+        Path(args.baseline_artifact), Path(args.challenger_artifact),
+    ]
     try:
+        ensure_output_is_separate(Path(args.output), input_paths)
         payload = build_payload(
             dataset_path=Path(args.dataset),
             baseline_predictions_path=Path(args.baseline_predictions),
