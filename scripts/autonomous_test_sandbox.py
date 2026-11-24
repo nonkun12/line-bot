@@ -1,0 +1,325 @@
+"""Fail-closed bubblewrap sandbox for one allowlisted pytest file.
+
+Only the repository and Python runtime paths are visible, all read-only.
+Writable state is confined to fresh tmpfs mounts. No host environment,
+home directory, /run, credentials, or Unix sockets are inherited.
+"""
+from __future__ import annotations
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+import sysconfig
+from pathlib import Path
+
+
+class SandboxError(RuntimeError):
+    """The requested test could not be safely isolated."""
+
+
+def _runtime_directories(python: str) -> list[Path]:
+    candidates: set[Path] = set()
+    executable = Path(python).resolve(strict=True)
+    candidates.add(executable.parent)
+
+    # Mount the dedicated Python installation prefix as one read-only tree.
+    # This preserves interpreter symlinks and avoids nested runtime mounts
+    # masking the executable inside bubblewrap's empty root.
+    prefix = Path(sys.prefix).resolve()
+    if (
+        prefix.is_dir()
+        and prefix != Path("/")
+        and prefix != Path.home()
+        and executable.is_relative_to(prefix)
+    ):
+        candidates.add(prefix)
+
+    # Mount only the interpreter's executable directory plus the explicit
+    # stdlib/site-packages/library directories below. Mounting the entire
+    # prefix first can mask nested executable-directory binds in bwrap's
+    # initially empty namespace and leave the interpreter path unresolved.
+
+    configured = sysconfig.get_paths()
+    # Some hosted Python builds depend on libpython in LIBDIR via
+    # LD_LIBRARY_PATH. Keep that one runtime directory explicit instead of
+    # inheriting the runner's environment.
+    library_dir_raw = sysconfig.get_config_var("LIBDIR")
+    library_dir = Path(library_dir_raw).resolve() if library_dir_raw else None
+    if library_dir and library_dir.is_dir() and library_dir != Path("/") and library_dir != Path.home():
+        candidates.add(library_dir)
+
+    runtime_roots: list[Path] = []
+    for key in ("stdlib", "platstdlib", "purelib", "platlib"):
+        raw = configured.get(key)
+        if raw:
+            path = Path(raw)
+            if path.exists() and path.is_dir():
+                resolved = path.resolve()
+                candidates.add(resolved)
+                runtime_roots.append(resolved)
+    # Include the interpreter's extension-module directory only when it is
+    # nested under the configured standard library, never arbitrary PYTHONPATH
+    # or user-site directories inherited from the host process.
+    for raw in sys.path:
+        if not raw:
+            continue
+        path = Path(raw)
+        if not path.exists() or not path.is_dir():
+            continue
+        resolved = path.resolve()
+        if any(resolved.is_relative_to(base) for base in runtime_roots):
+            candidates.add(resolved)
+
+    # Include only the standard command directory and git when present; some
+    # allowlisted regression tests create temporary local git repositories.
+    git = shutil.which("git")
+    executables = [executable]
+    if git:
+        git_executable = Path(git).resolve(strict=True)
+        candidates.add(git_executable.parent)
+        executables.append(git_executable)
+
+    # ELF PT_INTERP (the dynamic loader) is not reliably listed by ldd.
+    # Discover and mount only that exact loader and its containing directory.
+    readelf = shutil.which("readelf")
+    if readelf:
+        for binary in executables:
+            result = subprocess.run(
+                [readelf, "-l", str(binary)], text=True, capture_output=True,
+                timeout=10, env={"PATH": os.defpath, "LANG": "C"},
+            )
+            match = re.search(r"Requesting program interpreter:\s*(/[^\]]+)", result.stdout)
+            if result.returncode == 0 and match:
+                # Preserve the interpreter's literal PT_INTERP parent (for
+                # example /lib64) as a mount destination. Resolving it first
+                # can leave the namespace without the path the ELF loader
+                # itself requests when /lib64 is a host-side symlink.
+                loader_path = Path(match.group(1))
+                if loader_path.parent != Path("/") and loader_path.parent != Path.home():
+                    candidates.add(loader_path.parent)
+                loader = loader_path.resolve()
+                if loader.is_file() and loader != Path("/") and loader.parent != Path.home():
+                    candidates.add(loader.parent)
+
+    # Bind only directories containing actual ELF dependencies, rather than
+    # exposing the host root, all of /etc, or the whole Python prefix.
+    ldd = shutil.which("ldd")
+    if ldd:
+        for binary in executables:
+            result = subprocess.run(
+                [ldd, str(binary)], text=True, capture_output=True, timeout=10,
+                env={"PATH": os.defpath, "LANG": "C"},
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    match = re.search(r"=>\s+(/[^\s]+)|^\s*(/[^\s]+)", line)
+                    if match:
+                        library = Path(match.group(1) or match.group(2))
+                        if library.exists():
+                            # Preserve the loader-visible path (for PT_INTERP
+                            # aliases such as /lib64) and also mount its real
+                            # target directory for symlinked library layouts.
+                            candidates.add(library.parent)
+                            candidates.add(library.resolve().parent)
+
+    # Prefer the single Python prefix over nested stdlib/site-packages/bin
+    # mounts. Keep external library/loader directories separate.
+    if prefix in candidates:
+        candidates = {
+            path for path in candidates
+            if path == prefix or not path.is_relative_to(prefix)
+        }
+
+    # Never mount filesystem roots or broad user/credential locations.
+    safe: set[Path] = set()
+    for path in candidates:
+        if not path.is_dir() or path == Path("/") or path == Path.home():
+            continue
+        safe.add(path)
+    if not safe:
+        raise SandboxError("python_runtime_paths_unavailable")
+    return sorted(safe, key=lambda item: (len(item.parts), str(item)))
+
+
+def _parents(destination: str) -> list[str]:
+    parts = Path(destination).parts
+    result: list[str] = []
+    current = Path("/")
+    for part in parts[1:-1]:
+        current = current / part
+        value = str(current)
+        if value not in result:
+            result.append(value)
+    return result
+
+
+def build_sandbox_command(
+    repository: str | Path,
+    test_path: str,
+    *,
+    python: str = sys.executable,
+) -> list[str]:
+    root = Path(repository).resolve(strict=True)
+    if not root.is_dir():
+        raise SandboxError("repository_not_directory")
+    if (
+        not isinstance(test_path, str)
+        or not test_path.startswith("tests/")
+        or not test_path.endswith(".py")
+        or Path(test_path).is_absolute()
+        or any(part in ("", ".", "..") for part in Path(test_path).parts)
+        or "\\" in test_path
+    ):
+        raise SandboxError("test_path_not_allowlisted")
+
+    target = root / test_path
+    # Reject symlinks at every component, even if they resolve inside the repo.
+    cursor = root
+    for part in Path(test_path).parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise SandboxError("test_path_symlink_rejected")
+    if not target.is_file() or not target.resolve().is_relative_to(root):
+        raise SandboxError("test_path_missing_or_outside_repository")
+
+    bwrap = shutil.which("bwrap")
+    prlimit = shutil.which("prlimit")
+    if not bwrap or not prlimit:
+        raise SandboxError("sandbox_runtime_unavailable")
+
+    runtime_dirs = _runtime_directories(python)
+    interpreter = Path(python).resolve(strict=True)
+    interpreter_dir = interpreter.parent
+    library_dir_raw = sysconfig.get_config_var("LIBDIR")
+    library_dir = Path(library_dir_raw).resolve() if library_dir_raw else None
+    if library_dir and (
+        not library_dir.is_dir()
+        or library_dir == Path("/")
+        or library_dir == Path.home()
+    ):
+        library_dir = None
+    # Empty root first: only explicitly selected runtime and repository paths
+    # are mounted into the namespace.
+    args = [
+        prlimit, "--nproc=64", "--cpu=180", "--fsize=1048576",
+        "--as=4294967296", "--", bwrap,
+        "--die-with-parent", "--new-session", "--unshare-all",
+        "--tmpfs", "/",
+        "--dir", "/proc", "--proc", "/proc",
+        "--dev", "/dev",
+        "--dir", "/tmp", "--tmpfs", "/tmp",
+        "--dir", "/run", "--tmpfs", "/run",
+        "--dir", "/var", "--dir", "/var/run", "--tmpfs", "/var/run",
+        "--dir", "/home", "--tmpfs", "/home",
+    ]
+
+    mounts: dict[str, Path] = {}
+    # Expose the complete dedicated interpreter prefix at a stable sandbox
+    # path. Executing through this alias avoids relying on hosted-toolcache
+    # absolute paths and preserves symlink targets within the prefix.
+    runtime_prefix = Path(sys.prefix).resolve()
+    use_runtime_prefix = (
+        runtime_prefix in runtime_dirs
+        and interpreter.is_relative_to(runtime_prefix)
+        and runtime_prefix.is_dir()
+    )
+    for directory in runtime_dirs:
+        if use_runtime_prefix and directory == runtime_prefix:
+            mounts["/python-runtime"] = runtime_prefix
+        else:
+            # Mount real directories at their canonical /usr/... paths.
+            # In the empty namespace, recreate the host's merged-/usr aliases
+            # (/lib, /lib64, /bin) as symlinks rather than mounting through
+            # host symlink paths onto newly-created ordinary directories.
+            resolved_directory = directory.resolve()
+            mounts[str(resolved_directory)] = resolved_directory
+    python_command = (
+        str(Path("/python-runtime") / interpreter.relative_to(runtime_prefix))
+        if use_runtime_prefix
+        else str(interpreter)
+    )
+    # Keep library lookup inside the same mounted prefix alias as the
+    # interpreter. The host-side sysconfig path is not visible in the
+    # sandbox when the prefix is mounted at /python-runtime.
+    sandbox_library_dir = (
+        str(Path("/python-runtime") / library_dir.relative_to(runtime_prefix))
+        if use_runtime_prefix and library_dir and library_dir.is_relative_to(runtime_prefix)
+        else str(library_dir) if library_dir else None
+    )
+    # Bind canonical merged-/usr targets, then recreate their conventional
+    # aliases as symlinks in the empty root. This preserves absolute PT_INTERP
+    # paths such as /lib64/ld-linux-x86-64.so.2 and /bin/sh.
+    if Path("/usr/bin").is_dir():
+        mounts["/usr/bin"] = Path("/usr/bin").resolve()
+    git_dir = Path("/usr/lib/git-core")
+    if git_dir.is_dir():
+        mounts[str(git_dir)] = git_dir.resolve()
+    git_templates = Path("/usr/share/git-core")
+    if git_templates.is_dir():
+        mounts[str(git_templates)] = git_templates.resolve()
+    mounts[str(root)] = root
+    # The interpreter parent is already mounted read-only at its original
+    # absolute path above; execute it there rather than relying on an alias.
+
+    destinations = sorted(mounts, key=lambda value: (len(Path(value).parts), value))
+    created: set[str] = {"/", "/proc", "/dev", "/tmp", "/run", "/var", "/var/run", "/home"}
+    for destination in destinations:
+        for parent in _parents(destination):
+            if parent not in created:
+                args.extend(["--dir", parent])
+                created.add(parent)
+        if destination not in created:
+            args.extend(["--dir", destination])
+            created.add(destination)
+    for destination in destinations:
+        source = str(mounts[destination])
+        args.extend(["--ro-bind", source, destination])
+
+    # The source tree is a normal merged-/usr layout on the hosted Ubuntu
+    # runner. Recreate only the three standard aliases; no additional host
+    # directories or writable paths are exposed.
+    if Path("/usr/lib").is_dir():
+        args.extend(["--symlink", "usr/lib", "/lib"])
+    if Path("/usr/lib64").is_dir():
+        args.extend(["--symlink", "usr/lib64", "/lib64"])
+    if Path("/usr/bin").is_dir():
+        args.extend(["--symlink", "usr/bin", "/bin"])
+
+    args.extend([
+        "--chdir", str(root),
+        "--clearenv",
+        "--setenv", "HOME", "/tmp",
+        "--setenv", "TMPDIR", "/tmp",
+        "--setenv", "TMP", "/tmp",
+        "--setenv", "PATH", os.defpath,
+        "--setenv", "LANG", "C.UTF-8",
+        *(
+            ["--setenv", "LD_LIBRARY_PATH", sandbox_library_dir]
+            if sandbox_library_dir and library_dir and library_dir.is_dir()
+            else []
+        ),
+        "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
+        "--",
+        python_command, "-m", "pytest", "-q",
+        "--tb=native", "-p", "no:cacheprovider", test_path,
+    ])
+    return args
+
+
+def run_sandboxed_pytest(
+    repository: str | Path,
+    test_path: str,
+    *,
+    timeout: int = 900,
+    python: str = sys.executable,
+) -> subprocess.CompletedProcess[str]:
+    command = build_sandbox_command(repository, test_path, python=python)
+    try:
+        return subprocess.run(
+            command, cwd=repository, text=True, capture_output=True,
+            timeout=timeout, env={"PATH": os.defpath, "LANG": "C"},
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise SandboxError(f"sandbox_launch_failed:{type(exc).__name__}") from None

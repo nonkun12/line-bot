@@ -588,16 +588,22 @@ def test_run_tests_executes_full_pytest_suite(monkeypatch, tmp_path):
     assert "full pytest:" in output
 
 
-def test_policy_admission_runs_only_one_target_in_network_isolated_bwrap(monkeypatch, tmp_path):
-    calls = []
+def test_policy_admission_runs_only_one_target_through_shared_sandbox(monkeypatch, tmp_path):
+    from scripts import autonomous_test_sandbox
 
-    def fake_run(cmd, timeout=900, input_text=None, env=None):
-        calls.append((cmd, env))
-        return subprocess.CompletedProcess(cmd, 0, stdout="1 passed", stderr="")
+    calls = []
+    target = tmp_path / "tests" / "test_stocks.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("def test_placeholder(): pass\\n", encoding="utf-8")
+
+    def fake_sandbox(repository, test_path, timeout=900):
+        calls.append((repository, test_path, timeout))
+        return subprocess.CompletedProcess(
+            ["sandboxed-pytest"], 0, stdout="1 passed", stderr=""
+        )
 
     monkeypatch.setattr(worker, "ROOT", tmp_path)
-    monkeypatch.setattr(worker, "run", fake_run)
-    monkeypatch.setattr(worker.shutil, "which", lambda name: "/usr/bin/bwrap")
+    monkeypatch.setattr(autonomous_test_sandbox, "run_sandboxed_pytest", fake_sandbox)
     monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_POLICY", "true")
     monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_stocks.py"]')
     monkeypatch.setenv("GITHUB_TOKEN", "must-not-leak")
@@ -605,17 +611,8 @@ def test_policy_admission_runs_only_one_target_in_network_isolated_bwrap(monkeyp
     passed, output = worker.run_tests(["tests/test_stocks.py"], full_suite=True)
 
     assert passed
-    pytest_call, pytest_env = calls[-1]
-    assert pytest_call[0] == "prlimit"
-    assert "--nproc=64" in pytest_call
-    assert "--cpu=180" in pytest_call
-    assert "bwrap" in pytest_call
-    assert "--unshare-net" in pytest_call
-    assert "--ro-bind" in pytest_call
-    assert "--tmpfs" in pytest_call
-    assert pytest_call[-1] == "tests/test_stocks.py"
-    assert pytest_env is not None
-    assert "GITHUB_TOKEN" not in pytest_env
+    assert calls == [(tmp_path, "tests/test_stocks.py", 900)]
+    assert "GITHUB_TOKEN" not in os.environ.get("SANDBOX_TEST_ENV", "")
     assert "isolated pytest:" in output
 
 

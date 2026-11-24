@@ -37,64 +37,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Verify real network-isolated pytest sandbox
+      - name: Verify production pytest sandbox boundary
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y bubblewrap
+          sudo apt-get install -y bubblewrap util-linux
           command -v bwrap
           command -v prlimit
-          host_net_ns="$(readlink /proc/self/ns/net)"
-          prlimit --nproc=64 --cpu=180 --fsize=1048576 --as=4294967296 -- \
-            bwrap --die-with-parent --new-session --unshare-net --unshare-pid \
-            --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp \
-            --chdir "$GITHUB_WORKSPACE" \
-            --setenv HOME /tmp \
-            --setenv TMPDIR /tmp \
-            --setenv PYTHONDONTWRITEBYTECODE 1 \
-            -- python - "$host_net_ns" <<'PY'
-          import sys
-          from pathlib import Path
-
-          import pytest
-
-          host_net_ns = sys.argv[1]
-          probe = Path("/tmp/test_autonomous_sandbox_probe.py")
-          probe.write_text(
-              "import os, socket\n"
-              "from pathlib import Path\n"
-              "def test_network_namespace_isolated():\n"
-              "    assert os.readlink('/proc/self/ns/net') != " + repr(host_net_ns) + "\n"
-              "    assert {name for _, name in socket.if_nameindex()} <= {'lo'}\n"
-              "    sock = socket.socket()\n"
-              "    try:\n"
-              "        sock.settimeout(1)\n"
-              "        try:\n"
-              "            sock.connect(('1.1.1.1', 53))\n"
-              "        except OSError:\n"
-              "            pass\n"
-              "        else:\n"
-              "            raise AssertionError('outbound network remained reachable')\n"
-              "    finally:\n"
-              "        sock.close()\n"
-              "def test_workspace_is_read_only_and_tmp_is_writable():\n"
-              "    target = Path.cwd() / '.autonomous-sandbox-write-probe'\n"
-              "    try:\n"
-              "        target.write_text('must fail')\n"
-              "    except OSError:\n"
-              "        pass\n"
-              "    else:\n"
-              "        target.unlink(missing_ok=True)\n"
-              "        raise AssertionError('workspace is writable')\n"
-              "    temp = Path('/tmp/autonomous-sandbox-tmp-probe')\n"
-              "    temp.write_text('ok')\n"
-              "    assert temp.read_text() == 'ok'\n"
-              "    temp.unlink()\n",
-              encoding="utf-8",
-          )
-          raise SystemExit(pytest.main(["-q", "-p", "no:cacheprovider", str(probe)]))
-          PY
+          python -m pytest -q tests/test_autonomous_test_sandbox.py
 
       - name: Generate offline RAG retrieval benchmark
         run: |
