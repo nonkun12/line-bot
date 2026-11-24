@@ -79,3 +79,16 @@ def test_search_notes_uses_unicode_casefold_for_matching(tmp_path: Path) -> None
     vault.write_note("unicode.md", "The German word is Straße.")
 
     assert vault.search_notes("STRASSE") == ["unicode.md"]
+
+def test_search_notes_rejects_symlink_escape(tmp_path: Path) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside-secret.md"
+    marker = "obsidian-outside-vault-secret-marker"
+    outside.write_text(marker, encoding="utf-8")
+
+    vault = ObsidianVault(tmp_path)
+    link = tmp_path / "linked-outside.md"
+    link.symlink_to(outside)
+
+    assert vault.search_notes(marker) == []
+    assert "linked-outside.md" not in vault.search_notes(marker)
+
