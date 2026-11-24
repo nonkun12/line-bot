@@ -1053,8 +1053,8 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
         policy_paths = raw_paths
         if touched and touched != policy_paths:
             return False, "isolated_policy_test_blocked:touched_path_mismatch"
-        if shutil.which("bwrap") is None:
-            return False, "isolated_policy_test_blocked:bwrap_unavailable"
+        if shutil.which("bwrap") is None or shutil.which("prlimit") is None:
+            return False, "isolated_policy_test_blocked:sandbox_runtime_unavailable"
         full_suite = False
 
     for path in touched or []:
@@ -1091,6 +1091,12 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 "PYTHONDONTWRITEBYTECODE": "1",
             })
             test_cmd = [
+                "prlimit",
+                "--nproc=64",
+                "--cpu=180",
+                "--fsize=1048576",
+                "--as=4294967296",
+                "--",
                 "bwrap",
                 "--die-with-parent",
                 "--new-session",
@@ -1108,7 +1114,7 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 sys.executable, "-m", "pytest", "-q", "--tb=native",
                 "-p", "no:cacheprovider", *policy_paths,
             ]
-            outputs.append("isolated pytest: network namespace disabled; repository read-only; one allowlisted test file")
+            outputs.append("isolated pytest: network disabled; repository read-only; process/CPU/memory/file limits; one allowlisted test file")
         elif full_suite:
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native"]
             outputs.append("full pytest:")
