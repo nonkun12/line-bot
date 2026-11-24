@@ -146,6 +146,42 @@ def _append_blocked(path: Path, task_id: str, reason: str) -> None:
     with path.open("a", encoding="utf-8") as stream:
         stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
+def _record_preflight_rea(path: Path, expected_sha: str) -> None:
+    """Persist bounded, read-only REA evidence before GoalAutopilot can return HOLD."""
+    try:
+        from scripts.rea_control_tower_adapter import prepare_rea_evidence
+
+        evidence = prepare_rea_evidence(ROOT, expected_sha=expected_sha)
+        if not isinstance(evidence, dict):
+            evidence = {"gate": "BLOCKED", "reason_code": "rea_report_invalid"}
+        gate = evidence.get("gate")
+        if gate not in {"PASS", "BLOCKED"}:
+            gate = "BLOCKED"
+        row = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "stage": "pre_execution",
+            "target_sha": expected_sha if isinstance(expected_sha, str) and len(expected_sha) == 40 else None,
+            "gate": gate,
+            "reason_code": evidence.get("reason_code") if gate == "BLOCKED" else None,
+            "scanner_status": evidence.get("scanner_status", "BLOCKED"),
+            "finding_count": evidence.get("finding_count", 0),
+            "blocking_count": evidence.get("blocking_count", 0),
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        }
+        canonical = json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        row["evidence_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\\n")
+        print(f"REA_PREFLIGHT={gate} reason={row['reason_code'] or 'none'}", flush=True)
+    except Exception:
+        # Diagnostics must never leak exception details or acquire execution authority.
+        print("REA_PREFLIGHT=BLOCKED reason=rea_preflight_record_failed", flush=True)
+
+
 def _failure_evidence(child_returncode: int, row: dict[str, Any] | None) -> dict[str, Any]:
     """Persist only bounded, allowlisted failure metadata; never copy raw logs."""
     if row is None:
@@ -218,6 +254,11 @@ def run(args: argparse.Namespace) -> int:
     if not isinstance(done, list) or not all(isinstance(x, str) for x in done):
         raise ValueError("durable_completed_state_invalid")
     completed = set(done)
+    rea_path = Path(os.environ.get(
+        "REA_PREFLIGHT_EVIDENCE_PATH",
+        str(results_path.with_name("rea-preflight-evaluations.jsonl")),
+    ))
+    _record_preflight_rea(rea_path, os.environ.get("GITHUB_SHA", ""))
     authorized = _authorized_queue(queue_path, args.catalog, completed)
     if not authorized:
         return 78
