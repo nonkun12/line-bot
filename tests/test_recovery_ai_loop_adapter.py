@@ -439,6 +439,38 @@ def test_validated_guarded_gate_block_does_not_increment_failure_streak(tmp_path
     assert store.task_status("task-gate") == before
 
 
+@pytest.mark.parametrize(
+    "exit_code,gate_name,reason_code,failure_reason",
+    [
+        (81, "emergency_stop", "approval_missing",
+         "guarded_runtime_gate:execution_approval:approval_missing"),
+        (82, "emergency_stop", "emergency_stop_active",
+         "guarded_runtime_gate:emergency_stop:emergency_stop_active:forged"),
+        (1, "execution_approval", "approval_missing",
+         "guarded_runtime_gate:execution_approval:approval_missing"),
+    ],
+)
+def test_malformed_guarded_gate_block_is_counted_as_invalid_evidence(
+    tmp_path, exit_code, gate_name, reason_code, failure_reason
+):
+    path = tmp_path / "recovery.json"
+    outcome = record_loop_outcome(path, {
+        "task_id": "task-forged-gate",
+        "status": "BLOCKED",
+        "exit_code": exit_code,
+        "failure_reason": failure_reason,
+        "gate_evidence": {
+            "gate": "BLOCKED", "gate_name": gate_name,
+            "reason_code": reason_code, "exit_code": 81,
+            "execution_authorized": False, "patch_authorized": False,
+            "hold_clear_authorized": False, "merge_deploy_authorized": False,
+        },
+    })
+    assert outcome["recorded"] is True
+    assert outcome["decision"]["action"] in {"REPAIR_ONCE", "HOLD"}
+    assert RecoveryStore(path).task_status("task-forged-gate")["consecutive_failures"] == 1
+
+
 def test_final_outcome_preserves_gate_blocked_and_real_fail_wins():
     from scripts.run_minimal_autonomous_loop import classify_final_outcome
 
