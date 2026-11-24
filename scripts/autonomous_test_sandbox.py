@@ -150,6 +150,14 @@ def build_sandbox_command(
         raise SandboxError("sandbox_runtime_unavailable")
 
     runtime_dirs = _runtime_directories(python)
+    library_dir_raw = sysconfig.get_config_var("LIBDIR")
+    library_dir = Path(library_dir_raw).resolve() if library_dir_raw else None
+    if library_dir and (
+        not library_dir.is_dir()
+        or library_dir == Path("/")
+        or library_dir == Path.home()
+    ):
+        library_dir = None
     # Empty root first: only explicitly selected runtime and repository paths
     # are mounted into the namespace.
     args = [
