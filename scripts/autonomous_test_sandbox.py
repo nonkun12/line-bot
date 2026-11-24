@@ -71,6 +71,10 @@ def _runtime_directories(python: str) -> list[Path]:
                     if match:
                         library = Path(match.group(1) or match.group(2))
                         if library.exists():
+                            # Preserve the loader-visible path (for PT_INTERP
+                            # aliases such as /lib64) and also mount its real
+                            # target directory for symlinked library layouts.
+                            candidates.add(library.parent)
                             candidates.add(library.resolve().parent)
 
     # Never mount filesystem roots or broad user/credential locations.
