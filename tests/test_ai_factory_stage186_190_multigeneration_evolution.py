@@ -575,7 +575,15 @@ def test_stage185_signed_checkpoint_connects_to_stage186_and_rejects_tampering()
     )
     assert checkpoint.proposed_generation == 1
     assert "candidate-main" in checkpoint.candidate_ids
-    verifier = stage185_checkpoint_verifier(checkpoint, verify_signature=VERIFY)
+    verifier = stage185_checkpoint_verifier(
+        checkpoint,
+        verify_signature=VERIFY,
+        verify_current_checkpoint=lambda digest, generation, candidate_id: (
+            digest == checkpoint.certificate_digest
+            and generation == checkpoint.proposed_generation
+            and candidate_id in checkpoint.candidate_ids
+        ),
+    )
     trend = build_trend(
         snapshots(parent=checkpoint.certificate_digest),
         parent_readiness_digest=checkpoint.certificate_digest,
