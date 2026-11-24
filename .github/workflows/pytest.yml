@@ -37,6 +37,40 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Verify OS-level test sandbox
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y bubblewrap
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          from scripts.autonomous_test_sandbox import run_pytest_sandboxed
+
+          probe = (
+              "import socket; from pathlib import Path; "
+              "assert {name for _, name in socket.if_nameindex()} <= {'lo'}; "
+              "Path('/tmp/policy-sandbox-smoke').write_text('ok'); "
+              "try: Path('README.md').write_text('must-not-write')\n"
+              "except OSError: pass\n"
+              "else: raise AssertionError('repository filesystem is writable'); "
+              "try: socket.create_connection(('1.1.1.1', 53), timeout=0.5)\n"
+              "except OSError: pass\n"
+              "else: raise AssertionError('network access is available')"
+          )
+          result = run_pytest_sandboxed(
+              [sys.executable, "-c", probe],
+              repo_root=Path.cwd(),
+              test_paths=["tests/test_stocks.py"],
+              timeout=20,
+          )
+          print(result.stdout)
+          print(result.stderr, file=sys.stderr)
+          if result.returncode:
+              raise SystemExit(result.returncode)
+          print("OS sandbox PASS: network isolated, repository read-only, /tmp writable.")
+          PY
+
       - name: Generate offline RAG retrieval benchmark
         run: |
           python -m scripts.evaluate_rag_retrieval > rag_retrieval_benchmark.json
