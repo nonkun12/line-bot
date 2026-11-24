@@ -6,7 +6,7 @@ It never merges weights, advances generations, activates models, or deploys.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 import hashlib
 import json
@@ -609,7 +609,9 @@ class RSIExecutor:
             verify_producer_signature=self.verify_evidence_signature,
             verify_evaluation=self.verify_evaluation,
         )
-        return evidence_digest, self._diagnose_observations(groups)
+        verified = replace(observation, evidence_digest=evidence_digest)
+        verified_groups = self._validate_observations((verified,))
+        return evidence_digest, self._diagnose_observations(verified_groups)
 
     def hypothesize(self, diagnoses: tuple[Diagnosis, ...]) -> tuple[Hypothesis, ...]:
         self._control()
