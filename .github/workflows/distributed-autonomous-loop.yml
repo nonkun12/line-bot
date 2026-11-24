@@ -598,7 +598,7 @@ jobs:
           report["base_sha"] = os.environ["GITHUB_SHA"]
           report["admitted_catalog_sha256"] = hashlib.sha256(catalog_path.read_bytes()).hexdigest()
           report_path.write_text(
-              json.dumps(report, ensure_ascii=False, sort_keys=True) + "\\n",
+              json.dumps(report, ensure_ascii=False, sort_keys=True),
               encoding="utf-8",
           )
           PY
