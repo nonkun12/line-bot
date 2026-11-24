@@ -1,4 +1,8 @@
-from scripts.rea_hold_diagnostics import assess_hold_diagnostics, classify_hold_record
+from scripts.rea_hold_diagnostics import (
+    assess_hold_diagnostics,
+    classify_hold_record,
+    normalize_hold_diagnostic,
+)
 
 
 def test_review_required_is_manual_and_never_repairable():
@@ -131,7 +135,11 @@ def test_goal_runtime_producer_jsonl_flows_into_rea_consumer(tmp_path):
     assert produced_record["task_counts"] == {"HELD": 1}
     assert produced_record["blocked_tasks"][0]["task_id"] == "review-coverage-gap-4f1b715515"
 
-    assessment = assess_hold_diagnostics([produced_record])
+    normalized = normalize_hold_diagnostic(produced_record)
+    assert normalized["stage"] == "pre_execution"
+    assert normalized["task_counts"] == {"HELD": 1}
+    assert normalized["blocked_tasks"][0]["task_id"] == "review-coverage-gap-4f1b715515"
+    assessment = assess_hold_diagnostics([normalized])
     assert assessment["assessment_count"] == 1
     assert assessment["category_counts"] == {"QUEUE_HELD": 1}
     classified = assessment["assessments"][0]
@@ -146,3 +154,33 @@ def test_goal_runtime_producer_jsonl_flows_into_rea_consumer(tmp_path):
     assert produced_record["patch_authorized"] is False
     assert produced_record["hold_clear_authorized"] is False
     assert produced_record["merge_deploy_authorized"] is False
+
+
+
+def test_replay_run_1095_actual_producer_evidence_is_not_dropped():
+    produced_record = {
+        "stage": "pre_execution",
+        "decision": "HOLD",
+        "reason": "failed_or_held_task_requires_review",
+        "task_counts": {"HELD": 1},
+        "blocked_tasks": [{
+            "task_id": "review-coverage-gap-4f1b715515",
+            "status": "HELD",
+            "hold_reason": "guarded_runtime_or_evidence_gate_failed",
+        }],
+        "execution_authorized": False,
+        "patch_authorized": False,
+        "hold_clear_authorized": False,
+        "merge_deploy_authorized": False,
+    }
+    normalized = normalize_hold_diagnostic(produced_record)
+    summary = assess_hold_diagnostics([normalized])
+    assert normalized["stage"] == "pre_execution"
+    assert normalized["blocked_tasks"][0]["task_id"] == "review-coverage-gap-4f1b715515"
+    assert summary["assessment_count"] == 1
+    assert summary["category_counts"] == {"TASK_REQUIRES_REVIEW": 1}
+    assert summary["assessments"][0]["blocked_task_count"] == 1
+    assert summary["assessments"][0]["diagnostic_stage_valid"] is True
+    assert summary["automatic_remediation_authorized"] is False
+    assert summary["hold_clear_authorized"] is False
+    assert summary["task_resume_authorized"] is False
