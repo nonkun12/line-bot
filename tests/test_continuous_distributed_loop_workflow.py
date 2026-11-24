@@ -162,15 +162,21 @@ def test_continuation_stops_when_another_loop_is_queued_or_running(tmp_path):
     assert "next_depth=" not in output
 
 
-def test_distributed_loop_has_bounded_manual_and_scheduled_triggers():
-    path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "distributed-autonomous-loop.yml"
-    source = path.read_text(encoding="utf-8")
-    assert "workflow_dispatch:" in source
-    assert "schedule:" in source
-    assert 'cron: "0,30 * * * *"' in source
-    assert "timezone: 'Asia/Tokyo'" not in source
-    assert "default: '1'" in source
-    assert "          - '4'" in source
+def test_distributed_loop_uses_the_dedicated_bounded_30_minute_scheduler():
+    root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    loop = (root / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
+    scheduler = (root / "distributed-loop-30m-scheduler.yml").read_text(encoding="utf-8")
+    assert "workflow_dispatch:" in loop
+    assert "issue_comment:" in loop
+    assert "schedule:" not in loop.split("permissions:", 1)[0]
+    assert "schedule:" in scheduler
+    assert 'cron: "19,49 * * * *"' in scheduler
+    assert "workflow_dispatch:" in scheduler
+    assert "gh workflow run distributed-autonomous-loop.yml" in scheduler
+    assert "-f max_tasks=1" in scheduler
+    assert "timezone: 'Asia/Tokyo'" not in scheduler
+    assert "default: '1'" in loop
+    assert "          - '4'" in loop
 
 
 def test_only_continuous_workflow_owns_automatic_dispatch():
