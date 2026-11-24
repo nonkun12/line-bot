@@ -271,3 +271,10 @@ def test_source_evidence_and_observation_commit_together_on_success(tmp_path):
         "trusted_observation_evidence", "observation"
     ]
     assert ledger.verify()
+
+
+
+def test_observe_rejects_internal_persistence_bypass_argument(tmp_path):
+    executor, _ledger = _executor(tmp_path)
+    with pytest.raises(TypeError):
+        executor.observe((), _already_persisted=True)
