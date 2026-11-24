@@ -216,8 +216,25 @@ def build_sandbox_command(
     ]
 
     mounts: dict[str, Path] = {}
+    # Expose the complete dedicated interpreter prefix at a stable sandbox
+    # path. Executing through this alias avoids relying on hosted-toolcache
+    # absolute paths and preserves symlink targets within the prefix.
+    runtime_prefix = Path(sys.prefix).resolve()
+    use_runtime_prefix = (
+        runtime_prefix in runtime_dirs
+        and interpreter.is_relative_to(runtime_prefix)
+        and runtime_prefix.is_dir()
+    )
     for directory in runtime_dirs:
-        mounts[str(directory)] = directory
+        if use_runtime_prefix and directory == runtime_prefix:
+            mounts["/python-runtime"] = runtime_prefix
+        else:
+            mounts[str(directory)] = directory
+    python_command = (
+        str(Path("/python-runtime") / interpreter.relative_to(runtime_prefix))
+        if use_runtime_prefix
+        else str(interpreter)
+    )
     # /bin is commonly a symlink to /usr/bin on hosted Ubuntu runners. The
     # namespace starts empty, so provide both conventional command paths.
     if Path("/usr/bin").is_dir():
@@ -263,7 +280,7 @@ def build_sandbox_command(
         ),
         "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
         "--",
-        str(interpreter), "-m", "pytest", "-q",
+        python_command, "-m", "pytest", "-q",
         "--tb=native", "-p", "no:cacheprovider", test_path,
     ])
     return args
