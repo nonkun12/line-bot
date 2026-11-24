@@ -91,12 +91,13 @@ jobs:
                           hold_diag_invalid += 1
                           continue
                       reason = str(row.get("reason", "unknown"))[:80]
-                      counts = row.get("task_status_counts", {})
+                      counts = row.get("task_counts", {})
                       if not isinstance(counts, dict):
                           counts = {}
                       safe_counts = {str(k)[:24]: max(0, min(int(v), 10000)) for k, v in list(counts.items())[:12] if str(k)[:24].isalnum() and isinstance(v, int)}
                       blocked = row.get("blocked_tasks", [])
                       hold_diagnostics.append({
+                          "decision": row.get("decision") if row.get("decision") in {"HOLD", "INVALID", "COMPLETE"} else "UNKNOWN",
                           "reason": reason if reason in allowed_reasons else "other",
                           "task_status_counts": safe_counts,
                           "blocked_task_count": min(len(blocked), 100) if isinstance(blocked, list) else 0,
@@ -239,6 +240,18 @@ jobs:
               out.write(f"catalog_blocked={'true' if catalog_blocked else 'false'}\n")
           print("\n".join(report))
           PY
+
+      - name: Upload post-run REA diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributed-loop-postrun-diagnostics-${{ github.event.workflow_run.id }}
+          retention-days: 30
+          path: |
+            goal-autopilot-hold-diagnostics-summary.json
+            postrun-report.md
+            postrun-findings.json
+          if-no-files-found: ignore
 
       - name: Open a deduplicated follow-up issue when evidence is incomplete or failed
         if: steps.verify.outputs.issues != '0'
