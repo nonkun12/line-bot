@@ -447,14 +447,15 @@ def test_common_runtime_records_rea_evidence_on_success(monkeypatch, tmp_path):
     monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
     instruction = "safe test instruction"
     monkeypatch.setenv("DEV_INSTRUCTION", instruction)
-    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-test-task")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "uhip-confidence-out-of-range-rejection")
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
     monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
     monkeypatch.setenv("GITHUB_ACTOR", "nonkun12")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
     event_path = tmp_path / "event.json"
-    event_path.write_text(json.dumps({"sender": {"login": "nonkun12"}, "repository": {"full_name": "nonkun12/line-bot"}, "inputs": {"execution_approval": "APPROVE_EXECUTION", "approval_task_id": "rsi-test-task", "approval_instruction_sha256": hashlib.sha256(instruction.encode()).hexdigest(), "approval_base_sha": sha, "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()}}), encoding="utf-8")
+    event_path.write_text(json.dumps({"sender": {"login": "nonkun12"}, "repository": {"full_name": "nonkun12/line-bot"}, "inputs": {"execution_approval": "APPROVE_EXECUTION", "approval_task_id": "uhip-confidence-out-of-range-rejection", "approval_instruction_sha256": hashlib.sha256(instruction.encode()).hexdigest(), "approval_base_sha": sha, "approval_allowed_paths_sha256": hashlib.sha256(json.dumps(["tests/test_run_guarded_runtime.py"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()}}), encoding="utf-8")
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
     monkeypatch.delenv("GITHUB_ENV", raising=False)
 
@@ -544,7 +545,8 @@ def test_common_runtime_blocks_without_independent_approval_even_if_env_claims_a
     monkeypatch.setattr(guarded_runtime, "_shared_stop_active", lambda: False)
     monkeypatch.setenv("AUTONOMOUS_SUMMARY_PATH", str(tmp_path / "summary.json"))
     monkeypatch.setenv("DEV_INSTRUCTION", "safe test instruction")
-    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "rsi-test-task")
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", "uhip-confidence-out-of-range-rejection")
+    monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "minimal-mvp-loop")
     monkeypatch.setenv("AUTONOMOUS_EXECUTION_APPROVED", "true")
     monkeypatch.setenv("EXECUTION_APPROVED", "true")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
