@@ -38,12 +38,34 @@ def test_simulator_bridge_recomputes_scores_and_never_grants_authority():
         held_out_expected_sha256=digest,
         safety={"stop_state": "INACTIVE", "global_hold_state": "CLEAR"},
         minimum_delta=0.4,
+        sign_adapter_digest=lambda adapter_id, digest: "trusted:" + digest,
     )
     assert result["status"] == "PASS"
+    assert result["adapter_signature"] == "trusted:" + __import__(
+        "core.rsi_executor", fromlist=["canonical_digest"]
+    ).canonical_digest({
+        "adapter_id": result["adapter_id"],
+        "experiment_id": result["experiment_id"],
+        "record": result["record"],
+        "evaluation": result["evaluation"],
+    })
     assert result["scores"] == {"baseline_correct": 1, "challenger_correct": 2}
     assert result["evaluation"]["evidence_sha256"]
     assert all(value is False for key, value in result["authority"].items() if key != "required_human_approval")
     assert result["authority"]["required_human_approval"] is True
+
+
+def test_scored_result_is_blocked_without_trusted_adapter_signer():
+    dataset, digest, output = _fixture()
+    result = evaluate_simulator_run(
+        simulator_output=output, held_out_dataset=dataset, held_out_locked=True,
+        held_out_expected_sha256=digest,
+        safety={"stop_state": "INACTIVE", "global_hold_state": "CLEAR"},
+        minimum_delta=0.4,
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["evaluation"]["reason"] == "trusted_adapter_signer_required"
+    assert "adapter_signature" not in result
 
 
 def test_unlocked_fixture_is_blocked():
