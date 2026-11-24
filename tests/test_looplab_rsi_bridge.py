@@ -142,6 +142,14 @@ def test_status_cannot_be_forged_even_when_both_status_fields_are_changed(tmp_pa
     payload = _evaluation("FAIL")
     payload["status"] = "PASS"
     payload["evaluation"]["status"] = "PASS"
+    # Re-sign the tampered envelope so this test reaches the semantic
+    # recomputation gate rather than stopping at the earlier signature gate.
+    payload["adapter_signature"] = "trusted:" + canonical_digest({
+        "adapter_id": payload["adapter_id"],
+        "experiment_id": payload["experiment_id"],
+        "record": payload["record"],
+        "evaluation": payload["evaluation"],
+    })
     with pytest.raises(ValueError, match="status_not_reproducible"):
         record_evaluation_as_rsi_observation(
             evaluation_result=payload,
