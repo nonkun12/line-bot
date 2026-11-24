@@ -916,13 +916,16 @@ def run_task(
             failure_reason = "blocked_summary_rea_evidence_invalid"
         elif payload.get("failure_reason") != f"control_tower_rea:{rea['reason_code']}":
             failure_reason = "blocked_summary_failure_reason_invalid"
-    elif payload and exit_code in {81, 82} and not failure_reason:
+    elif payload and exit_code in {81, 82, 83} and not failure_reason:
         evidence = payload.get("gate_evidence")
         expected_gate = {81: "execution_approval", 82: "emergency_stop", 83: "model_provider"}[exit_code]
+        reason_code = evidence.get("reason_code") if isinstance(evidence, dict) else ""
         expected_failure_reason = (
-            "model_provider_gate:" + evidence["reason_code"]
-            if exit_code == 83
-            else f"guarded_runtime_gate:{expected_gate}:{evidence['reason_code']}"
+            "model_provider_gate:" + reason_code
+            if exit_code == 83 and isinstance(reason_code, str)
+            else f"guarded_runtime_gate:{expected_gate}:{reason_code}"
+            if isinstance(reason_code, str)
+            else ""
         )
         if (
             payload.get("status") != "BLOCKED"
@@ -930,7 +933,8 @@ def run_task(
             or not isinstance(evidence, dict)
             or evidence.get("gate") != "BLOCKED" or evidence.get("gate_name") != expected_gate
             or evidence.get("exit_code") != exit_code
-            or not isinstance(evidence.get("reason_code"), str) or not evidence["reason_code"].strip()
+            or not isinstance(reason_code, str) or not reason_code.strip()
+            or (exit_code == 83 and reason_code != "local_adapter_unavailable")
             or any(evidence.get(key) is not False for key in ("execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"))
             or payload.get("failure_reason") != expected_failure_reason
         ):
