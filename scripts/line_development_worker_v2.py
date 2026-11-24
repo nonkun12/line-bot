@@ -25,6 +25,7 @@ if str(_ROOT) not in sys.path:
 
 from core.local_model_client import LocalModelClient, LocalModelError, create_local_model_client_from_env
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
+from scripts.autonomous_test_sandbox import run_pytest_sandboxed
 
 ROOT = _ROOT
 MODEL = os.environ.get("RSI_LOCAL_MODEL_NAME", "")
@@ -1071,7 +1072,15 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 return False, "targeted pytest requires safe relative Python test paths"
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native", *paths]
             outputs.append("targeted pytest:")
-        tests = run(test_cmd, timeout=900, env=_test_process_env())
+        if os.environ.get("AUTONOMOUS_TEST_ADMISSION_SANDBOX_REQUIRED", "").strip().lower() == "true":
+            tests = run_pytest_sandboxed(
+                test_cmd,
+                repo_root=ROOT,
+                test_paths=paths if not full_suite else list(touched or []),
+                timeout=900,
+            )
+        else:
+            tests = run(test_cmd, timeout=900, env=_test_process_env())
     finally:
         for name, value in task_scope.items():
             if value is missing:
