@@ -188,6 +188,7 @@ def build_policy_admission(
     completed = set(state["completed"])
     recovery_tasks = recovery["tasks"]
     goal_blocked_ids: set[str] = set()
+    goal_registered_ids: set[str] = set()
     goal_state = state.get("goal_autopilot")
     if goal_state is not None:
         goal_tasks = goal_state.get("tasks") if isinstance(goal_state, dict) else None
@@ -200,6 +201,7 @@ def build_policy_admission(
             goal_status = goal_task.get("status")
             if not isinstance(goal_task_id, str) or not goal_task_id:
                 raise ValueError("goal_autopilot_task_id_invalid")
+            goal_registered_ids.add(goal_task_id)
             if goal_status in {"HELD", "FAILED"}:
                 goal_blocked_ids.add(goal_task_id)
             elif goal_status not in {"PENDING", "RUNNING", "COMPLETED"}:
@@ -210,7 +212,7 @@ def build_policy_admission(
         if type(recovery_record.get("held", False)) is not bool or type(recovery_record.get("resume_requires_review", False)) is not bool:
             raise ValueError("recovery_task_flags_invalid")
     registered = set(catalog_ids)
-    excluded = registered | set(queued_ids) | completed | set(recovery_tasks) | goal_blocked_ids
+    excluded = registered | set(queued_ids) | completed | set(recovery_tasks) | goal_registered_ids
     validated = None
     selected_index = None
     for index, candidate in enumerate(candidates):
