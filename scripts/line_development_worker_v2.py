@@ -26,6 +26,7 @@ if str(_ROOT) not in sys.path:
 
 from core.local_model_client import LocalModelClient, LocalModelError, create_local_model_client_from_env
 from core.self_improvement_policy import SelfImprovementDecision, assess_self_improvement
+from scripts.autonomous_task_target_allowlist import TARGETS
 from scripts.autonomous_test_sandbox import run_pytest_sandboxed
 
 ROOT = _ROOT
@@ -1045,7 +1046,7 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             not isinstance(raw_paths, list)
             or len(raw_paths) != 1
             or not isinstance(raw_paths[0], str)
-            or raw_paths[0] not in {test_path for _, test_path in __import__("scripts.autonomous_task_target_allowlist", fromlist=["TARGETS"]).TARGETS}
+            or raw_paths[0] not in {test_path for _, test_path in TARGETS}
             or Path(raw_paths[0]).is_absolute()
             or ".." in Path(raw_paths[0]).parts
         ):
