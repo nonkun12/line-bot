@@ -2726,7 +2726,7 @@ def execute(instruction: str) -> int:
             instruction=instruction, status="BLOCKED", target_path=None, branch=None,
             exit_detail=provider_block_reason, base_sha=None, produced_sha=None,
         )
-        return 1
+        return 83
     deterministic_task = autonomous_task_id in _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
     review_coverage_gap_task = _is_review_coverage_gap_task_id(autonomous_task_id)
     if deterministic_task or review_coverage_gap_task:
