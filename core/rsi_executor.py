@@ -544,10 +544,8 @@ class RSIExecutor:
         """
         return self._control()
 
-    def observe(
-        self, observations: tuple[Observation, ...], *, _already_persisted: bool = False
-    ) -> tuple[Diagnosis, ...]:
-        self._control()
+
+    def _validate_observations(self, observations: tuple[Observation, ...]) -> dict[str, list[Observation]]:
         if not observations:
             raise RSIError("at least one observation is required")
         if len(observations) > 100:
@@ -572,22 +570,46 @@ class RSIExecutor:
             if not item.detail or len(item.detail) > 2000:
                 raise RSIError("observation detail invalid")
             groups.setdefault(item.capability, []).append(item)
-        if not _already_persisted:
-            self.ledger.append_verified_observations(
-                observations, self.verify_evidence_signature, self.verify_evaluation
-            )
+        return groups
+
+    def _diagnose_observations(self, groups: dict[str, list[Observation]]) -> tuple[Diagnosis, ...]:
         diagnoses = []
         for capability, rows in sorted(groups.items()):
             failures = [x for x in rows if x.outcome in {"FAIL", "REGRESSED"}]
             if not failures:
                 continue
-            # Deterministic pattern; never upgrades an inferred cause into a fact.
             pattern = "repeated_failure" if len(failures) > 1 else "single_failure"
             did = canonical_digest({"capability": capability, "evidence": sorted(x.evidence_digest for x in failures)})
             diagnoses.append(Diagnosis(did[:32], capability, pattern, 0.5 if len(failures) == 1 else 0.7,
                 tuple(x.observation_id for x in failures), "root cause is unverified; diagnosis is a testable lead"))
             self.ledger.append("diagnosis:" + did[:32], "diagnosis", asdict(diagnoses[-1]))
         return tuple(diagnoses)
+
+    def observe(self, observations: tuple[Observation, ...]) -> tuple[Diagnosis, ...]:
+        self._control()
+        groups = self._validate_observations(observations)
+        self.ledger.append_verified_observations(
+            observations, self.verify_evidence_signature, self.verify_evaluation
+        )
+        return self._diagnose_observations(groups)
+
+    def observe_with_source_evidence(
+        self, event_id: str, *, observation: Observation, experiment_id: str,
+        candidate_digest: str, protocol_digest: str, result_digest: str,
+        producer_id: str, sign_digest: Callable[[str], str],
+    ) -> tuple[str, tuple[Diagnosis, ...]]:
+        """Atomically ingest source evidence and observation before diagnosis."""
+        self._control()
+        groups = self._validate_observations((observation,))
+        evidence_digest = self.ledger.append_observation_and_verify_atomically(
+            event_id, observation=observation, experiment_id=experiment_id,
+            candidate_digest=candidate_digest, protocol_digest=protocol_digest,
+            result_digest=result_digest, producer_id=producer_id,
+            sign_digest=sign_digest,
+            verify_producer_signature=self.verify_evidence_signature,
+            verify_evaluation=self.verify_evaluation,
+        )
+        return evidence_digest, self._diagnose_observations(groups)
 
     def hypothesize(self, diagnoses: tuple[Diagnosis, ...]) -> tuple[Hypothesis, ...]:
         self._control()
