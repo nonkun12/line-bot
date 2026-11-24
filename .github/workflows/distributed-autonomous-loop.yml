@@ -516,7 +516,7 @@ jobs:
           fi
           if bwrap --die-with-parent --new-session --unshare-net --unshare-pid \
             --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp -- \
-            python -c 'import socket; s=socket.socket(); s.settimeout(1);\ntry:\n s.connect(("1.1.1.1", 53)); raise SystemExit(1)\nexcept OSError: pass' ; then
+            python -c 'import socket; names={name for _, name in socket.if_nameindex()}; raise SystemExit(0 if names <= {"lo"} else 1)' ; then
             echo "AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY=true" >> "$GITHUB_ENV"
             echo "POLICY_SANDBOX=PASS network_namespace=isolated filesystem=read_only tempfs=/tmp" >> "$GITHUB_STEP_SUMMARY"
           else
