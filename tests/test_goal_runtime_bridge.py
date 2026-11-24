@@ -21,21 +21,21 @@ def test_preflight_rea_is_recorded_even_when_goal_claim_is_held(tmp_path, monkey
     monkeypatch.setenv("GITHUB_SHA", "a" * 40)
     evidence_path = tmp_path / "rea-preflight-evaluations.jsonl"
     monkeypatch.setenv("REA_PREFLIGHT_EVIDENCE_PATH", str(evidence_path))
+    import scripts.rea_control_tower_adapter as rea_adapter
     monkeypatch.setattr(
-        bridge,
-        "_record_preflight_rea",
-        lambda path, sha: path.write_text(
-            json.dumps({
-                "stage": "pre_execution",
-                "target_sha": sha,
-                "gate": "PASS",
-                "execution_authorized": False,
-                "patch_authorized": False,
-                "hold_clear_authorized": False,
-                "merge_deploy_authorized": False,
-            }) + "\\n",
-            encoding="utf-8",
-        ),
+        rea_adapter,
+        "prepare_rea_evidence",
+        lambda root, expected_sha: {
+            "gate": "PASS",
+            "target_sha": expected_sha,
+            "scanner_status": "PASS",
+            "finding_count": 0,
+            "blocking_count": 0,
+            "execution_authorized": False,
+            "patch_authorized": False,
+            "hold_clear_authorized": False,
+            "merge_deploy_authorized": False,
+        },
     )
     monkeypatch.setattr(
         bridge,
@@ -66,6 +66,7 @@ def test_preflight_rea_is_recorded_even_when_goal_claim_is_held(tmp_path, monkey
     assert record["gate"] == "PASS"
     assert record["execution_authorized"] is False
     assert record["hold_clear_authorized"] is False
+    assert len(record["evidence_sha256"]) == 64
 
 
 def test_only_exact_approved_catalog_tasks_enter_goal(tmp_path):
