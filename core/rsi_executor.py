@@ -456,6 +456,7 @@ class RSIExecutor:
         # Trust roots are injected at executor construction, not per bridge call.
         self.verify_adapter_signature = verify_adapter_signature
         self.resolve_locked_dataset = resolve_locked_dataset
+        self.safety_state_provider = safety_state_provider
         self.executor_id = executor_id
         self.max_experiments_per_cycle = max_experiments_per_cycle
 
