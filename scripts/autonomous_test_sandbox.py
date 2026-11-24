@@ -233,6 +233,13 @@ def build_sandbox_command(
         if result.returncode == 0 and match:
             loader = Path(match.group(1))
             if loader.is_file():
+                # The namespace starts with an empty tmpfs root. Create the
+                # loader's destination parent before binding the exact file;
+                # otherwise bubblewrap cannot create /lib64/loader itself.
+                for parent in _parents(str(loader)):
+                    if parent not in created:
+                        args.extend(["--dir", parent])
+                        created.add(parent)
                 args.extend(["--ro-bind", str(loader.resolve()), str(loader)])
 
     args.extend([
