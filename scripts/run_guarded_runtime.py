@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -207,6 +208,14 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
             policy_report = json.loads(policy_report_path.read_text(encoding="utf-8"))
             if not isinstance(policy_report, dict):
                 return blocked
+            catalog_bytes = policy_catalog_path.read_bytes()
+            catalog_digest = policy_report.get("admitted_catalog_sha256")
+            if (
+                not isinstance(catalog_digest, str)
+                or not re.fullmatch(r"[a-f0-9]{64}", catalog_digest)
+                or not hmac.compare_digest(hashlib.sha256(catalog_bytes).hexdigest(), catalog_digest)
+            ):
+                return blocked
             from scripts.autonomous_task_target_allowlist import TARGETS
             allowed_test_paths = {test_path for _, test_path in TARGETS}
             admitted_path = policy_report.get("admitted_allowed_path")
@@ -218,7 +227,7 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
                 or paths != [admitted_path]
             ):
                 return blocked
-            catalog = json.loads(policy_catalog_path.read_text(encoding="utf-8"))
+            catalog = json.loads(catalog_bytes.decode("utf-8"))
         except (OSError, UnicodeError, TypeError, ValueError):
             return blocked
     else:
