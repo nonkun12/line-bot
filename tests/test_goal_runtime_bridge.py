@@ -358,7 +358,7 @@ def test_run_scoped_goal_ignores_unrelated_held_task_without_mutating_durable_go
     revision, scoped = bridge._load_goal(store, state, authorized, set())
 
     assert revision == 0
-    assert scoped["goal_id"] == bridge.GOAL_ID + ":run"
+    assert scoped["goal_id"] == bridge.GOAL_ID
     assert [task["task_id"] for task in scoped["tasks"]] == ["approved-test-task"]
     assert state["goal_autopilot"] == original
     assert scoped["safety_gate"] is True
