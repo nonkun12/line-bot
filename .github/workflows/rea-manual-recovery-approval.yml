@@ -66,23 +66,38 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           MERGE_SHA: ${{ steps.pr.outputs.merge_sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           gh api "repos/${REPOSITORY}/commits/${MERGE_SHA}/check-runs" > checks.json
+          gh api "repos/${REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > current-run.json
           python - <<'PY'
           import json
           from pathlib import Path
           checks = json.loads(Path("checks.json").read_text(encoding="utf-8")).get("check_runs", [])
+          current_run = json.loads(Path("current-run.json").read_text(encoding="utf-8"))
+          current_suite_id = current_run.get("check_suite_id")
           if not checks:
               raise SystemExit("BLOCKED: no check-run evidence exists.")
+          if not current_suite_id:
+              raise SystemExit("BLOCKED: unable to identify the current Recovery Approval check suite.")
+          # The dispatch workflow itself runs on the merge SHA. Exclude only its
+          # own check suite; otherwise its still-running job makes this gate
+          # fail itself before it can dispatch the one approved Loop.
+          merge_checks = [
+              x for x in checks
+              if (x.get("check_suite") or {}).get("id") != current_suite_id
+          ]
+          if not merge_checks:
+              raise SystemExit("BLOCKED: no independent merge check-run evidence exists.")
           bad = [
               (x.get("name", "unknown"), x.get("status"), x.get("conclusion"))
-              for x in checks
+              for x in merge_checks
               if x.get("status") != "completed" or x.get("conclusion") not in {"success", "skipped"}
           ]
-          if bad or not any(x.get("conclusion") == "success" for x in checks):
-              raise SystemExit(f"BLOCKED: checks are not clean: {bad[:20]}")
-          print(f"Verified {len(checks)} completed checks.")
+          if bad or not any(x.get("conclusion") == "success" for x in merge_checks):
+              raise SystemExit(f"BLOCKED: independent merge checks are not clean: {bad[:20]}")
+          print(f"Verified {len(merge_checks)} independent completed merge checks.")
           PY
 
       - name: Refuse overlapping Distributed Loop runs
