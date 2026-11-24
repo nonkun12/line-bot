@@ -407,3 +407,7 @@ def test_validated_gate_block_is_not_turned_into_goal_hold():
     assert bridge._valid_no_execution_block(row, "task-gate", 1) is False
     forged = dict(row, gate_evidence=dict(row["gate_evidence"], execution_authorized=True))
     assert bridge._valid_no_execution_block(forged, "task-gate", 81) is False
+    legacy_rea = dict(row, exit_code=80, gate_evidence=dict(
+        row["gate_evidence"], gate_name="rea", exit_code=80
+    ))
+    assert bridge._valid_no_execution_block(legacy_rea, "task-gate", 80) is False
