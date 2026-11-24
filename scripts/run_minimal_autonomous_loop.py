@@ -912,9 +912,10 @@ def run_task(
             not isinstance(rea, dict) or rea.get("gate") != "BLOCKED"
             or not isinstance(rea.get("reason_code"), str) or not rea["reason_code"].strip()
             or any(rea.get(key) is not False for key in ("execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"))
-            or payload.get("failure_reason") != f"control_tower_rea:{rea['reason_code']}"
         ):
             failure_reason = "blocked_summary_rea_evidence_invalid"
+        elif payload.get("failure_reason") != f"control_tower_rea:{rea['reason_code']}":
+            failure_reason = "blocked_summary_failure_reason_invalid"
     elif payload and exit_code in {81, 82} and not failure_reason:
         evidence = payload.get("gate_evidence")
         expected_gate = {81: "execution_approval", 82: "emergency_stop"}[exit_code]
