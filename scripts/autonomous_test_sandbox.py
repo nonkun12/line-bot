@@ -152,9 +152,12 @@ def build_sandbox_command(
             if parent not in created:
                 args.extend(["--dir", parent])
                 created.add(parent)
+        if destination not in created:
+            args.extend(["--dir", destination])
+            created.add(destination)
+    for destination in destinations:
         source = str(mounts[destination])
         args.extend(["--ro-bind", source, destination])
-        created.add(destination)
 
     args.extend([
         "--chdir", str(root),
