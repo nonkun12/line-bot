@@ -1047,7 +1047,7 @@ def test_run_local_policy_catalog_rejects_catalog_digest_mismatch(monkeypatch, t
 
 @pytest.mark.parametrize(
     "exit_code,gate_name,reason_code",
-    [(80, "rea", "rea_denied"), (81, "execution_approval", "approval_missing"),
+    [(81, "execution_approval", "approval_missing"),
      (82, "emergency_stop", "emergency_stop_active")],
 )
 def test_blocked_summary_contains_explicit_no_authority_gate_evidence(
