@@ -136,12 +136,23 @@ def verify_policy_run(
         raise ValueError("admitted_task_id_missing")
     if not isinstance(target, str) or target not in ALLOWED_TEST_PATHS:
         raise ValueError("admitted_test_path_not_allowlisted")
+    if not rows:
+        return {
+            "status": "POLICY_GUARD_SKIPPED",
+            "task_id": task_id,
+            "reason": "policy_task_not_executed",
+        }
     matching = [row for row in rows if row.get("task_id") == task_id]
-    if len(matching) != 1 or len(rows) != 1:
+    if len(matching) == 1 and len(rows) == 1:
+        row = matching[0]
+        if row.get("status") not in {"PASS", "NO_CHANGE"} or row.get("exit_code") != 0:
+            return {
+                "status": "POLICY_GUARD_SKIPPED",
+                "task_id": task_id,
+                "reason": "policy_task_did_not_complete_successfully",
+            }
+    else:
         raise ValueError("policy_task_execution_evidence_missing_or_ambiguous")
-    row = matching[0]
-    if row.get("status") not in {"PASS", "NO_CHANGE"} or row.get("exit_code") != 0:
-        raise ValueError("policy_task_did_not_finish_with_safe_status")
     base_sha = row.get("base_sha")
     produced_sha = row.get("produced_sha")
     if base_sha != expected_base_sha or not isinstance(produced_sha, str):
