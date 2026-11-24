@@ -15,6 +15,59 @@ def _inputs(tmp_path: Path):
     state.write_text(json.dumps({"version":1,"completed":[]}))
     return queue,catalog,state,results,stop
 
+def test_preflight_rea_is_recorded_even_when_goal_claim_is_held(tmp_path, monkeypatch):
+    queue, catalog, state, results, stop = _inputs(tmp_path)
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+    monkeypatch.setenv("GITHUB_SHA", "a" * 40)
+    evidence_path = tmp_path / "rea-preflight-evaluations.jsonl"
+    monkeypatch.setenv("REA_PREFLIGHT_EVIDENCE_PATH", str(evidence_path))
+    monkeypatch.setattr(
+        bridge,
+        "_record_preflight_rea",
+        lambda path, sha: path.write_text(
+            json.dumps({
+                "stage": "pre_execution",
+                "target_sha": sha,
+                "gate": "PASS",
+                "execution_authorized": False,
+                "patch_authorized": False,
+                "hold_clear_authorized": False,
+                "merge_deploy_authorized": False,
+            }) + "\\n",
+            encoding="utf-8",
+        ),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_load_goal",
+        lambda *args, **kwargs: (1, {"tasks": [{"task_id": "approved-test-task", "status": "HELD"}]}),
+    )
+    monkeypatch.setattr(
+        bridge.GoalStateStore,
+        "claim_next",
+        lambda self, goal_id: {"decision": "HOLD"},
+    )
+    def unexpected_child(*args, **kwargs):
+        raise AssertionError("held task must not launch the child runner")
+    monkeypatch.setattr(bridge.subprocess, "run", unexpected_child)
+    args = SimpleNamespace(
+        catalog=catalog,
+        state=state,
+        results=results,
+        stop_file=stop,
+        goal_state_output=tmp_path / "goal-pending.json",
+        max_tasks=1,
+    )
+
+    assert bridge.run(args) == 79
+    record = json.loads(evidence_path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["stage"] == "pre_execution"
+    assert record["target_sha"] == "a" * 40
+    assert record["gate"] == "PASS"
+    assert record["execution_authorized"] is False
+    assert record["hold_clear_authorized"] is False
+
+
 def test_only_exact_approved_catalog_tasks_enter_goal(tmp_path):
     queue,catalog,state,results,stop = _inputs(tmp_path)
     assert bridge._authorized_queue(queue,catalog,set())[0]["execution_authorized"] is True
