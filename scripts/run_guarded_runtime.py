@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+POLICY_ADMISSION_REPORT_PATH = Path("/tmp/autonomous-loop-policy-admission.json")
+POLICY_ADMISSION_CATALOG_PATH = Path("/tmp/autonomous-loop-policy-runtime-catalog.json")
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -175,9 +177,9 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
     if os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true":
         # The run-local policy catalog is trusted only when its companion report
         # binds this exact task, allowlisted test path, and checkout SHA.
-        policy_report_path = Path("/tmp/autonomous-loop-policy-admission.json")
+        policy_report_path = POLICY_ADMISSION_REPORT_PATH
         policy_catalog_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_CATALOG", ""))
-        if policy_catalog_path != Path("/tmp/autonomous-loop-policy-runtime-catalog.json"):
+        if policy_catalog_path != POLICY_ADMISSION_CATALOG_PATH:
             return blocked
         try:
             policy_report = json.loads(policy_report_path.read_text(encoding="utf-8"))
