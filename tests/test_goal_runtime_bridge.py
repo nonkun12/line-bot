@@ -70,6 +70,32 @@ def test_preflight_rea_is_recorded_even_when_goal_claim_is_held(tmp_path, monkey
     assert len(record["evidence_sha256"]) == 64
 
 
+def test_preflight_rea_scan_exception_is_recorded_as_blocked(tmp_path, monkeypatch):
+    import scripts.rea_control_tower_adapter as rea_adapter
+
+    evidence_path = tmp_path / "rea-preflight-evaluations.jsonl"
+    monkeypatch.setattr(bridge, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        rea_adapter,
+        "prepare_rea_evidence",
+        lambda root, expected_sha: (_ for _ in ()).throw(RuntimeError("private detail")),
+    )
+
+    bridge._record_preflight_rea(evidence_path, "b" * 40)
+    record = json.loads(evidence_path.read_text(encoding="utf-8").splitlines()[0])
+
+    assert record["target_sha"] == "b" * 40
+    assert record["gate"] == "BLOCKED"
+    assert record["reason_code"] == "rea_preflight_failed"
+    assert record["scanner_status"] == "BLOCKED"
+    assert record["execution_authorized"] is False
+    assert record["patch_authorized"] is False
+    assert record["hold_clear_authorized"] is False
+    assert record["merge_deploy_authorized"] is False
+    assert "private detail" not in evidence_path.read_text(encoding="utf-8")
+    assert len(record["evidence_sha256"]) == 64
+
+
 def test_only_exact_approved_catalog_tasks_enter_goal(tmp_path):
     queue,catalog,state,results,stop = _inputs(tmp_path)
     assert bridge._authorized_queue(queue,catalog,set())[0]["execution_authorized"] is True
