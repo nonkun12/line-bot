@@ -1,4 +1,6 @@
 from dataclasses import replace
+import hashlib
+import json
 from itertools import repeat
 import pytest
 
@@ -167,13 +169,64 @@ def test_stage185_signed_checkpoint_verifier_binds_generation_and_candidate():
         verify_cohort_signature=lambda d, s: s == "signed:" + d,
         sign_certificate=lambda d: "signed:" + d,
     )
+    current_checkpoint = lambda d, g, c: (
+        d == cert.certificate_digest and g == cert.proposed_generation and c in cert.candidate_ids
+    )
     verify_parent = stage185_readiness_verifier(
-        cert, verify_signature=lambda d, s: s == "signed:" + d,
+        cert,
+        verify_signature=lambda d, s: s == "signed:" + d,
+        verify_current_checkpoint=current_checkpoint,
     )
     assert verify_parent(cert.certificate_digest, cert.proposed_generation, "candidate-1") is True
     assert verify_parent(cert.certificate_digest, cert.proposed_generation + 1, "candidate-1") is False
     assert verify_parent(cert.certificate_digest, cert.proposed_generation, "not-in-certificate") is False
+    stale_parent = stage185_readiness_verifier(
+        cert,
+        verify_signature=lambda d, s: s == "signed:" + d,
+        verify_current_checkpoint=lambda *_: False,
+    )
+    assert stale_parent(cert.certificate_digest, cert.proposed_generation, "candidate-1") is False
     forged = replace(cert, certificate_signature="forged")
     assert stage185_readiness_verifier(
-        forged, verify_signature=lambda d, s: s == "signed:" + d,
+        forged,
+        verify_signature=lambda d, s: s == "signed:" + d,
+        verify_current_checkpoint=current_checkpoint,
     )(forged.certificate_digest, forged.proposed_generation, "candidate-1") is False
+
+
+def test_stage185_checkpoint_membership_matches_the_signed_cohort():
+    report, selection, variations, cohort = pipeline()
+    cohort_ids = ("candidate-1",)
+    payload = {
+        "source": cohort.source_generation,
+        "target": cohort.target_generation,
+        "selection": cohort.selection_digest,
+        "variations": cohort.mutation_proposal_set_digest,
+        "cohort": cohort_ids,
+    }
+    cohort_digest = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+    narrowed_cohort = replace(
+        cohort,
+        cohort_candidate_ids=cohort_ids,
+        cohort_digest=cohort_digest,
+        signature="signed:" + cohort_digest,
+    )
+    cert = Stage185EvolutionReadinessPackager().build(
+        report, selection, variations, narrowed_cohort,
+        verify_report_signature=lambda d, s: s == "signed:" + d,
+        verify_variation_signature=lambda d, s: s == "signed:" + d,
+        verify_cohort_signature=lambda d, s: s == "signed:" + d,
+        sign_certificate=lambda d: "signed:" + d,
+    )
+    assert cert.candidate_ids == cohort_ids
+    verify_parent = stage185_readiness_verifier(
+        cert,
+        verify_signature=lambda d, s: s == "signed:" + d,
+        verify_current_checkpoint=lambda d, g, c: (
+            d == cert.certificate_digest and g == cert.proposed_generation and c in cert.candidate_ids
+        ),
+    )
+    assert verify_parent(cert.certificate_digest, cert.proposed_generation, "candidate-1") is True
+    assert verify_parent(cert.certificate_digest, cert.proposed_generation, "variant-a") is False
