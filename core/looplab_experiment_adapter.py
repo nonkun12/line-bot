@@ -12,7 +12,7 @@ import re
 import sqlite3
 from contextlib import closing
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from collections.abc import Mapping, Sequence
 
 from core.rsi_independent_evaluator import EVALUATOR_ID, EVALUATOR_VERSION, evaluate_exact_match
@@ -44,6 +44,7 @@ def evaluate_simulator_run(
     held_out_expected_sha256: str,
     safety: Mapping[str, Any],
     minimum_delta: float = 0.0,
+    sign_adapter_digest: Callable[[str, str], str] | None = None,
 ) -> dict[str, Any]:
     """Validate a simulator envelope and delegate scoring to the RSI evaluator.
 
@@ -89,9 +90,11 @@ def evaluate_simulator_run(
             held_out_locked=held_out_locked,
             held_out_expected_sha256=held_out_expected_sha256,
         )
-        return {
+        adapter_id = "looplab.simulator_rsi_bridge.v1"
+        status = evaluated["result"]["status"]
+        result = {
             "experiment_id": experiment_id,
-            "status": evaluated["result"]["status"],
+            "status": status,
             "record": evaluated["record"],
             "evaluation": evaluated["result"],
             "scores": {
@@ -99,8 +102,25 @@ def evaluate_simulator_run(
                 "challenger_correct": evaluated["challenger_correct"],
             },
             "authority": dict(_FORBIDDEN_AUTHORITY),
-            "adapter_id": "looplab.simulator_rsi_bridge.v1",
+            "adapter_id": adapter_id,
         }
+        if status in {"PASS", "FAIL"}:
+            if not callable(sign_adapter_digest):
+                raise ValueError("trusted_adapter_signer_required")
+            payload_digest = canonical_sha256({
+                "adapter_id": adapter_id,
+                "experiment_id": experiment_id,
+                "record": dict(evaluated["record"]),
+                "evaluation": dict(evaluated["result"]),
+            })
+            try:
+                signature = sign_adapter_digest(adapter_id, payload_digest)
+            except Exception as exc:
+                raise ValueError("adapter_signature_unavailable") from exc
+            if not isinstance(signature, str) or not signature.strip() or len(signature) > 4096:
+                raise ValueError("adapter_signature_invalid")
+            result["adapter_signature"] = signature
+        return result
     except (KeyError, TypeError, ValueError, OverflowError) as exc:
         return {
             "experiment_id": (
