@@ -102,7 +102,7 @@ def test_run_local_policy_catalog_rejects_digest_mismatch(monkeypatch, tmp_path)
     }.items():
         monkeypatch.setenv(key, value)
 
-    result = guarded_runtime._verify_catalog_execution_approval(base_sha, instruction)
+    result = guarded_runtime._verify_execution_approval(base_sha, instruction)
 
     assert result["gate"] == "BLOCKED"
     assert result["execution_authorized"] is False
