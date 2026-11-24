@@ -48,12 +48,17 @@ def run_pytest_sandboxed(
     if not target_resolved.is_file():
         return blocked("test_target_not_file")
     bwrap = shutil.which("bwrap")
+    prlimit = shutil.which("prlimit")
     if not bwrap:
         return blocked("bubblewrap_unavailable")
+    if not prlimit:
+        return blocked("prlimit_unavailable")
 
     safe_path = os.environ.get("PATH", os.defpath)
     sandbox = [
-        bwrap, "--unshare-all", "--die-with-parent", "--new-session",
+        prlimit, "--nproc=64", "--cpu=180", "--fsize=1048576",
+        "--as=4294967296", "--", bwrap,
+        "--unshare-all", "--die-with-parent", "--new-session",
         "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
         "--tmpfs", "/tmp", "--bind", str(target_resolved), str(target_resolved),
         "--dir", "/tmp/home", "--clearenv",
