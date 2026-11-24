@@ -24,6 +24,7 @@ from core.self_improvement_analyzer import analyze_signals
 from core.self_improvement_history import SelfImprovementHistory
 from core.hermes_advisor import build_self_improvement_prompt, run_hermes_advisor
 from scripts import line_development_worker_v2 as worker
+from scripts.autonomous_task_target_allowlist import TARGETS
 
 
 MAX_COMPLETION_TOKENS = 4096
@@ -176,7 +177,10 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
     policy_admission = os.environ.get("AUTONOMOUS_TEST_POLICY_ADMISSION", "").strip().lower() == "true"
     catalog_digest = ""
     if policy_admission:
-        runner_temp = Path(os.environ.get("RUNNER_TEMP", "")).resolve()
+        runner_temp_raw = os.environ.get("RUNNER_TEMP", "").strip()
+        if not runner_temp_raw:
+            return blocked
+        runner_temp = Path(runner_temp_raw).resolve()
         expected_catalog = runner_temp / "autonomous-loop-policy-runtime-catalog.json"
         expected_report = runner_temp / "autonomous-loop-policy-admission.json"
         catalog_path_raw = os.environ.get("AUTONOMOUS_POLICY_CATALOG_PATH", "")
@@ -185,8 +189,7 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
             catalog_path = Path(catalog_path_raw)
             report_path = Path(report_path_raw)
             if (
-                not str(runner_temp)
-                or catalog_path.is_symlink()
+                catalog_path.is_symlink()
                 or report_path.is_symlink()
                 or catalog_path.resolve(strict=True) != expected_catalog
                 or report_path.resolve(strict=True) != expected_report
@@ -194,6 +197,8 @@ def _verify_catalog_execution_approval(start_sha: str, instruction: str) -> dict
                 or os.environ.get("AUTONOMOUS_TEST_ADMISSION_SANDBOX_REQUIRED", "").lower() != "true"
                 or not shutil.which("bwrap")
                 or os.environ.get("GITHUB_SHA", "") != start_sha
+                or len(canonical_paths) != 1
+                or canonical_paths[0] not in {test_path for _, test_path in TARGETS}
             ):
                 return blocked
             catalog_bytes = catalog_path.read_bytes()
