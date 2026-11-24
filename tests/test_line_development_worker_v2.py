@@ -606,7 +606,10 @@ def test_policy_admission_runs_only_one_target_in_network_isolated_bwrap(monkeyp
 
     assert passed
     pytest_call, pytest_env = calls[-1]
-    assert pytest_call[0] == "bwrap"
+    assert pytest_call[0] == "prlimit"
+    assert "--nproc=64" in pytest_call
+    assert "--cpu=180" in pytest_call
+    assert "bwrap" in pytest_call
     assert "--unshare-net" in pytest_call
     assert "--ro-bind" in pytest_call
     assert "--tmpfs" in pytest_call
