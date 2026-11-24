@@ -4,7 +4,9 @@ Stages 186–190 extend the Stage 181–185 inter-generation readiness pipeline.
 
 ## Stage 186 — Longitudinal trend analysis
 - Requires a signed Stage 185 readiness checkpoint, matching starting generation, and candidate-lineage verifier.
-- The Stage 186 module exposes `stage185_checkpoint_verifier`, an adapter over the signed Stage 185 certificate. It verifies the certificate digest/signature, proposed generation, candidate membership, and proposal-only authority flags.
+- The Stage 186 module exposes `stage185_checkpoint_verifier`, which verifies the signed Stage 185 certificate, proposed generation, candidate membership, and proposal-only authority flags.
+- It also requires a separate read-only `verify_current_checkpoint(digest, generation, candidate_id)` callback. The callback must confirm the checkpoint is still current and reject stale/replayed receipts; signature validity alone is not freshness evidence.
+- The Stage 185 certificate binds exactly the Stage 184 cohort members. Candidates outside that cohort cannot enter Stage 186 merely because they appeared in the earlier evaluation or variation proposal set.
 - Each generation snapshot is signed over a canonical digest and chained to the prior snapshot; the first snapshot chains to the Stage 185 checkpoint.
 - Uses a fixed suite digest, unique evaluator/trial identities, and a distinct executor identity.
 - Consumes at most 33 items to enforce the 32-snapshot cap before materialization.
@@ -38,7 +40,7 @@ Stages 186–190 extend the Stage 181–185 inter-generation readiness pipeline.
 ## Safety and execution boundary
 HOLD blocks every stage. Invalid signatures, missing evidence, replay, gaps, tampering, evaluator overlap, lineage drift, or resource-bound violations fail closed. No inference execution, tensor/weight mutation, parameter merge, generation-state advancement, model registration/activation, production switch, permission change, merge, or deployment is performed. No paid API or cloud fallback is introduced.
 
-The Stage 185 checkpoint verifier and Stage 189 predecessor verifier are trusted read-only callbacks. They must check the current trusted checkpoint and reject stale/replayed digests; the proposal builders do not mutate checkpoint state.
+The Stage 185 current-checkpoint verifier and Stage 189 predecessor verifier are trusted read-only callbacks. They must check the current trusted checkpoint and reject stale/replayed digests; the proposal builders do not mutate checkpoint state. The Stage 185 adapter requires both cryptographic signature verification and this current-state callback.
 
 
 ## Follow-up integrity hardening
