@@ -1639,6 +1639,21 @@ jobs:
             exit 1
           fi
 
+      - name: LoopLab portable baseline diagnostic (non-production)
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python -m scripts.run_looplab_local_eval --baseline-only --output /tmp/looplab-baseline-diagnostic.json | tee /tmp/looplab-baseline-diagnostic-status.txt
+          {
+            echo
+            echo "### LoopLab portable baseline diagnostic"
+            echo "- 実行環境: GitHub Actions CPU（Mac不要）"
+            echo "- 評価: 合成fixtureのBaseline診断のみ"
+            echo "- 本番証拠: **false** / RSI取込: **禁止**"
+            echo "- Challenger推論・本番PASS/FAIL判定: 未実施"
+          } | tee -a /tmp/distributed-final-report.txt >> "$GITHUB_STEP_SUMMARY"
+
       - name: LoopLab post-run evaluation (fail closed)
         if: always()
         env:
@@ -1758,6 +1773,7 @@ jobs:
             /tmp/distributed-sheets-log-result.json
             /tmp/distributed-final-report.txt
             /tmp/looplab-postrun-result.json
+            /tmp/looplab-baseline-diagnostic.json
             /tmp/looplab-rsi-evidence.sqlite
           if-no-files-found: ignore
 
