@@ -918,7 +918,12 @@ def run_task(
             failure_reason = "blocked_summary_failure_reason_invalid"
     elif payload and exit_code in {81, 82} and not failure_reason:
         evidence = payload.get("gate_evidence")
-        expected_gate = {81: "execution_approval", 82: "emergency_stop"}[exit_code]
+        expected_gate = {81: "execution_approval", 82: "emergency_stop", 83: "model_provider"}[exit_code]
+        expected_failure_reason = (
+            "model_provider_gate:" + evidence["reason_code"]
+            if exit_code == 83
+            else f"guarded_runtime_gate:{expected_gate}:{evidence['reason_code']}"
+        )
         if (
             payload.get("status") != "BLOCKED"
             or payload.get("produced_sha") != produced_sha or produced_sha != base_sha
@@ -927,7 +932,7 @@ def run_task(
             or evidence.get("exit_code") != exit_code
             or not isinstance(evidence.get("reason_code"), str) or not evidence["reason_code"].strip()
             or any(evidence.get(key) is not False for key in ("execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"))
-            or payload.get("failure_reason") != f"guarded_runtime_gate:{expected_gate}:{evidence['reason_code']}"
+            or payload.get("failure_reason") != expected_failure_reason
         ):
             failure_reason = "blocked_summary_gate_evidence_invalid"
     # A changed successful task must carry the exact post-generation REA
@@ -961,7 +966,7 @@ def run_task(
     if exit_code == 0 and produced_sha == base_sha and _valid_sha(base_sha):
         failure_reason = failure_reason or "no_change"
         status = "NO_CHANGE"
-    elif exit_code != 0 and not failure_reason and exit_code not in {80, 81, 82}:
+    elif exit_code != 0 and not failure_reason and exit_code not in {80, 81, 82, 83}:
         failure_reason = "task_runtime_failed"
 
     if exit_code == 0 and not failure_reason:
@@ -969,7 +974,7 @@ def run_task(
         if not verified:
             failure_reason = reason
 
-    if exit_code in {80, 81, 82} and not failure_reason and payload.get("status") == "BLOCKED":
+    if exit_code in {80, 81, 82, 83} and not failure_reason and payload.get("status") == "BLOCKED":
         status = "BLOCKED"
     elif exit_code != 0 or failure_reason:
         if failure_reason == "no_change" and exit_code == 0:
@@ -1730,7 +1735,7 @@ def main() -> int:
                 f"MINIMAL_LOOP:HALT task={task['id']} reason={orchestration.get('reason_code', 'orchestration_blocked')}",
                 flush=True,
             )
-            if result.get("status") == "BLOCKED" and result.get("exit_code") in {81, 82} and isinstance(result.get("gate_evidence"), dict):
+            if result.get("status") == "BLOCKED" and result.get("exit_code") in {81, 82, 83} and isinstance(result.get("gate_evidence"), dict):
                 return int(result["exit_code"])
             return 1
 
