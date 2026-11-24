@@ -90,7 +90,7 @@ def normalize_hold_diagnostic(record: dict[str, Any]) -> dict[str, Any]:
     decision = record.get("decision")
     return {
         "stage": "pre_execution" if record.get("stage") == "pre_execution" else "invalid",
-        "decision": decision if decision in {"HOLD", "INVALID", "COMPLETE"} else "UNKNOWN",
+        "decision": decision if isinstance(decision, str) and decision in {"HOLD", "INVALID", "COMPLETE"} else "UNKNOWN",
         "reason": safe_token(record.get("reason"), 100) or "unknown",
         "task_counts": task_counts,
         "blocked_tasks": blocked_tasks,
