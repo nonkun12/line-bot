@@ -1,3 +1,6 @@
+import subprocess
+from pathlib import Path
+
 from scripts.run_looplab_local_eval import _metrics, _score, run
 
 
@@ -22,3 +25,9 @@ def test_scoring_counts_negative_false_positives():
     rows = _score([{"id": "q1", "kind": "negative", "relevant": []}], {"q1": ["doc-a"]}, 5)
     assert rows[0]["false_positive"] is True
     assert _metrics(rows, 5)["negative_false_positive_rate"] == 1.0
+
+
+def test_one_command_launcher_has_valid_shell_syntax():
+    script = Path(__file__).resolve().parents[1] / "scripts" / "start_looplab_local.sh"
+    result = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
