@@ -19,6 +19,7 @@ def test_preflight_rea_is_recorded_even_when_goal_claim_is_held(tmp_path, monkey
     queue, catalog, state, results, stop = _inputs(tmp_path)
     monkeypatch.setattr(bridge, "ROOT", tmp_path)
     monkeypatch.setenv("GITHUB_SHA", "a" * 40)
+    monkeypatch.setenv("AUTONOMOUS_LOOP_TASK_QUEUE", str(queue))
     evidence_path = tmp_path / "rea-preflight-evaluations.jsonl"
     monkeypatch.setenv("REA_PREFLIGHT_EVIDENCE_PATH", str(evidence_path))
     import scripts.rea_control_tower_adapter as rea_adapter
