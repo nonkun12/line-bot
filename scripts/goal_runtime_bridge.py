@@ -240,6 +240,7 @@ def _valid_no_execution_block(row: dict[str, Any] | None, task_id: str, child_re
         and evidence.get("gate_name") == expected_gate
         and evidence.get("exit_code") == child_returncode
         and isinstance(evidence.get("reason_code"), str) and bool(evidence.get("reason_code").strip())
+        and row.get("failure_reason") == "guarded_runtime_gate:" + expected_gate + ":" + evidence.get("reason_code")
         and all(evidence.get(key) is False for key in (
             "execution_authorized", "patch_authorized", "hold_clear_authorized", "merge_deploy_authorized"
         ))
