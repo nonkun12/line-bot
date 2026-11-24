@@ -171,3 +171,58 @@ def test_active_hold_or_stop_blocks_evaluation(tmp_path):
     )
     assert result["status"] == "BLOCKED"
     assert result["reason"] == "global_hold_active_or_unverified"
+
+
+
+def test_simulator_artifact_must_match_current_distributed_run(tmp_path):
+    keys, paths = _inputs(tmp_path)
+    payload = json.loads(paths["simulator"].read_text(encoding="utf-8"))["payload"]
+    payload["source_run_id"] = "99999"
+    _write(paths["simulator"], _signed(payload, keys["LOOPLAB_SIMULATOR_HMAC_KEY"]))
+    result = evaluate_postrun(
+        simulator_path=paths["simulator"],
+        dataset_path=paths["dataset"],
+        registry_path=paths["registry"],
+        safety_path=paths["safety"],
+        output_path=paths["output"],
+        env=keys,
+        now=1000,
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["reason"] == "simulator_source_run_mismatch"
+
+
+def test_simulator_predictions_must_cover_locked_dataset_exactly(tmp_path):
+    keys, paths = _inputs(tmp_path)
+    payload = json.loads(paths["simulator"].read_text(encoding="utf-8"))["payload"]
+    payload["challenger"]["predictions"].pop()
+    _write(paths["simulator"], _signed(payload, keys["LOOPLAB_SIMULATOR_HMAC_KEY"]))
+    result = evaluate_postrun(
+        simulator_path=paths["simulator"],
+        dataset_path=paths["dataset"],
+        registry_path=paths["registry"],
+        safety_path=paths["safety"],
+        output_path=paths["output"],
+        env=keys,
+        now=1000,
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["reason"] == "simulator_prediction_coverage_incomplete"
+
+
+def test_stale_simulator_artifact_blocks_before_evaluation(tmp_path):
+    keys, paths = _inputs(tmp_path)
+    payload = json.loads(paths["simulator"].read_text(encoding="utf-8"))["payload"]
+    payload["created_at"] = 600
+    _write(paths["simulator"], _signed(payload, keys["LOOPLAB_SIMULATOR_HMAC_KEY"]))
+    result = evaluate_postrun(
+        simulator_path=paths["simulator"],
+        dataset_path=paths["dataset"],
+        registry_path=paths["registry"],
+        safety_path=paths["safety"],
+        output_path=paths["output"],
+        env=keys,
+        now=1000,
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["reason"] == "simulator_artifact_stale_or_future"
