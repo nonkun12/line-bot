@@ -327,7 +327,10 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "expected_base_sha": start_sha,
     }
     event_name = os.environ.get("GITHUB_EVENT_NAME", "")
-    if event_name == "schedule":
+    if (
+        event_name == "schedule"
+        or os.environ.get("AUTONOMOUS_TEST_ADMISSION_POLICY", "").casefold() == "true"
+    ):
         return _verify_catalog_execution_approval(start_sha, instruction)
     if event_name not in {"workflow_dispatch", "issue_comment"}:
         return blocked
