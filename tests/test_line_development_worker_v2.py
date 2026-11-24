@@ -1643,3 +1643,58 @@ def test_repo_files_enforces_exact_autonomous_allowed_path_manifest(monkeypatch)
     monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["../tests/test_allowed.py"]')
     with pytest.raises(RuntimeError, match="AUTONOMOUS_ALLOWED_PATHS is invalid"):
         worker.repo_files()
+
+
+def test_run_tests_uses_os_sandbox_for_policy_admitted_task(monkeypatch, tmp_path):
+    target = tmp_path / "tests" / "test_stocks.py"
+    target.parent.mkdir()
+    target.write_text("def test_placeholder(): pass\n", encoding="utf-8")
+    sandbox_calls = []
+    host_calls = []
+
+    def fake_run(cmd, timeout=900, input_text=None, env=None):
+        host_calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    def fake_sandbox(cmd, *, repo_root, test_paths, timeout):
+        sandbox_calls.append((cmd, repo_root, test_paths, timeout))
+        return subprocess.CompletedProcess(cmd, 0, stdout="1 passed", stderr="")
+
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker, "run", fake_run)
+    monkeypatch.setattr(worker, "run_pytest_sandboxed", fake_sandbox)
+    monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_SANDBOX_REQUIRED", "true")
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", '["tests/test_stocks.py"]')
+
+    passed, output = worker.run_tests(["tests/test_stocks.py"])
+
+    assert passed
+    assert len(host_calls) == 1
+    assert host_calls[0][1:3] == ["-m", "py_compile"]
+    assert len(sandbox_calls) == 1
+    command, root, paths, timeout = sandbox_calls[0]
+    assert command[-1] == "tests/test_stocks.py"
+    assert root == tmp_path
+    assert paths == ["tests/test_stocks.py"]
+    assert timeout == 900
+    assert "1 passed" in output
+
+
+def test_run_tests_blocks_sandboxed_no_change_without_exact_task_scope(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_run(cmd, timeout=900, input_text=None, env=None):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(worker, "ROOT", tmp_path)
+    monkeypatch.setattr(worker, "run", fake_run)
+    monkeypatch.setattr(worker, "run_pytest_sandboxed", lambda *args, **kwargs: calls.append("sandbox"))
+    monkeypatch.setenv("AUTONOMOUS_TEST_ADMISSION_SANDBOX_REQUIRED", "true")
+    monkeypatch.delenv("AUTONOMOUS_ALLOWED_PATHS", raising=False)
+
+    passed, output = worker.run_tests([])
+
+    assert not passed
+    assert "exact_single_task_path_required" in output
+    assert calls == []
