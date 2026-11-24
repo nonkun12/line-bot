@@ -34,7 +34,10 @@ def test_sandbox_uses_network_namespace_and_read_only_repository(tmp_path, monke
     target = tmp_path / "tests" / "test_stocks.py"
     target.parent.mkdir()
     target.write_text("def test_ok(): pass\n", encoding="utf-8")
-    monkeypatch.setattr(sandbox.shutil, "which", lambda _: "/usr/bin/bwrap")
+    monkeypatch.setattr(
+        sandbox.shutil, "which",
+        lambda name: { "bwrap": "/usr/bin/bwrap", "prlimit": "/usr/bin/prlimit" }.get(name),
+    )
     captured = {}
 
     def fake_run(command, **kwargs):
@@ -49,6 +52,8 @@ def test_sandbox_uses_network_namespace_and_read_only_repository(tmp_path, monke
     )
     assert result.returncode == 0
     command = captured["command"]
+    assert command[0] == "/usr/bin/prlimit"
+    assert "--nproc=64" in command
     assert "--unshare-all" in command
     assert "--ro-bind" in command
     assert "--tmpfs" in command
@@ -56,3 +61,21 @@ def test_sandbox_uses_network_namespace_and_read_only_repository(tmp_path, monke
     assert "--clearenv" in command
     assert captured["kwargs"]["timeout"] == 10
     assert captured["kwargs"]["env"] == {"PATH": sandbox.os.environ.get("PATH", sandbox.os.defpath)}
+
+
+def test_sandbox_blocks_when_process_limit_tool_is_unavailable(tmp_path, monkeypatch):
+    target = tmp_path / "tests" / "test_stocks.py"
+    target.parent.mkdir()
+    target.write_text("def test_ok(): pass\n", encoding="utf-8")
+    monkeypatch.setattr(
+        sandbox.shutil, "which",
+        lambda name: "/usr/bin/bwrap" if name == "bwrap" else None,
+    )
+
+    result = sandbox.run_pytest_sandboxed(
+        ["python", "-m", "pytest", "tests/test_stocks.py"],
+        repo_root=tmp_path, test_paths=["tests/test_stocks.py"], timeout=10,
+    )
+
+    assert result.returncode != 0
+    assert "prlimit_unavailable" in result.stderr
