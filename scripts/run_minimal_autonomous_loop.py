@@ -1001,6 +1001,7 @@ def run_task(
         **({"failure_code": safe_failure_code} if safe_failure_code is not None else {}),
         **({"execution_approval": _sanitized_execution_approval(payload.get("execution_approval"))} if _sanitized_execution_approval(payload.get("execution_approval")) is not None else {}),
         **({"rea": payload["rea"]} if status == "BLOCKED" and isinstance(payload.get("rea"), dict) else {}),
+        **({"gate_evidence": payload["gate_evidence"]} if status == "BLOCKED" and isinstance(payload.get("gate_evidence"), dict) else {}),
         **({"post_generation_rea": post_generation_rea} if isinstance(post_generation_rea, dict) else {}),
     }
 
