@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Callable
 from collections.abc import Mapping, Sequence
 
+from core.rsi_executor import canonical_digest
 from core.rsi_independent_evaluator import EVALUATOR_ID, EVALUATOR_VERSION, evaluate_exact_match
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -107,7 +108,7 @@ def evaluate_simulator_run(
         if status in {"PASS", "FAIL"}:
             if not callable(sign_adapter_digest):
                 raise ValueError("trusted_adapter_signer_required")
-            payload_digest = canonical_sha256({
+            payload_digest = canonical_digest({
                 "adapter_id": adapter_id,
                 "experiment_id": experiment_id,
                 "record": dict(evaluated["record"]),
