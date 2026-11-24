@@ -235,6 +235,14 @@ def build_sandbox_command(
         if use_runtime_prefix
         else str(interpreter)
     )
+    # Keep library lookup inside the same mounted prefix alias as the
+    # interpreter. The host-side sysconfig path is not visible in the
+    # sandbox when the prefix is mounted at /python-runtime.
+    sandbox_library_dir = (
+        str(Path("/python-runtime") / library_dir.relative_to(runtime_prefix))
+        if use_runtime_prefix and library_dir and library_dir.is_relative_to(runtime_prefix)
+        else str(library_dir) if library_dir else None
+    )
     # /bin is commonly a symlink to /usr/bin on hosted Ubuntu runners. The
     # namespace starts empty, so provide both conventional command paths.
     if Path("/usr/bin").is_dir():
@@ -274,8 +282,8 @@ def build_sandbox_command(
         "--setenv", "PATH", os.defpath,
         "--setenv", "LANG", "C.UTF-8",
         *(
-            ["--setenv", "LD_LIBRARY_PATH", str(library_dir)]
-            if library_dir and library_dir.is_dir()
+            ["--setenv", "LD_LIBRARY_PATH", sandbox_library_dir]
+            if sandbox_library_dir and library_dir and library_dir.is_dir()
             else []
         ),
         "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
