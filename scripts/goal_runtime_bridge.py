@@ -165,7 +165,11 @@ def _record_preflight_rea(path: Path, expected_sha: str) -> None:
         evidence = {"gate": "BLOCKED", "reason_code": "rea_preflight_failed"}
 
     gate = evidence.get("gate")
-    if gate not in {"PASS", "BLOCKED"} or not valid_sha:
+    if (
+        gate not in {"PASS", "BLOCKED"}
+        or not valid_sha
+        or (gate == "PASS" and evidence.get("target_sha") != expected_sha)
+    ):
         gate = "BLOCKED"
     reason = evidence.get("reason_code")
     if not isinstance(reason, str) or not reason or len(reason) > 80 or not reason.replace("_", "").isalnum():
@@ -200,7 +204,7 @@ def _record_preflight_rea(path: Path, expected_sha: str) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\\n")
+            stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
         print(f"REA_PREFLIGHT={gate} reason={row['reason_code'] or 'none'}", flush=True)
     except Exception:
         # A failed persistence attempt cannot grant permission or clear HOLD.
