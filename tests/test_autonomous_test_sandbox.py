@@ -108,7 +108,8 @@ def test_real_sandbox_denies_host_writes_credentials_sockets_and_network(tmp_pat
     # Probe the same namespace with its known-good shell before diagnosing an
     # interpreter ENOENT. This distinguishes a missing bind target from a
     # missing ELF loader without relaxing the production sandbox.
-    separator = command.index("--", command.index("bwrap") + 1)
+    bwrap_index = command.index(shutil.which("bwrap"))
+    separator = command.index("--", bwrap_index + 1)
     probe = command[:separator + 1] + [
         "/bin/sh", "-c",
         "ls -ld /python-runtime /python-runtime/bin; "
