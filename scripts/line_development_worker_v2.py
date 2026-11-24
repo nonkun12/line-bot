@@ -1047,17 +1047,18 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             or not raw_paths[0].startswith("tests/")
             or not raw_paths[0].endswith(".py")
             or Path(raw_paths[0]).is_absolute()
-            or ".." in Path(raw_paths[0]).parts
+            or any(part in ("", ".", "..") for part in Path(raw_paths[0]).parts)
+            or "\\" in raw_paths[0]
         ):
             return False, "isolated_policy_test_blocked:target_not_allowlisted"
         policy_paths = raw_paths
         if touched and touched != policy_paths:
             return False, "isolated_policy_test_blocked:touched_path_mismatch"
-        if shutil.which("bwrap") is None or shutil.which("prlimit") is None:
-            return False, "isolated_policy_test_blocked:sandbox_runtime_unavailable"
         full_suite = False
 
-    for path in touched or []:
+    # Policy-admitted tests must not cause host-side pyc writes or any
+    # pre-sandbox execution. Ordinary non-policy workflows retain py_compile.
+    for path in ([] if policy_mode else (touched or [])):
         if not path.endswith(".py"):
             continue
         compile_result = run(
@@ -1072,6 +1073,7 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
             outputs.append(compile_result.stderr)
         if compile_result.returncode != 0:
             return False, "\n".join(outputs)[-8000:]
+
     task_scoped_names = (
         "AUTONOMOUS_ALLOWED_PATHS",
         "AUTONOMOUS_TASK_ID",
@@ -1084,41 +1086,20 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
     task_scope = {name: os.environ.pop(name, missing) for name in task_scoped_names}
     try:
         if policy_mode:
-            clean_env = _test_process_env()
-            clean_env.update({
-                "HOME": "/tmp",
-                "TMPDIR": "/tmp",
-                "PYTHONDONTWRITEBYTECODE": "1",
-            })
-            test_cmd = [
-                "prlimit",
-                "--nproc=64",
-                "--cpu=180",
-                "--fsize=1048576",
-                "--as=4294967296",
-                "--",
-                "bwrap",
-                "--die-with-parent",
-                "--new-session",
-                "--unshare-net",
-                "--unshare-pid",
-                "--ro-bind", "/", "/",
-                "--dev", "/dev",
-                "--proc", "/proc",
-                "--tmpfs", "/tmp",
-                "--chdir", str(ROOT),
-                "--setenv", "HOME", "/tmp",
-                "--setenv", "TMPDIR", "/tmp",
-                "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
-                "--",
-                sys.executable, "-m", "pytest", "-q", "--tb=native",
-                "-p", "no:cacheprovider", *policy_paths,
-            ]
-            outputs.append("isolated pytest: network disabled; repository read-only; process/CPU/memory/file limits; one allowlisted test file")
+            from scripts.autonomous_test_sandbox import SandboxError, run_sandboxed_pytest
+            try:
+                tests = run_sandboxed_pytest(ROOT, policy_paths[0], timeout=900)
+            except SandboxError as exc:
+                return False, f"isolated_policy_test_blocked:{exc}"
+            outputs.append(
+                "isolated pytest: empty namespace root; explicit read-only runtime/repository mounts; "
+                "fresh tmpfs writable areas; all namespaces unshared; host environment and sockets not mounted"
+            )
         elif full_suite:
+            clean_env = _test_process_env()
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native"]
             outputs.append("full pytest:")
-            clean_env = _test_process_env()
+            tests = run(test_cmd, timeout=900, env=clean_env)
         else:
             paths = list(touched or [])
             if not paths or any(
@@ -1131,8 +1112,7 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 return False, "targeted pytest requires safe relative Python test paths"
             test_cmd = [sys.executable, "-m", "pytest", "-q", "--tb=native", *paths]
             outputs.append("targeted pytest:")
-            clean_env = _test_process_env()
-        tests = run(test_cmd, timeout=900, env=clean_env)
+            tests = run(test_cmd, timeout=900, env=_test_process_env())
     finally:
         for name, value in task_scope.items():
             if value is missing:
@@ -1141,7 +1121,6 @@ def run_tests(touched: list[str] | None = None, *, full_suite: bool = True) -> t
                 os.environ[name] = value
     outputs.extend([tests.stdout, tests.stderr])
     return tests.returncode == 0, "\n".join(outputs)[-8000:]
-
 
 def has_python_compile_failure(output: str) -> bool:
     """Return True when a touched Python file failed its pre-pytest compile check."""
