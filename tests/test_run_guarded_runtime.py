@@ -89,7 +89,9 @@ def test_run_local_policy_catalog_accepts_only_scheduler_dispatch(monkeypatch, t
     monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
     monkeypatch.setenv("GITHUB_ACTOR", "github-actions[bot]")
 
-    result = guarded_runtime._verify_catalog_execution_approval(base_sha, instruction)
+    monkeypatch.setenv("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "30m_scheduler")
+
+    result = guarded_runtime._verify_execution_approval(base_sha, instruction)
 
     assert result["gate"] == "PASS"
     assert result["scope"] == "run_local_test_policy"
