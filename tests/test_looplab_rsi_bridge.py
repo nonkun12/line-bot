@@ -227,3 +227,47 @@ def test_untrusted_or_stale_stop_state_blocks_observation_ingestion(tmp_path):
     assert ledger.verify()
     with sqlite3.connect(ledger.path) as db:
         assert db.execute("SELECT COUNT(*) FROM rsi_evidence").fetchone()[0] == 0
+
+
+
+def test_source_evidence_and_observation_roll_back_together_on_verification_failure(tmp_path):
+    executor, ledger = _executor(tmp_path)
+    executor.verify_evidence_signature = lambda producer, digest, signature: False
+    with pytest.raises(RSIError, match="signature verification failed"):
+        record_evaluation_as_rsi_observation(
+            evaluation_result=_evaluation("FAIL"),
+            executor=executor,
+            producer_id="looplab-independent-evaluator",
+            sign_digest=lambda digest: "sig:" + digest,
+            created_at=123,
+        )
+    assert ledger.verify()
+    with sqlite3.connect(ledger.path) as db:
+        assert db.execute("SELECT COUNT(*) FROM rsi_evidence").fetchone()[0] == 0
+        assert db.execute(
+            "SELECT COUNT(*) FROM rsi_evidence WHERE event_type='trusted_observation_evidence'"
+        ).fetchone()[0] == 0
+        assert db.execute(
+            "SELECT COUNT(*) FROM rsi_evidence WHERE event_type='observation'"
+        ).fetchone()[0] == 0
+
+
+def test_source_evidence_and_observation_commit_together_on_success(tmp_path):
+    executor, ledger = _executor(tmp_path)
+    result = record_evaluation_as_rsi_observation(
+        evaluation_result=_evaluation("PASS"),
+        executor=executor,
+        producer_id="looplab-independent-evaluator",
+        sign_digest=lambda digest: "sig:" + digest,
+        created_at=123,
+    )
+    assert result["recorded"] is True
+    with sqlite3.connect(ledger.path) as db:
+        rows = db.execute(
+            "SELECT event_type FROM rsi_evidence ORDER BY seq"
+        ).fetchall()
+    event_types = [row[0] for row in rows]
+    assert event_types[:2] == [
+        "trusted_observation_evidence", "observation"
+    ]
+    assert ledger.verify()
