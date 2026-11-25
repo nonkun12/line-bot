@@ -59,7 +59,8 @@ def test_legacy_nightly_worker_is_manual_only_and_keeps_safety_gates():
     assert "workflow_dispatch:" in event_block
     assert "schedule:" not in event_block
     assert "default: 'DENY'" in event_block
-    assert "CONTROL_TOWER_KILL_SWITCH" in text
+    assert "from core.emergency_stop import get_status" in text
+    assert "ACTIVE_OR_UNVERIFIABLE" in text
     assert "AUTO_APPLY_PATCH: 'false'" in text
     assert "AUTO_DEPLOY: 'false'" in text
     assert "scripts/run_guarded_runtime.py" in text
