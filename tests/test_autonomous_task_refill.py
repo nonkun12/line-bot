@@ -5,7 +5,21 @@ from pathlib import Path
 
 import pytest
 
+from scripts import autonomous_task_refill as refill
 from scripts.autonomous_task_refill import build_queue, main
+
+
+_TEST_DETERMINISTIC_TARGETS: dict[str, str] = {}
+
+
+@pytest.fixture(autouse=True)
+def _use_explicit_test_deterministic_targets(monkeypatch):
+    _TEST_DETERMINISTIC_TARGETS.clear()
+    monkeypatch.setattr(
+        refill,
+        "_deterministic_targets",
+        lambda: dict(_TEST_DETERMINISTIC_TARGETS),
+    )
 
 
 def _write(path: Path, data: dict) -> Path:
@@ -18,10 +32,49 @@ def _task(task_id: str) -> dict:
 
 
 def _inputs(tmp_path: Path, *, max_tasks=4, existing=None, candidates=None):
-    queue = _write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": max_tasks, "tasks": existing or []})
-    catalog = _write(tmp_path / "catalog.json", {"version": 1, "max_additions_per_run": 2, "tasks": candidates or []})
+    existing = existing or []
+    candidates = candidates or []
+    for task in [*existing, *candidates]:
+        paths = task.get("allowed_paths", [])
+        if isinstance(task.get("id"), str) and isinstance(paths, list) and len(paths) == 1 and isinstance(paths[0], str):
+            _TEST_DETERMINISTIC_TARGETS[task["id"]] = paths[0]
+    queue = _write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": max_tasks, "tasks": existing})
+    catalog = _write(tmp_path / "catalog.json", {"version": 1, "max_additions_per_run": 2, "tasks": candidates})
     completed = _write(tmp_path / "state.json", {"version": 1, "completed": [], "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None}})
     return queue, catalog, completed
+
+
+def test_refill_prefers_only_exact_deterministic_catalog_targets(tmp_path: Path, monkeypatch):
+    deterministic = _task("deterministic-ready")
+    deterministic["allowed_paths"] = ["tests/test_autonomous_task_refill.py"]
+    model_required = _task("model-required-ready")
+    queue, catalog, completed = _inputs(tmp_path, candidates=[deterministic, model_required])
+    monkeypatch.setattr(refill, "_deterministic_targets", lambda: {"deterministic-ready": "tests/test_autonomous_task_refill.py"})
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["added_ids"] == ["deterministic-ready"]
+    assert report["skipped_catalog_model_required_ids"] == ["model-required-ready"]
+    assert report["deterministic_classifier_available"] is True
+    assert [task["id"] for task in result["tasks"]] == ["deterministic-ready"]
+
+
+
+def test_refill_drops_existing_tasks_without_exact_deterministic_target(tmp_path: Path, monkeypatch):
+    queued = _task("model-required-existing")
+    queue, catalog, completed = _inputs(tmp_path, existing=[queued], candidates=[queued])
+    monkeypatch.setattr(refill, "_deterministic_targets", lambda: {"deterministic-only": "tests/test_example.py"})
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["retained_existing"] == 0
+    assert report["skipped_model_free_existing_ids"] == ["model-required-existing"]
+    assert result["tasks"] == []
+
 
 
 def test_refill_adds_only_uncompleted_catalog_tasks_within_cap(tmp_path: Path):
@@ -632,9 +685,16 @@ def test_refill_selects_exactly_four_new_catalog_tasks_when_older_tasks_are_comp
     assert [task_id for task_id in catalog_ids if task_id in expected_ids] == expected_ids
     # This test models four explicitly approved tasks without mutating the
     # repository catalog or granting approval to real production entries.
+    deterministic_test_paths = {
+        "control-tower-decision-malformed-evidence-sha": "tests/test_control_tower_decision.py",
+        "control-tower-decision-priority-type-boundaries": "tests/test_control_tower_decision.py",
+        "task-refill-feedback-history-skips-malformed-lines": "tests/test_autonomous_task_refill.py",
+        "proposal-generator-fails-closed-on-malformed-issue-record": "tests/test_autonomous_task_proposals.py",
+    }
     for task in catalog_data["tasks"]:
         if task["id"] in expected_ids:
             task["execution_approved"] = True
+            _TEST_DETERMINISTIC_TARGETS[task["id"]] = deterministic_test_paths[task["id"]]
     catalog = _write(tmp_path / "catalog.json", catalog_data)
 
     queue = _write(
