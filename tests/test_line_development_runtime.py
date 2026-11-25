@@ -892,7 +892,7 @@ def test_refill_malformed_completed_state_plan_is_syntax_safe_and_bounded(monkey
     assert change["file"] == chosen
     assert len(change["old"]) <= 1200
     assert len(change["new"]) <= 1800
-    candidate = anchor.replace(change["old"], change["new"], 1)
+    candidate = original.replace(change["old"], change["new"], 1)
     compile(candidate, chosen, "exec")
     assert "test_refill_fails_closed_on_non_string_completed_state" in candidate
     assert "completed state must be a string list" in candidate
@@ -1476,7 +1476,8 @@ def test_unknown_goal_status_task_plan_is_bounded_and_test_only(monkeypatch, tmp
     anchor = '@pytest.mark.parametrize("goal", [\n'
     target_file = tmp_path / chosen
     target_file.parent.mkdir(parents=True, exist_ok=True)
-    target_file.write_text(anchor, encoding="utf-8")
+    original = anchor + "    [],\\n])\\ndef test_existing(goal):\\n    pass\\n"
+    target_file.write_text(original, encoding="utf-8")
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
 
     plan, error = runtime._deterministic_autonomous_test_plan(chosen, task_id)
