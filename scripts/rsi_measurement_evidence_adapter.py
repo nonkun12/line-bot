@@ -109,7 +109,20 @@ def verify_rsi_measurement_evidence(
         )
     except (TypeError, ValueError):
         return None, "measurement_schema_invalid"
-    return record, "verified"
+    # The current loop does not cryptographically attest metric artifact bytes.
+    # Keep the measurement visible for diagnostics, but never label it improved.
+    unattested = SelfImprovementMeasurementRecord(
+        proposal_id=record.proposal_id,
+        metric_name=record.metric_name,
+        metric_direction=record.metric_direction,
+        baseline=record.baseline,
+        candidate=record.candidate,
+        base_sha=record.base_sha,
+        produced_sha=record.produced_sha,
+        test_evidence=record.test_evidence,
+        safety_gate="UNKNOWN",
+    )
+    return unattested, "metric_artifact_attestation_missing"
 
 
 __all__ = ["verify_rsi_measurement_evidence"]
