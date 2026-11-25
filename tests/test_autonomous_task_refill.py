@@ -9,6 +9,19 @@ from scripts import autonomous_task_refill as refill
 from scripts.autonomous_task_refill import build_queue, main
 
 
+_TEST_DETERMINISTIC_TARGETS: dict[str, str] = {}
+
+
+@pytest.fixture(autouse=True)
+def _use_explicit_test_deterministic_targets(monkeypatch):
+    _TEST_DETERMINISTIC_TARGETS.clear()
+    monkeypatch.setattr(
+        refill,
+        "_deterministic_targets",
+        lambda: dict(_TEST_DETERMINISTIC_TARGETS),
+    )
+
+
 def _write(path: Path, data: dict) -> Path:
     path.write_text(json.dumps(data), encoding="utf-8")
     return path
@@ -19,8 +32,14 @@ def _task(task_id: str) -> dict:
 
 
 def _inputs(tmp_path: Path, *, max_tasks=4, existing=None, candidates=None):
-    queue = _write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": max_tasks, "tasks": existing or []})
-    catalog = _write(tmp_path / "catalog.json", {"version": 1, "max_additions_per_run": 2, "tasks": candidates or []})
+    existing = existing or []
+    candidates = candidates or []
+    for task in [*existing, *candidates]:
+        paths = task.get("allowed_paths", [])
+        if isinstance(task.get("id"), str) and isinstance(paths, list) and len(paths) == 1 and isinstance(paths[0], str):
+            _TEST_DETERMINISTIC_TARGETS[task["id"]] = paths[0]
+    queue = _write(tmp_path / "queue.json", {"version": 1, "max_tasks_per_run": max_tasks, "tasks": existing})
+    catalog = _write(tmp_path / "catalog.json", {"version": 1, "max_additions_per_run": 2, "tasks": candidates})
     completed = _write(tmp_path / "state.json", {"version": 1, "completed": [], "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None}})
     return queue, catalog, completed
 
