@@ -685,9 +685,16 @@ def test_refill_selects_exactly_four_new_catalog_tasks_when_older_tasks_are_comp
     assert [task_id for task_id in catalog_ids if task_id in expected_ids] == expected_ids
     # This test models four explicitly approved tasks without mutating the
     # repository catalog or granting approval to real production entries.
+    deterministic_test_paths = {
+        "control-tower-decision-malformed-evidence-sha": "tests/test_control_tower_decision.py",
+        "control-tower-decision-priority-type-boundaries": "tests/test_control_tower_decision.py",
+        "task-refill-feedback-history-skips-malformed-lines": "tests/test_autonomous_task_refill.py",
+        "proposal-generator-fails-closed-on-malformed-issue-record": "tests/test_autonomous_task_proposals.py",
+    }
     for task in catalog_data["tasks"]:
         if task["id"] in expected_ids:
             task["execution_approved"] = True
+            _TEST_DETERMINISTIC_TARGETS[task["id"]] = deterministic_test_paths[task["id"]]
     catalog = _write(tmp_path / "catalog.json", catalog_data)
 
     queue = _write(
