@@ -312,6 +312,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "catalog-exhaustion-adapter-deduplicates-duplicate-findings-20261031": "tests/test_catalog_exhaustion_candidate_adapter.py",
     "review-coverage-gap-703fa3c06b": "tests/test_project_registry.py",
     "catalog-exhaustion-analyzer-main-fail-closed-20261105": "tests/test_catalog_exhaustion_analyzer.py",
+    "proposal-generator-unknown-goal-status-exclusion-regression-20261125": "tests/test_autonomous_task_proposals.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -374,6 +375,41 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    if task_id == "proposal-generator-unknown-goal-status-exclusion-regression-20261125" and chosen == "tests/test_autonomous_task_proposals.py":
+        target = worker.ROOT / chosen
+        text = target.read_text(encoding="utf-8")
+        name = "test_unknown_goal_autopilot_status_still_excludes_task"
+        if f"def {name}(" in text:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = '@pytest.mark.parametrize("goal", [\n'
+        if text.count(anchor) != 1:
+            return None, "deterministic_anchor_not_unique:unknown_goal_status"
+        addition = (
+            "def test_unknown_goal_autopilot_status_still_excludes_task(tmp_path):\n"
+            '    task_id = "unknown-goal-status"\n'
+            '    approved = issue(task_id, labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))\n'
+            '    goal = {"goal_id": "distributed-loop-main-goal-v1", "tasks": [{"task_id": task_id, "status": "PAUSED"}]}\n'
+            '    result, queue_path = run(tmp_path, [approved], state(goal_autopilot=goal), registered_tasks=[registered(task_id)])\n'
+            '    assert result["approved_count"] == 0\n'
+            '    assert result["proposal_count"] == 0\n'
+            '    assert result["diagnostics"]["excluded_task_count"] == 1\n'
+            '    assert json.loads(queue_path.read_text(encoding="utf-8"))["tasks"] == []\n'
+            '\n\n'
+        )
+        replacement = addition + anchor
+        if len(anchor) > 1200 or len(replacement) > 1800:
+            return None, "deterministic_plan_too_large:unknown_goal_status"
+        candidate = text.replace(anchor, replacement, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": replacement}],
+        }, None
 
     if task_id == "safe-continuation-depth-four-regression-20261026" and chosen == "tests/test_continuous_distributed_loop_workflow.py":
         target = worker.ROOT / chosen

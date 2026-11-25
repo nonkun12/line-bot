@@ -1470,6 +1470,35 @@ def test_new_refill_cli_tasks_use_bounded_deterministic_plans(monkeypatch, tmp_p
         assert runtime.worker.validate_plan(plan, chosen) == (True, chosen)
 
 
+def test_unknown_goal_status_task_plan_is_bounded_and_test_only(monkeypatch, tmp_path):
+    task_id = "proposal-generator-unknown-goal-status-exclusion-regression-20261125"
+    chosen = "tests/test_autonomous_task_proposals.py"
+    anchor = '@pytest.mark.parametrize("goal", [\n'
+    target_file = tmp_path / chosen
+    target_file.parent.mkdir(parents=True, exist_ok=True)
+    original = anchor + "    [],\n])\ndef test_existing(goal):\n    pass\n"
+    target_file.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
+
+    plan, error = runtime._deterministic_autonomous_test_plan(chosen, task_id)
+
+    assert error is None
+    assert plan is not None
+    assert plan["source"] == "deterministic_autonomous_task"
+    assert plan["no_change"] is False
+    assert runtime._DETERMINISTIC_AUTONOMOUS_TASK_TARGETS[task_id] == chosen
+    assert len(plan["changes"]) == 1
+    change = plan["changes"][0]
+    assert change["file"] == chosen
+    assert change["old"] == anchor
+    assert len(change["old"]) <= 1200
+    assert len(change["new"]) <= 1800
+    candidate = original.replace(change["old"], change["new"], 1)
+    compile(candidate, chosen, "exec")
+    assert "test_unknown_goal_autopilot_status_still_excludes_task" in candidate
+    assert runtime.worker.validate_plan(plan, chosen) == (True, chosen)
+
+
 def test_provider_block_reason_rejects_external_model_for_manual_rsi(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_RUN_SOURCE", "manual")
     assert runtime._provider_block_reason("") == "external_model_provider_disabled_local_adapter_unavailable"
