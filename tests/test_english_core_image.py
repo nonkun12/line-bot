@@ -241,3 +241,19 @@ def test_core_image_dictionary_has_no_duplicate_literal_word_keys():
     assert len(keys) == len(set(keys))
     assert len(keys) >= 100
 
+
+def test_batch_eight_common_words_have_local_core_images():
+    cases = {
+        "break": ("壊す", "break down", "Let's break the problem down into smaller steps."),
+        "build": ("築く", "build trust", "We are building trust one step at a time."),
+        "change": ("変える", "change one's mind", "She changed her mind after the meeting."),
+        "close": ("閉める", "close the gap", "Please close the window before you leave."),
+        "find": ("見つける", "find out", "I found it difficult to explain."),
+    }
+    for word, (meaning, cue, example) in cases.items():
+        response = explain_core_image(word)
+        assert meaning in response, word
+        assert cue in response, word
+        assert example in response, word
+        assert "外部API" in response, word
+        assert "説明を保留" not in response, word
