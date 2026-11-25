@@ -72,6 +72,7 @@ def test_missing_or_failed_safety_gate_fails_closed(monkeypatch):
         (metric_snapshot(BASE, 0.8), metric_snapshot(PRODUCED, 0.9, metric_name="latency"), "metric_definition_mismatch"),
         (metric_snapshot(BASE, 0.8, sample_count=0), metric_snapshot(PRODUCED, 0.9), "baseline_metric_evidence_invalid"),
         (metric_snapshot(BASE, float("nan")), metric_snapshot(PRODUCED, 0.9), "baseline_metric_evidence_invalid"),
+        (metric_snapshot(BASE, 10**10000), metric_snapshot(PRODUCED, 0.9), "baseline_metric_evidence_invalid"),
         (metric_snapshot(BASE, 0.8, metric_direction=[]), metric_snapshot(PRODUCED, 0.9), "baseline_metric_evidence_invalid"),
     ],
 )
