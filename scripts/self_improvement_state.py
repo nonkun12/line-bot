@@ -11,6 +11,8 @@ import json
 import re
 from pathlib import Path
 
+from core.self_improvement_measurement import SelfImprovementMeasurementRecord
+
 MAX_RECORDS = 200
 _ALLOWED_KINDS = {"success", "repair", "failure"}
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
@@ -44,6 +46,12 @@ def sanitize_records(records: object) -> list[dict[str, object]]:
     safe: list[dict[str, object]] = []
     for row in records:
         if not isinstance(row, dict):
+            continue
+        if row.get("record_type") == "measurement":
+            try:
+                safe.append(SelfImprovementMeasurementRecord.from_record(row).to_record())
+            except (KeyError, TypeError, ValueError):
+                continue
             continue
         if row.get("record_type") == "cycle_memory":
             outcome = row.get("outcome")
@@ -108,6 +116,12 @@ def validate_durable_history(records: object) -> list[dict[str, object]]:
     for row in records:
         if not isinstance(row, dict):
             raise ValueError("self-improvement history row must be an object")
+        if row.get("record_type") == "measurement":
+            try:
+                validated.append(SelfImprovementMeasurementRecord.from_record(row).to_record())
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("measurement record is invalid") from exc
+            continue
         if row.get("record_type") == "cycle_memory":
             outcome = row.get("outcome")
             if set(row) not in (memory_fields, memory_fields_with_cycle_id) or not isinstance(outcome, str) or outcome not in _MEMORY_OUTCOMES:
