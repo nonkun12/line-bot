@@ -497,13 +497,10 @@ def _load_registered_catalog(evidence_sha: str) -> list[dict[str, object]]:
             or task_id in definitions
         ):
             raise ValueError("run_local_policy_task_definition_invalid")
-        definitions[task_id] = {
-            "id": task_id,
-            "instruction": extra["instruction"],
-            "allowed_paths": list(allowed_paths),
-            "execution_approved": True,
-            "repair_approved": False,
-        }
+        # Admission must not authorize a task that the runtime's provider gate
+        # will reject. Review-coverage-gap tasks require a model provider today;
+        # the minimal MVP loop deliberately has no external/local provider.
+        raise ValueError("run_local_policy_provider_required")
     return list(definitions.values())
 
 
