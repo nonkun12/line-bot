@@ -247,8 +247,7 @@ jobs:
           TRIGGER_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'normal' }}
           INCIDENT_CATEGORY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_category || '' }}
           INCIDENT_DETAIL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_detail || '' }}
-          INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}
-        run: |
+          INCIDENT_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.incident_job_id || '' }}        run: |
           set -euo pipefail
           case "${REQUESTED_TASK_LIMIT}" in
             1|2|3|4) ;;
@@ -497,8 +496,7 @@ jobs:
             --repo-root . \
             --catalog .github/autonomous-loop-task-catalog.json \
             --queue /tmp/autonomous-loop-runtime-queue.json \
-            --state /tmp/autonomous-loop-state.json \
-            --runtime core/line_development_runtime.py \
+            --state /tmp/autonomous-loop-state.json \            --runtime core/line_development_runtime.py \
             --existing-issues /tmp/autonomous-loop-all-issues.json \
             --output /tmp/catalog-exhaustion-report.json \
             | tee /tmp/catalog-exhaustion-summary.json; then
@@ -747,8 +745,7 @@ jobs:
               print(f"::warning::BLOCKED: {reason}; post-resume review is required.")
           else:
               Path("/tmp/autonomous-loop-not-run").write_text("queue_empty\n", encoding="utf-8")
-              print("::notice::NOT_RUN: queue_empty - no task was executed.")
-          PY
+              print("::notice::NOT_RUN: queue_empty - no task was executed.")          PY
             exit 0
           fi
           if [ "$loop_rc" -eq 79 ]; then
@@ -997,8 +994,7 @@ jobs:
               print("REA_CANDIDATE=NOT_ELIGIBLE reason=task_evidence_missing")
               raise SystemExit(0)
           rows = []
-          for line in results_path.read_text(encoding="utf-8").splitlines():
-              if line.strip():
+          for line in results_path.read_text(encoding="utf-8").splitlines():              if line.strip():
                   value = json.loads(line)
                   if not isinstance(value, dict):
                       raise SystemExit("candidate evidence row invalid")
@@ -1247,8 +1243,7 @@ jobs:
               raise SystemExit('local Recovery AI persistence failed; durable update blocked')
           recovery = json.loads(Path('/tmp/recovery-ai-state.json').read_text(encoding='utf-8'))
           if (not isinstance(recovery, dict)
-                  or type(recovery.get('schema_version')) is not int
-                  or recovery.get('schema_version') != 1
+                  or type(recovery.get('schema_version')) is not int                  or recovery.get('schema_version') != 1
                   or not isinstance(recovery.get('tasks'), dict) or 'checkpoint' not in recovery):
               raise SystemExit('invalid local Recovery AI state; durable update blocked')
           PY
@@ -1497,8 +1492,7 @@ jobs:
           task_id = str(result.get('task_id') or '')
           run_outcome = os.getenv('LOOP_OUTCOME', '')
           publish = os.getenv('PUBLISH_OUTCOME', '')
-          state = os.getenv('STATE_OUTCOME', '')
-          recovery = os.getenv('RECOVERY_OUTCOME', '')
+          state = os.getenv('STATE_OUTCOME', '')          recovery = os.getenv('RECOVERY_OUTCOME', '')
 
           not_run = os.path.exists('/tmp/autonomous-loop-not-run')
           held_reason_path = Path('/tmp/autonomous-loop-held-tasks')
@@ -1605,7 +1599,7 @@ jobs:
           requested="${MAX_TASKS:-1}"
           completed=0
           if [ -s /tmp/minimal-autonomous-loop.jsonl ]; then
-            completed="$(python -c 'import json; from pathlib import Path; print(sum(1 for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines() if line.strip() and isinstance(json.loads(line), dict) and json.loads(line).get("status") in {"PASS","NO_CHANGE"}))')"
+            completed="$(python -c 'import json; from pathlib import Path; print(sum(1 for line in Path("/tmp/minimal-autonomous-loop.jsonl").read_text(encoding="utf-8").splitlines() if line.strip() and isinstance((row := json.loads(line)), dict) and row.get("status") in {"PASS","NO_CHANGE"}))')"
           fi
           progress_output_file=/tmp/distributed-loop-queue-progress.out
           rm -f "$progress_output_file"
@@ -1747,8 +1741,7 @@ jobs:
             elif [ "$result" = "NOT_RUN" ]; then
               :
             else
-              echo "(結果なし: Task結果ファイルが生成されませんでした。)"
-            fi
+              echo "(結果なし: Task結果ファイルが生成されませんでした。)"            fi
           } | tee /tmp/distributed-final-report.txt >> "$GITHUB_STEP_SUMMARY"
 
           if { [ "${GITHUB_EVENT_NAME}" = "issue_comment" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request_target" ]; } && [ -n "${PR_NUMBER:-}" ] && command -v gh >/dev/null 2>&1; then
@@ -1855,4 +1848,3 @@ jobs:
             /tmp/distributed-sheets-log-result.json
             /tmp/distributed-final-report.txt
           if-no-files-found: ignore
-
