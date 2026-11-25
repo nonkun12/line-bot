@@ -45,13 +45,14 @@ def test_verified_evidence_produces_bound_measurement(monkeypatch):
         metric_snapshot(BASE, 0.8),
         metric_snapshot(PRODUCED, 0.9, evidence_id="metric-artifact-2"),
     )
-    assert reason == "verified"
+    assert reason == "metric_artifact_attestation_missing"
     assert isinstance(record, SelfImprovementMeasurementRecord)
-    assert record.verdict == "IMPROVED"
+    assert record.verdict == "INSUFFICIENT_EVIDENCE"
     assert record.base_sha == BASE
     assert record.produced_sha == PRODUCED
     assert record.test_evidence == ("ci-run-123",)
     assert record.to_record()["execution_authorized"] is False
+    assert record.to_record()["safety_gate"] == "UNKNOWN"
 
 
 def test_missing_or_failed_safety_gate_fails_closed(monkeypatch):
