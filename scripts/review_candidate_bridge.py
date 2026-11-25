@@ -16,7 +16,7 @@ from typing import Any
 MAX_CANDIDATES = 50
 MAX_TITLE = 180
 MAX_RATIONALE = 500
-_ALLOWED_SOURCES = {"self_improvement", "idea_ai"}
+_ALLOWED_SOURCES = {"self_improvement", "idea_ai", "creator_critic"}
 _ALLOWED_STATUSES = {"proposed", "reviewed"}
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
 _MARKDOWN_SPECIAL = frozenset("\\`*_{}[]()#+-.!|>")
