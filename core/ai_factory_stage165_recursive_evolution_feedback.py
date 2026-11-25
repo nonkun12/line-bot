@@ -6,7 +6,7 @@ next generation without selecting, adopting, or activating a model.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import hashlib
 import json
 import math
@@ -18,6 +18,7 @@ from .ai_factory_stage154_merge_strategy_evaluation import MergeEvaluationPlan
 from .ai_factory_stage156_authenticated_knowledge_transfer import Stage156SignedEvidence
 from .ai_factory_stage160_approved_experiment_gate import ApprovedExperimentExecution
 from .ai_factory_stage164_adaptive_experiment_design import AdaptiveExperimentDesignReport, DesignAttestation
+from .rsi_executor import EvidenceLedger, RSIError
 
 _HEX = re.compile(r"[0-9a-f]{64}")
 _ID = re.compile(r"[A-Za-z0-9._:-]{1,128}")
@@ -85,6 +86,74 @@ def _valid_digest(value: str) -> bool:
     return isinstance(value, str) and bool(_HEX.fullmatch(value))
 
 
+def _record_digest(record: RecursiveTrialRecord) -> str:
+    canonical = {
+        "outcome": record.outcome_digest, "evidence": record.evidence_digest,
+        "design": record.design_digest, "plan": record.plan_id,
+        "recipe": record.recipe_digest, "strategy": record.strategy,
+        "generation": record.source_generation, "classification": record.classification,
+        "metrics": record.metrics, "baseline": record.baseline_metrics,
+        "lessons": record.lessons,
+    }
+    return hashlib.sha256(json.dumps(
+        canonical, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode()).hexdigest()
+
+
+def _record_from_payload(value: object) -> RecursiveTrialRecord:
+    if not isinstance(value, dict):
+        raise RecursiveEvolutionFeedbackError("persisted recursive trial record is not an object")
+    try:
+        record = RecursiveTrialRecord(
+            outcome_digest=value["outcome_digest"],
+            evidence_digest=value["evidence_digest"],
+            design_digest=value["design_digest"],
+            plan_id=value["plan_id"],
+            recipe_digest=value["recipe_digest"],
+            strategy=value["strategy"],
+            source_generation=value["source_generation"],
+            proposed_generation=value["proposed_generation"],
+            classification=value["classification"],
+            metrics=tuple((item[0], float(item[1])) for item in value["metrics"]),
+            baseline_metrics=tuple((item[0], float(item[1])) for item in value["baseline_metrics"]),
+            lessons=tuple(value["lessons"]),
+            record_digest=value["record_digest"],
+            pending_human_approval=value["pending_human_approval"],
+            generation_advanced=value["generation_advanced"],
+            model_activated=value["model_activated"],
+            model_mutation_authorized=value["model_mutation_authorized"],
+            production_switch_authorized=value["production_switch_authorized"],
+        )
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        raise RecursiveEvolutionFeedbackError("persisted recursive trial record schema is invalid") from exc
+    if (not all(_valid_digest(x) for x in (
+            record.outcome_digest, record.evidence_digest, record.design_digest,
+            record.recipe_digest, record.record_digest))
+            or not _ID.fullmatch(record.plan_id or "")
+            or not _ID.fullmatch(record.strategy or "")
+            or type(record.source_generation) is not int or record.source_generation < 0
+            or type(record.proposed_generation) is not int
+            or record.proposed_generation != record.source_generation + 1
+            or record.classification not in {"SAFETY_FAILURE", "REGRESSED", "IMPROVED", "STAGNANT"}
+            or not all(type(flag) is bool for flag in (
+                record.pending_human_approval, record.generation_advanced,
+                record.model_activated, record.model_mutation_authorized,
+                record.production_switch_authorized))
+            or record.pending_human_approval is not True
+            or any((record.generation_advanced, record.model_activated,
+                    record.model_mutation_authorized, record.production_switch_authorized))
+            or _record_digest(record) != record.record_digest):
+        raise RecursiveEvolutionFeedbackError("persisted recursive trial record failed integrity validation")
+    for metrics in (record.metrics, record.baseline_metrics):
+        if (len({key for key, _ in metrics}) != len(metrics)
+                or any(not isinstance(key, str) or not key or not math.isfinite(number)
+                       for key, number in metrics)):
+            raise RecursiveEvolutionFeedbackError("persisted recursive trial metrics are invalid")
+    if not record.lessons or any(not isinstance(item, str) or not item for item in record.lessons):
+        raise RecursiveEvolutionFeedbackError("persisted recursive trial lessons are invalid")
+    return record
+
+
 def _fitness_metrics(value: Fitness, suite: str) -> dict[str, float]:
     if not isinstance(value, Fitness) or value.evaluation_suite_digest != suite:
         raise RecursiveEvolutionFeedbackError("fitness must be bound to the exact frozen evaluation suite")
@@ -136,13 +205,60 @@ def _validate_recipe_parameters(plan: MergeEvaluationPlan, recipe) -> None:
 class RecursiveEvolutionFeedbackIntegrator:
     """Append-only verified trial ledger, retaining both wins and failures."""
 
-    def __init__(self, *, max_records: int = 512) -> None:
+    def __init__(
+        self, *, max_records: int = 512, ledger: EvidenceLedger | None = None,
+    ) -> None:
         if not isinstance(max_records, int) or isinstance(max_records, bool) or not 1 <= max_records <= 4096:
             raise ValueError("max_records must be between 1 and 4096")
+        if ledger is not None and not isinstance(ledger, EvidenceLedger):
+            raise TypeError("ledger must be an RSI EvidenceLedger")
         self._max_records = max_records
+        self._ledger = ledger
         self._records: list[RecursiveTrialRecord] = []
         self._outcomes: set[str] = set()
         self._suite_by_generation: dict[int, str] = {}
+        if self._ledger is not None:
+            self._restore()
+
+    def _restore(self) -> None:
+        try:
+            events = self._ledger.read_events("stage165_recursive_trial")
+            if len(events) > self._max_records:
+                raise RecursiveEvolutionFeedbackError("persisted recursive feedback exceeds configured capacity")
+            for event_id, payload, _event_digest in events:
+                if set(payload) != {"evaluation_suite_digest", "record"}:
+                    raise RecursiveEvolutionFeedbackError("persisted recursive feedback envelope is invalid")
+                suite = payload["evaluation_suite_digest"]
+                record = _record_from_payload(payload["record"])
+                if (not _valid_digest(suite)
+                        or event_id != "stage165-trial:" + record.outcome_digest
+                        or record.outcome_digest in self._outcomes
+                        or (record.source_generation in self._suite_by_generation
+                            and self._suite_by_generation[record.source_generation] != suite)
+                        or (self._records and record.source_generation < max(
+                            item.source_generation for item in self._records))):
+                    raise RecursiveEvolutionFeedbackError("persisted recursive feedback ordering or binding is invalid")
+                self._records.append(record)
+                self._outcomes.add(record.outcome_digest)
+                self._suite_by_generation[record.source_generation] = suite
+        except (RSIError, TypeError, ValueError) as exc:
+            if isinstance(exc, RecursiveEvolutionFeedbackError):
+                raise
+            raise RecursiveEvolutionFeedbackError("RSI evidence ledger restore failed closed") from exc
+
+    def _persist(self, record: RecursiveTrialRecord, suite: str) -> None:
+        if self._ledger is None:
+            return
+        try:
+            self._ledger.append(
+                "stage165-trial:" + record.outcome_digest,
+                "stage165_recursive_trial",
+                {"evaluation_suite_digest": suite, "record": asdict(record)},
+            )
+        except Exception as exc:
+            raise RecursiveEvolutionFeedbackError(
+                "RSI evidence persistence failed; in-memory feedback was not advanced"
+            ) from exc
 
     def ingest(
         self,
@@ -274,22 +390,19 @@ class RecursiveEvolutionFeedbackIntegrator:
 
         metrics_tuple = tuple(sorted((k, float(v)) for k, v in measured.items()))
         baseline_tuple = tuple(sorted((k, float(v)) for k, v in baseline.items()))
-        canonical = {
-            "outcome": outcome.outcome_digest, "evidence": evidence.evidence_digest,
-            "design": design.design_digest, "plan": plan.plan_id,
-            "recipe": plan.recipe_digest, "strategy": recipe.strategy,
-            "generation": plan.generation, "classification": classification,
-            "metrics": metrics_tuple, "baseline": baseline_tuple, "lessons": lessons,
-        }
-        digest = hashlib.sha256(json.dumps(
-            canonical, sort_keys=True, separators=(",", ":"), allow_nan=False
-        ).encode()).hexdigest()
+        digest = _record_digest(RecursiveTrialRecord(
+            outcome.outcome_digest, evidence.evidence_digest, design.design_digest,
+            plan.plan_id, plan.recipe_digest, recipe.strategy, plan.generation,
+            plan.generation + 1, classification, metrics_tuple, baseline_tuple,
+            tuple(lessons), "0" * 64,
+        ))
         record = RecursiveTrialRecord(
             outcome.outcome_digest, evidence.evidence_digest, design.design_digest,
             plan.plan_id, plan.recipe_digest, recipe.strategy, plan.generation,
             plan.generation + 1, classification, metrics_tuple, baseline_tuple,
             tuple(lessons), digest,
         )
+        self._persist(record, design.evaluation_suite_digest)
         self._records.append(record)
         self._outcomes.add(outcome.outcome_digest)
         self._suite_by_generation[plan.generation] = design.evaluation_suite_digest
