@@ -20,6 +20,15 @@ _METRIC_FIELDS = frozenset({
 })
 
 
+def _is_finite_number(value: object) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError):
+        return False
+
+
 def _valid_metric_snapshot(
     snapshot: object,
     *,
@@ -38,9 +47,7 @@ def _valid_metric_snapshot(
         and re.fullmatch(r"[A-Za-z][A-Za-z0-9_.:-]{0,99}", snapshot["metric_name"]) is not None
         and isinstance(snapshot.get("metric_direction"), str)
         and snapshot["metric_direction"] in {"maximize", "minimize"}
-        and isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(value)
+        and _is_finite_number(value)
         and type(sample_count) is int
         and 1 <= sample_count <= 1_000_000
         and snapshot.get("target_sha") == expected_sha
