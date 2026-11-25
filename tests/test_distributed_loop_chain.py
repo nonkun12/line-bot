@@ -77,3 +77,13 @@ def test_chain_fails_closed_on_missing_or_invalid_progress_and_identity():
         run_conclusion="success",
         continuation_depth=0,
     )["continue"]
+
+def test_chain_stops_on_no_change_to_match_shared_continuation_policy():
+    result = decide_chain(
+        _report(),
+        _rows("NO_CHANGE"),
+        run_conclusion="success",
+        continuation_depth=0,
+    )
+    assert result["continue"] is False
+    assert result["reason"] == "task_result_not_pass"

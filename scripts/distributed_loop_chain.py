@@ -57,7 +57,7 @@ def decide_chain(
         if not isinstance(task_id, str) or not task_id.strip() or task_id in seen:
             return {"continue": False, "reason": "task_identity_invalid"}
         seen.add(task_id)
-        if status not in {"PASS", "NO_CHANGE"}:
+        if status != "PASS":
             return {"continue": False, "reason": "task_result_not_pass"}
     return {
         "continue": True,
