@@ -100,3 +100,27 @@ def test_summary_escapes_untrusted_markdown_structure(tmp_path):
     assert "**bold**" not in report
     assert "\\| another column" in report
     assert " | another column" not in report
+
+
+def test_creator_critic_source_is_review_only_and_accepts_record_id():
+    row = normalize_candidate({
+        "source": "creator_critic",
+        "source_id": "a" * 64,
+        "title": "Review recurring loop failure",
+        "rationale": "Critic identified missing independent evidence.",
+        "execution_authorized": True,
+        "approval": "approved",
+    })
+    assert row is not None
+    assert row["source"] == "creator_critic"
+    assert row["source_id"] == "a" * 64
+    assert row["execution_authorized"] is False
+    assert "approval" not in row
+
+
+def test_creator_critic_source_still_rejects_invalid_record_id():
+    assert normalize_candidate({
+        "source": "creator_critic",
+        "source_id": "../forged",
+        "title": "Invalid record",
+    }) is None
