@@ -114,6 +114,24 @@ def test_pass_evaluation_is_recorded_without_failure_diagnosis(tmp_path):
     assert ledger.verify()
 
 
+def test_no_change_is_terminal_and_not_promoted_or_written(tmp_path):
+    executor, ledger = _executor(tmp_path)
+    result = record_evaluation_as_rsi_observation(
+        evaluation_result={"experiment_id": "no-change-1", "status": "NO_CHANGE"},
+        executor=executor,
+        producer_id="looplab-independent-evaluator",
+        sign_digest=lambda digest: "sig:" + digest,
+        created_at=123,
+    )
+    assert result["status"] == "NO_CHANGE"
+    assert result["recorded"] is False
+    assert result["diagnosis_ids"] == []
+    assert result["authority"]["execution_authorized"] is False
+    assert ledger.verify()
+    with sqlite3.connect(ledger.path) as db:
+        assert db.execute("SELECT COUNT(*) FROM rsi_evidence").fetchone()[0] == 0
+
+
 def test_blocked_evaluation_is_not_promoted_or_written(tmp_path):
     executor, ledger = _executor(tmp_path)
     result = record_evaluation_as_rsi_observation(

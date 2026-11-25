@@ -35,7 +35,7 @@ def record_evaluation_as_rsi_observation(
     """Persist a signed, plan-bound observation for the existing RSI pipeline.
 
     Only independently recomputed PASS/FAIL evaluations can become
-    observations. BLOCKED (and unknown) statuses are returned without writing
+    observations. NO_CHANGE and BLOCKED statuses are returned without writing
     to the RSI ledger. The RSI executor independently verifies source
     provenance and global control state before accepting the observation.
     """
@@ -45,6 +45,15 @@ def record_evaluation_as_rsi_observation(
     experiment_id = evaluation_result.get("experiment_id")
     if not isinstance(experiment_id, str) or not experiment_id.strip() or len(experiment_id) > 100:
         raise ValueError("experiment_id_invalid")
+    if status == "NO_CHANGE":
+        return {
+            "experiment_id": experiment_id,
+            "status": "NO_CHANGE",
+            "recorded": False,
+            "reason": "no_change_is_terminal_and_not_promoted_to_rsi_observation",
+            "diagnosis_ids": [],
+            "authority": dict(_FORBIDDEN_AUTHORITY),
+        }
     if status == "BLOCKED":
         return {
             "experiment_id": experiment_id,
