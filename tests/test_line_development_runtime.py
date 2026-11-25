@@ -892,7 +892,7 @@ def test_refill_malformed_completed_state_plan_is_syntax_safe_and_bounded(monkey
     assert change["file"] == chosen
     assert len(change["old"]) <= 1200
     assert len(change["new"]) <= 1800
-    candidate = original.replace(change["old"], change["new"], 1)
+    candidate = anchor.replace(change["old"], change["new"], 1)
     compile(candidate, chosen, "exec")
     assert "test_refill_fails_closed_on_non_string_completed_state" in candidate
     assert "completed state must be a string list" in candidate
