@@ -169,9 +169,8 @@ def record_evaluation_as_rsi_observation(
         protocol_digest=protocol_digest,
         result_digest=result_digest,
     )
-    # Fail closed before writing even source evidence when ingestion is held.
-    executor.assert_observation_ingestion_allowed()
-    evidence_digest = executor.ledger.append_observation_evidence(
+    # The executor validates control and observation fields before the atomic write.
+    evidence_digest, diagnoses = executor.observe_with_source_evidence(
         event_id,
         observation=observation,
         experiment_id=experiment_id,
@@ -181,9 +180,6 @@ def record_evaluation_as_rsi_observation(
         producer_id=producer_id,
         sign_digest=sign_digest,
     )
-    from dataclasses import replace
-    verified_observation = replace(observation, evidence_digest=evidence_digest)
-    diagnoses = executor.observe((verified_observation,))
     hypotheses = executor.hypothesize(diagnoses) if diagnoses else ()
     plans = executor.plan(
         hypotheses,
