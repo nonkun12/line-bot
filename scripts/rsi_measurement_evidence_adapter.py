@@ -36,7 +36,8 @@ def _valid_metric_snapshot(
         and snapshot["schema_version"] == 1
         and isinstance(snapshot.get("metric_name"), str)
         and re.fullmatch(r"[A-Za-z][A-Za-z0-9_.:-]{0,99}", snapshot["metric_name"]) is not None
-        and snapshot.get("metric_direction") in {"maximize", "minimize"}
+        and isinstance(snapshot.get("metric_direction"), str)
+        and snapshot["metric_direction"] in {"maximize", "minimize"}
         and isinstance(value, (int, float))
         and not isinstance(value, bool)
         and math.isfinite(value)
@@ -75,7 +76,11 @@ def verify_rsi_measurement_evidence(
         or not isinstance(run_nonce, str) or not re.fullmatch(r"[0-9a-f]{32}", run_nonce)
     ):
         return None, "loop_provenance_invalid"
-    if not publish_row_has_valid_gates(row, expected_sha=base_sha):
+    try:
+        gates_valid = publish_row_has_valid_gates(row, expected_sha=base_sha)
+    except (TypeError, ValueError):
+        gates_valid = False
+    if not gates_valid:
         return None, "loop_safety_gates_not_verified"
     if not _valid_metric_snapshot(baseline, expected_sha=base_sha, task_id=task_id, run_nonce=run_nonce):
         return None, "baseline_metric_evidence_invalid"
