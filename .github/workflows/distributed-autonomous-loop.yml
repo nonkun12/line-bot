@@ -1751,16 +1751,55 @@ jobs:
             fi
           } | tee /tmp/distributed-final-report.txt >> "$GITHUB_STEP_SUMMARY"
 
-          if { [ "${GITHUB_EVENT_NAME}" = "issue_comment" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request_target" ]; } && [ -n "${PR_NUMBER:-}" ] && command -v gh >/dev/null 2>&1; then
-            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/distributed-final-report.txt || true
-          fi
-
           # A BLOCKED report must fail the source workflow too. Otherwise workflow_run
           # consumers may see conclusion=success and trust the Sheets artifact despite
           # invalid queue-progress evidence.
           if [ "${QUEUE_PROGRESS_INVALID:-false}" = "true" ]; then
             echo "::error::Distributed Loop blocked: queue progress evidence is invalid."
             exit 1
+          fi
+
+      - name: LoopLab portable baseline diagnostic (non-production)
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python -m scripts.run_looplab_local_eval --baseline-only --output /tmp/looplab-baseline-diagnostic.json | tee /tmp/looplab-baseline-diagnostic-status.txt
+          {
+            echo
+            echo "### LoopLab portable baseline diagnostic"
+            echo "- 実行環境: GitHub Actions CPU（Mac不要）"
+            echo "- 評価: 合成fixtureのBaseline診断のみ"
+            echo "- 本番証拠: **false** / RSI取込: **禁止**"
+            echo "- Challenger推論・本番PASS/FAIL判定: 未実施"
+          } | tee -a /tmp/distributed-final-report.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: LoopLab post-run evaluation (fail closed)
+        if: always()
+        env:
+          LOOPLAB_SIMULATOR_HMAC_KEY: ${{ secrets.LOOPLAB_SIMULATOR_HMAC_KEY }}
+          LOOPLAB_DATASET_REGISTRY_HMAC_KEY: ${{ secrets.LOOPLAB_DATASET_REGISTRY_HMAC_KEY }}
+          LOOPLAB_SAFETY_HMAC_KEY: ${{ secrets.LOOPLAB_SAFETY_HMAC_KEY }}
+          LOOPLAB_ADAPTER_HMAC_KEY: ${{ secrets.LOOPLAB_ADAPTER_HMAC_KEY }}
+          LOOPLAB_RSI_EVIDENCE_HMAC_KEY: ${{ secrets.LOOPLAB_RSI_EVIDENCE_HMAC_KEY }}
+        run: |
+          set -euo pipefail
+          python scripts/looplab_postrun_gate.py | tee /tmp/looplab-postrun-status.txt
+          status="$(python -c 'import json; from pathlib import Path; print(json.loads(Path("/tmp/looplab-postrun-result.json").read_text(encoding="utf-8"))["status"])')"
+          reason="$(python -c 'import json; from pathlib import Path; print(json.loads(Path("/tmp/looplab-postrun-result.json").read_text(encoding="utf-8"))["reason"])')"
+          ingestion="$(python -c 'import json; from pathlib import Path; print(json.loads(Path("/tmp/looplab-postrun-result.json").read_text(encoding="utf-8"))["rsi_ingestion"])')"
+          {
+            echo
+            echo "### LoopLab post-run evaluation"
+            echo "- 評価: **${status}**"
+            echo "- 理由: ${reason}"
+            echo "- RSI取込: ${ingestion}"
+            echo "- 実行・パッチ・HOLD解除・STOP解除・マージ・デプロイ権限: 付与なし"
+          } | tee -a /tmp/distributed-final-report.txt >> "$GITHUB_STEP_SUMMARY"
+
+          # Publish only after LoopLab has appended its final status to the report.
+          if { [ "${GITHUB_EVENT_NAME}" = "issue_comment" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request_target" ]; } && [ -n "${PR_NUMBER:-}" ] && command -v gh >/dev/null 2>&1; then
+            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/distributed-final-report.txt || true
           fi
 
       - name: Wake Render before LINE final report
@@ -1854,5 +1893,8 @@ jobs:
             /tmp/autonomous-*.json
             /tmp/distributed-sheets-log-result.json
             /tmp/distributed-final-report.txt
+            /tmp/looplab-postrun-result.json
+            /tmp/looplab-baseline-diagnostic.json
+            /tmp/looplab-rsi-evidence.sqlite
           if-no-files-found: ignore
 
