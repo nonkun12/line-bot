@@ -408,6 +408,48 @@ _ENTRIES: dict[str, WordEntry] = {
     "maintain": WordEntry(word="maintain", pronunciation="メインテイン", core_image="状態を保ち続ける → 維持する・主張する", parts="maintain quality / equipment / that ... など、状態の維持にも主張にも使う。", related=("maintenance（維持・保守）","preserve（保つ）","sustain（持続させる）",), example="It is important to maintain accurate records.（正確な記録を維持することが重要だ。）"),
     "obtain": WordEntry(word="obtain", pronunciation="オブテイン", core_image="必要な手続きを経て手に入れる → 得る・取得する", parts="obtain permission / information / a degree のように、許可・情報・資格などに使う。", related=("obtainable（入手可能な）","acquire（獲得する）","receive（受け取る）",), example="You must obtain permission before entering.（入る前に許可を得なければならない。）"),
     "require": WordEntry(word="require", pronunciation="リクワイア", core_image="必要条件として求める → 必要とする・要求する", parts="require A to do / require that ... の形に注意する。", related=("requirement（必要条件）","necessary（必要な）","demand（要求する）",), example="The job requires careful attention to detail.（その仕事には細部への注意が必要だ。）"),
+
+    "break": WordEntry(
+        word="break", pronunciation="ブレイク",
+        core_image="連続したものに裂け目を入れて分ける／止める → 壊す・中断する・破る",
+        parts="break a promise（約束を破る）／break the silence（沈黙を破る）／break down（分解する・故障する）／break through（突破する）。句ごとに意味が変わります。",
+        related=("break down（分解する・故障する）", "break through（突破する）", "break the ice（場を和ませる）"),
+        example="Let's break the problem down into smaller steps.（問題を小さな手順に分けましょう。）",
+        note="物理的な破損だけでなく、規則・約束・沈黙・記録を破る、活動を中断するなどに広がります。",
+    ),
+    "build": WordEntry(
+        word="build", pronunciation="ビルド",
+        core_image="材料や努力を積み重ねて形や土台を作る → 建てる・築く・高める",
+        parts="build a house/team（建てる・作る）／build trust（信頼を築く）／build up confidence（自信を高める）。",
+        related=("build up（徐々に増やす・強める）", "construct（構築する）", "develop（育てる・発展させる）"),
+        example="We are building trust one step at a time.（一歩ずつ信頼を築いています。）",
+        note="物理的な構造だけでなく、関係・評判・能力などを時間をかけて作る意味にも使います。",
+    ),
+    "change": WordEntry(
+        word="change", pronunciation="チェンジ",
+        core_image="今の状態から別の状態へ移す／移る → 変える・変わる・変更する",
+        parts="change one's mind（考えを変える）／change A into B（AをBに変える）／change for the better/worse（良い／悪い方向へ変わる）。",
+        related=("change one's mind（考えを変える）", "change into（〜に変わる）", "change for the better（良い方向へ変わる）"),
+        example="She changed her mind after the meeting.（会議の後、彼女は考えを変えました。）",
+        note="他動詞は対象を変え、自動詞は状態が変わることを表します。名詞 change は変更・変化・おつりなど文脈で意味が変わります。",
+    ),
+    "close": WordEntry(
+        word="close", pronunciation="クローズ",
+        core_image="開いた状態や境界を閉じる／終点にする → 閉める・終了する・差を縮める",
+        parts="close the door/window（閉める）／close a meeting（締めくくる）／close a business（営業を終える）／close the gap（差を縮める）。",
+        related=("close down（営業・事業を終了する）", "close the gap（差を縮める）", "shut（閉める・閉じる）"),
+        example="Please close the window before you leave.（出かける前に窓を閉めてください。）",
+        note="動詞 close は /z/（クローズ）。形容詞 close「近い」は /s/（クロース）。ここでは動詞の用法を登録します。",
+    ),
+    "find": WordEntry(
+        word="find", pronunciation="ファインド",
+        core_image="探していたもの・位置・答えに到達する → 見つける・わかる・〜だと感じる",
+        parts="find a way（方法を見つける）／find out（調べて知る）／find it difficult（難しいと感じる）。",
+        related=("find out（調べて知る）", "find a way（方法を見つける）", "find it + adjective（〜だと感じる）"),
+        example="I found it difficult to explain.（説明するのは難しいと感じました。）",
+        note="物の発見だけでなく、情報・方法・評価や感情を見つける／認識する意味にも広がります。",
+    ),
+
 }
 
 _COMMAND_RE = re.compile(
