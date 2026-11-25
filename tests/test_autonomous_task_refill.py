@@ -45,7 +45,7 @@ def test_refill_prefers_only_exact_deterministic_catalog_targets(tmp_path: Path,
 
 def test_refill_drops_existing_tasks_without_exact_deterministic_target(tmp_path: Path, monkeypatch):
     queued = _task("model-required-existing")
-    queue, catalog, completed = _inputs(tmp_path, existing=[queued], candidates=[])
+    queue, catalog, completed = _inputs(tmp_path, existing=[queued], candidates=[queued])
     monkeypatch.setattr(refill, "_deterministic_targets", lambda: {"deterministic-only": "tests/test_example.py"})
     output = tmp_path / "runtime.json"
 
