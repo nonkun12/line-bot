@@ -13,8 +13,23 @@ jobs:
       - uses: actions/checkout@v4
       - name: Compile all Python files
         run: python -m compileall -q .
-      - name: Lint GitHub Actions workflows
+      - name: Download and lint GitHub Actions workflows
         shell: bash
         run: |
-          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          downloaded=false
+          for attempt in 1 2 3; do
+            rm -f ./actionlint
+            if bash <(curl --retry 3 --retry-all-errors --retry-delay 2 -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) \
+              && test -x ./actionlint \
+              && ./actionlint -version; then
+              downloaded=true
+              break
+            fi
+            echo "actionlint download/verification failed (attempt ${attempt}/3)" >&2
+            sleep $((attempt * 2))
+          done
+          if [ "$downloaded" != true ]; then
+            echo "Unable to download and verify actionlint after 3 attempts" >&2
+            exit 1
+          fi
           ./actionlint -shellcheck '' -pyflakes ''
