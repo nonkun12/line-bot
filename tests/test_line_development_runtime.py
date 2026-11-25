@@ -1473,7 +1473,7 @@ def test_new_refill_cli_tasks_use_bounded_deterministic_plans(monkeypatch, tmp_p
 def test_unknown_goal_status_task_plan_is_bounded_and_test_only(monkeypatch, tmp_path):
     task_id = "proposal-generator-unknown-goal-status-exclusion-regression-20261125"
     chosen = "tests/test_autonomous_task_proposals.py"
-    anchor = '@pytest.mark.parametrize("goal", [\\n'
+    anchor = '@pytest.mark.parametrize("goal", [\n'
     target_file = tmp_path / chosen
     target_file.parent.mkdir(parents=True, exist_ok=True)
     target_file.write_text(anchor, encoding="utf-8")
