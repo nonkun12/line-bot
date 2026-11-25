@@ -1476,7 +1476,7 @@ def test_unknown_goal_status_task_plan_is_bounded_and_test_only(monkeypatch, tmp
     anchor = '@pytest.mark.parametrize("goal", [\n'
     target_file = tmp_path / chosen
     target_file.parent.mkdir(parents=True, exist_ok=True)
-    original = anchor + "    [],\\n])\\ndef test_existing(goal):\\n    pass\\n"
+    original = anchor + "    [],\n])\ndef test_existing(goal):\n    pass\n"
     target_file.write_text(original, encoding="utf-8")
     monkeypatch.setattr(runtime.worker, "ROOT", tmp_path)
 
@@ -1493,7 +1493,7 @@ def test_unknown_goal_status_task_plan_is_bounded_and_test_only(monkeypatch, tmp
     assert change["old"] == anchor
     assert len(change["old"]) <= 1200
     assert len(change["new"]) <= 1800
-    candidate = anchor.replace(change["old"], change["new"], 1)
+    candidate = original.replace(change["old"], change["new"], 1)
     compile(candidate, chosen, "exec")
     assert "test_unknown_goal_autopilot_status_still_excludes_task" in candidate
     assert runtime.worker.validate_plan(plan, chosen) == (True, chosen)
