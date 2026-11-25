@@ -1585,15 +1585,12 @@ def _run_local_policy_catalog_fixture(tmp_path, monkeypatch, sha):
     return task_id
 
 
-def test_registered_catalog_accepts_only_digest_bound_run_local_test_task(tmp_path, monkeypatch):
+def test_registered_catalog_blocks_run_local_task_when_provider_is_unavailable(tmp_path, monkeypatch):
     sha = "b" * 40
-    task_id = _run_local_policy_catalog_fixture(tmp_path, monkeypatch, sha)
+    _run_local_policy_catalog_fixture(tmp_path, monkeypatch, sha)
 
-    registered = loop._load_registered_catalog(sha)
-
-    assert [task["id"] for task in registered] == ["reviewed-existing-task", task_id]
-    assert registered[-1]["execution_approved"] is True
-    assert registered[-1]["repair_approved"] is False
+    with pytest.raises(ValueError, match="run_local_policy_provider_required"):
+        loop._load_registered_catalog(sha)
 
 
 def test_registered_catalog_rejects_mutated_run_local_policy_catalog(tmp_path, monkeypatch):
