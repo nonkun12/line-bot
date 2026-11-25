@@ -139,6 +139,41 @@ class ReadonlyScannerTests(unittest.TestCase):
         self.assertEqual(finding["evidence"]["path"], "dev_notes/other.py")
         self.assertEqual(finding["severity"], "CRITICAL")
 
+    def test_commit_diff_allows_only_autonomous_loop_task_catalog_at_github_root(self) -> None:
+        base = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        self._write(".github/autonomous-loop-task-catalog.json", '{"tasks": []}\\n')
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+
+        allowed = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(allowed["status"], "PASS")
+        self.assertEqual(allowed["findings_count"], 0)
+        self.assertEqual(
+            allowed["changed_paths"],
+            [".github/autonomous-loop-task-catalog.json"],
+        )
+
+        base = target
+        self._write(".github/unreviewed-policy.json", '{"enabled": false}\\n')
+        self._commit()
+        target = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
+        ).strip()
+        blocked = scan_commit_diff(self.root, base_sha=base, target_sha=target)
+        self.assertEqual(blocked["status"], "FINDINGS")
+        finding = next(
+            item for item in blocked["findings"]
+            if item["category"] == "path_policy"
+        )
+        self.assertEqual(
+            finding["evidence"]["path"], ".github/unreviewed-policy.json"
+        )
+        self.assertEqual(finding["severity"], "CRITICAL")
+
     def test_commit_diff_still_blocks_other_repository_root_files(self) -> None:
         base = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=self.root, text=True
