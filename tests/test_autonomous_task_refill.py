@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts import autonomous_task_refill as refill
 from scripts.autonomous_task_refill import build_queue, main
 
 
@@ -22,6 +23,39 @@ def _inputs(tmp_path: Path, *, max_tasks=4, existing=None, candidates=None):
     catalog = _write(tmp_path / "catalog.json", {"version": 1, "max_additions_per_run": 2, "tasks": candidates or []})
     completed = _write(tmp_path / "state.json", {"version": 1, "completed": [], "recovery_ai": {"schema_version": 1, "tasks": {}, "checkpoint": None}})
     return queue, catalog, completed
+
+
+def test_refill_prefers_only_exact_deterministic_catalog_targets(tmp_path: Path, monkeypatch):
+    deterministic = _task("deterministic-ready")
+    deterministic["allowed_paths"] = ["tests/test_autonomous_task_refill.py"]
+    model_required = _task("model-required-ready")
+    queue, catalog, completed = _inputs(tmp_path, candidates=[deterministic, model_required])
+    monkeypatch.setattr(refill, "_deterministic_targets", lambda: {"deterministic-ready": "tests/test_autonomous_task_refill.py"})
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["added_ids"] == ["deterministic-ready"]
+    assert report["skipped_catalog_model_required_ids"] == ["model-required-ready"]
+    assert report["deterministic_classifier_available"] is True
+    assert [task["id"] for task in result["tasks"]] == ["deterministic-ready"]
+
+
+
+def test_refill_drops_existing_tasks_without_exact_deterministic_target(tmp_path: Path, monkeypatch):
+    queued = _task("model-required-existing")
+    queue, catalog, completed = _inputs(tmp_path, existing=[queued], candidates=[])
+    monkeypatch.setattr(refill, "_deterministic_targets", lambda: {"deterministic-only": "tests/test_example.py"})
+    output = tmp_path / "runtime.json"
+
+    report = build_queue(queue, catalog, completed, output)
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["retained_existing"] == 0
+    assert report["skipped_model_free_existing_ids"] == ["model-required-existing"]
+    assert result["tasks"] == []
+
 
 
 def test_refill_adds_only_uncompleted_catalog_tasks_within_cap(tmp_path: Path):
