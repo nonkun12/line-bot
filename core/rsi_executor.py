@@ -234,6 +234,31 @@ class EvidenceLedger:
             raise RSIError("evidence event payload must be an object")
         return payload, row["event_digest"]
 
+    def read_events(self, event_type: str) -> tuple[tuple[str, dict[str, object], str], ...]:
+        """Return verified events of one type in append order.
+
+        The complete hash chain is checked before any payload is exposed.
+        """
+        _bounded_id(event_type, "event type")
+        if not self.verify():
+            raise RSIError("evidence ledger integrity verification failed")
+        with closing(self._connect()) as db:
+            rows = db.execute(
+                "SELECT event_id,payload,event_digest FROM rsi_evidence "
+                "WHERE event_type=? ORDER BY seq",
+                (event_type,),
+            ).fetchall()
+        output = []
+        for row in rows:
+            try:
+                payload = json.loads(row["payload"])
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                raise RSIError("evidence event payload is invalid") from exc
+            if not isinstance(payload, dict):
+                raise RSIError("evidence event payload must be an object")
+            output.append((row["event_id"], payload, row["event_digest"]))
+        return tuple(output)
+
     def verify(self) -> bool:
         previous = "0" * 64
         with closing(self._connect()) as db:
