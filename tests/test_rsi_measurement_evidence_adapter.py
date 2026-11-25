@@ -38,7 +38,7 @@ def metric_snapshot(sha, value, **changes):
     return snapshot
 
 
-def test_verified_evidence_produces_bound_measurement(monkeypatch):
+def test_consistent_but_unattested_evidence_remains_insufficient(monkeypatch):
     monkeypatch.setattr(adapter, "publish_row_has_valid_gates", lambda row, *, expected_sha: expected_sha == BASE)
     record, reason = adapter.verify_rsi_measurement_evidence(
         loop_row(),
