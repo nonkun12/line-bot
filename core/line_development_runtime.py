@@ -382,20 +382,20 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_unknown_goal_autopilot_status_still_excludes_task"
         if f"def {name}(" in text:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = '@pytest.mark.parametrize("goal", [\\n'
+        anchor = '@pytest.mark.parametrize("goal", [\n'
         if text.count(anchor) != 1:
             return None, "deterministic_anchor_not_unique:unknown_goal_status"
         addition = (
-            "def test_unknown_goal_autopilot_status_still_excludes_task(tmp_path):\\n"
-            '    task_id = "unknown-goal-status"\\n'
-            '    approved = issue(task_id, labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))\\n'
-            '    goal = {"goal_id": "distributed-loop-main-goal-v1", "tasks": [{"task_id": task_id, "status": "PAUSED"}]}\\n'
-            '    result, queue_path = run(tmp_path, [approved], state(goal_autopilot=goal), registered_tasks=[registered(task_id)])\\n'
-            '    assert result["approved_count"] == 0\\n'
-            '    assert result["proposal_count"] == 0\\n'
-            '    assert result["diagnostics"]["excluded_task_count"] == 1\\n'
-            '    assert json.loads(queue_path.read_text(encoding="utf-8"))["tasks"] == []\\n'
-            '\\n\\n'
+            "def test_unknown_goal_autopilot_status_still_excludes_task(tmp_path):\n"
+            '    task_id = "unknown-goal-status"\n'
+            '    approved = issue(task_id, labels=("autonomous-task-candidate", "autonomous-task-execution-approved"))\n'
+            '    goal = {"goal_id": "distributed-loop-main-goal-v1", "tasks": [{"task_id": task_id, "status": "PAUSED"}]}\n'
+            '    result, queue_path = run(tmp_path, [approved], state(goal_autopilot=goal), registered_tasks=[registered(task_id)])\n'
+            '    assert result["approved_count"] == 0\n'
+            '    assert result["proposal_count"] == 0\n'
+            '    assert result["diagnostics"]["excluded_task_count"] == 1\n'
+            '    assert json.loads(queue_path.read_text(encoding="utf-8"))["tasks"] == []\n'
+            '\n\n'
         )
         replacement = addition + anchor
         if len(anchor) > 1200 or len(replacement) > 1800:
