@@ -522,6 +522,14 @@
         "tests/test_stocks.py"
       ],
       "execution_approved": true
+    },
+    {
+      "id": "proposal-generator-unknown-goal-status-exclusion-regression-20261125",
+      "instruction": "tests/test_autonomous_task_proposals.py のみに、新しい固有名の回帰テストを1件追加してください。GoalAutopilot state に同じ task_id の status='PAUSED' のレコードが既に存在し、Issue 側が candidate と execution-approved の両ラベルを持ち、登録済み定義とも完全一致する場合でも、approved_count=0・proposal_count=0・excluded_task_count=1 となり、runtime queue が空のままであることを確認してください。既存テストを変更せず、未知の GoalAutopilot status を新規タスクとして再投入しないことを検証してください。外部通信、シークレット参照、OS操作、マージ、デプロイは禁止。変更は指定されたテストファイル1つだけ。",
+      "allowed_paths": [
+        "tests/test_autonomous_task_proposals.py"
+      ],
+      "execution_approved": true
     }
   ]
 }
