@@ -83,6 +83,26 @@ def _history_priority(history_path: Path | None, registered_ids: set[str]) -> tu
     return scores, details
 
 
+def _deterministic_targets() -> dict[str, str] | None:
+    """Load the runtime's deterministic target allowlist; fail closed on import errors."""
+    try:
+        from core.line_development_runtime import _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+    except Exception:
+        return None
+    return _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS
+
+
+
+def _is_model_free_task(task: dict, deterministic_targets: dict[str, str] | None) -> bool:
+    """Only exact runtime allowlist ID/target matches can enter a no-model queue."""
+    task_id = task["id"]
+    if deterministic_targets is None or task_id.startswith("review-coverage-gap-"):
+        return False
+    paths = task["allowed_paths"]
+    return len(paths) == 1 and deterministic_targets.get(task_id) == paths[0]
+
+
+
 def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, output_path: Path, history_path: Path | None = None) -> dict:
     queue = read_json(queue_path)
     catalog = read_json(catalog_path)
@@ -193,6 +213,15 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
     skipped_review_ids = sorted(original_ids.intersection(review_required_ids))
     skipped_completed_ids = sorted(original_ids.intersection(completed_ids))
     skipped_goal_blocked_ids = sorted(original_ids.intersection(goal_blocked_ids))
+    deterministic_targets = _deterministic_targets()
+    skipped_model_free_existing = sorted(
+        task["id"] for task in normalized_existing
+        if task["execution_approved"] and not _is_model_free_task(task, deterministic_targets)
+    )
+    eligible_existing = [
+        task for task in eligible_existing
+        if _is_model_free_task(task, deterministic_targets)
+    ]
     priority_scores, history_counts = _history_priority(history_path, catalog_ids)
     eligible_additions = [
         task for task in normalized_catalog
@@ -200,6 +229,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         and task["id"] not in completed_ids
         and task["id"] not in ineligible_ids
         and task["execution_approved"]
+        and _is_model_free_task(task, deterministic_targets)
     ]
     # Stable sort: recurring failures first; ties preserve reviewed catalog order.
     catalog_order = {task["id"]: index for index, task in enumerate(normalized_catalog)}
@@ -223,6 +253,10 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         task["id"] for task in normalized_catalog if task["execution_approved"] is True
     }
     skipped_catalog_unapproved_ids = sorted(catalog_ids_set - execution_approved_catalog_ids)
+    skipped_catalog_model_required_ids = sorted(
+        task["id"] for task in normalized_catalog
+        if task["execution_approved"] and not _is_model_free_task(task, deterministic_targets)
+    )
     eligible_catalog_ids = sorted(
         catalog_ids_set
         - original_ids
@@ -231,6 +265,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         - review_required_ids
         - goal_blocked_ids
         - (catalog_ids_set - execution_approved_catalog_ids)
+        - set(skipped_catalog_model_required_ids)
     )
     return {
         # Keep the original input-count field stable for existing consumers.
@@ -238,6 +273,7 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         "retained_existing": len(eligible_existing),
         "skipped_held_ids": skipped_held_ids,
         "skipped_unapproved_ids": skipped_unapproved_ids,
+        "skipped_model_free_existing_ids": skipped_model_free_existing,
         "skipped_definition_mismatch_ids": sorted(skipped_definition_mismatch_ids),
         "skipped_review_ids": skipped_review_ids,
         "skipped_completed_ids": skipped_completed_ids,
@@ -248,6 +284,8 @@ def build_queue(queue_path: Path, catalog_path: Path, completed_path: Path, outp
         "skipped_catalog_completed_ids": skipped_catalog_completed_ids,
         "skipped_catalog_goal_blocked_ids": skipped_catalog_goal_blocked_ids,
         "skipped_catalog_unapproved_ids": skipped_catalog_unapproved_ids,
+        "skipped_catalog_model_required_ids": skipped_catalog_model_required_ids,
+        "deterministic_classifier_available": deterministic_targets is not None,
         "skipped_catalog_already_queued_ids": skipped_catalog_already_queued_ids,
         "eligible_catalog_count": len(eligible_catalog_ids),
         "eligible_catalog_ids": eligible_catalog_ids,
