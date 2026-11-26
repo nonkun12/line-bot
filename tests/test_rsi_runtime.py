@@ -33,11 +33,11 @@ def test_runtime_uses_one_durable_ledger_for_executor_and_stage165(tmp_path):
     assert runtime.ledger.path == str(ledger_path)
     assert runtime.executor.ledger is runtime.ledger
     assert runtime.recursive_feedback._ledger is runtime.ledger
-    assert runtime.verify_ready() is True
+    assert runtime.verify_evidence_integrity() is True
 
     restarted = _runtime(ledger_path)
     assert restarted.ledger.path == runtime.ledger.path
-    assert restarted.verify_ready() is True
+    assert restarted.verify_evidence_integrity() is True
 
 
 def test_runtime_rejects_ephemeral_or_relative_ledger_paths(tmp_path, monkeypatch):
