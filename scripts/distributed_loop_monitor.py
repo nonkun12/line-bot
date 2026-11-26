@@ -141,9 +141,14 @@ def evaluate_schedule_slots(
                 record = envelope.get("record")
                 decision = record.get("decision") if isinstance(record, dict) else None
                 created_at = parse_utc(record.get("created_at")) if isinstance(record, dict) else None
+                scheduler_started = (
+                    parse_utc(scheduler.get("run_started_at"))
+                    or parse_utc(scheduler.get("created_at"))
+                )
                 valid_record = (
                     isinstance(record, dict)
-                    and type(record.get("schema_version")) is int\n                    and record.get("schema_version") == 1
+                    and type(record.get("schema_version")) is int
+                    and record.get("schema_version") == 1
                     and str(record.get("scheduler_run_id", "")) == scheduler_run_id
                     and str(record.get("request_id", "")) == scheduler_run_id
                     and type(record.get("run_attempt")) is int
@@ -152,9 +157,11 @@ def evaluate_schedule_slots(
                     and record.get("policy_dispatch") == "30m_scheduler"
                     and record.get("head_sha") == scheduler.get("head_sha")
                     and created_at is not None
-                    and created_at >= (parse_utc(scheduler.get("run_started_at") or scheduler["created_at"]) - timedelta(minutes=5))
+                    and scheduler_started is not None
+                    and created_at >= scheduler_started - timedelta(minutes=5)
                     and created_at <= now + timedelta(minutes=5)
-                    and (created_at - parse_utc(scheduler.get("run_started_at") or scheduler["created_at"])).total_seconds() <= 900
+                    and (created_at - scheduler_started).total_seconds() <= 900
+                    and isinstance(decision, str)
                     and decision in allowed
                 )
                 if not valid_record:
@@ -194,6 +201,7 @@ def evaluate_schedule_slots(
                     active_status = record.get("active_loop_status_at_decision")
                     active_loop = next((r for r in loops if str(r.get("id", "")) == str(active_id)), None)
                     active_created = parse_utc(record.get("active_loop_created_at"))
+                    active_observed = parse_utc(record.get("active_loop_observed_at"))
                     actual_created = parse_utc(active_loop.get("created_at")) if active_loop else None
                     scheduler_created = parse_utc(scheduler.get("created_at"))
                     completion_time = (
@@ -208,11 +216,13 @@ def evaluate_schedule_slots(
                         and active_created is not None
                         and actual_created is not None
                         and active_created == actual_created
+                        and active_observed is not None
                         and scheduler_created is not None
-                        and active_created <= scheduler_created
+                        and scheduler_created <= active_observed <= created_at
+                        and active_created <= active_observed
                         and (
                             active_loop.get("status") in {"queued", "in_progress"}
-                            or (completion_time is not None and completion_time > scheduler_created)
+                            or (completion_time is not None and completion_time > active_observed)
                         )
                     )
                     if not was_active_at_decision:
