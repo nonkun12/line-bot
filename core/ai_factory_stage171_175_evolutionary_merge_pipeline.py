@@ -2,7 +2,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import hashlib, json, math, re
-from typing import Callable, Sequence
+from itertools import islice
+from typing import Callable, Iterable, Sequence
 from .ai_factory_stage170_evolutionary_merge_strategy_adaptation import _plan_digest
 
 _HEX=re.compile(r"^[0-9a-f]{64}$")
@@ -18,6 +19,59 @@ def _hash(obj):
 def _digest(value,label):
     if not isinstance(value,str) or not _HEX.fullmatch(value):
         raise EvolutionaryMergePipelineError(f"{label} digest invalid")
+
+def _bounded(values, limit, label):
+    try:
+        rows=tuple(islice(iter(values),limit+1))
+    except Exception as exc:
+        raise EvolutionaryMergePipelineError(f"{label} iteration failed") from exc
+    if len(rows)>limit:
+        raise EvolutionaryMergePipelineError(f"{label} exceeds its {limit}-item bound")
+    return rows
+
+def _verify_plan(plan):
+    if not isinstance(plan,CombinationPlan) or not plan.proposal_only or plan.model_merge_authorized or plan.weight_mutation_authorized:
+        raise EvolutionaryMergePipelineError("unsafe Stage 171 plan")
+    _digest(plan.source_strategy_plan_digest,"source strategy plan")
+    _digest(plan.evaluation_suite_digest,"evaluation suite")
+    if not isinstance(plan.combinations,tuple) or not 1<=len(plan.combinations)<=128:
+        raise EvolutionaryMergePipelineError("combination plan bounds invalid")
+    rows=[]
+    for item in plan.combinations:
+        if not isinstance(item,MergeCombination) or len(item.parent_model_ids)!=2 or len(item.parent_artifact_digests)!=2:
+            raise EvolutionaryMergePipelineError("combination record invalid")
+        for value in item.parent_artifact_digests: _digest(value,"parent artifact")
+        if not math.isfinite(item.allocation_share) or not 0<item.allocation_share<=1:
+            raise EvolutionaryMergePipelineError("combination allocation invalid")
+        payload={"id":item.candidate_id,"strategy":item.strategy,"parents":list(item.parent_model_ids),
+            "artifacts":list(item.parent_artifact_digests),"share":item.allocation_share,"source":plan.source_strategy_plan_digest}
+        if _hash(payload)!=item.digest:
+            raise EvolutionaryMergePipelineError("combination digest verification failed")
+        rows.append(item.digest)
+    expected=_hash({"source":plan.source_strategy_plan_digest,"generation":plan.source_generation,
+        "suite":plan.evaluation_suite_digest,"rows":rows})
+    if expected!=plan.digest:
+        raise EvolutionaryMergePipelineError("combination plan digest verification failed")
+
+def _verify_evaluation_report(report):
+    if not isinstance(report,EvaluationReport) or not report.proposal_only:
+        raise EvolutionaryMergePipelineError("unsafe Stage 173 report")
+    _digest(report.source_combination_plan_digest,"source combination plan")
+    _digest(report.evaluation_suite_digest,"evaluation suite")
+    if not isinstance(report.evaluations,tuple) or len(report.evaluations)>128:
+        raise EvolutionaryMergePipelineError("evaluation report bounds invalid")
+    rows=[]
+    for item in report.evaluations:
+        if not isinstance(item,CandidateEvaluation):
+            raise EvolutionaryMergePipelineError("candidate evaluation record invalid")
+        payload={"candidate":item.candidate_id,"strategy":item.strategy,"evidence":list(item.evidence_digests),
+            "metrics":[item.quality_median,item.safety_median,item.latency_median_ms,item.memory_median_mb,item.regression_count],
+            "eligible":item.eligible}
+        if _hash(payload)!=item.digest:
+            raise EvolutionaryMergePipelineError("candidate evaluation digest verification failed")
+        rows.append(item.digest)
+    if _hash({"plan":report.source_combination_plan_digest,"suite":report.evaluation_suite_digest,"results":rows})!=report.digest:
+        raise EvolutionaryMergePipelineError("evaluation report digest verification failed")
 
 @dataclass(frozen=True)
 class ModelArtifact:
@@ -90,6 +144,9 @@ class Stage172CompatibilityGate:
     def assess(self,plan:CombinationPlan,artifacts:Sequence[ModelArtifact],*,hold_active=False):
         if hold_active: raise EvolutionaryMergePipelineError("HOLD blocks Stage 172")
         if not plan.proposal_only or plan.model_merge_authorized or plan.weight_mutation_authorized: raise EvolutionaryMergePipelineError("unsafe Stage 171 plan")
+        _verify_plan(plan)
+        if not isinstance(artifacts,Sequence) or not 2<=len(artifacts)<=64 or any(not isinstance(x,ModelArtifact) for x in artifacts):
+            raise EvolutionaryMergePipelineError("typed artifact collection outside bounds")
         index={x.model_id:x for x in artifacts}; out=[]
         for c in plan.combinations:
             parents=[index.get(x) for x in c.parent_model_ids]; reasons=[]
@@ -127,9 +184,26 @@ class Stage173IndependentEvaluator:
               hold_active=False,minimum_repeats=2,max_latency_ms=120000,max_memory_mb=65536):
         if hold_active: raise EvolutionaryMergePipelineError("HOLD blocks Stage 173")
         if not callable(verify_signature) or not 2<=minimum_repeats<=10: raise EvolutionaryMergePipelineError("independent verifier and repeat bound required")
-        allowed={x.candidate_id for x in compatibility if x.compatible and x.parameter_merge_permitted_for_evaluation}
+        _verify_plan(plan)
+        if not isinstance(compatibility,Sequence) or len(compatibility)!=len(plan.combinations):
+            raise EvolutionaryMergePipelineError("compatibility evidence does not cover the complete plan")
+        combinations={x.candidate_id:x for x in plan.combinations}
+        allowed=set()
+        for assessment in compatibility:
+            if not isinstance(assessment,CompatibilityAssessment) or assessment.candidate_id not in combinations:
+                raise EvolutionaryMergePipelineError("compatibility assessment identity invalid")
+            expected=_hash({"candidate":assessment.candidate_id,"parents":combinations[assessment.candidate_id].parent_artifact_digests,
+                "ok":assessment.compatible,"reasons":list(assessment.reasons)})
+            if (not assessment.proposal_only or assessment.digest!=expected
+                    or assessment.parameter_merge_permitted_for_evaluation is not assessment.compatible):
+                raise EvolutionaryMergePipelineError("compatibility assessment digest or authority mismatch")
+            if assessment.compatible:
+                allowed.add(assessment.candidate_id)
         seen=set(); groups={}
-        for t in trials:
+        rows=_bounded(trials,256,"merge trial evidence")
+        for t in rows:
+            if not isinstance(t,MergeTrialEvidence):
+                raise EvolutionaryMergePipelineError("typed merge trial evidence required")
             if t.candidate_id not in allowed: raise EvolutionaryMergePipelineError("candidate not compatibility-cleared")
             for value,label in ((t.candidate_artifact_digest,"artifact"),(t.evaluation_suite_digest,"suite"),(t.evidence_digest,"evidence")): _digest(value,label)
             if t.evaluation_suite_digest!=plan.evaluation_suite_digest: raise EvolutionaryMergePipelineError("evaluation suite drift")
@@ -137,7 +211,9 @@ class Stage173IndependentEvaluator:
             if t.trial_id in seen or t.evidence_digest in seen: raise EvolutionaryMergePipelineError("duplicate or replayed trial evidence")
             vals=(t.quality,t.safety,t.latency_ms,t.memory_mb)
             if not all(math.isfinite(x) for x in vals) or not 0<=t.quality<=1 or not 0<=t.safety<=1 or t.latency_ms<0 or t.memory_mb<0 or not isinstance(t.regression_count,int) or t.regression_count<0: raise EvolutionaryMergePipelineError("trial metrics invalid")
-            if not verify_signature(t): raise EvolutionaryMergePipelineError("independent signature verification failed")
+            try: signature_ok=verify_signature(t)
+            except Exception as exc: raise EvolutionaryMergePipelineError("independent signature verification failed") from exc
+            if signature_ok is not True: raise EvolutionaryMergePipelineError("independent signature verification failed")
             seen.add(t.trial_id); seen.add(t.evidence_digest); groups.setdefault(t.candidate_id,[]).append(t)
         byid={x.candidate_id:x for x in plan.combinations}; results=[]
         for cid,items in sorted(groups.items()):
@@ -150,7 +226,8 @@ class Stage173IndependentEvaluator:
                 return v[n//2] if n%2 else (v[n//2-1]+v[n//2])/2
             q,s,l,m=med("quality"),med("safety"),med("latency_ms"),med("memory_mb"); reg=max(x.regression_count for x in items)
             eligible=q>=.70 and s>=.95 and reg==0 and l<=max_latency_ms and m<=max_memory_mb
-            ev=tuple(sorted(x.evidence_digest for x in items)); payload={"candidate":cid,"strategy":byid[cid].strategy,"evidence":ev,"metrics":[q,s,l,m,reg],"eligible":eligible}
+            if len({x.candidate_artifact_digest for x in items})!=1: raise EvolutionaryMergePipelineError("candidate artifact drift")
+            ev=tuple(sorted(x.evidence_digest for x in items)); payload={"candidate":cid,"strategy":byid[cid].strategy,"evidence":list(ev),"metrics":[q,s,l,m,reg],"eligible":eligible}
             results.append(CandidateEvaluation(cid,byid[cid].strategy,len(items),tuple(sorted(x.evaluator_id for x in items)),q,s,l,m,reg,eligible,ev,_hash(payload)))
         payload={"plan":plan.digest,"suite":plan.evaluation_suite_digest,"results":[x.digest for x in results]}
         return EvaluationReport(plan.digest,plan.evaluation_suite_digest,tuple(results),_hash(payload))
@@ -165,7 +242,8 @@ class Stage174ParetoSelector:
     """Ranks eligible candidates on quality, safety, latency and memory while preserving a shortlist."""
     def build(self,report:EvaluationReport,*,max_selected=4,hold_active=False):
         if hold_active: raise EvolutionaryMergePipelineError("HOLD blocks Stage 174")
-        if not report.proposal_only or not isinstance(max_selected,int) or not 1<=max_selected<=16: raise EvolutionaryMergePipelineError("invalid report or shortlist bound")
+        _verify_evaluation_report(report)
+        if not isinstance(max_selected,int) or isinstance(max_selected,bool) or not 1<=max_selected<=16: raise EvolutionaryMergePipelineError("invalid report or shortlist bound")
         eligible=[x for x in report.evaluations if x.eligible]; rejected=tuple(sorted(x.candidate_id for x in report.evaluations if not x.eligible))
         frontier=[]
         for x in eligible:
@@ -194,6 +272,12 @@ class Stage175GenerationProposer:
     """Creates a next-generation proposal; it never advances or activates a generation."""
     def build(self,plan,report,selection,*,hold_active=False,kill_switch_active=False):
         if hold_active or kill_switch_active: raise EvolutionaryMergePipelineError("HOLD or kill switch blocks Stage 175")
+        _verify_plan(plan); _verify_evaluation_report(report)
+        if not isinstance(selection,EvolutionarySelection) or not selection.proposal_only or selection.selection_authorized:
+            raise EvolutionaryMergePipelineError("unsafe Stage 174 selection")
+        expected_selection=_hash({"source":report.digest,"ranked":selection.ranked_candidate_ids,
+            "selected":selection.selected_for_next_trial,"rejected":selection.rejected_candidate_ids})
+        if expected_selection!=selection.digest: raise EvolutionaryMergePipelineError("selection digest verification failed")
         if plan.digest!=report.source_combination_plan_digest or plan.evaluation_suite_digest!=report.evaluation_suite_digest or selection.source_evaluation_digest!=report.digest or not selection.proposal_only or selection.selection_authorized:
             raise EvolutionaryMergePipelineError("Stage 171-174 lineage or authority mismatch")
         eligible={x.candidate_id for x in report.evaluations if x.eligible}

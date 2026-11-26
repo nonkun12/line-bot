@@ -1,4 +1,5 @@
 from dataclasses import replace
+from itertools import repeat
 import hashlib
 import pytest
 from core.ai_factory_stage168_generation_survival_reexploration import CandidateFate, GenerationSurvivalProposal
@@ -68,7 +69,35 @@ def test_hold_blocks_each_stage(stage):
    Stage175GenerationProposer().build(p,ev,sel,hold_active=True)
 def test_generation_proposal_rejects_cross_stage_lineage():
  p,c=setup(); cid=p.combinations[0].candidate_id; ev=report(p,c,[trial(cid,1,"e1"),trial(cid,2,"e2")]); sel=Stage174ParetoSelector().build(ev)
- with pytest.raises(EvolutionaryMergePipelineError,match="lineage"):
+ with pytest.raises(EvolutionaryMergePipelineError,match="combination plan digest"):
   Stage175GenerationProposer().build(replace(p,digest="f"*64),ev,sel)
 def test_stage171_never_creates_orchestration_weight_candidate():
  p,_=setup(); assert all(x.strategy_class=="PARAMETER_MERGE" for x in p.combinations)
+
+
+
+def test_stage172_rejects_tampered_combination_digest():
+ p,_=setup()
+ forged=replace(p.combinations[0],digest="f"*64)
+ with pytest.raises(EvolutionaryMergePipelineError,match="combination digest"):
+  Stage172CompatibilityGate().assess(replace(p,combinations=(forged,*p.combinations[1:])),artifacts())
+
+
+def test_stage173_rejects_tampered_compatibility_and_unbounded_trials():
+ p,c=setup()
+ forged=replace(c[0],digest="f"*64)
+ cid=p.combinations[0].candidate_id
+ with pytest.raises(EvolutionaryMergePipelineError,match="compatibility assessment"):
+  report(p,(forged,*c[1:]),[trial(cid,1,"e1"),trial(cid,2,"e2")])
+ with pytest.raises(EvolutionaryMergePipelineError,match="256-item bound"):
+  Stage173IndependentEvaluator().build(p,c,repeat(trial(cid,1,"e1")),verify_signature=lambda x:True)
+
+
+def test_stage175_revalidates_report_and_selection_digests():
+ p,c=setup(); cid=p.combinations[0].candidate_id
+ ev=report(p,c,[trial(cid,1,"e1"),trial(cid,2,"e2")])
+ sel=Stage174ParetoSelector().build(ev)
+ with pytest.raises(EvolutionaryMergePipelineError,match="evaluation report digest"):
+  Stage174ParetoSelector().build(replace(ev,digest="f"*64))
+ with pytest.raises(EvolutionaryMergePipelineError,match="selection digest"):
+  Stage175GenerationProposer().build(p,ev,replace(sel,digest="f"*64))
