@@ -297,7 +297,7 @@ jobs:
             finding="$(jq -r '.finding' <<< "$incident")"
             marker="distributed-loop-fingerprint: $fingerprint"
             title="Distributed Loop follow-up: $fingerprint"
-            existing="$(gh issue list --repo "$REPOSITORY" --state open --search "$fingerprint in:body" --json number,body --jq --arg marker "$marker" '[.[] | select(.body | contains($marker)) | .number] | first // empty')"
+            existing="$(gh issue list --repo "$REPOSITORY" --state open --search "$fingerprint in:body" --json number,body | jq -r --arg marker "$marker" '[.[] | select(.body | contains($marker)) | .number] | first // empty')"
             evidence="Recurring finding: $finding
 
           - Run ID: $RUN_ID
