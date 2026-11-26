@@ -318,7 +318,7 @@ def test_invalid_hold_release_approval_preserves_global_hold(tmp_path, failure):
     # The rejected release must not be persisted as a control transition.
     events = ledger.read_events("verified_control_snapshot")
     assert len(events) == 1
-    assert events[0]["payload"]["global_hold"] is True
+    assert events[0][1]["global_hold"] is True
     assert ledger.read_events("human_control_release_approval") == ()
     assert ledger.verify()
 
@@ -388,6 +388,6 @@ def test_release_approval_nonce_cannot_be_reused_after_a_later_hold(tmp_path):
         provider()
 
     snapshots = ledger.read_events("verified_control_snapshot")
-    assert snapshots[-1]["payload"]["global_hold"] is True
+    assert snapshots[-1][1]["global_hold"] is True
     assert len(snapshots) == 3
     assert ledger.verify()
