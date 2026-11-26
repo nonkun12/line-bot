@@ -50,12 +50,112 @@ jobs:
           decisions=/tmp/scheduler-decisions.json
           printf "{}" > "$decisions"
           cutoff="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
-          while IFS= read -r scheduler_run_id; do
+          while IFS=
+              record="$destination/scheduler-decision.json"
+              if [ -s "$record" ] && jq -e 'type == "object"' "$record" >/dev/null; then
+                jq --arg id "$scheduler_run_id" --slurpfile item "$record" \
+                  '. + {($id): {artifact_status:"available", record:$item[0]}}' \
+                  "$decisions" > "$decisions.tmp"
+              else
+                jq --arg id "$scheduler_run_id" \
+                  '. + {($id): {artifact_status:"invalid", record:null}}' \
+                  "$decisions" > "$decisions.tmp"
+              fi
+            else
+              jq --arg id "$scheduler_run_id" \
+                '. + {($id): {artifact_status:"missing", record:null}}' \
+                "$decisions" > "$decisions.tmp"
+            fi
+            mv "$decisions.tmp" "$decisions"
+          done < <(jq -r --arg cutoff "$cutoff" \
+            '.workflow_runs[]? | select(.workflow_id == 419124193 and .event == "schedule" and .created_at >= $cutoff) | [.id, (.run_attempt // 1)] | @tsv' \
+            /tmp/monitor-runs.json)
+          echo "collected=$ok" >> "$GITHUB_OUTPUT"
+
+      - name: Collect pinned durable state and provenance (read-only)
+        id: state
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPOSITORY/branches/autonomous-loop-state" > /tmp/state-branch.json
+          STATE_COMMIT_SHA="$(jq -er '.commit.sha' /tmp/state-branch.json)"
+          gh api "repos/$REPOSITORY/commits/$STATE_COMMIT_SHA" > /tmp/state-commit.json
+          gh api "repos/$REPOSITORY/contents/.autonomous-loop-state.json?ref=$STATE_COMMIT_SHA" > /tmp/monitor-state-response.json
+          jq -n \
+            --arg branch_tip_sha "$STATE_COMMIT_SHA" \
+            --arg state_commit_sha "$STATE_COMMIT_SHA" \
+            --arg state_commit_timestamp "$(jq -er '.commit.committer.date' /tmp/state-commit.json)" \
+            --arg contents_blob_sha "$(jq -er '.sha' /tmp/monitor-state-response.json)" \
+            '{branch_tip_sha:$branch_tip_sha,state_commit_sha:$state_commit_sha,state_commit_timestamp:$state_commit_timestamp,contents_blob_sha:$contents_blob_sha}' \
+            > /tmp/monitor-state-meta.json
+          echo "collected=true" >> "$GITHUB_OUTPUT"
+
+      - name: Evaluate read-only monitor
+        if: always()
+        env:
+          ACTIONS_COLLECTION: ${{ steps.actions.outputs.collected }}
+          STATE_COLLECTION: ${{ steps.state.outputs.collected }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          for env_name, path in (
+              ("ACTIONS_COLLECTION", "/tmp/monitor-runs.json"),
+              ("STATE_COLLECTION", "/tmp/monitor-state-response.json"),
+          ):
+              if os.environ.get(env_name) != "true":
+                  Path(path).write_text("{}\n", encoding="utf-8")
+          if os.environ.get("STATE_COLLECTION") != "true":
+              Path("/tmp/monitor-state-meta.json").write_text("{}\n", encoding="utf-8")
+          PY
+          python scripts/distributed_loop_monitor.py \
+            --runs-json /tmp/monitor-runs.json \
+            --state-json /tmp/monitor-state-response.json \
+            --state-meta-json /tmp/monitor-state-meta.json \
+            --scheduler-decisions-json /tmp/scheduler-decisions.json \
+            --output artifacts/distributed-loop-monitor/monitor-report.json
+
+      - name: Publish monitor summary
+        if: always()
+        run: |
+          if [ -s artifacts/distributed-loop-monitor/monitor-report.json ]; then
+            python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          report = json.loads(Path("artifacts/distributed-loop-monitor/monitor-report.json").read_text(encoding="utf-8"))
+          print("# Distributed LOOP Monitor")
+          print(f"- Status: **{report['status']}**")
+          print(f"- Run ID: {report['run_id']}")
+          print(f"- Monitor HEAD: {report['monitor_head_sha']}")
+          print(f"- State commit: {report['state_commit_sha']}")
+          print(f"- State age seconds: {report['state_age_seconds']}")
+          coverage = report['checks'].get('schedule_slot_coverage', {})
+          print(f"- Scheduler slots confirmed: {len(coverage.get('confirmed_slots', []))}")
+          print(f"- Scheduler safe skips: {len(coverage.get('safe_skips', []))}")
+          print(f"- Scheduler held skips: {len(coverage.get('held_slots', []))}")
+          print(f"- Scheduler missing/unverified: {len(coverage.get('missing_slots', []))}")
+          print("- Dispatch allowed: **false**")
+          print(f"- Reason: {report['failure_reason'] or 'none'}")
+          PY
+          else
+            echo "Monitor report was not produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Preserve monitor evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributed-loop-monitor-${{ github.run_id }}
+          path: artifacts/distributed-loop-monitor/monitor-report.json
+          if-no-files-found: error
+          retention-days: 14
+\\t' read -r scheduler_run_id scheduler_run_attempt; do
             [ -n "$scheduler_run_id" ] || continue
-            destination="/tmp/scheduler-decision-$scheduler_run_id"
+            destination="/tmp/scheduler-decision-$scheduler_run_id-$scheduler_run_attempt"
             mkdir -p "$destination"
             if gh run download "$scheduler_run_id" --repo "$REPOSITORY" \
-              --name "scheduler-decision-$scheduler_run_id" --dir "$destination" >/dev/null 2>&1; then
+              --name "scheduler-decision-$scheduler_run_id-$scheduler_run_attempt" --dir "$destination" >/dev/null 2>&1; then
               record="$destination/scheduler-decision.json"
               if [ -s "$record" ] && jq -e 'type == "object"' "$record" >/dev/null; then
                 jq --arg id "$scheduler_run_id" --slurpfile item "$record" \
