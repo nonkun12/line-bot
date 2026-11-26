@@ -85,6 +85,177 @@ def normalize_actions_runs(payload: Any) -> dict[str, Any] | None:
     return {"workflow_runs": combined}
 
 
+
+MAIN_LOOP_WORKFLOW_ID = 357086091
+MAX_QUEUED_SCHEDULE_AGE_SECONDS = 40 * 60
+MAX_IN_PROGRESS_AGE_SECONDS = 50 * 60
+VALID_RUN_STATUSES = {"queued", "in_progress", "completed"}
+FAILED_CONCLUSIONS = {"failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale"}
+
+
+def evaluate_main_loop_runs(workflow_runs: list[dict[str, Any]], now: datetime) -> dict[str, Any]:
+    """Classify Main LOOP run evidence without granting task-execution permission."""
+    target = [item for item in workflow_runs if item.get("workflow_id") == MAIN_LOOP_WORKFLOW_ID]
+    if not target:
+        return {
+            "status": "INFO", "outcome": "NO_CHANGE", "active_run_count": 0,
+            "latest_run_id": None, "latest_run_attempt": None, "latest_conclusion": None,
+            "detail": "No Main LOOP run found in the retrieved Actions window",
+        }
+
+    errors: list[str] = []
+    normalized: dict[int, dict[str, Any]] = {}
+    seen_attempts: dict[tuple[int, int], tuple[Any, ...]] = {}
+    for item in target:
+        run_id = item.get("id")
+        attempt = item.get("run_attempt")
+        created = parse_utc(item.get("created_at"))
+        status = item.get("status")
+        if type(run_id) is not int or run_id <= 0:
+            errors.append("Main LOOP run has missing or invalid run id")
+            continue
+        if type(attempt) is not int or attempt <= 0:
+            errors.append(f"Main LOOP run {run_id} has missing or invalid run_attempt")
+            continue
+        if created is None:
+            errors.append(f"Main LOOP run {run_id} has missing or invalid created_at")
+            continue
+        if (created - now).total_seconds() > MAX_FUTURE_CLOCK_SKEW_SECONDS:
+            errors.append(f"Main LOOP run {run_id} created_at is too far in the future")
+            continue
+        run_started = None
+        if status == "in_progress":
+            run_started = parse_utc(item.get("run_started_at"))
+            if run_started is None:
+                errors.append(f"Main LOOP run {run_id} has missing or invalid run_started_at")
+                continue
+            if (run_started - now).total_seconds() > MAX_FUTURE_CLOCK_SKEW_SECONDS:
+                errors.append(f"Main LOOP run {run_id} run_started_at is too far in the future")
+                continue
+            if (created - run_started).total_seconds() > MAX_FUTURE_CLOCK_SKEW_SECONDS:
+                errors.append(
+                    f"Main LOOP run {run_id} run_started_at is earlier than created_at beyond clock-skew tolerance"
+                )
+                continue
+        if not isinstance(item.get("event"), str) or not item["event"].strip():
+            errors.append(f"Main LOOP run {run_id} has missing or invalid event")
+            continue
+        if status not in VALID_RUN_STATUSES:
+            errors.append(f"Main LOOP run {run_id} has unknown status")
+            continue
+        run_number = item.get("run_number")
+        if type(run_number) is not int or run_number <= 0:
+            errors.append(f"Main LOOP run {run_id} has missing or invalid run_number")
+            continue
+        identity_fields = (
+            "workflow_id", "run_number", "event", "status", "conclusion",
+            "created_at", "run_started_at", "updated_at",
+        )
+        attempt_key = (run_id, attempt)
+        identity = tuple(item.get(field) for field in identity_fields)
+        seen_identity = seen_attempts.get(attempt_key)
+        if seen_identity is not None and identity != seen_identity:
+            errors.append(f"Main LOOP run {run_id} has conflicting records for the same attempt")
+            continue
+        seen_attempts[attempt_key] = identity
+
+        previous = normalized.get(run_id)
+        if previous is None or attempt > previous["run_attempt"]:
+            normalized[run_id] = {**item, "_parsed_run_started_at": run_started}
+
+    if errors:
+        return {
+            "status": "BLOCKED", "outcome": "UNVERIFIED", "active_run_count": None,
+            "latest_run_id": None, "latest_run_attempt": None, "latest_conclusion": None,
+            "detail": "; ".join(errors),
+        }
+    if not normalized:
+        return {
+            "status": "BLOCKED", "outcome": "UNVERIFIED", "active_run_count": None,
+            "latest_run_id": None, "latest_run_attempt": None, "latest_conclusion": None,
+            "detail": "Main LOOP run records could not be normalized",
+        }
+
+    runs = list(normalized.values())
+    runs.sort(key=lambda item: (
+        parse_utc(item["created_at"]),
+        int(item.get("run_number") or 0),
+        int(item["id"]),
+        int(item["run_attempt"]),
+    ))
+    latest = runs[-1]
+    active = [item for item in runs if item["status"] in {"queued", "in_progress"}]
+    if len(active) > 1:
+        return {
+            "status": "BLOCKED", "outcome": "OVERLAP", "active_run_count": len(active),
+            "latest_run_id": latest["id"], "latest_run_attempt": latest["run_attempt"],
+            "latest_conclusion": latest.get("conclusion"),
+            "detail": "Multiple Main LOOP runs are queued or in progress; overlap/backlog detected",
+        }
+
+    stale_queued = [
+        item for item in active
+        if item["status"] == "queued"
+        and item.get("event") == "schedule"
+        and int((now - parse_utc(item["created_at"])).total_seconds()) > MAX_QUEUED_SCHEDULE_AGE_SECONDS
+    ]
+    if stale_queued:
+        stale = stale_queued[0]
+        age_seconds = int((now - parse_utc(stale["created_at"])).total_seconds())
+        return {
+            "status": "BLOCKED", "outcome": "STALE_QUEUED", "active_run_count": len(active),
+            "latest_run_id": latest["id"], "latest_run_attempt": latest["run_attempt"],
+            "latest_conclusion": latest.get("conclusion"),
+            "detail": f"Scheduled Main LOOP run {stale['id']} has waited {age_seconds}s; stale queue threshold is {MAX_QUEUED_SCHEDULE_AGE_SECONDS}s",
+        }
+    stale_running = [
+        item for item in active
+        if item["status"] == "in_progress"
+        and int((now - item["_parsed_run_started_at"]).total_seconds()) > MAX_IN_PROGRESS_AGE_SECONDS
+    ]
+    if stale_running:
+        stale = stale_running[0]
+        age_seconds = int((now - stale["_parsed_run_started_at"]).total_seconds())
+        return {
+            "status": "BLOCKED", "outcome": "STALE_IN_PROGRESS", "active_run_count": len(active),
+            "latest_run_id": latest["id"], "latest_run_attempt": latest["run_attempt"],
+            "latest_conclusion": latest.get("conclusion"),
+            "detail": f"Main LOOP run {stale['id']} has been active for {age_seconds}s; stale threshold is {MAX_IN_PROGRESS_AGE_SECONDS}s",
+        }
+    if active and latest not in active:
+        return {
+            "status": "BLOCKED", "outcome": "ACTIVE_RUN_NOT_LATEST", "active_run_count": len(active),
+            "latest_run_id": latest["id"], "latest_run_attempt": latest["run_attempt"],
+            "latest_conclusion": latest.get("conclusion"),
+            "detail": "An active Main LOOP run is older than a newer completed record; run ordering is inconsistent",
+        }
+    if latest["status"] in {"queued", "in_progress"}:
+        return {
+            "status": "PASS", "outcome": "ACTIVE" if latest["status"] == "in_progress" else "QUEUED", "active_run_count": len(active),
+            "latest_run_id": latest["id"], "latest_run_attempt": latest["run_attempt"],
+            "latest_conclusion": latest.get("conclusion"),
+            "detail": "Latest Main LOOP run state verified; this is activity evidence only",
+        }
+
+    conclusion = latest.get("conclusion")
+    if conclusion in FAILED_CONCLUSIONS or not isinstance(conclusion, str):
+        status, outcome = "BLOCKED", "FAILED"
+        detail = f"Latest Main LOOP run completed with unhealthy or missing conclusion: {conclusion!r}"
+    elif conclusion == "success":
+        status, outcome = "PASS", "WORKFLOW_SUCCESS"
+        detail = "Latest Main LOOP workflow succeeded; task-level result still requires separate evidence"
+    elif conclusion in {"skipped", "neutral"}:
+        status, outcome = "INFO", "NOT_EXECUTED"
+        detail = f"Latest Main LOOP run conclusion is {conclusion}; it is not counted as task execution success"
+    else:
+        status, outcome = "BLOCKED", "UNVERIFIED"
+        detail = f"Latest Main LOOP conclusion is not allowlisted: {conclusion!r}"
+    return {
+        "status": status, "outcome": outcome, "active_run_count": len(active),
+        "latest_run_id": latest["id"], "latest_run_attempt": latest["run_attempt"],
+        "latest_conclusion": conclusion, "detail": detail,
+    }
+
 def evaluate(
     runs_payload: Any,
     durable_payload: Any,
@@ -278,29 +449,34 @@ def evaluate(
     }
 
     if runs_ok:
-        active = [
-            item for item in runs_payload["workflow_runs"]
-            if item.get("workflow_id") == 357086091
-            and item.get("status") in {"queued", "in_progress"}
-        ]
+        run_evidence = evaluate_main_loop_runs(runs_payload["workflow_runs"], started_dt or datetime.min.replace(tzinfo=timezone.utc))
         checks["main_loop_activity"] = {
-            "status": "PASS" if active else "INFO",
-            "outcome": "ACTIVE" if active else "NO_CHANGE",
-            "workflow_id": 357086091,
-            "active_run_count": len(active),
-            "detail": (
-                "Main LOOP workflow activity confirmed by fixed workflow ID; monitor did not dispatch or cancel anything"
-                if active else "No active Main LOOP run observed for the fixed workflow ID; no dispatch was attempted"
-            ),
+            **run_evidence,
+            "workflow_id": MAIN_LOOP_WORKFLOW_ID,
         }
+        if run_evidence["status"] == "BLOCKED":
+            reasons.append("Main LOOP run evidence invalid or unhealthy: " + run_evidence["detail"])
+        elif run_evidence["outcome"] == "NO_CHANGE":
+            # Absence of a Main LOOP run is not evidence of a healthy cadence.
+            # Keep the activity sub-check informational, but fail the overall
+            # monitor closed so a missing run cannot be mistaken for PASS.
+            reasons.append("No Main LOOP run found; scheduled task activity is unverified")
     else:
         checks["main_loop_activity"] = {
             "status": "BLOCKED",
             "outcome": "UNVERIFIED",
-            "workflow_id": 357086091,
+            "workflow_id": MAIN_LOOP_WORKFLOW_ID,
             "active_run_count": None,
+            "latest_run_id": None,
+            "latest_run_attempt": None,
+            "latest_conclusion": None,
             "detail": "Main LOOP activity cannot be verified because Actions run records or workflow IDs are invalid",
         }
+
+    checks["task_execution_evidence"] = {
+        "status": "NOT_EVALUATED",
+        "detail": "Workflow run metadata cannot prove task execution; a separately validated run artifact/JSONL evidence source is required",
+    }
 
     monitor_sha_ok = isinstance(head_sha, str) and bool(SHA_RE.fullmatch(head_sha))
     if not monitor_sha_ok:
