@@ -32,8 +32,8 @@ class RSIRuntime:
     executor: RSIExecutor
     recursive_feedback: RecursiveEvolutionFeedbackIntegrator
 
-    def verify_ready(self) -> bool:
-        """Recheck the canonical evidence chain; callers must fail closed on False."""
+    def verify_evidence_integrity(self) -> bool:
+        """Check only the canonical evidence chain; this is not runtime readiness."""
         return self.ledger.verify() is True
 
 
@@ -86,7 +86,7 @@ def build_rsi_runtime(
     )
     if runtime.executor.ledger is not runtime.ledger:
         raise RSIError("RSI executor is not bound to the canonical evidence ledger")
-    if runtime.verify_ready() is not True:
+    if runtime.verify_evidence_integrity() is not True:
         raise RSIError("RSI evidence ledger integrity verification failed after startup")
     return runtime
 
