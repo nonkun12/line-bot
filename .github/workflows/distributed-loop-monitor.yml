@@ -48,7 +48,7 @@ jobs:
           jq -s '{workflow_runs: [.[].workflow_runs[]?]}' /tmp/distributed-loop-30m-scheduler.yml.json /tmp/distributed-autonomous-loop.yml.json > /tmp/monitor-runs.json
           # Download one immutable decision artifact for every scheduler run in the 24h audit window.
           decisions=/tmp/scheduler-decisions.json
-          printf '{}\\n' > "$decisions"
+          printf '%s\\n' '{}' > "$decisions"
           cutoff="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
           while IFS= read -r scheduler_run_id; do
             [ -n "$scheduler_run_id" ] || continue
@@ -135,6 +135,11 @@ jobs:
           print(f"- Monitor HEAD: {report['monitor_head_sha']}")
           print(f"- State commit: {report['state_commit_sha']}")
           print(f"- State age seconds: {report['state_age_seconds']}")
+          coverage = report['checks'].get('schedule_slot_coverage', {})
+          print(f"- Scheduler slots confirmed: {len(coverage.get('confirmed_slots', []))}")
+          print(f"- Scheduler safe skips: {len(coverage.get('safe_skips', []))}")
+          print(f"- Scheduler held skips: {len(coverage.get('held_slots', []))}")
+          print(f"- Scheduler missing/unverified: {len(coverage.get('missing_slots', []))}")
           print("- Dispatch allowed: **false**")
           print(f"- Reason: {report['failure_reason'] or 'none'}")
           PY
