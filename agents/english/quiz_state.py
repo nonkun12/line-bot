@@ -132,6 +132,13 @@ def has_pending_quiz(user_id: str) -> bool:
             "SELECT 1 FROM english_pending_quiz WHERE user_id=?", (_user_key(user_id),)
         ).fetchone() is not None
 
+def clear_pending_quiz(user_id: str) -> None:
+    """Delete any pending quiz for the given user."""
+    with _connect() as conn:
+        conn.execute(
+            "DELETE FROM english_pending_quiz WHERE user_id=?", (_user_key(user_id),)
+        )
+
 
 def grade_pending_quiz(user_id: str, answer: str) -> str | None:
     """Grade only an active quiz, then clear it so stale answers cannot be marked correct."""
