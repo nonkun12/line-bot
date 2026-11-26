@@ -70,7 +70,7 @@ jobs:
         if: steps.kill.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true'
         run: |
           set -euo pipefail
-          active_record="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=100" --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | sort_by(.created_at) | first // {}')"
+          active_record="$(gh api --paginate --slurp "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=100" --jq '[.[][]?.workflow_runs[]? | select(.status == "queued" or .status == "in_progress")] | sort_by(.created_at) | first // {}')"
           active_id="$(jq -r '.id // empty' <<< "$active_record")"
           if [ -n "$active_id" ]; then
             active_status="$(jq -r '.status // empty' <<< "$active_record")"
@@ -101,7 +101,7 @@ jobs:
             -f policy_dispatch=30m_scheduler -f request_id="$request_id"
           child_run_id=""
           for attempt in $(seq 1 12); do
-            child_run_id="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=100" --jq ".workflow_runs[] | select((.display_title // .name // \"\") | contains(\"request_id=$request_id\")) | .id" | head -n 1 || true)"
+            child_run_id="$(gh api --paginate --slurp "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=100" --jq ".[][]?.workflow_runs[]? | select((.display_title // .name // \"\") | contains(\"request_id=$request_id\")) | .id" | head -n 1 || true)"
             if [ -n "$child_run_id" ]; then break; fi
             sleep 5
           done
