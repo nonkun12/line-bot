@@ -14,6 +14,11 @@ def test_dedicated_scheduler_dispatches_every_30_minutes():
     assert "workflow_dispatch:" in event_block
     assert "gh workflow run distributed-autonomous-loop.yml" in text
     assert "-f max_tasks=1" in text
+    assert "Write machine-readable scheduler decision" in text
+    assert "scheduler-decision-${{ github.run_id }}" in text
+    assert "retention-days: 14" in text
+    assert "execution_approval" in text
+    assert "DISPATCH_UNCONFIRMED" in text
 
 
 def test_distributed_loop_is_not_a_second_scheduled_entrypoint():
