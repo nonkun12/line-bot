@@ -48,7 +48,7 @@ jobs:
           jq -s '{workflow_runs: [.[].workflow_runs[]?]}' /tmp/distributed-loop-30m-scheduler.yml.json /tmp/distributed-autonomous-loop.yml.json > /tmp/monitor-runs.json
           # Download one immutable decision artifact for every scheduler run in the 24h audit window.
           decisions=/tmp/scheduler-decisions.json
-          printf '%s\\n' '{}' > "$decisions"
+          printf "{}" > "$decisions"
           cutoff="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
           while IFS= read -r scheduler_run_id; do
             [ -n "$scheduler_run_id" ] || continue
