@@ -251,15 +251,119 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_schedule_slot_checker_correlates_child_run_by_scheduler_id(self):
         runs = [
-            {"workflow_id": 419124193, "id": 111, "event": "schedule", "status": "completed",
-             "created_at": "2026-11-26T10:50:00Z"},
+            {"workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
+             "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z"},
             {"workflow_id": 369890295, "id": 222, "display_title": "Distributed Loop (request_id=111)",
              "status": "completed", "conclusion": "failure"},
         ]
-        report = evaluate_schedule_slots(runs, "2026-11-26T11:10:00Z")
+        decision = {
+            "schema_version": 1, "scheduler_run_id": "111", "run_attempt": 1,
+            "decision": "DISPATCHED", "request_id": "111", "active_loop_run_id": None,
+            "active_loop_status_at_decision": None, "child_loop_run_id": "222",
+            "execution_approval": "DENY", "policy_dispatch": "30m_scheduler",
+            "head_sha": "a" * 40, "created_at": "2026-11-26T10:50:05Z",
+        }
+        report = evaluate_schedule_slots(
+            runs, "2026-11-26T11:10:00Z",
+            scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
+        )
         match = next(item for item in report["confirmed_slots"] if item["scheduler_run_id"] == 111)
         self.assertEqual(match["loop_run_id"], 222)
         self.assertEqual(match["loop_conclusion"], "failure")
+
+    def test_active_loop_skip_is_verified_and_not_counted_as_work(self):
+        runs = [
+            {"workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
+             "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z"},
+            {"workflow_id": 369890295, "id": 333, "status": "completed",
+             "created_at": "2026-11-26T10:48:00Z",
+             "completed_at": "2026-11-26T11:00:00Z"},
+        ]
+        decision = {
+            "schema_version": 1, "scheduler_run_id": "111", "run_attempt": 1,
+            "decision": "SKIPPED_ACTIVE_LOOP", "request_id": "111",
+            "active_loop_run_id": "333", "active_loop_status_at_decision": "in_progress",
+            "active_loop_workflow_id": 369890295,
+            "active_loop_created_at": "2026-11-26T10:48:00Z",
+            "active_loop_observed_at": "2026-11-26T10:50:02Z",
+            "child_loop_run_id": None, "execution_approval": "DENY",
+            "policy_dispatch": "30m_scheduler", "head_sha": "a" * 40,
+            "created_at": "2026-11-26T10:50:05Z",
+        }
+        report = evaluate_schedule_slots(
+            runs, "2026-11-26T11:10:00Z",
+            scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
+        )
+        target_slot = "2026-11-26T10:49:00+00:00"
+        self.assertEqual(len(report["safe_skips"]), 1)
+        self.assertEqual(report["safe_skips"][0]["decision"], "SKIPPED_ACTIVE_LOOP")
+        self.assertEqual(report["confirmed_slots"], [])
+        self.assertNotIn(target_slot, [item["slot"] for item in report["missing_slots"]])
+
+    def test_kill_switch_skip_is_hold_not_dispatch_failure(self):
+        runs = [{
+            "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
+            "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z",
+        }]
+        decision = {
+            "schema_version": 1, "scheduler_run_id": "111", "run_attempt": 1,
+            "decision": "SKIPPED_KILL_SWITCH", "request_id": "111",
+            "kill_switch_active": True, "skip_reason": "CONTROL_TOWER_KILL_SWITCH",
+            "execution_approval": "DENY", "policy_dispatch": "30m_scheduler",
+            "head_sha": "a" * 40, "created_at": "2026-11-26T10:50:05Z",
+        }
+        report = evaluate_schedule_slots(
+            runs, "2026-11-26T11:10:00Z",
+            scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
+        )
+        target_slot = "2026-11-26T10:49:00+00:00"
+        self.assertEqual(report["held_slots"][0]["decision"], "SKIPPED_KILL_SWITCH")
+        self.assertNotIn(target_slot, [item["slot"] for item in report["missing_slots"]])
+
+    def test_missing_decision_artifact_is_legacy_unverified_and_blocked(self):
+        runs = [{
+            "workflow_id": 419124193, "id": 111, "event": "schedule",
+            "status": "completed", "created_at": "2026-11-26T10:50:00Z",
+        }]
+        report = evaluate_schedule_slots(runs, "2026-11-26T11:10:00Z")
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["missing_slots"][0]["status"], "LEGACY_UNVERIFIED")
+
+    def test_decision_artifact_run_id_or_head_mismatch_blocks(self):
+        runs = [{
+            "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
+            "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z",
+        }]
+        decision = {
+            "schema_version": 1, "scheduler_run_id": "999", "run_attempt": 1,
+            "decision": "SKIPPED_BILLING_GUARD", "request_id": "111",
+            "execution_approval": "DENY", "policy_dispatch": "30m_scheduler",
+            "head_sha": "a" * 40, "created_at": "2026-11-26T10:50:05Z",
+        }
+        report = evaluate_schedule_slots(
+            runs, "2026-11-26T11:10:00Z",
+            scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
+        )
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["missing_slots"][0]["status"], "DECISION_ARTIFACT_INVALID")
+
+    def test_dispatched_decision_without_matching_child_blocks(self):
+        runs = [{
+            "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
+            "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z",
+        }]
+        decision = {
+            "schema_version": 1, "scheduler_run_id": "111", "run_attempt": 1,
+            "decision": "DISPATCHED", "request_id": "111", "child_loop_run_id": "222",
+            "execution_approval": "DENY", "policy_dispatch": "30m_scheduler",
+            "head_sha": "a" * 40, "created_at": "2026-11-26T10:50:05Z",
+        }
+        report = evaluate_schedule_slots(
+            runs, "2026-11-26T11:10:00Z",
+            scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
+        )
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["missing_slots"][0]["status"], "DISPATCH_UNCONFIRMED")
 
     def test_schedule_slot_checker_marks_current_slot_pending_but_history_blocked(self):
         report = evaluate_schedule_slots([], "2026-11-26T08:20:00Z")
@@ -305,6 +409,77 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         state["recovery_ai"]["state_updated_at"] = "2026-11-14T00:10:00Z"
         report = self.evaluate(state=state)
         self.assertEqual(report["status"], "BLOCKED")
+
+
+    def test_billing_guard_skip_is_hold_only_for_nonpublic_repository(self):
+        runs = [{
+            "workflow_id": 419124193, "id": 111, "run_attempt": 1,
+            "head_sha": "a" * 40, "event": "schedule", "status": "completed",
+            "created_at": "2026-11-26T10:50:00Z",
+        }]
+        decision = {
+            "schema_version": 1, "scheduler_run_id": "111", "run_attempt": 1,
+            "decision": "SKIPPED_BILLING_GUARD", "request_id": "111",
+            "repository_visibility": "private", "execution_approval": "DENY",
+            "policy_dispatch": "30m_scheduler", "head_sha": "a" * 40,
+            "created_at": "2026-11-26T10:50:05Z",
+        }
+        report = evaluate_schedule_slots(
+            runs, "2026-11-26T11:10:00Z",
+            scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
+        )
+        target_slot = "2026-11-26T10:49:00+00:00"
+        self.assertEqual(report["held_slots"][0]["decision"], "SKIPPED_BILLING_GUARD")
+        self.assertNotIn(target_slot, [item["slot"] for item in report["missing_slots"]])
+
+    def test_billing_guard_claim_for_public_repository_blocks(self):
+        runs = [{
+            "workflow_id": 419124193, "id": 111, "run_attempt": 1,
+            "head_sha": "a" * 40, "event": "schedule", "status": "completed",
+            "created_at": "2026-11-26T10:50:00Z",
+        }]
+        decision = {
+            "schema_version": 1, "scheduler_run_id": "111", "run_attempt": 1,
+            "decision": "SKIPPED_BILLING_GUARD", "request_id": "111",
+            "repository_visibility": "public", "execution_approval": "DENY",
+            "policy_dispatch": "30m_scheduler", "head_sha": "a" * 40,
+            "created_at": "2026-11-26T10:50:05Z",
+        }
+        report = evaluate_schedule_slots(
+            runs, "2026-11-26T11:10:00Z",
+            scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
+        )
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["missing_slots"][0]["status"], "UNVERIFIED_BILLING_GUARD_SKIP")
+
+    def test_active_loop_skip_for_run_completed_before_slot_blocks(self):
+        runs = [
+            {
+                "workflow_id": 419124193, "id": 111, "run_attempt": 1,
+                "head_sha": "a" * 40, "event": "schedule", "status": "completed",
+                "created_at": "2026-11-26T10:50:00Z",
+            },
+            {
+                "workflow_id": 369890295, "id": 333, "status": "completed",
+                "created_at": "2026-11-26T10:48:00Z",
+                "completed_at": "2026-11-26T10:49:00Z",
+            },
+        ]
+        decision = {
+            "schema_version": 1, "scheduler_run_id": "111", "run_attempt": 1,
+            "decision": "SKIPPED_ACTIVE_LOOP", "request_id": "111",
+            "active_loop_run_id": "333", "active_loop_status_at_decision": "in_progress",
+            "active_loop_workflow_id": 369890295,
+            "active_loop_created_at": "2026-11-26T10:48:00Z",
+            "execution_approval": "DENY", "policy_dispatch": "30m_scheduler",
+            "head_sha": "a" * 40, "created_at": "2026-11-26T10:50:05Z",
+        }
+        report = evaluate_schedule_slots(
+            runs, "2026-11-26T11:10:00Z",
+            scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
+        )
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["missing_slots"][0]["status"], "UNVERIFIED_ACTIVE_LOOP_SKIP")
 
 
 if __name__ == "__main__":

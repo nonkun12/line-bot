@@ -16,7 +16,7 @@ concurrency:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
@@ -46,6 +46,35 @@ jobs:
             fi
           done
           jq -s '{workflow_runs: [.[].workflow_runs[]?]}' /tmp/distributed-loop-30m-scheduler.yml.json /tmp/distributed-autonomous-loop.yml.json > /tmp/monitor-runs.json
+          # Download one immutable decision artifact for every scheduler run in the 24h audit window.
+          decisions=/tmp/scheduler-decisions.json
+          printf "{}" > "$decisions"
+          cutoff="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
+          while IFS=$'\t' read -r scheduler_run_id scheduler_run_attempt; do
+            [ -n "$scheduler_run_id" ] || continue
+            destination="/tmp/scheduler-decision-$scheduler_run_id-$scheduler_run_attempt"
+            mkdir -p "$destination"
+            if gh run download "$scheduler_run_id" --repo "$REPOSITORY" \
+              --name "scheduler-decision-$scheduler_run_id-$scheduler_run_attempt" --dir "$destination" >/dev/null 2>&1; then
+              record="$destination/scheduler-decision.json"
+              if [ -s "$record" ] && jq -e 'type == "object"' "$record" >/dev/null; then
+                jq --arg id "$scheduler_run_id" --slurpfile item "$record" \
+                  '. + {($id): {artifact_status:"available", record:$item[0]}}' \
+                  "$decisions" > "$decisions.tmp"
+              else
+                jq --arg id "$scheduler_run_id" \
+                  '. + {($id): {artifact_status:"invalid", record:null}}' \
+                  "$decisions" > "$decisions.tmp"
+              fi
+            else
+              jq --arg id "$scheduler_run_id" \
+                '. + {($id): {artifact_status:"missing", record:null}}' \
+                "$decisions" > "$decisions.tmp"
+            fi
+            mv "$decisions.tmp" "$decisions"
+          done < <(jq -r --arg cutoff "$cutoff" \
+            '.workflow_runs[]? | select(.workflow_id == 419124193 and .event == "schedule" and .created_at >= $cutoff) | [.id, (.run_attempt // 1)] | @tsv' \
+            /tmp/monitor-runs.json)
           echo "collected=$ok" >> "$GITHUB_OUTPUT"
 
       - name: Collect pinned durable state and provenance (read-only)
@@ -89,6 +118,7 @@ jobs:
             --runs-json /tmp/monitor-runs.json \
             --state-json /tmp/monitor-state-response.json \
             --state-meta-json /tmp/monitor-state-meta.json \
+            --scheduler-decisions-json /tmp/scheduler-decisions.json \
             --output artifacts/distributed-loop-monitor/monitor-report.json
 
       - name: Publish monitor summary
@@ -105,6 +135,11 @@ jobs:
           print(f"- Monitor HEAD: {report['monitor_head_sha']}")
           print(f"- State commit: {report['state_commit_sha']}")
           print(f"- State age seconds: {report['state_age_seconds']}")
+          coverage = report['checks'].get('schedule_slot_coverage', {})
+          print(f"- Scheduler slots confirmed: {len(coverage.get('confirmed_slots', []))}")
+          print(f"- Scheduler safe skips: {len(coverage.get('safe_skips', []))}")
+          print(f"- Scheduler held skips: {len(coverage.get('held_slots', []))}")
+          print(f"- Scheduler missing/unverified: {len(coverage.get('missing_slots', []))}")
           print("- Dispatch allowed: **false**")
           print(f"- Reason: {report['failure_reason'] or 'none'}")
           PY
