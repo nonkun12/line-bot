@@ -6,17 +6,18 @@ from core.rsi_executor import RSIControl
 from core.rsi_runtime import build_rsi_runtime
 
 
-def _runtime(path: Path):
+def _runtime(path: Path, control: RSIControl | None = None):
+    control_state = control or RSIControl(
+        global_hold=True,
+        execution_enabled=False,
+        free_only=True,
+        budget_known=True,
+        budget_remaining_units=0,
+        paid_fallback_enabled=False,
+    )
     return build_rsi_runtime(
         path,
-        control_provider=lambda: RSIControl(
-            global_hold=True,
-            execution_enabled=False,
-            free_only=True,
-            budget_known=True,
-            budget_remaining_units=0,
-            paid_fallback_enabled=False,
-        ),
+        control_provider=lambda: control_state,
         verify_approval=lambda _approval: False,
         verify_evaluation=lambda _evaluation: False,
         verify_evidence_signature=lambda _producer, _digest, _signature: False,
@@ -48,8 +49,15 @@ def test_runtime_rejects_ephemeral_or_relative_ledger_paths(tmp_path, monkeypatc
 
 
 def test_runtime_does_not_release_hold_or_enable_execution(tmp_path):
-    runtime = _runtime((tmp_path / "evidence.sqlite").resolve())
-    control = runtime.executor._control()
+    control = RSIControl(
+        global_hold=True,
+        execution_enabled=False,
+        free_only=True,
+        budget_known=True,
+        budget_remaining_units=0,
+        paid_fallback_enabled=False,
+    )
+    runtime = _runtime((tmp_path / "evidence.sqlite").resolve(), control)
 
     assert control.global_hold is True
     assert control.execution_enabled is False
