@@ -152,7 +152,9 @@ def evaluate_schedule_slots(
                     and record.get("policy_dispatch") == "30m_scheduler"
                     and record.get("head_sha") == scheduler.get("head_sha")
                     and created_at is not None
-                    and abs((created_at - parse_utc(scheduler["created_at"])).total_seconds()) <= 900
+                    and created_at >= (parse_utc(scheduler.get("run_started_at") or scheduler["created_at"]) - timedelta(minutes=5))
+                    and created_at <= now + timedelta(minutes=5)
+                    and (created_at - parse_utc(scheduler.get("run_started_at") or scheduler["created_at"])).total_seconds() <= 900
                     and decision in allowed
                 )
                 if not valid_record:
