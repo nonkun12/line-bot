@@ -7,7 +7,7 @@ import sys
 import tempfile
 from unittest.mock import patch
 
-from scripts.distributed_loop_monitor import evaluate
+from scripts.distributed_loop_monitor import evaluate, evaluate_schedule_slots
 
 
 def valid_state():
@@ -165,17 +165,22 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         }
         self.assertEqual(self.evaluate(state=state)["status"], "BLOCKED")
 
-    def test_held_task_blocks(self):
+    def test_held_task_is_hold_not_system_failure(self):
         state = valid_state()
         state["recovery_ai"]["tasks"]["task-1"] = {"held": True}
-        self.assertEqual(self.evaluate(state=state)["status"], "BLOCKED")
+        report = self.evaluate(state=state)
+        self.assertEqual(report["status"], "HOLD")
+        self.assertEqual(report["checks"]["recovery_safety"]["status"], "HOLD")
+        self.assertIs(report["dispatch_allowed"], False)
 
-    def test_pending_resume_review_blocks(self):
+    def test_pending_resume_review_is_hold_without_dispatch_permission(self):
         state = valid_state()
         state["recovery_ai"]["tasks"]["task-1"] = {
             "held": False, "resume_requires_review": True
         }
-        self.assertEqual(self.evaluate(state=state)["status"], "BLOCKED")
+        report = self.evaluate(state=state)
+        self.assertEqual(report["status"], "HOLD")
+        self.assertIs(report["dispatch_allowed"], False)
 
     def test_malformed_task_flag_type_blocks(self):
         state = valid_state()
@@ -231,6 +236,24 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertEqual(activity["status"], "INFO")
         self.assertEqual(activity["outcome"], "NO_CHANGE")
         self.assertEqual(activity["active_run_count"], 0)
+
+    def test_held_task_with_invalid_provenance_remains_blocked(self):
+        state = valid_state()
+        state["recovery_ai"]["tasks"]["task-1"] = {"held": True}
+        self.assertEqual(self.evaluate(state=state, meta={})["status"], "BLOCKED")
+
+    def test_schedule_slot_checker_detects_missing_scheduler(self):
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        report = evaluate_schedule_slots([], (now + timedelta(hours=1)).isoformat())
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertTrue(report["missing_slots"])
+
+    def test_schedule_slot_checker_leaves_grace_window_pending(self):
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).replace(minute=19, second=0, microsecond=0)
+        report = evaluate_schedule_slots([], now.isoformat())
+        self.assertEqual(report["status"], "PENDING")
 
     def test_missing_or_invalid_workflow_id_blocks(self):
         invalid_records = [
