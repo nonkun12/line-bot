@@ -40,12 +40,12 @@ jobs:
           ok=true
           for workflow in distributed-loop-30m-scheduler.yml distributed-autonomous-loop.yml; do
             output="/tmp/${workflow}.json"
-            if ! gh api "repos/$REPOSITORY/actions/workflows/$workflow/runs?per_page=100" > "$output"; then
+            if ! gh api --paginate --slurp "repos/$REPOSITORY/actions/workflows/$workflow/runs?per_page=100" > "$output"; then
               printf '%s\n' '{}' > "$output"
               ok=false
             fi
           done
-          jq -s '{workflow_runs: [.[].workflow_runs[]?]}' /tmp/distributed-loop-30m-scheduler.yml.json /tmp/distributed-autonomous-loop.yml.json > /tmp/monitor-runs.json
+          jq -s '{workflow_runs: [ .[][] | .workflow_runs[]? ]}' /tmp/distributed-loop-30m-scheduler.yml.json /tmp/distributed-autonomous-loop.yml.json > /tmp/monitor-runs.json
           # Download one immutable decision artifact for every scheduler run in the 24h audit window.
           decisions=/tmp/scheduler-decisions.json
           printf "{}" > "$decisions"
