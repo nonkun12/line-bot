@@ -79,9 +79,11 @@ jobs:
             echo "active_loop_run_id=$active_id" >> "$GITHUB_OUTPUT"
             active_workflow_id="$(jq -r '.workflow_id // empty' <<< "$active_record")"
             active_created_at="$(jq -r '.created_at // empty' <<< "$active_record")"
+            active_observed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "active_loop_status_at_decision=$active_status" >> "$GITHUB_OUTPUT"
             echo "active_loop_workflow_id=$active_workflow_id" >> "$GITHUB_OUTPUT"
             echo "active_loop_created_at=$active_created_at" >> "$GITHUB_OUTPUT"
+            echo "active_loop_observed_at=$active_observed_at" >> "$GITHUB_OUTPUT"
             echo "Existing distributed loop is queued/running; skipping this slot." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "dispatch=true" >> "$GITHUB_OUTPUT"
@@ -129,6 +131,7 @@ jobs:
           ACTIVE_LOOP_STATUS: ${{ steps.active.outputs.active_loop_status_at_decision }}
           ACTIVE_LOOP_WORKFLOW_ID: ${{ steps.active.outputs.active_loop_workflow_id }}
           ACTIVE_LOOP_CREATED_AT: ${{ steps.active.outputs.active_loop_created_at }}
+          ACTIVE_LOOP_OBSERVED_AT: ${{ steps.active.outputs.active_loop_observed_at }}
           KILL_SWITCH_ACTIVE: ${{ steps.kill.outputs.kill_switch_active }}
           DISPATCH_OUTCOME: ${{ steps.dispatch.outcome }}
           CHILD_LOOP_RUN_ID: ${{ steps.dispatch.outputs.child_loop_run_id }}
@@ -158,6 +161,7 @@ jobs:
               "active_loop_status_at_decision": os.environ.get("ACTIVE_LOOP_STATUS") or None,
               "active_loop_workflow_id": int(os.environ["ACTIVE_LOOP_WORKFLOW_ID"]) if os.environ.get("ACTIVE_LOOP_WORKFLOW_ID") else None,
               "active_loop_created_at": os.environ.get("ACTIVE_LOOP_CREATED_AT") or None,
+              "active_loop_observed_at": os.environ.get("ACTIVE_LOOP_OBSERVED_AT") or None,
               "kill_switch_active": os.environ.get("KILL_SWITCH_ACTIVE") == "true",
               "child_loop_run_id": os.environ.get("CHILD_LOOP_RUN_ID") or None,
               "skip_reason": os.environ.get("KILL_REASON") or None,
