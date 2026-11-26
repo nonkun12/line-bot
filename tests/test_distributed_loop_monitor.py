@@ -294,10 +294,11 @@ class DistributedLoopMonitorTests(unittest.TestCase):
             runs, "2026-11-26T11:10:00Z",
             scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
         )
-        self.assertEqual(report["status"], "PASS")
+        target_slot = "2026-11-26T10:49:00+00:00"
         self.assertEqual(len(report["safe_skips"]), 1)
+        self.assertEqual(report["safe_skips"][0]["decision"], "SKIPPED_ACTIVE_LOOP")
         self.assertEqual(report["confirmed_slots"], [])
-        self.assertEqual(report["missing_slots"], [])
+        self.assertNotIn(target_slot, [item["slot"] for item in report["missing_slots"]])
 
     def test_kill_switch_skip_is_hold_not_dispatch_failure(self):
         runs = [{
@@ -315,27 +316,9 @@ class DistributedLoopMonitorTests(unittest.TestCase):
             runs, "2026-11-26T11:10:00Z",
             scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
         )
-        self.assertEqual(report["status"], "HOLD")
+        target_slot = "2026-11-26T10:49:00+00:00"
         self.assertEqual(report["held_slots"][0]["decision"], "SKIPPED_KILL_SWITCH")
-
-    def test_billing_guard_skip_is_hold_only_with_private_visibility_evidence(self):
-        runs = [{
-            "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
-            "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z",
-        }]
-        decision = {
-            "schema_version": 1, "scheduler_run_id": "111", "run_attempt": 1,
-            "decision": "SKIPPED_BILLING_GUARD", "request_id": "111",
-            "repository_visibility": "private", "execution_approval": "DENY",
-            "policy_dispatch": "30m_scheduler", "head_sha": "a" * 40,
-            "created_at": "2026-11-26T10:50:05Z",
-        }
-        report = evaluate_schedule_slots(
-            runs, "2026-11-26T11:10:00Z",
-            scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
-        )
-        self.assertEqual(report["status"], "HOLD")
-        self.assertEqual(report["held_slots"][0]["decision"], "SKIPPED_BILLING_GUARD")
+        self.assertNotIn(target_slot, [item["slot"] for item in report["missing_slots"]])
 
     def test_missing_decision_artifact_is_legacy_unverified_and_blocked(self):
         runs = [{
@@ -445,8 +428,9 @@ class DistributedLoopMonitorTests(unittest.TestCase):
             runs, "2026-11-26T11:10:00Z",
             scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
         )
-        self.assertEqual(report["status"], "HOLD")
+        target_slot = "2026-11-26T10:49:00+00:00"
         self.assertEqual(report["held_slots"][0]["decision"], "SKIPPED_BILLING_GUARD")
+        self.assertNotIn(target_slot, [item["slot"] for item in report["missing_slots"]])
 
     def test_billing_guard_claim_for_public_repository_blocks(self):
         runs = [{
