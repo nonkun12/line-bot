@@ -276,12 +276,15 @@ class DistributedLoopMonitorTests(unittest.TestCase):
             {"workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
              "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z"},
             {"workflow_id": 369890295, "id": 333, "status": "completed",
-             "created_at": "2026-11-26T10:48:00Z"},
+             "created_at": "2026-11-26T10:48:00Z",
+             "completed_at": "2026-11-26T11:00:00Z"},
         ]
         decision = {
             "schema_version": 1, "scheduler_run_id": "111", "run_attempt": 1,
             "decision": "SKIPPED_ACTIVE_LOOP", "request_id": "111",
             "active_loop_run_id": "333", "active_loop_status_at_decision": "in_progress",
+            "active_loop_workflow_id": 369890295,
+            "active_loop_created_at": "2026-11-26T10:48:00Z",
             "child_loop_run_id": None, "execution_approval": "DENY",
             "policy_dispatch": "30m_scheduler", "head_sha": "a" * 40,
             "created_at": "2026-11-26T10:50:05Z",
@@ -303,6 +306,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         decision = {
             "schema_version": 1, "scheduler_run_id": "111", "run_attempt": 1,
             "decision": "SKIPPED_KILL_SWITCH", "request_id": "111",
+            "kill_switch_active": True, "skip_reason": "CONTROL_TOWER_KILL_SWITCH",
             "execution_approval": "DENY", "policy_dispatch": "30m_scheduler",
             "head_sha": "a" * 40, "created_at": "2026-11-26T10:50:05Z",
         }

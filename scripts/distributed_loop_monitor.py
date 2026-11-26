@@ -193,12 +193,31 @@ def evaluate_schedule_slots(
                     active_id = record.get("active_loop_run_id")
                     active_status = record.get("active_loop_status_at_decision")
                     active_loop = next((r for r in loops if str(r.get("id", "")) == str(active_id)), None)
-                    if (
-                        not active_id or active_status not in {"queued", "in_progress"}
-                        or active_loop is None
-                    ):
+                    active_created = parse_utc(record.get("active_loop_created_at"))
+                    actual_created = parse_utc(active_loop.get("created_at")) if active_loop else None
+                    scheduler_created = parse_utc(scheduler.get("created_at"))
+                    completion_time = (
+                        parse_utc(active_loop.get("completed_at") or active_loop.get("updated_at"))
+                        if active_loop else None
+                    )
+                    was_active_at_decision = (
+                        bool(active_id)
+                        and active_status in {"queued", "in_progress"}
+                        and record.get("active_loop_workflow_id") == loop_id
+                        and active_loop is not None
+                        and active_created is not None
+                        and actual_created is not None
+                        and active_created == actual_created
+                        and scheduler_created is not None
+                        and active_created <= scheduler_created
+                        and (
+                            active_loop.get("status") in {"queued", "in_progress"}
+                            or (completion_time is not None and completion_time > scheduler_created)
+                        )
+                    )
+                    if not was_active_at_decision:
                         missing.append({
-                            "slot": cursor.isoformat(), "status": "DECISION_ARTIFACT_INVALID",
+                            "slot": cursor.isoformat(), "status": "UNVERIFIED_ACTIVE_LOOP_SKIP",
                             "scheduler_run_id": scheduler.get("id"),
                         })
                     else:
@@ -206,14 +225,43 @@ def evaluate_schedule_slots(
                             "slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
                             "decision": decision, "active_loop_run_id": active_id,
                         })
+                elif decision == "SKIPPED_KILL_SWITCH":
+                    if (
+                        record.get("kill_switch_active") is True
+                        and record.get("skip_reason") in {"CONTROL_TOWER_KILL_SWITCH", "STOP_FILE"}
+                    ):
+                        safe_skips.append({
+                            "slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
+                            "decision": decision, "reason": record.get("skip_reason"),
+                        })
+                        held_slots.append({
+                            "slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
+                            "decision": decision,
+                        })
+                    else:
+                        missing.append({
+                            "slot": cursor.isoformat(), "status": "UNVERIFIED_KILL_SWITCH_SKIP",
+                            "scheduler_run_id": scheduler.get("id"),
+                        })
+                elif decision == "SKIPPED_BILLING_GUARD":
+                    if record.get("repository_visibility") in {"private", "internal"}:
+                        safe_skips.append({
+                            "slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
+                            "decision": decision, "reason": "repository_visibility_not_public",
+                        })
+                        held_slots.append({
+                            "slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
+                            "decision": decision,
+                        })
+                    else:
+                        missing.append({
+                            "slot": cursor.isoformat(), "status": "UNVERIFIED_BILLING_GUARD_SKIP",
+                            "scheduler_run_id": scheduler.get("id"),
+                        })
                 else:
-                    safe_skips.append({
-                        "slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
-                        "decision": decision,
-                    })
-                    held_slots.append({
-                        "slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
-                        "decision": decision,
+                    missing.append({
+                        "slot": cursor.isoformat(), "status": "UNSUPPORTED_DECISION",
+                        "scheduler_run_id": scheduler.get("id"),
                     })
         cursor -= timedelta(minutes=30)
 
