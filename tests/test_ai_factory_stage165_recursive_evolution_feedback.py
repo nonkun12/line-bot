@@ -196,11 +196,13 @@ def test_hold_rejection_does_not_write_stage165_event(tmp_path):
 def test_persisted_record_rejects_boolean_string_and_unknown_metric_values():
     record = ingest(RecursiveEvolutionFeedbackIntegrator())
     payload = asdict(record)
+    payload["metrics"] = [list(item) for item in payload["metrics"]]
     payload["metrics"][0][1] = True
     with pytest.raises(RecursiveEvolutionFeedbackError, match="metrics are invalid"):
         _record_from_payload(payload)
 
     payload = asdict(record)
+    payload["baseline_metrics"] = [list(item) for item in payload["baseline_metrics"]]
     payload["baseline_metrics"][0][1] = "1.0"
     with pytest.raises(RecursiveEvolutionFeedbackError, match="metrics are invalid"):
         _record_from_payload(payload)
@@ -214,4 +216,3 @@ def test_persisted_record_rejects_boolean_string_and_unknown_metric_values():
     payload["classification"] = []
     with pytest.raises(RecursiveEvolutionFeedbackError, match="integrity validation"):
         _record_from_payload(payload)
-
