@@ -103,6 +103,31 @@ def _record_digest(record: RecursiveTrialRecord) -> str:
 def _record_from_payload(value: object) -> RecursiveTrialRecord:
     if not isinstance(value, dict):
         raise RecursiveEvolutionFeedbackError("persisted recursive trial record is not an object")
+    expected_keys = {
+        "outcome_digest", "evidence_digest", "design_digest", "plan_id",
+        "recipe_digest", "strategy", "source_generation", "proposed_generation",
+        "classification", "metrics", "baseline_metrics", "lessons", "record_digest",
+        "pending_human_approval", "generation_advanced", "model_activated",
+        "model_mutation_authorized", "production_switch_authorized",
+    }
+    if set(value) != expected_keys:
+        raise RecursiveEvolutionFeedbackError("persisted recursive trial record schema is invalid")
+
+    def decode_metrics(raw: object) -> tuple[tuple[str, float], ...]:
+        if not isinstance(raw, (list, tuple)):
+            raise RecursiveEvolutionFeedbackError("persisted recursive trial metrics are invalid")
+        decoded = []
+        for item in raw:
+            if (not isinstance(item, (list, tuple)) or len(item) != 2
+                    or not isinstance(item[0], str) or not item[0]
+                    or type(item[1]) not in (int, float)
+                    or not math.isfinite(item[1])):
+                raise RecursiveEvolutionFeedbackError("persisted recursive trial metrics are invalid")
+            decoded.append((item[0], float(item[1])))
+        if len({key for key, _ in decoded}) != len(decoded):
+            raise RecursiveEvolutionFeedbackError("persisted recursive trial metrics are invalid")
+        return tuple(decoded)
+
     try:
         record = RecursiveTrialRecord(
             outcome_digest=value["outcome_digest"],
@@ -114,9 +139,9 @@ def _record_from_payload(value: object) -> RecursiveTrialRecord:
             source_generation=value["source_generation"],
             proposed_generation=value["proposed_generation"],
             classification=value["classification"],
-            metrics=tuple((item[0], float(item[1])) for item in value["metrics"]),
-            baseline_metrics=tuple((item[0], float(item[1])) for item in value["baseline_metrics"]),
-            lessons=tuple(value["lessons"]),
+            metrics=decode_metrics(value["metrics"]),
+            baseline_metrics=decode_metrics(value["baseline_metrics"]),
+            lessons=tuple(value["lessons"]) if isinstance(value["lessons"], (list, tuple)) else (),
             record_digest=value["record_digest"],
             pending_human_approval=value["pending_human_approval"],
             generation_advanced=value["generation_advanced"],
@@ -129,8 +154,8 @@ def _record_from_payload(value: object) -> RecursiveTrialRecord:
     if (not all(_valid_digest(x) for x in (
             record.outcome_digest, record.evidence_digest, record.design_digest,
             record.recipe_digest, record.record_digest))
-            or not _ID.fullmatch(record.plan_id or "")
-            or not _ID.fullmatch(record.strategy or "")
+            or not isinstance(record.plan_id, str) or not _ID.fullmatch(record.plan_id)
+            or not isinstance(record.strategy, str) or not _ID.fullmatch(record.strategy)
             or type(record.source_generation) is not int or record.source_generation < 0
             or type(record.proposed_generation) is not int
             or record.proposed_generation != record.source_generation + 1
@@ -144,15 +169,9 @@ def _record_from_payload(value: object) -> RecursiveTrialRecord:
                     record.model_mutation_authorized, record.production_switch_authorized))
             or _record_digest(record) != record.record_digest):
         raise RecursiveEvolutionFeedbackError("persisted recursive trial record failed integrity validation")
-    for metrics in (record.metrics, record.baseline_metrics):
-        if (len({key for key, _ in metrics}) != len(metrics)
-                or any(not isinstance(key, str) or not key or not math.isfinite(number)
-                       for key, number in metrics)):
-            raise RecursiveEvolutionFeedbackError("persisted recursive trial metrics are invalid")
     if not record.lessons or any(not isinstance(item, str) or not item for item in record.lessons):
         raise RecursiveEvolutionFeedbackError("persisted recursive trial lessons are invalid")
     return record
-
 
 def _fitness_metrics(value: Fitness, suite: str) -> dict[str, float]:
     if not isinstance(value, Fitness) or value.evaluation_suite_digest != suite:
