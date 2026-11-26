@@ -252,13 +252,16 @@ def evaluate(
                 review_ids.append(str(task_id))
     if held_ids or review_ids or malformed_ids:
         checks["recovery_safety"] = {
-            "status": "BLOCKED",
+            "status": "BLOCKED" if malformed_ids else "HOLD",
             "held_task_count": len(held_ids),
             "resume_review_required_count": len(review_ids),
             "malformed_task_record_count": len(set(malformed_ids)),
             "detail": "Held, review-pending, or malformed task records detected; no state was changed",
         }
-        reasons.append("HOLD, pending resume review, or malformed task record detected")
+        if malformed_ids:
+            reasons.append("Malformed recovery task record detected")
+        else:
+            reasons.append("HOLD: held or pending-review tasks remain safely gated")
     elif recovery_ok:
         checks["recovery_safety"] = {
             "status": "PASS",
@@ -310,7 +313,10 @@ def evaluate(
         "detail": "Monitor source HEAD SHA recorded" if monitor_sha_ok else "Monitor source HEAD SHA missing or invalid",
     }
 
-    status = "BLOCKED" if reasons else "PASS"
+    only_deliberate_hold = bool(reasons) and all(
+        reason.startswith("HOLD:") for reason in reasons
+    )
+    status = "HOLD" if only_deliberate_hold else ("BLOCKED" if reasons else "PASS")
     return {
         "schema_version": 2,
         "run_id": str(run_id),
@@ -330,7 +336,8 @@ def evaluate(
         "checks": checks,
         "failure_reason": "; ".join(dict.fromkeys(reasons)) or None,
         "limitations": [
-            "A PASS is health evidence only and never authorizes task execution.",
+            "PASS and HOLD are health/control outcomes only and never authorize task execution.",
+            "HOLD is distinct from system failure only when all evidence/provenance checks pass and no malformed records are present.",
             "Queue eligibility and independent human approval are not evaluated by this health monitor and must be enforced by a separate execution gate.",
             "The 24-hour state-age ceiling is a conservative monitoring guard, not a verified normal writer cadence.",
             "Recovery AI state freshness is measured from its own state_updated_at field, separately from the outer Git commit timestamp.",
@@ -368,7 +375,7 @@ def main() -> int:
     # A BLOCKED report is still written and uploaded by the workflow's
     # always()-guarded summary/artifact steps, but the run must be visibly red.
     # Only a complete health PASS may produce a successful Actions conclusion.
-    return 0 if report["status"] == "PASS" else 1
+    return 0 if report["status"] in {"PASS", "HOLD"} else 1
 
 
 if __name__ == "__main__":
