@@ -210,3 +210,8 @@ def test_persisted_record_rejects_boolean_string_and_unknown_metric_values():
     with pytest.raises(RecursiveEvolutionFeedbackError, match="schema is invalid"):
         _record_from_payload(payload)
 
+    payload = asdict(record)
+    payload["classification"] = []
+    with pytest.raises(RecursiveEvolutionFeedbackError, match="integrity validation"):
+        _record_from_payload(payload)
+
