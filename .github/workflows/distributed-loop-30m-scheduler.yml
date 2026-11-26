@@ -1,4 +1,5 @@
 name: Distributed Loop 30-Minute Scheduler
+run-name: Distributed Loop Scheduler (scheduler_run_id=${{ github.run_id }})
 
 on:
   schedule:
@@ -74,9 +75,29 @@ jobs:
         if: steps.kill.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true' && steps.active.outputs.dispatch == 'true'
         run: |
           set -euo pipefail
+          request_id="$GITHUB_RUN_ID"
           gh workflow run distributed-autonomous-loop.yml \
-            --repo "$REPOSITORY" --ref main -f max_tasks=1 -f execution_approval=DENY -f policy_dispatch=30m_scheduler
-          echo "Dispatched exactly one bounded cycle; queue approval, HOLD, evidence, and publish gates remain in the target workflow." >> "$GITHUB_STEP_SUMMARY"
+            --repo "$REPOSITORY" --ref main \
+            -f max_tasks=1 -f execution_approval=DENY \
+            -f policy_dispatch=30m_scheduler -f request_id="$request_id"
+          child_run_id=""
+          for attempt in $(seq 1 12); do
+            child_run_id="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=100" --jq ".workflow_runs[] | select((.display_title // .name // \"\") | contains(\"request_id=$request_id\")) | .id" | head -n 1 || true)"
+            if [ -n "$child_run_id" ]; then break; fi
+            sleep 5
+          done
+          if [ -z "$child_run_id" ]; then
+            echo "::error::Dispatch was accepted but the child Loop Run ID could not be confirmed."
+            echo "DISPATCH_UNCONFIRMED request_id=$request_id" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          {
+            echo "- Scheduler Run ID: $GITHUB_RUN_ID"
+            echo "- Request correlation ID: $request_id"
+            echo "- Child Loop Run ID: $child_run_id"
+            echo "- Child Loop URL: https://github.com/$REPOSITORY/actions/runs/$child_run_id"
+            echo "- Execution approval: DENY"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report scheduler decision
         if: always()
