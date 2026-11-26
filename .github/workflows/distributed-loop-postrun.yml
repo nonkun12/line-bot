@@ -283,13 +283,13 @@ jobs:
               # Keep each independent finding as its own incident so adding a
               # second finding to a run does not change the fingerprint of the first.
               normalized = str(finding).strip().lower()
-              normalized = re.sub(r"task\\s+\\d+", "task", normalized)
-              normalized = re.sub(r"\\b[0-9a-f]{40,64}\\b", "<sha>", normalized)
-              normalized = re.sub(r"\\s+", " ", normalized)
+              normalized = re.sub(r"task\s+\d+", "task", normalized)
+              normalized = re.sub(r"\b[0-9a-f]{40,64}\b", "<sha>", normalized)
+              normalized = re.sub(r"\s+", " ", normalized)
               fingerprint = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
               incidents.append({"fingerprint": fingerprint, "finding": str(finding)})
           Path("postrun-incidents.json").write_text(
-              json.dumps(incidents, ensure_ascii=False) + "\\n", encoding="utf-8"
+              json.dumps(incidents, ensure_ascii=False) + "\n", encoding="utf-8"
           )
           PY
           while IFS= read -r incident; do
