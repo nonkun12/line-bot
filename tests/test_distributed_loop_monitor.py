@@ -262,9 +262,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertEqual(match["loop_conclusion"], "failure")
 
     def test_schedule_slot_checker_leaves_grace_window_pending(self):
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).replace(minute=19, second=0, microsecond=0)
-        report = evaluate_schedule_slots([], now.isoformat())
+        report = evaluate_schedule_slots([], "2026-11-26T08:20:00Z")
         self.assertEqual(report["status"], "PENDING")
 
     def test_missing_or_invalid_workflow_id_blocks(self):
