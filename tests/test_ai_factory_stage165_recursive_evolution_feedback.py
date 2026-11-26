@@ -1,4 +1,4 @@
-from dataclasses import replace
+from dataclasses import asdict, replace
 import sqlite3
 
 import pytest
@@ -17,6 +17,7 @@ from core.rsi_executor import EvidenceLedger
 
 from core.ai_factory_stage165_recursive_evolution_feedback import (
     RecursiveEvolutionFeedbackError, RecursiveEvolutionFeedbackIntegrator,
+    _record_from_payload,
 )
 
 SUITE = "a" * 64
@@ -191,3 +192,21 @@ def test_hold_rejection_does_not_write_stage165_event(tmp_path):
         ingest(loop, hold_active=True)
     assert ledger.read_events("stage165_recursive_trial") == ()
     assert ledger.verify()
+
+def test_persisted_record_rejects_boolean_string_and_unknown_metric_values():
+    record = ingest(RecursiveEvolutionFeedbackIntegrator())
+    payload = asdict(record)
+    payload["metrics"][0][1] = True
+    with pytest.raises(RecursiveEvolutionFeedbackError, match="metrics are invalid"):
+        _record_from_payload(payload)
+
+    payload = asdict(record)
+    payload["baseline_metrics"][0][1] = "1.0"
+    with pytest.raises(RecursiveEvolutionFeedbackError, match="metrics are invalid"):
+        _record_from_payload(payload)
+
+    payload = asdict(record)
+    payload["unexpected"] = "ignored fields must not be accepted"
+    with pytest.raises(RecursiveEvolutionFeedbackError, match="schema is invalid"):
+        _record_from_payload(payload)
+
