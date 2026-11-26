@@ -285,6 +285,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
             "active_loop_run_id": "333", "active_loop_status_at_decision": "in_progress",
             "active_loop_workflow_id": 369890295,
             "active_loop_created_at": "2026-11-26T10:48:00Z",
+            "active_loop_observed_at": "2026-11-26T10:50:02Z",
             "child_loop_run_id": None, "execution_approval": "DENY",
             "policy_dispatch": "30m_scheduler", "head_sha": "a" * 40,
             "created_at": "2026-11-26T10:50:05Z",
@@ -316,6 +317,25 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         )
         self.assertEqual(report["status"], "HOLD")
         self.assertEqual(report["held_slots"][0]["decision"], "SKIPPED_KILL_SWITCH")
+
+    def test_billing_guard_skip_is_hold_only_with_private_visibility_evidence(self):
+        runs = [{
+            "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
+            "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z",
+        }]
+        decision = {
+            "schema_version": 1, "scheduler_run_id": "111", "run_attempt": 1,
+            "decision": "SKIPPED_BILLING_GUARD", "request_id": "111",
+            "repository_visibility": "private", "execution_approval": "DENY",
+            "policy_dispatch": "30m_scheduler", "head_sha": "a" * 40,
+            "created_at": "2026-11-26T10:50:05Z",
+        }
+        report = evaluate_schedule_slots(
+            runs, "2026-11-26T11:10:00Z",
+            scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
+        )
+        self.assertEqual(report["status"], "HOLD")
+        self.assertEqual(report["held_slots"][0]["decision"], "SKIPPED_BILLING_GUARD")
 
     def test_missing_decision_artifact_is_legacy_unverified_and_blocked(self):
         runs = [{
