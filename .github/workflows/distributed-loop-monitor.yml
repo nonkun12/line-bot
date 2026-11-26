@@ -38,14 +38,14 @@ jobs:
         run: |
           set -euo pipefail
           ok=true
-          for workflow in distributed-loop-30m-scheduler.yml distributed-autonomous-loop.yml overnight-development.yml; do
+          for workflow in distributed-loop-30m-scheduler.yml distributed-autonomous-loop.yml; do
             output="/tmp/${workflow}.json"
             if ! gh api "repos/$REPOSITORY/actions/workflows/$workflow/runs?per_page=100" > "$output"; then
               printf '%s\n' '{}' > "$output"
               ok=false
             fi
           done
-          jq -s '{workflow_runs: [.[].workflow_runs[]?]}' /tmp/distributed-loop-30m-scheduler.yml.json /tmp/distributed-autonomous-loop.yml.json /tmp/overnight-development.yml.json > /tmp/monitor-runs.json
+          jq -s '{workflow_runs: [.[].workflow_runs[]?]}' /tmp/distributed-loop-30m-scheduler.yml.json /tmp/distributed-autonomous-loop.yml.json > /tmp/monitor-runs.json
           echo "collected=$ok" >> "$GITHUB_OUTPUT"
 
       - name: Collect pinned durable state and provenance (read-only)
