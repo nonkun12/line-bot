@@ -11,6 +11,9 @@ import hashlib
 import hmac
 import json
 from typing import Callable, Mapping
+from urllib.parse import urlparse
+
+import httpx
 
 from .rsi_control import SignedRSIControlSnapshot
 
@@ -77,12 +80,37 @@ def parse_signed_envelope(envelope: object, secret: str) -> SignedRSIControlSnap
         raise RSIControlTransportError("signed control fields invalid") from exc
 
 
-class OrcaRSIControlSource:
-    """Adapt a trusted transport fetcher into RSI's typed snapshot source.
+def fetch_orca_control_envelope(url: str, *, timeout_seconds: float = 5.0) -> object:
+    """Fetch the dedicated endpoint without redirects or ambient credentials."""
+    parsed = urlparse(url)
+    local_http = parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+    if parsed.scheme != "https" and not local_http:
+        raise RSIControlTransportError("Orca RSI control URL must use HTTPS")
+    if not parsed.netloc or parsed.username or parsed.password or parsed.fragment:
+        raise RSIControlTransportError("Orca RSI control URL is invalid")
+    try:
+        response = httpx.get(
+            url, timeout=timeout_seconds, follow_redirects=False,
+            headers={"Accept": "application/json", "Cache-Control": "no-cache"},
+        )
+        if response.status_code != 200 or len(response.content) > 16384:
+            raise RSIControlTransportError("Orca RSI control endpoint unavailable")
+        value = response.json()
+        if not isinstance(value, dict):
+            raise RSIControlTransportError("Orca RSI control response is invalid")
+        return value
+    except RSIControlTransportError:
+        raise
+    except Exception as exc:
+        raise RSIControlTransportError("Orca RSI control endpoint unavailable") from exc
 
-    fetch_envelope must perform the HTTPS/internal-network request and return
-    decoded JSON. Network location and credentials are deliberately injected.
-    """
+
+class OrcaRSIControlSource:
+    """Adapt the dedicated Orca endpoint into RSI's typed snapshot source."""
+
+    @classmethod
+    def from_url(cls, url: str, secret_provider: Callable[[], str]):
+        return cls(lambda: fetch_orca_control_envelope(url), secret_provider)
 
     def __init__(self, fetch_envelope: Callable[[], object], secret_provider: Callable[[], str]):
         if not callable(fetch_envelope) or not callable(secret_provider):
@@ -103,5 +131,5 @@ class OrcaRSIControlSource:
 
 __all__ = [
     "OrcaRSIControlSource", "RSIControlTransportError",
-    "make_signed_envelope", "parse_signed_envelope",
+    "fetch_orca_control_envelope", "make_signed_envelope", "parse_signed_envelope",
 ]
