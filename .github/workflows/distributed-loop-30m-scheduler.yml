@@ -69,12 +69,9 @@ jobs:
         if: steps.kill.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true'
         run: |
           set -euo pipefail
-          active="$(gh api \
-            "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=100" \
-            --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
-          if [ "$active" -gt 0 ]; then
-            active_record="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=100" --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | sort_by(.created_at) | first')"
-            active_id="$(jq -r '.id // empty' <<< "$active_record")"
+          active_record="$(gh api "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=100" --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | sort_by(.created_at) | first // {}')"
+          active_id="$(jq -r '.id // empty' <<< "$active_record")"
+          if [ -n "$active_id" ]; then
             active_status="$(jq -r '.status // empty' <<< "$active_record")"
             echo "dispatch=false" >> "$GITHUB_OUTPUT"
             echo "decision=SKIPPED_ACTIVE_LOOP" >> "$GITHUB_OUTPUT"
@@ -161,7 +158,7 @@ jobs:
           }
           with open("scheduler-decision.json", "w", encoding="utf-8") as handle:
               json.dump(record, handle, ensure_ascii=False, indent=2, sort_keys=True)
-              handle.write("\\n")
+              handle.write(chr(10))
           print(json.dumps({"decision": decision, "scheduler_run_id": record["scheduler_run_id"]}))
           PY
           {
