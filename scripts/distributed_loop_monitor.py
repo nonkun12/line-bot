@@ -133,7 +133,7 @@ def evaluate_schedule_slots(
                 if not isinstance(envelope, dict) or envelope.get("artifact_status") != "available":
                     missing.append({
                         "slot": cursor.isoformat(),
-                        "status": "LEGACY_UNVERIFIED" if envelope is None else "DECISION_ARTIFACT_UNAVAILABLE",
+                        "status": "LEGACY_UNVERIFIED" if envelope is None else ("DECISION_ARTIFACT_INVALID" if envelope.get("artifact_status") == "invalid" else "DECISION_ARTIFACT_UNAVAILABLE"),
                         "scheduler_run_id": scheduler.get("id"),
                     })
                     cursor -= timedelta(minutes=30)
@@ -143,7 +143,7 @@ def evaluate_schedule_slots(
                 created_at = parse_utc(record.get("created_at")) if isinstance(record, dict) else None
                 valid_record = (
                     isinstance(record, dict)
-                    and record.get("schema_version") == 1
+                    and type(record.get("schema_version")) is int\n                    and record.get("schema_version") == 1
                     and str(record.get("scheduler_run_id", "")) == scheduler_run_id
                     and str(record.get("request_id", "")) == scheduler_run_id
                     and type(record.get("run_attempt")) is int
@@ -485,7 +485,7 @@ def evaluate(
         "recovery_state_updated_at": recovery.get("state_updated_at") if isinstance(recovery, dict) else None,
         "recovery_state_age_seconds": recovery_age_seconds,
         "scheduled_at": None,
-        "schedule_expression": "*/30 * * * * (UTC)",
+        "schedule_expression": "19,49 * * * * (UTC)",
         "started_at": started_at,
         "completed_at": utc_now(),
         "status": status,
