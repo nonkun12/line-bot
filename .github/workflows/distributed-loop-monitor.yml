@@ -32,17 +32,21 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Collect the latest 30 Actions runs (read-only; bounded request)
+      - name: Collect scheduler and Loop run history (read-only; bounded)
         id: actions
         continue-on-error: true
         run: |
           set -euo pipefail
-          if gh api "repos/$REPOSITORY/actions/runs?per_page=30" > /tmp/monitor-runs.json; then
-            echo "collected=true" >> "$GITHUB_OUTPUT"
-          else
-            printf '%s\n' '{}' > /tmp/monitor-runs.json
-            echo "collected=false" >> "$GITHUB_OUTPUT"
-          fi
+          ok=true
+          for workflow in distributed-loop-30m-scheduler.yml distributed-autonomous-loop.yml; do
+            output="/tmp/${workflow}.json"
+            if ! gh api "repos/$REPOSITORY/actions/workflows/$workflow/runs?per_page=100" > "$output"; then
+              printf '%s\n' '{}' > "$output"
+              ok=false
+            fi
+          done
+          jq -s '{workflow_runs: [.[].workflow_runs[]?]}' /tmp/distributed-loop-30m-scheduler.yml.json /tmp/distributed-autonomous-loop.yml.json > /tmp/monitor-runs.json
+          echo "collected=$ok" >> "$GITHUB_OUTPUT"
 
       - name: Collect pinned durable state and provenance (read-only)
         id: state

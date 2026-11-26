@@ -85,6 +85,46 @@ def normalize_actions_runs(payload: Any) -> dict[str, Any] | None:
     return {"workflow_runs": combined}
 
 
+def evaluate_schedule_slots(runs: list[dict[str, Any]], started_at: str, grace_minutes: int = 15) -> dict[str, Any]:
+    """Check expected UTC :19/:49 slots and their scheduler-to-loop correlation."""
+    from datetime import timedelta
+    now = parse_utc(started_at)
+    if now is None:
+        return {"status": "BLOCKED", "checked_slots": 0, "missing_slots": [], "detail": "invalid monitor timestamp"}
+    scheduler_id, loop_id = 419124193, 369890295
+    schedulers = [r for r in runs if r.get("workflow_id") == scheduler_id]
+    loops = [r for r in runs if r.get("workflow_id") == loop_id]
+    cursor = now.replace(second=0, microsecond=0)
+    cursor -= timedelta(minutes=(cursor.minute - 19) % 30)
+    missing, pending, confirmed = [], [], []
+    while cursor >= now - timedelta(hours=24):
+        deadline = cursor + timedelta(minutes=grace_minutes)
+        if now < deadline:
+            pending.append(cursor.isoformat())
+        else:
+            matches = [r for r in schedulers if r.get("event") == "schedule"
+                       and (created := parse_utc(r.get("created_at"))) is not None
+                       and cursor <= created <= deadline]
+            if not matches:
+                missing.append({"slot": cursor.isoformat(), "status": "SCHEDULER_MISSING"})
+            else:
+                scheduler = min(matches, key=lambda r: abs((parse_utc(r["created_at"]) - cursor).total_seconds()))
+                request_id = str(scheduler.get("id", ""))
+                child = next((r for r in loops if f"request_id={request_id}" in str(r.get("display_title") or r.get("name") or "")), None)
+                if child:
+                    confirmed.append({"slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
+                                      "loop_run_id": child.get("id"), "loop_status": child.get("status"),
+                                      "loop_conclusion": child.get("conclusion")})
+                elif scheduler.get("status") in {"queued", "in_progress"}:
+                    pending.append(cursor.isoformat())
+                else:
+                    missing.append({"slot": cursor.isoformat(), "status": "DISPATCH_UNCONFIRMED",
+                                    "scheduler_run_id": scheduler.get("id")})
+        cursor -= timedelta(minutes=30)
+    status = "BLOCKED" if missing else ("PENDING" if pending else "PASS")
+    return {"status": status, "checked_slots": len(confirmed) + len(missing) + len(pending),
+            "confirmed_slots": confirmed, "missing_slots": missing, "pending_slots": pending,
+            "grace_minutes": grace_minutes, "detail": "30-minute scheduler slot correlation"}
 def evaluate(
     runs_payload: Any,
     durable_payload: Any,
@@ -94,6 +134,7 @@ def evaluate(
     started_at: str,
     state_meta: Any = None,
     state_response: Any = None,
+    schedule_evidence: bool = False,
 ) -> dict[str, Any]:
     checks: dict[str, dict[str, Any]] = {}
     reasons: list[str] = []
@@ -252,13 +293,16 @@ def evaluate(
                 review_ids.append(str(task_id))
     if held_ids or review_ids or malformed_ids:
         checks["recovery_safety"] = {
-            "status": "BLOCKED",
+            "status": "BLOCKED" if malformed_ids else "HOLD",
             "held_task_count": len(held_ids),
             "resume_review_required_count": len(review_ids),
             "malformed_task_record_count": len(set(malformed_ids)),
             "detail": "Held, review-pending, or malformed task records detected; no state was changed",
         }
-        reasons.append("HOLD, pending resume review, or malformed task record detected")
+        if malformed_ids:
+            reasons.append("Malformed recovery task record detected")
+        else:
+            reasons.append("HOLD: held or pending-review tasks remain safely gated")
     elif recovery_ok:
         checks["recovery_safety"] = {
             "status": "PASS",
@@ -270,6 +314,12 @@ def evaluate(
     else:
         checks["recovery_safety"] = {"status": "BLOCKED", "detail": "Cannot evaluate recovery safety"}
 
+    if schedule_evidence:
+        slot_report = evaluate_schedule_slots(runs_payload["workflow_runs"] if runs_ok else [], started_at)
+        checks["schedule_slot_coverage"] = slot_report
+        if slot_report["status"] == "BLOCKED":
+            reasons.append("Expected 30-minute scheduler slot missing or child Loop run unconfirmed")
+
     # Queue eligibility and independent human approval require separate, authoritative
     # evidence. This monitor does not infer approval from task catalog fields or labels.
     checks["queue_and_approval"] = {
@@ -280,13 +330,13 @@ def evaluate(
     if runs_ok:
         active = [
             item for item in runs_payload["workflow_runs"]
-            if item.get("workflow_id") == 357086091
+            if item.get("workflow_id") == 369890295
             and item.get("status") in {"queued", "in_progress"}
         ]
         checks["main_loop_activity"] = {
             "status": "PASS" if active else "INFO",
             "outcome": "ACTIVE" if active else "NO_CHANGE",
-            "workflow_id": 357086091,
+            "workflow_id": 369890295,
             "active_run_count": len(active),
             "detail": (
                 "Main LOOP workflow activity confirmed by fixed workflow ID; monitor did not dispatch or cancel anything"
@@ -297,7 +347,7 @@ def evaluate(
         checks["main_loop_activity"] = {
             "status": "BLOCKED",
             "outcome": "UNVERIFIED",
-            "workflow_id": 357086091,
+            "workflow_id": 369890295,
             "active_run_count": None,
             "detail": "Main LOOP activity cannot be verified because Actions run records or workflow IDs are invalid",
         }
@@ -310,7 +360,10 @@ def evaluate(
         "detail": "Monitor source HEAD SHA recorded" if monitor_sha_ok else "Monitor source HEAD SHA missing or invalid",
     }
 
-    status = "BLOCKED" if reasons else "PASS"
+    only_deliberate_hold = bool(reasons) and all(
+        reason.startswith("HOLD:") for reason in reasons
+    )
+    status = "HOLD" if only_deliberate_hold else ("BLOCKED" if reasons else "PASS")
     return {
         "schema_version": 2,
         "run_id": str(run_id),
@@ -330,7 +383,8 @@ def evaluate(
         "checks": checks,
         "failure_reason": "; ".join(dict.fromkeys(reasons)) or None,
         "limitations": [
-            "A PASS is health evidence only and never authorizes task execution.",
+            "PASS and HOLD are health/control outcomes only and never authorize task execution.",
+            "HOLD is distinct from system failure only when all evidence/provenance checks pass and no malformed records are present.",
             "Queue eligibility and independent human approval are not evaluated by this health monitor and must be enforced by a separate execution gate.",
             "The 24-hour state-age ceiling is a conservative monitoring guard, not a verified normal writer cadence.",
             "Recovery AI state freshness is measured from its own state_updated_at field, separately from the outer Git commit timestamp.",
@@ -359,6 +413,7 @@ def main() -> int:
         started_at=started,
         state_meta=state_meta,
         state_response=state_response,
+        schedule_evidence=True,
     )
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -368,7 +423,7 @@ def main() -> int:
     # A BLOCKED report is still written and uploaded by the workflow's
     # always()-guarded summary/artifact steps, but the run must be visibly red.
     # Only a complete health PASS may produce a successful Actions conclusion.
-    return 0 if report["status"] == "PASS" else 1
+    return 0 if report["status"] in {"PASS", "HOLD"} else 1
 
 
 if __name__ == "__main__":

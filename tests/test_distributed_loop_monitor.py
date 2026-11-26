@@ -7,7 +7,7 @@ import sys
 import tempfile
 from unittest.mock import patch
 
-from scripts.distributed_loop_monitor import evaluate
+from scripts.distributed_loop_monitor import evaluate, evaluate_schedule_slots
 
 
 def valid_state():
@@ -102,7 +102,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
     def test_paginated_actions_pages_are_flattened(self):
         pages = [
             {"workflow_runs": [
-                {"workflow_id": 357086091, "status": "in_progress"},
+                {"workflow_id": 369890295, "status": "in_progress"},
                 {"workflow_id": 111111111, "status": "completed"},
             ]},
             {"workflow_runs": [
@@ -118,7 +118,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_malformed_paginated_actions_page_blocks(self):
         pages = [
-            {"workflow_runs": [{"workflow_id": 357086091, "status": "in_progress"}]},
+            {"workflow_runs": [{"workflow_id": 369890295, "status": "in_progress"}]},
             {"workflow_runs": "not-a-list"},
         ]
         report = self.evaluate(runs=pages)
@@ -165,17 +165,22 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         }
         self.assertEqual(self.evaluate(state=state)["status"], "BLOCKED")
 
-    def test_held_task_blocks(self):
+    def test_held_task_is_hold_not_system_failure(self):
         state = valid_state()
         state["recovery_ai"]["tasks"]["task-1"] = {"held": True}
-        self.assertEqual(self.evaluate(state=state)["status"], "BLOCKED")
+        report = self.evaluate(state=state)
+        self.assertEqual(report["status"], "HOLD")
+        self.assertEqual(report["checks"]["recovery_safety"]["status"], "HOLD")
+        self.assertIs(report["dispatch_allowed"], False)
 
-    def test_pending_resume_review_blocks(self):
+    def test_pending_resume_review_is_hold_without_dispatch_permission(self):
         state = valid_state()
         state["recovery_ai"]["tasks"]["task-1"] = {
             "held": False, "resume_requires_review": True
         }
-        self.assertEqual(self.evaluate(state=state)["status"], "BLOCKED")
+        report = self.evaluate(state=state)
+        self.assertEqual(report["status"], "HOLD")
+        self.assertIs(report["dispatch_allowed"], False)
 
     def test_malformed_task_flag_type_blocks(self):
         state = valid_state()
@@ -189,7 +194,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_active_main_run_is_identified_by_fixed_workflow_id_not_name(self):
         runs = {"workflow_runs": [{
-            "workflow_id": 357086091,
+            "workflow_id": 369890295,
             "name": "Renamed workflow must still be identified by ID",
             "status": "in_progress",
         }]}
@@ -198,7 +203,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertEqual(report["status"], "PASS")
         self.assertEqual(activity["status"], "PASS")
         self.assertEqual(activity["outcome"], "ACTIVE")
-        self.assertEqual(activity["workflow_id"], 357086091)
+        self.assertEqual(activity["workflow_id"], 369890295)
         self.assertEqual(activity["active_run_count"], 1)
         self.assertIs(report["dispatch_allowed"], False)
 
@@ -212,7 +217,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_completed_main_run_is_not_reported_as_active(self):
         runs = {"workflow_runs": [{
-            "workflow_id": 357086091,
+            "workflow_id": 369890295,
             "status": "completed",
             "conclusion": "success",
         }]}
@@ -232,12 +237,42 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertEqual(activity["outcome"], "NO_CHANGE")
         self.assertEqual(activity["active_run_count"], 0)
 
+    def test_held_task_with_invalid_provenance_remains_blocked(self):
+        state = valid_state()
+        state["recovery_ai"]["tasks"]["task-1"] = {"held": True}
+        self.assertEqual(self.evaluate(state=state, meta={})["status"], "BLOCKED")
+
+    def test_schedule_slot_checker_detects_missing_scheduler(self):
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        report = evaluate_schedule_slots([], (now + timedelta(hours=1)).isoformat())
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertTrue(report["missing_slots"])
+
+    def test_schedule_slot_checker_correlates_child_run_by_scheduler_id(self):
+        runs = [
+            {"workflow_id": 419124193, "id": 111, "event": "schedule", "status": "completed",
+             "created_at": "2026-11-26T10:50:00Z"},
+            {"workflow_id": 369890295, "id": 222, "display_title": "Distributed Loop (request_id=111)",
+             "status": "completed", "conclusion": "failure"},
+        ]
+        report = evaluate_schedule_slots(runs, "2026-11-26T11:10:00Z")
+        match = next(item for item in report["confirmed_slots"] if item["scheduler_run_id"] == 111)
+        self.assertEqual(match["loop_run_id"], 222)
+        self.assertEqual(match["loop_conclusion"], "failure")
+
+    def test_schedule_slot_checker_marks_current_slot_pending_but_history_blocked(self):
+        report = evaluate_schedule_slots([], "2026-11-26T08:20:00Z")
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertIn("2026-11-26T08:19:00+00:00", report["pending_slots"])
+        self.assertTrue(report["missing_slots"])
+
     def test_missing_or_invalid_workflow_id_blocks(self):
         invalid_records = [
             {"status": "in_progress"},
             {"workflow_id": 0, "status": "in_progress"},
             {"workflow_id": True, "status": "in_progress"},
-            {"workflow_id": "357086091", "status": "in_progress"},
+            {"workflow_id": "369890295", "status": "in_progress"},
         ]
         for record in invalid_records:
             with self.subTest(record=record):

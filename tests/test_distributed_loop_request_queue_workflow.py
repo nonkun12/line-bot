@@ -28,7 +28,7 @@ def test_line_request_correlation_id_is_optional_and_validated():
     assert "request_id:" in workflow
     assert "request_id=${{ inputs.request_id || 'scheduled' }}" in workflow
     assert "github.event.inputs.request_id" in workflow
-    assert "^[0-9a-f]{32}$" in workflow
+    assert "([0-9a-f]{32}|[0-9]{1,20})" in workflow
 
 
 def test_queue_does_not_change_safety_limits_or_auto_deploy():
