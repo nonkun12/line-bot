@@ -85,46 +85,149 @@ def normalize_actions_runs(payload: Any) -> dict[str, Any] | None:
     return {"workflow_runs": combined}
 
 
-def evaluate_schedule_slots(runs: list[dict[str, Any]], started_at: str, grace_minutes: int = 15) -> dict[str, Any]:
-    """Check expected UTC :19/:49 slots and their scheduler-to-loop correlation."""
+def evaluate_schedule_slots(
+    runs: list[dict[str, Any]],
+    started_at: str,
+    grace_minutes: int = 15,
+    scheduler_decisions: Any = None,
+) -> dict[str, Any]:
+    """Check expected slots using immutable, run-ID-bound scheduler decision artifacts."""
     from datetime import timedelta
+
     now = parse_utc(started_at)
     if now is None:
-        return {"status": "BLOCKED", "checked_slots": 0, "missing_slots": [], "detail": "invalid monitor timestamp"}
+        return {"status": "BLOCKED", "checked_slots": 0, "missing_slots": [],
+                "detail": "invalid monitor timestamp"}
     scheduler_id, loop_id = 419124193, 369890295
     schedulers = [r for r in runs if r.get("workflow_id") == scheduler_id]
     loops = [r for r in runs if r.get("workflow_id") == loop_id]
+    decisions = scheduler_decisions if isinstance(scheduler_decisions, dict) else {}
     cursor = now.replace(second=0, microsecond=0)
     cursor -= timedelta(minutes=(cursor.minute - 19) % 30)
-    missing, pending, confirmed = [], [], []
+    missing, pending, confirmed, safe_skips, held_slots = [], [], [], [], []
+    allowed = {
+        "DISPATCHED", "SKIPPED_ACTIVE_LOOP", "SKIPPED_KILL_SWITCH",
+        "SKIPPED_BILLING_GUARD", "DISPATCH_UNCONFIRMED",
+    }
+
     while cursor >= now - timedelta(hours=24):
         deadline = cursor + timedelta(minutes=grace_minutes)
         if now < deadline:
             pending.append(cursor.isoformat())
         else:
-            matches = [r for r in schedulers if r.get("event") == "schedule"
-                       and (created := parse_utc(r.get("created_at"))) is not None
-                       and cursor <= created <= deadline]
+            matches = [
+                r for r in schedulers
+                if r.get("event") == "schedule"
+                and (created := parse_utc(r.get("created_at"))) is not None
+                and cursor <= created <= deadline
+            ]
             if not matches:
                 missing.append({"slot": cursor.isoformat(), "status": "SCHEDULER_MISSING"})
             else:
-                scheduler = min(matches, key=lambda r: abs((parse_utc(r["created_at"]) - cursor).total_seconds()))
-                request_id = str(scheduler.get("id", ""))
-                child = next((r for r in loops if f"request_id={request_id}" in str(r.get("display_title") or r.get("name") or "")), None)
-                if child:
-                    confirmed.append({"slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
-                                      "loop_run_id": child.get("id"), "loop_status": child.get("status"),
-                                      "loop_conclusion": child.get("conclusion")})
-                elif scheduler.get("status") in {"queued", "in_progress"}:
-                    pending.append(cursor.isoformat())
+                scheduler = min(
+                    matches,
+                    key=lambda r: abs((parse_utc(r["created_at"]) - cursor).total_seconds()),
+                )
+                scheduler_run_id = str(scheduler.get("id", ""))
+                envelope = decisions.get(scheduler_run_id)
+                if not isinstance(envelope, dict) or envelope.get("artifact_status") != "available":
+                    missing.append({
+                        "slot": cursor.isoformat(),
+                        "status": "LEGACY_UNVERIFIED" if envelope is None else "DECISION_ARTIFACT_UNAVAILABLE",
+                        "scheduler_run_id": scheduler.get("id"),
+                    })
+                    cursor -= timedelta(minutes=30)
+                    continue
+                record = envelope.get("record")
+                decision = record.get("decision") if isinstance(record, dict) else None
+                created_at = parse_utc(record.get("created_at")) if isinstance(record, dict) else None
+                valid_record = (
+                    isinstance(record, dict)
+                    and record.get("schema_version") == 1
+                    and str(record.get("scheduler_run_id", "")) == scheduler_run_id
+                    and str(record.get("request_id", "")) == scheduler_run_id
+                    and type(record.get("run_attempt")) is int
+                    and record.get("run_attempt") == scheduler.get("run_attempt", 1)
+                    and record.get("execution_approval") == "DENY"
+                    and record.get("policy_dispatch") == "30m_scheduler"
+                    and record.get("head_sha") == scheduler.get("head_sha")
+                    and created_at is not None
+                    and abs((created_at - parse_utc(scheduler["created_at"])).total_seconds()) <= 900
+                    and decision in allowed
+                )
+                if not valid_record:
+                    missing.append({
+                        "slot": cursor.isoformat(), "status": "DECISION_ARTIFACT_INVALID",
+                        "scheduler_run_id": scheduler.get("id"),
+                    })
+                elif decision == "DISPATCH_UNCONFIRMED":
+                    missing.append({
+                        "slot": cursor.isoformat(), "status": "DISPATCH_UNCONFIRMED",
+                        "scheduler_run_id": scheduler.get("id"),
+                    })
+                elif decision == "DISPATCHED":
+                    child_id = record.get("child_loop_run_id")
+                    child = next((
+                        r for r in loops
+                        if str(r.get("id", "")) == str(child_id)
+                        and f"request_id={scheduler_run_id}" in str(
+                            r.get("display_title") or r.get("name") or ""
+                        )
+                    ), None)
+                    if child is None or not child_id:
+                        missing.append({
+                            "slot": cursor.isoformat(), "status": "DISPATCH_UNCONFIRMED",
+                            "scheduler_run_id": scheduler.get("id"),
+                        })
+                    else:
+                        confirmed.append({
+                            "slot": cursor.isoformat(),
+                            "scheduler_run_id": scheduler.get("id"),
+                            "loop_run_id": child.get("id"),
+                            "loop_status": child.get("status"),
+                            "loop_conclusion": child.get("conclusion"),
+                        })
+                elif decision == "SKIPPED_ACTIVE_LOOP":
+                    active_id = record.get("active_loop_run_id")
+                    active_status = record.get("active_loop_status_at_decision")
+                    active_loop = next((r for r in loops if str(r.get("id", "")) == str(active_id)), None)
+                    if (
+                        not active_id or active_status not in {"queued", "in_progress"}
+                        or active_loop is None
+                    ):
+                        missing.append({
+                            "slot": cursor.isoformat(), "status": "DECISION_ARTIFACT_INVALID",
+                            "scheduler_run_id": scheduler.get("id"),
+                        })
+                    else:
+                        safe_skips.append({
+                            "slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
+                            "decision": decision, "active_loop_run_id": active_id,
+                        })
                 else:
-                    missing.append({"slot": cursor.isoformat(), "status": "DISPATCH_UNCONFIRMED",
-                                    "scheduler_run_id": scheduler.get("id")})
+                    safe_skips.append({
+                        "slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
+                        "decision": decision,
+                    })
+                    held_slots.append({
+                        "slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
+                        "decision": decision,
+                    })
         cursor -= timedelta(minutes=30)
-    status = "BLOCKED" if missing else ("PENDING" if pending else "PASS")
-    return {"status": status, "checked_slots": len(confirmed) + len(missing) + len(pending),
-            "confirmed_slots": confirmed, "missing_slots": missing, "pending_slots": pending,
-            "grace_minutes": grace_minutes, "detail": "30-minute scheduler slot correlation"}
+
+    status = "BLOCKED" if missing else ("HOLD" if held_slots else ("PENDING" if pending else "PASS"))
+    return {
+        "status": status,
+        "checked_slots": len(confirmed) + len(safe_skips) + len(missing) + len(pending),
+        "confirmed_slots": confirmed,
+        "safe_skips": safe_skips,
+        "held_slots": held_slots,
+        "missing_slots": missing,
+        "pending_slots": pending,
+        "grace_minutes": grace_minutes,
+        "detail": "30-minute scheduler slots verified against run-ID-bound decision artifacts",
+    }
+
 def evaluate(
     runs_payload: Any,
     durable_payload: Any,
@@ -135,6 +238,7 @@ def evaluate(
     state_meta: Any = None,
     state_response: Any = None,
     schedule_evidence: bool = False,
+    scheduler_decisions: Any = None,
 ) -> dict[str, Any]:
     checks: dict[str, dict[str, Any]] = {}
     reasons: list[str] = []
@@ -315,10 +419,16 @@ def evaluate(
         checks["recovery_safety"] = {"status": "BLOCKED", "detail": "Cannot evaluate recovery safety"}
 
     if schedule_evidence:
-        slot_report = evaluate_schedule_slots(runs_payload["workflow_runs"] if runs_ok else [], started_at)
+        slot_report = evaluate_schedule_slots(
+            runs_payload["workflow_runs"] if runs_ok else [],
+            started_at,
+            scheduler_decisions=scheduler_decisions,
+        )
         checks["schedule_slot_coverage"] = slot_report
         if slot_report["status"] == "BLOCKED":
-            reasons.append("Expected 30-minute scheduler slot missing or child Loop run unconfirmed")
+            reasons.append("Expected 30-minute scheduler slot missing or scheduler decision evidence unverified")
+        elif slot_report["status"] == "HOLD":
+            reasons.append("HOLD: scheduler intentionally stopped by kill switch or billing guard")
 
     # Queue eligibility and independent human approval require separate, authoritative
     # evidence. This monitor does not infer approval from task catalog fields or labels.
@@ -398,6 +508,7 @@ def main() -> int:
     parser.add_argument("--runs-json", required=True)
     parser.add_argument("--state-json", required=True)
     parser.add_argument("--state-meta-json", required=True)
+    parser.add_argument("--scheduler-decisions-json", required=False)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
@@ -405,6 +516,7 @@ def main() -> int:
     runs = load_json(args.runs_json)
     state_response = load_json(args.state_json)
     state_meta = load_json(args.state_meta_json)
+    scheduler_decisions = load_json(args.scheduler_decisions_json) if args.scheduler_decisions_json else None
     state = decode_github_contents(state_response)
     report = evaluate(
         runs, state,
@@ -414,6 +526,7 @@ def main() -> int:
         state_meta=state_meta,
         state_response=state_response,
         schedule_evidence=True,
+        scheduler_decisions=scheduler_decisions,
     )
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
