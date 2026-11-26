@@ -330,13 +330,13 @@ def evaluate(
     if runs_ok:
         active = [
             item for item in runs_payload["workflow_runs"]
-            if item.get("workflow_id") == 357086091
+            if item.get("workflow_id") == 369890295
             and item.get("status") in {"queued", "in_progress"}
         ]
         checks["main_loop_activity"] = {
             "status": "PASS" if active else "INFO",
             "outcome": "ACTIVE" if active else "NO_CHANGE",
-            "workflow_id": 357086091,
+            "workflow_id": 369890295,
             "active_run_count": len(active),
             "detail": (
                 "Main LOOP workflow activity confirmed by fixed workflow ID; monitor did not dispatch or cancel anything"
@@ -347,7 +347,7 @@ def evaluate(
         checks["main_loop_activity"] = {
             "status": "BLOCKED",
             "outcome": "UNVERIFIED",
-            "workflow_id": 357086091,
+            "workflow_id": 369890295,
             "active_run_count": None,
             "detail": "Main LOOP activity cannot be verified because Actions run records or workflow IDs are invalid",
         }
