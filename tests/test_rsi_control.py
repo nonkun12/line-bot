@@ -252,3 +252,142 @@ def test_concurrent_control_providers_cannot_accept_two_same_generation_values(t
     assert outcomes.count("accepted") == 1
     assert outcomes.count("rejected") == 1
     assert ledger.verify()
+
+
+@pytest.mark.parametrize("failure", ["bad_signature", "expired", "future_issued", "wrong_snapshot_digest"])
+def test_invalid_hold_release_approval_preserves_global_hold(tmp_path, failure):
+    from core.rsi_control import HumanControlReleaseApproval
+
+    now = 9000
+    path = tmp_path / f"invalid-release-{failure}.sqlite"
+    ledger = EvidenceLedger(path)
+    hold = make_snapshot(now, generation=1, nonce=f"hold-{failure}")
+    VerifiedRSIControlProvider(
+        lambda: hold, verify_signature=lambda d, s: s == "sig:" + d,
+        ledger=ledger, clock=lambda: now,
+    )()
+
+    release_snapshot = make_snapshot(
+        now + 1, generation=2, nonce=f"release-snapshot-{failure}",
+        global_hold=False,
+    )
+    signed_snapshot = {
+        "global_hold": release_snapshot.global_hold,
+        "execution_enabled": release_snapshot.execution_enabled,
+        "free_only": release_snapshot.free_only,
+        "budget_known": release_snapshot.budget_known,
+        "budget_remaining_units": release_snapshot.budget_remaining_units,
+        "paid_fallback_enabled": release_snapshot.paid_fallback_enabled,
+        "issued_at": release_snapshot.issued_at,
+        "expires_at": release_snapshot.expires_at,
+        "nonce": release_snapshot.nonce,
+        "generation": release_snapshot.generation,
+    }
+    snapshot_digest = canonical_digest(signed_snapshot)
+    approval_fields = {
+        "previous_hold_generation": 1,
+        "release_generation": 2,
+        "snapshot_digest": "0" * 64 if failure == "wrong_snapshot_digest" else snapshot_digest,
+        "snapshot_nonce": release_snapshot.nonce,
+        "approver_id": "human-operator",
+        "nonce": f"approval-{failure}",
+        "issued_at": now + 1,
+        "expires_at": now + 30,
+    }
+    if failure == "expired":
+        approval_fields["issued_at"] = now
+        approval_fields["expires_at"] = now + 1
+    elif failure == "future_issued":
+        approval_fields["issued_at"] = now + 32
+        approval_fields["expires_at"] = now + 60
+
+    approval_digest = canonical_digest(approval_fields)
+    approval = HumanControlReleaseApproval(
+        **approval_fields, signature="invalid" if failure == "bad_signature" else "sig:" + approval_digest,
+    )
+    provider = VerifiedRSIControlProvider(
+        lambda: release_snapshot,
+        verify_signature=lambda d, s: s == "sig:" + d,
+        verify_control_release=lambda d, s: s == "sig:" + d,
+        release_approval_source=lambda: approval,
+        ledger=EvidenceLedger(path), clock=lambda: now + 1,
+    )
+    with pytest.raises(RSIError):
+        provider()
+
+    # The rejected release must not be persisted as a control transition.
+    events = ledger.read_events("verified_control_snapshot")
+    assert len(events) == 1
+    assert events[0]["payload"]["global_hold"] is True
+    assert ledger.read_events("human_control_release_approval") == ()
+    assert ledger.verify()
+
+
+def test_release_approval_nonce_cannot_be_reused_after_a_later_hold(tmp_path):
+    from core.rsi_control import HumanControlReleaseApproval
+
+    path = tmp_path / "release-replay.sqlite"
+    ledger = EvidenceLedger(path)
+
+    def signed_release(snapshot, previous_generation, approval_nonce, now):
+        signed_snapshot = {
+            "global_hold": snapshot.global_hold,
+            "execution_enabled": snapshot.execution_enabled,
+            "free_only": snapshot.free_only,
+            "budget_known": snapshot.budget_known,
+            "budget_remaining_units": snapshot.budget_remaining_units,
+            "paid_fallback_enabled": snapshot.paid_fallback_enabled,
+            "issued_at": snapshot.issued_at,
+            "expires_at": snapshot.expires_at,
+            "nonce": snapshot.nonce,
+            "generation": snapshot.generation,
+        }
+        fields = {
+            "previous_hold_generation": previous_generation,
+            "release_generation": snapshot.generation,
+            "snapshot_digest": canonical_digest(signed_snapshot),
+            "snapshot_nonce": snapshot.nonce,
+            "approver_id": "human-operator",
+            "nonce": approval_nonce,
+            "issued_at": now,
+            "expires_at": now + 30,
+        }
+        digest = canonical_digest(fields)
+        return HumanControlReleaseApproval(**fields, signature="sig:" + digest)
+
+    initial = make_snapshot(10000, generation=1, nonce="initial-hold", global_hold=True)
+    VerifiedRSIControlProvider(
+        lambda: initial, verify_signature=lambda d, s: s == "sig:" + d,
+        ledger=ledger, clock=lambda: 10000,
+    )()
+
+    first_release = make_snapshot(10001, generation=2, nonce="release-one", global_hold=False)
+    first_approval = signed_release(first_release, 1, "one-time-approval", 10001)
+    VerifiedRSIControlProvider(
+        lambda: first_release, verify_signature=lambda d, s: s == "sig:" + d,
+        verify_control_release=lambda d, s: s == "sig:" + d,
+        release_approval_source=lambda: first_approval,
+        ledger=ledger, clock=lambda: 10001,
+    )()
+
+    reasserted_hold = make_snapshot(10002, generation=3, nonce="hold-again", global_hold=True)
+    VerifiedRSIControlProvider(
+        lambda: reasserted_hold, verify_signature=lambda d, s: s == "sig:" + d,
+        ledger=ledger, clock=lambda: 10002,
+    )()
+
+    second_release = make_snapshot(10003, generation=4, nonce="release-two", global_hold=False)
+    replayed_approval = signed_release(second_release, 3, "one-time-approval", 10003)
+    provider = VerifiedRSIControlProvider(
+        lambda: second_release, verify_signature=lambda d, s: s == "sig:" + d,
+        verify_control_release=lambda d, s: s == "sig:" + d,
+        release_approval_source=lambda: replayed_approval,
+        ledger=EvidenceLedger(path), clock=lambda: 10003,
+    )
+    with pytest.raises(RSIError, match="replayed"):
+        provider()
+
+    snapshots = ledger.read_events("verified_control_snapshot")
+    assert snapshots[-1]["payload"]["global_hold"] is True
+    assert len(snapshots) == 3
+    assert ledger.verify()
