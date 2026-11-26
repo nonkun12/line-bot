@@ -159,6 +159,7 @@ def _record_from_payload(value: object) -> RecursiveTrialRecord:
             or type(record.source_generation) is not int or record.source_generation < 0
             or type(record.proposed_generation) is not int
             or record.proposed_generation != record.source_generation + 1
+            or not isinstance(record.classification, str)
             or record.classification not in {"SAFETY_FAILURE", "REGRESSED", "IMPROVED", "STAGNANT"}
             or not all(type(flag) is bool for flag in (
                 record.pending_human_approval, record.generation_advanced,
