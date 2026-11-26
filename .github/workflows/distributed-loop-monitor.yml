@@ -50,7 +50,12 @@ jobs:
           decisions=/tmp/scheduler-decisions.json
           printf "{}" > "$decisions"
           cutoff="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
-          while IFS=
+          while IFS=$'\t' read -r scheduler_run_id scheduler_run_attempt; do
+            [ -n "$scheduler_run_id" ] || continue
+            destination="/tmp/scheduler-decision-$scheduler_run_id-$scheduler_run_attempt"
+            mkdir -p "$destination"
+            if gh run download "$scheduler_run_id" --repo "$REPOSITORY" \
+              --name "scheduler-decision-$scheduler_run_id-$scheduler_run_attempt" --dir "$destination" >/dev/null 2>&1; then
               record="$destination/scheduler-decision.json"
               if [ -s "$record" ] && jq -e 'type == "object"' "$record" >/dev/null; then
                 jq --arg id "$scheduler_run_id" --slurpfile item "$record" \
