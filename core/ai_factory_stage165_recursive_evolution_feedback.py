@@ -149,6 +149,8 @@ def _record_from_payload(value: object) -> RecursiveTrialRecord:
             model_mutation_authorized=value["model_mutation_authorized"],
             production_switch_authorized=value["production_switch_authorized"],
         )
+    except RecursiveEvolutionFeedbackError:
+        raise
     except (KeyError, TypeError, ValueError, IndexError) as exc:
         raise RecursiveEvolutionFeedbackError("persisted recursive trial record schema is invalid") from exc
     if (not all(_valid_digest(x) for x in (
