@@ -261,9 +261,11 @@ class DistributedLoopMonitorTests(unittest.TestCase):
         self.assertEqual(match["loop_run_id"], 222)
         self.assertEqual(match["loop_conclusion"], "failure")
 
-    def test_schedule_slot_checker_leaves_grace_window_pending(self):
+    def test_schedule_slot_checker_marks_current_slot_pending_but_history_blocked(self):
         report = evaluate_schedule_slots([], "2026-11-26T08:20:00Z")
-        self.assertEqual(report["status"], "PENDING")
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertIn("2026-11-26T08:19:00+00:00", report["pending_slots"])
+        self.assertTrue(report["missing_slots"])
 
     def test_missing_or_invalid_workflow_id_blocks(self):
         invalid_records = [
