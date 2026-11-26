@@ -560,6 +560,12 @@ jobs:
           if [ "${AUTONOMOUS_TEST_ADMISSION_SANDBOX_READY:-false}" != "true" ]; then
             reason=sandbox_not_provisioned
             printf '{"version":1,"policy_version":"test-only-append-v1","status":"POLICY_SKIPPED","reason":"%s","persistent_catalog_modified":false,"durable_state_modified":false,"held_tasks_resumed":false}\n' "$reason" > "$POLICY_REPORT"
+          elif [ "${HERMES_ADVISOR_ENABLED:-false}" != "true" ]; then
+            # Review-coverage-gap candidates require a model provider. The hosted
+            # minimal loop has no verified provider, so keep the base deterministic
+            # queue and skip only the model-dependent admission path.
+            reason=model_provider_unavailable
+            printf '{"version":1,"policy_version":"test-only-append-v1","status":"POLICY_SKIPPED","reason":"%s","persistent_catalog_modified":false,"durable_state_modified":false,"held_tasks_resumed":false}\n' "$reason" > "$POLICY_REPORT"
           elif [ -s /tmp/catalog-exhaustion-report.json ] && python -c 'from core.emergency_stop import get_status; import os; raise SystemExit(1 if get_status(os.environ.get("AI_REPORT_GITHUB_REPO", "nonkun12/line-bot"), os.environ["GITHUB_TOKEN"]) else 0)'; then
             if ! python -m scripts.autonomous_test_task_admission \
               --repo-root . \
