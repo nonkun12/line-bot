@@ -119,6 +119,9 @@ del _openclaw_bridge_key
 from routes.dashboard import dashboard_bp
 app.register_blueprint(dashboard_bp)
 
+from routes.rsi_control_api import rsi_control_bp
+app.register_blueprint(rsi_control_bp)
+
 from routes.e2e_dashboard import e2e_bp
 app.register_blueprint(e2e_bp)
 app.register_blueprint(core_api_bp)
