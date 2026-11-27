@@ -301,11 +301,19 @@ def _verify_execution_approval(start_sha: str, instruction: str) -> dict[str, ob
         "expected_base_sha": start_sha,
     }
     event_name = os.environ.get("GITHUB_EVENT_NAME", "")
-    if event_name == "schedule" or (
-        event_name == "workflow_dispatch"
-        and os.environ.get("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "") == "30m_scheduler"
-    ):
+    if event_name == "schedule":
         return _verify_catalog_execution_approval(start_sha, instruction)
+    if event_name == "workflow_dispatch":
+        # Select the scheduler-only preapproval path from the authenticated
+        # dispatch payload, never from an inherited environment variable.
+        event_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
+        try:
+            dispatch_event = json.loads(Path(event_path).read_text(encoding="utf-8"))
+            dispatch_inputs = dispatch_event.get("inputs") if isinstance(dispatch_event, dict) else None
+        except (OSError, UnicodeError, TypeError, ValueError):
+            dispatch_inputs = None
+        if isinstance(dispatch_inputs, dict) and str(dispatch_inputs.get("policy_dispatch", "")) == "30m_scheduler":
+            return _verify_catalog_execution_approval(start_sha, instruction)
     if event_name not in {"workflow_dispatch", "issue_comment"}:
         return blocked
     event_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()

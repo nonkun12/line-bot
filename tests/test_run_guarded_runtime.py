@@ -827,6 +827,9 @@ def test_execution_approval_accepts_workflow_prepared_line_dispatch(tmp_path, mo
     monkeypatch.setenv("AUTONOMOUS_APPROVAL_INSTRUCTION_SHA256", instruction_digest)
     monkeypatch.setenv("AUTONOMOUS_APPROVAL_ALLOWED_PATHS_SHA256", paths_digest)
     monkeypatch.setenv("AUTONOMOUS_APPROVAL_BASE_SHA", base_sha)
+    # A parent scheduler process may leave this variable in the environment.
+    # It must not override the authenticated user-dispatch payload.
+    monkeypatch.setenv("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "30m_scheduler")
 
     evidence = guarded_runtime._verify_execution_approval(base_sha, instruction)
 
