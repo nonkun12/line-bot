@@ -545,7 +545,7 @@ def test_catalog_preapproval_blocks_missing_workflow_dispatch_event_file(tmp_pat
     monkeypatch.setenv("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "30m_scheduler")
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(tmp_path / "missing-event.json"))
     monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
-    result = guarded_runtime._verify_catalog_execution_approval("f" * 40, "bounded scheduler event-file regression")
+    result = guarded_runtime._verify_catalog_execution_approval("f" * 40, "tests/test_run_guarded_runtime.py のみに、新しい固有名の pytest 回帰テストを1件追加してください。workflow_dispatch で GITHUB_EVENT_PATH が存在しないファイルを指し、GITHUB_ACTOR=github-actions[bot]、GITHUB_REPOSITORY=nonkun12/line-bot、GITHUB_REF=refs/heads/main、AUTONOMOUS_POLICY_DISPATCH_SOURCE=30m_scheduler を設定しても、_verify_catalog_execution_approval() が gate=BLOCKED・execution_authorized=False を返すことを確認してください。既存テストを変更せず、実ネットワーク・シークレット・OS外部操作は禁止。変更は指定テストファイル1つだけ。マージ・デプロイは禁止。")
     assert result["gate"] == "BLOCKED"
     assert result["execution_authorized"] is False
 
