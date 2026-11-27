@@ -1,0 +1,42 @@
+name: LOOP30 Minimal
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: loop30-minimal
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check Python syntax without writing files
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          files = sorted(Path("core").rglob("*.py"))
+          if not files:
+              raise SystemExit("BLOCKED: no Python files found under core/")
+          for path in files:
+              ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+          print(f"PASS: parsed {len(files)} Python files")
+          PY
+
+      - name: Report bounded read-only result
+        if: always()
+        run: |
+          echo "LOOP30 completed a read-only syntax check."
+          echo "This workflow does not dispatch, patch, merge, or deploy."
