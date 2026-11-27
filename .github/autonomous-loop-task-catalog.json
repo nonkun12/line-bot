@@ -530,6 +530,14 @@
         "tests/test_autonomous_task_proposals.py"
       ],
       "execution_approved": true
+    },
+    {
+      "id": "scheduler-dispatch-missing-event-file-fail-closed-20261127",
+      "instruction": "tests/test_run_guarded_runtime.py のみに、新しい固有名の pytest 回帰テストを1件追加してください。workflow_dispatch で GITHUB_EVENT_PATH が存在しないファイルを指し、GITHUB_ACTOR=github-actions[bot]、GITHUB_REPOSITORY=nonkun12/line-bot、GITHUB_REF=refs/heads/main、AUTONOMOUS_POLICY_DISPATCH_SOURCE=30m_scheduler を設定しても、_verify_catalog_execution_approval() が gate=BLOCKED・execution_authorized=False を返すことを確認してください。既存テストを変更せず、実ネットワーク・シークレット・OS外部操作は禁止。変更は指定テストファイル1つだけ。マージ・デプロイは禁止。",
+      "allowed_paths": [
+        "tests/test_run_guarded_runtime.py"
+      ],
+      "execution_approved": true
     }
   ]
 }
