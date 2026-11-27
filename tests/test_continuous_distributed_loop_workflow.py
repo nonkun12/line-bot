@@ -165,7 +165,7 @@ def test_continuation_stops_when_another_loop_is_queued_or_running(tmp_path):
 def test_distributed_loop_uses_the_dedicated_bounded_30_minute_scheduler():
     root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
     loop = (root / "distributed-autonomous-loop.yml").read_text(encoding="utf-8")
-    scheduler = (root / "distributed-loop-30m-scheduler.yml").read_text(encoding="utf-8")
+    scheduler = (root / "distributed-loop-30m-scheduler-v2.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in loop
     assert "issue_comment:" in loop
     assert "schedule:" not in loop.split("permissions:", 1)[0]
