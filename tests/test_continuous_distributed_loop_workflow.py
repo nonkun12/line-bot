@@ -170,7 +170,7 @@ def test_distributed_loop_uses_the_dedicated_bounded_30_minute_scheduler():
     assert "issue_comment:" in loop
     assert "schedule:" not in loop.split("permissions:", 1)[0]
     assert "schedule:" in scheduler
-    assert 'cron: "17,47 * * * *"' in scheduler
+    assert 'cron: "13,43 * * * *"' in scheduler
     assert "workflow_dispatch:" in scheduler
     assert "gh workflow run distributed-autonomous-loop.yml" in scheduler
     assert "-f max_tasks=1" in scheduler
