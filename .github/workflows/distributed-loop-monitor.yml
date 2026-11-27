@@ -152,6 +152,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: distributed-loop-monitor-${{ github.run_id }}
-          path: artifacts/distributed-loop-monitor/monitor-report.json
+          path: artifacts/distributed-loop-monitor/
           if-no-files-found: error
           retention-days: 14
