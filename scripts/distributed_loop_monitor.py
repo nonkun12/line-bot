@@ -545,7 +545,7 @@ def evaluate(
         "recovery_state_updated_at": recovery.get("state_updated_at") if isinstance(recovery, dict) else None,
         "recovery_state_age_seconds": recovery_age_seconds,
         "scheduled_at": None,
-        "schedule_expression": "19,49 * * * * (UTC)",
+        "schedule_expression": "17,47 * * * * (UTC)",
         "started_at": started_at,
         "completed_at": utc_now(),
         "status": status,
