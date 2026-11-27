@@ -6,7 +6,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "distributed-autonomous-loop.yml"
 
 
 def test_dedicated_scheduler_dispatches_every_30_minutes():
-    scheduler = ROOT / ".github" / "workflows" / "distributed-loop-30m-scheduler.yml"
+    scheduler = ROOT / ".github" / "workflows" / "distributed-loop-30m-scheduler-v2.yml"
     text = scheduler.read_text(encoding="utf-8")
     event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
     assert "schedule:" in event_block
