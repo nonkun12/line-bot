@@ -291,6 +291,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "queue-progress-excludes-not-run-results-regression": "tests/test_distributed_loop_queue_progress.py",
     "queue-progress-excludes-not-run-results-regression-v2": "tests/test_distributed_loop_queue_progress.py",
     "continuous-loop-not-run-does-not-continue-regression": "tests/test_continuous_distributed_loop_workflow.py",
+    "chain-job-ai-rejects-more-than-max-results-20261127": "tests/test_chain_job_ai.py",
     "loop-deterministic-nochange-focused-test": "tests/test_line_development_worker_v2.py",
     "self-improvement-history-malformed-jsonl-regression": "tests/test_self_improvement_state.py",
     "refill-rejects-malformed-completed-state": "tests/test_autonomous_task_refill.py",
@@ -376,6 +377,38 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    if task_id == "chain-job-ai-rejects-more-than-max-results-20261127" and chosen == "tests/test_chain_job_ai.py":
+        target = worker.ROOT / chosen
+        source = target.read_text(encoding="utf-8")
+        name = "test_chain_job_ai_rejects_more_than_maximum_task_results"
+        if f"def {name}(" in source:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_chain_job_ai_rejects_ambiguous_artifacts(tmp_path):\\n"
+        if source.count(anchor) != 1:
+            return None, "deterministic_anchor_not_unique:chain_result_count"
+        addition = (
+            f"def {name}(tmp_path):\\n"
+            '    rows = [_row(f"task-{index}") for index in range(5)]\\n'
+            '    evidence = _evidence(tmp_path, rows)\\n'
+            '    result = decide(evidence, "Distributed Loop (continuation_depth=0)", "success")\\n'
+            '    assert result["continue"] is False\\n'
+            '    assert result["reason"] == "unexpected_task_result_count"\\n'
+            "\\n\\n"
+        )
+        replacement = addition + anchor
+        if len(anchor) > 1200 or len(replacement) > 1800:
+            return None, "deterministic_plan_too_large:chain_result_count"
+        candidate = source.replace(anchor, replacement, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": replacement}],
+        }, None
 
     if task_id == "scheduler-dispatch-missing-event-file-fail-closed-20261127" and chosen == "tests/test_run_guarded_runtime.py":
         target = worker.ROOT / chosen
