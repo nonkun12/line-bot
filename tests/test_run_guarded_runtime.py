@@ -535,6 +535,21 @@ def test_write_summary_drops_untrusted_failure_text(tmp_path, monkeypatch):
     assert "failure_code" not in json.loads(summary.read_text(encoding="utf-8"))
 
 
+def test_catalog_preapproval_blocks_missing_workflow_dispatch_event_file(tmp_path, monkeypatch):
+    task_id = "scheduler-dispatch-missing-event-file-fail-closed-20261127"
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_ACTOR", "github-actions[bot]")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "30m_scheduler")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(tmp_path / "missing-event.json"))
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
+    result = guarded_runtime._verify_catalog_execution_approval("f" * 40, "bounded scheduler event-file regression")
+    assert result["gate"] == "BLOCKED"
+    assert result["execution_authorized"] is False
+
+
 def test_common_runtime_blocks_without_independent_approval_even_if_env_claims_approval(monkeypatch, tmp_path):
     sha = "c" * 40
     rea = {"gate": "PASS", "target_sha": sha, "scanner_status": "PASS", "finding_count": 0, "critical_count": 0, "blocking_count": 0, "findings": [], "execution_authorized": False, "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False}
