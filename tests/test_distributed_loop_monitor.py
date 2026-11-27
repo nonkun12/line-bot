@@ -90,6 +90,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_valid_state_provenance_passes_but_never_dispatches(self):
         report = self.evaluate()
+        self.assertEqual(report["schedule_expression"], "17,47 * * * * (UTC)")
         self.assertEqual(report["status"], "PASS")
         self.assertIs(report["dispatch_allowed"], False)
         self.assertEqual(report["checks"]["state_provenance"]["status"], "PASS")
