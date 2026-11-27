@@ -98,8 +98,8 @@ def evaluate_schedule_slots(
     if now is None:
         return {"status": "BLOCKED", "checked_slots": 0, "missing_slots": [],
                 "detail": "invalid monitor timestamp"}
-    scheduler_id, loop_id = 419124193, 369890295
-    schedulers = [r for r in runs if r.get("workflow_id") == scheduler_id]
+    scheduler_path, loop_id = ".github/workflows/distributed-loop-30m-scheduler-v2.yml", 369890295
+    schedulers = [r for r in runs if r.get("path") == scheduler_path]
     loops = [r for r in runs if r.get("workflow_id") == loop_id]
     decisions = scheduler_decisions if isinstance(scheduler_decisions, dict) else {}
     cursor = now.replace(second=0, microsecond=0)
