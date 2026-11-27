@@ -121,7 +121,14 @@ jobs:
             --scheduler-decisions-json /tmp/scheduler-decisions.json \
             --output artifacts/distributed-loop-monitor/monitor-report.json
 
-      - name: Publish monitor summary
+      - name: Run Loop Investigator (read-only)
+        if: always()
+        continue-on-error: true
+        run: |
+          python scripts/loop_investigator.py \
+            --input artifacts/distributed-loop-monitor/monitor-report.json \
+            --output artifacts/distributed-loop-monitor/investigation.json
+\n      - name: Publish monitor summary
         if: always()
         run: |
           if [ -s artifacts/distributed-loop-monitor/monitor-report.json ]; then
