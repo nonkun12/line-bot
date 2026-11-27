@@ -91,7 +91,7 @@ jobs:
 
       - name: Dispatch one-task distributed development cycle
         id: dispatch
-        if: steps.kill.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true' && steps.active.outputs.dispatch == 'true'
+        if: github.run_attempt == 1 && steps.kill.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true' && steps.active.outputs.dispatch == 'true'
         run: |
           set -euo pipefail
           request_id="$GITHUB_RUN_ID"
