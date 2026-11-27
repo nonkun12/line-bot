@@ -397,7 +397,7 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
             '    monkeypatch.setenv("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "30m_scheduler")\n'
             '    monkeypatch.setenv("GITHUB_EVENT_PATH", str(tmp_path / "missing-event.json"))\n'
             '    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))\n'
-            '    result = guarded_runtime._verify_catalog_execution_approval("f" * 40, "bounded scheduler event-file regression")\n'
+            '    result = guarded_runtime._verify_catalog_execution_approval("f" * 40, "tests/test_run_guarded_runtime.py のみに、新しい固有名の pytest 回帰テストを1件追加してください。workflow_dispatch で GITHUB_EVENT_PATH が存在しないファイルを指し、GITHUB_ACTOR=github-actions[bot]、GITHUB_REPOSITORY=nonkun12/line-bot、GITHUB_REF=refs/heads/main、AUTONOMOUS_POLICY_DISPATCH_SOURCE=30m_scheduler を設定しても、_verify_catalog_execution_approval() が gate=BLOCKED・execution_authorized=False を返すことを確認してください。既存テストを変更せず、実ネットワーク・シークレット・OS外部操作は禁止。変更は指定テストファイル1つだけ。マージ・デプロイは禁止。")\n'
             '    assert result["gate"] == "BLOCKED"\n'
             '    assert result["execution_authorized"] is False\n'
             "\n\n"
