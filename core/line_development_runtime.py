@@ -384,17 +384,17 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         name = "test_chain_job_ai_rejects_more_than_maximum_task_results"
         if f"def {name}(" in source:
             return {"no_change": True, "source": "deterministic_autonomous_task"}, None
-        anchor = "def test_chain_job_ai_rejects_ambiguous_artifacts(tmp_path):\\n"
+        anchor = "def test_chain_job_ai_rejects_ambiguous_artifacts(tmp_path):\n"
         if source.count(anchor) != 1:
             return None, "deterministic_anchor_not_unique:chain_result_count"
         addition = (
-            f"def {name}(tmp_path):\\n"
-            '    rows = [_row(f"task-{index}") for index in range(5)]\\n'
-            '    evidence = _evidence(tmp_path, rows)\\n'
-            '    result = decide(evidence, "Distributed Loop (continuation_depth=0)", "success")\\n'
-            '    assert result["continue"] is False\\n'
-            '    assert result["reason"] == "unexpected_task_result_count"\\n'
-            "\\n\\n"
+            f"def {name}(tmp_path):\n"
+            '    rows = [_row(f"task-{index}") for index in range(5)]\n'
+            '    evidence = _evidence(tmp_path, rows)\n'
+            '    result = decide(evidence, "Distributed Loop (continuation_depth=0)", "success")\n'
+            '    assert result["continue"] is False\n'
+            '    assert result["reason"] == "unexpected_task_result_count"\n'
+            "\n\n"
         )
         replacement = addition + anchor
         if len(anchor) > 1200 or len(replacement) > 1800:
