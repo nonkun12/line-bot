@@ -387,20 +387,20 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
         if source.count(anchor) != 1:
             return None, "deterministic_anchor_not_unique:scheduler_event_file"
         addition = (
-            "def test_catalog_preapproval_blocks_missing_workflow_dispatch_event_file(tmp_path, monkeypatch):\\n"
-            '    task_id = "scheduler-dispatch-missing-event-file-fail-closed-20261127"\\n'
-            '    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)\\n'
-            '    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")\\n'
-            '    monkeypatch.setenv("GITHUB_ACTOR", "github-actions[bot]")\\n'
-            '    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")\\n'
-            '    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")\\n'
-            '    monkeypatch.setenv("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "30m_scheduler")\\n'
-            '    monkeypatch.setenv("GITHUB_EVENT_PATH", str(tmp_path / "missing-event.json"))\\n'
-            '    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))\\n'
-            '    result = guarded_runtime._verify_catalog_execution_approval("f" * 40, "bounded scheduler event-file regression")\\n'
-            '    assert result["gate"] == "BLOCKED"\\n'
-            '    assert result["execution_authorized"] is False\\n'
-            "\\n\\n"
+            "def test_catalog_preapproval_blocks_missing_workflow_dispatch_event_file(tmp_path, monkeypatch):\n"
+            '    task_id = "scheduler-dispatch-missing-event-file-fail-closed-20261127"\n'
+            '    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)\n'
+            '    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")\n'
+            '    monkeypatch.setenv("GITHUB_ACTOR", "github-actions[bot]")\n'
+            '    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")\n'
+            '    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")\n'
+            '    monkeypatch.setenv("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "30m_scheduler")\n'
+            '    monkeypatch.setenv("GITHUB_EVENT_PATH", str(tmp_path / "missing-event.json"))\n'
+            '    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))\n'
+            '    result = guarded_runtime._verify_catalog_execution_approval("f" * 40, "bounded scheduler event-file regression")\n'
+            '    assert result["gate"] == "BLOCKED"\n'
+            '    assert result["execution_authorized"] is False\n'
+            "\n\n"
         )
         replacement = addition + anchor
         if len(anchor) > 1200 or len(replacement) > 1800:
