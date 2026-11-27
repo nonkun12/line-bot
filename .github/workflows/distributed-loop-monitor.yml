@@ -128,7 +128,8 @@ jobs:
           python scripts/loop_investigator.py \
             --input artifacts/distributed-loop-monitor/monitor-report.json \
             --output artifacts/distributed-loop-monitor/investigation.json
-\n      - name: Publish monitor summary
+
+      - name: Publish monitor summary
         if: always()
         run: |
           if [ -s artifacts/distributed-loop-monitor/monitor-report.json ]; then
