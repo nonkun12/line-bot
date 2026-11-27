@@ -26,8 +26,6 @@ jobs:
   hold-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    outputs:
-      gate: ${{ steps.gate.outputs.result }}
     steps:
       - name: Reject every workflow re-run attempt
         env:
@@ -39,7 +37,6 @@ jobs:
           fi
 
       - name: Check the previous LOOP30 run and enforce HOLD
-        id: gate
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -71,8 +68,6 @@ jobs:
 
           if not candidates:
               print("No previous LOOP30 run; initial bounded run is allowed.")
-              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-                  out.write("result=PASS\n")
               raise SystemExit(0)
 
           previous = candidates[0]
@@ -93,8 +88,6 @@ jobs:
                   f"Explicit manual resume approval accepted for previous "
                   f"run #{previous.get('run_number')} ({status}/{conclusion})."
               )
-              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-                  out.write("result=APPROVED_RESUME\n")
               raise SystemExit(0)
 
           print(
