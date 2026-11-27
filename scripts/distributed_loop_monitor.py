@@ -103,7 +103,7 @@ def evaluate_schedule_slots(
     loops = [r for r in runs if r.get("workflow_id") == loop_id]
     decisions = scheduler_decisions if isinstance(scheduler_decisions, dict) else {}
     cursor = now.replace(second=0, microsecond=0)
-    cursor -= timedelta(minutes=(cursor.minute - 19) % 30)
+    cursor -= timedelta(minutes=(cursor.minute - 17) % 30)
     missing, pending, confirmed, safe_skips, held_slots = [], [], [], [], []
     allowed = {
         "DISPATCHED", "SKIPPED_ACTIVE_LOOP", "SKIPPED_KILL_SWITCH",
