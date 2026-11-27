@@ -37,6 +37,13 @@ jobs:
 
       - name: Report bounded read-only result
         if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
         run: |
-          echo "LOOP30 completed a read-only syntax check."
-          echo "This workflow does not dispatch, patch, merge, or deploy."
+          if [ "$JOB_STATUS" = "success" ]; then
+            echo "PASS: LOOP30 read-only syntax check succeeded."
+          else
+            echo "FAIL: LOOP30 read-only syntax check ended with status: $JOB_STATUS"
+            exit 1
+          fi
+          echo "Scope: no dispatch, patch, merge, or deploy."
