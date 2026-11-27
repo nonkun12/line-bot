@@ -121,6 +121,14 @@ jobs:
             --scheduler-decisions-json /tmp/scheduler-decisions.json \
             --output artifacts/distributed-loop-monitor/monitor-report.json
 
+      - name: Run Loop Investigator (read-only)
+        if: always()
+        continue-on-error: true
+        run: |
+          python scripts/loop_investigator.py \
+            --input artifacts/distributed-loop-monitor/monitor-report.json \
+            --output artifacts/distributed-loop-monitor/investigation.json
+
       - name: Publish monitor summary
         if: always()
         run: |
@@ -152,6 +160,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: distributed-loop-monitor-${{ github.run_id }}
-          path: artifacts/distributed-loop-monitor/monitor-report.json
+          path: artifacts/distributed-loop-monitor/
           if-no-files-found: error
           retention-days: 14
