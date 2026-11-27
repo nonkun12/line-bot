@@ -10,7 +10,7 @@ def test_dedicated_scheduler_dispatches_every_30_minutes():
     text = scheduler.read_text(encoding="utf-8")
     event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
     assert "schedule:" in event_block
-    assert 'cron: "17,47 * * * *"' in event_block
+    assert 'cron: "13,43 * * * *"' in event_block
     assert "workflow_dispatch:" in event_block
     assert "gh workflow run distributed-autonomous-loop.yml" in text
     assert "-f max_tasks=1" in text

@@ -90,7 +90,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_valid_state_provenance_passes_but_never_dispatches(self):
         report = self.evaluate()
-        self.assertEqual(report["schedule_expression"], "17,47 * * * * (UTC)")
+        self.assertEqual(report["schedule_expression"], "13,43 * * * * (UTC)")
         self.assertEqual(report["status"], "PASS")
         self.assertIs(report["dispatch_allowed"], False)
         self.assertEqual(report["checks"]["state_provenance"]["status"], "PASS")
@@ -295,7 +295,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
             runs, "2026-11-26T11:10:00Z",
             scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
         )
-        target_slot = "2026-11-26T10:47:00+00:00"
+        target_slot = "2026-11-26T10:43:00+00:00"
         self.assertEqual(len(report["safe_skips"]), 1)
         self.assertEqual(report["safe_skips"][0]["decision"], "SKIPPED_ACTIVE_LOOP")
         self.assertEqual(report["confirmed_slots"], [])
@@ -317,7 +317,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
             runs, "2026-11-26T11:10:00Z",
             scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
         )
-        target_slot = "2026-11-26T10:47:00+00:00"
+        target_slot = "2026-11-26T10:43:00+00:00"
         self.assertEqual(report["held_slots"][0]["decision"], "SKIPPED_KILL_SWITCH")
         self.assertNotIn(target_slot, [item["slot"] for item in report["missing_slots"]])
 
@@ -369,7 +369,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
     def test_schedule_slot_checker_marks_current_slot_pending_but_history_blocked(self):
         report = evaluate_schedule_slots([], "2026-11-26T08:20:00Z")
         self.assertEqual(report["status"], "BLOCKED")
-        self.assertIn("2026-11-26T08:17:00+00:00", report["pending_slots"])
+        self.assertIn("2026-11-26T08:13:00+00:00", report["pending_slots"])
         self.assertTrue(report["missing_slots"])
 
     def test_missing_or_invalid_workflow_id_blocks(self):
@@ -429,7 +429,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
             runs, "2026-11-26T11:10:00Z",
             scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
         )
-        target_slot = "2026-11-26T10:47:00+00:00"
+        target_slot = "2026-11-26T10:43:00+00:00"
         self.assertEqual(report["held_slots"][0]["decision"], "SKIPPED_BILLING_GUARD")
         self.assertNotIn(target_slot, [item["slot"] for item in report["missing_slots"]])
 
