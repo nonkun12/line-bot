@@ -77,8 +77,6 @@ jobs:
 
           if successful:
               print(f"Previous LOOP30 run #{previous.get('run_number')} succeeded.")
-              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-                  out.write("result=PASS\n")
               raise SystemExit(0)
 
           approval = os.environ.get("RESUME_APPROVAL", "DENY")
