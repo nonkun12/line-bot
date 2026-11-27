@@ -264,7 +264,7 @@ jobs:
             postrun-findings.json
           if-no-files-found: ignore
 
-      - name: Open a deduplicated follow-up issue when evidence is incomplete or failed
+      - name: Open or update fingerprinted follow-up incidents when evidence is incomplete or failed
         if: steps.verify.outputs.issues != '0'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -273,32 +273,63 @@ jobs:
           RUN_URL: ${{ github.event.workflow_run.html_url }}
         run: |
           set -euo pipefail
-          title="Distributed Loop follow-up: run $RUN_ID"
-          if gh issue list --repo "$REPOSITORY" --state open --search "$title in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then
-            echo "An open follow-up issue already exists for this run."
-            exit 0
-          fi
-          body="$(python - <<'PY'
-          import json, os
+          python - <<'PY'
+          import hashlib, json, re
           from pathlib import Path
-          findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
-          print("Automated post-run verification found an issue requiring investigation.\n")
-          print(f"- Run: {os.environ.get('RUN_URL', '')}")
-          print(f"- Run ID: {os.environ.get('RUN_ID', '')}")
-          print("\n## Findings")
-          for item in findings:
-              print(f"- {item}")
-          print("\n## Required follow-up")
-          print("- Inspect the original run logs and uploaded evidence.")
-          print("- Verify the Google Sheets row directly; an artifact alone is not proof of a live row.")
-          print("- Make only a reviewed, bounded fix. Do not auto-deploy, bypass safety gates, or loop-retry.")
-          PY
-          )"
-          gh issue create --repo "$REPOSITORY" --title "$title" --body "$body" || {
-            echo "::warning::Could not create issue (label may be unavailable or token lacks permission)."
-            exit 0
-          }
 
+          findings = json.loads(Path("postrun-findings.json").read_text(encoding="utf-8"))
+          incidents = []
+          for finding in findings:
+              # Keep each independent finding as its own incident so adding a
+              # second finding to a run does not change the fingerprint of the first.
+              normalized = str(finding).strip().lower()
+              normalized = re.sub(r"task\s+\d+", "task", normalized)
+              normalized = re.sub(r"\b[0-9a-f]{40,64}\b", "<sha>", normalized)
+              normalized = re.sub(r"\s+", " ", normalized)
+              fingerprint = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+              incidents.append({"fingerprint": fingerprint, "finding": str(finding)})
+          Path("postrun-incidents.json").write_text(
+              json.dumps(incidents, ensure_ascii=False) + "\n", encoding="utf-8"
+          )
+          PY
+          while IFS= read -r incident; do
+            fingerprint="$(jq -r '.fingerprint' <<< "$incident")"
+            finding="$(jq -r '.finding' <<< "$incident")"
+            marker="distributed-loop-fingerprint: $fingerprint"
+            title="Distributed Loop follow-up: $fingerprint"
+            existing="$(gh issue list --repo "$REPOSITORY" --state open --search "$fingerprint in:body" --json number,body | jq -r --arg marker "$marker" '[.[] | select(.body | contains($marker)) | .number] | first // empty')"
+            evidence="Recurring finding: $finding
+
+          - Run ID: $RUN_ID
+          - Run: $RUN_URL"
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --repo "$REPOSITORY" --body "$evidence"
+              echo "Updated incident #$existing with new run evidence ($fingerprint)."
+              continue
+            fi
+            body="$(cat <<EOF
+          Automated post-run verification found a recurring incident requiring investigation.
+
+          <!-- $marker -->
+
+          ## Finding
+          - $finding
+
+          ## Latest run evidence
+          - Run ID: $RUN_ID
+          - Run: $RUN_URL
+
+          ## Required follow-up
+          - Inspect original run logs and uploaded evidence.
+          - Verify the Google Sheets row directly; an artifact alone is not proof of a live row.
+          - Make only a reviewed, bounded fix. Do not auto-deploy, bypass safety gates, or loop-retry.
+          EOF
+          )"
+            gh issue create --repo "$REPOSITORY" --title "$title" --body "$body" || {
+              echo "::warning::Could not create incident issue (token may lack permission)."
+              exit 0
+            }
+          done < <(jq -c '.[]' postrun-incidents.json)
       # The source loop sends the canonical one-per-run LINE report.
       # Post-run verification records discrepancies as GitHub issues; it must
       # not send a second success/queue/blocked message for the same Run ID.
