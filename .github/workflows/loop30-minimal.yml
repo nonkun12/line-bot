@@ -4,16 +4,109 @@ on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
+    inputs:
+      resume_approval:
+        description: "Explicitly approve one run to clear a previous LOOP30 HOLD"
+        required: true
+        default: "DENY"
+        type: choice
+        options:
+          - "DENY"
+          - "APPROVE_RESUME"
 
 concurrency:
   group: loop30-minimal
   cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
+  hold-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      gate: ${{ steps.gate.outputs.result }}
+    steps:
+      - name: Reject every workflow re-run attempt
+        env:
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          if [ "$RUN_ATTEMPT" != "1" ]; then
+            echo "::error::HOLD: Re-run attempts are not permitted. Start a new manually approved run after review."
+            exit 1
+          fi
+
+      - name: Check the previous LOOP30 run and enforce HOLD
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          RESUME_APPROVAL: ${{ github.event.inputs.resume_approval || 'DENY' }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPOSITORY/actions/workflows/loop30-minimal.yml/runs?branch=main&per_page=20" > "$RUNNER_TEMP/loop30-runs.json"
+          python - "$RUNNER_TEMP/loop30-runs.json" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if not isinstance(payload, dict) or not isinstance(payload.get("workflow_runs"), list):
+              raise SystemExit("HOLD: workflow history response is invalid")
+
+          current_id = int(os.environ["CURRENT_RUN_ID"])
+          candidates = [
+              run for run in payload["workflow_runs"]
+              if isinstance(run, dict)
+              and run.get("id") != current_id
+              and run.get("head_branch") == "main"
+              and run.get("event") in {"schedule", "workflow_dispatch"}
+          ]
+          candidates.sort(key=lambda run: int(run.get("run_number", 0)), reverse=True)
+
+          if not candidates:
+              print("No previous LOOP30 run; initial bounded run is allowed.")
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+                  out.write("result=PASS\n")
+              raise SystemExit(0)
+
+          previous = candidates[0]
+          conclusion = previous.get("conclusion")
+          status = previous.get("status")
+          successful = status == "completed" and conclusion == "success"
+
+          if successful:
+              print(f"Previous LOOP30 run #{previous.get('run_number')} succeeded.")
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+                  out.write("result=PASS\n")
+              raise SystemExit(0)
+
+          approval = os.environ.get("RESUME_APPROVAL", "DENY")
+          event = os.environ.get("EVENT_NAME", "")
+          if event == "workflow_dispatch" and approval == "APPROVE_RESUME":
+              print(
+                  f"Explicit manual resume approval accepted for previous "
+                  f"run #{previous.get('run_number')} ({status}/{conclusion})."
+              )
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+                  out.write("result=APPROVED_RESUME\n")
+              raise SystemExit(0)
+
+          print(
+              f"HOLD: previous LOOP30 run #{previous.get('run_number')} "
+              f"ended {status}/{conclusion}; manual approval is required."
+          )
+          raise SystemExit(1)
+          PY
+
   read-only-check:
+    needs: hold-gate
+    if: ${{ github.run_attempt == 1 && needs.hold-gate.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -35,15 +128,29 @@ jobs:
           print(f"PASS: parsed {len(files)} Python files")
           PY
 
-      - name: Report bounded read-only result
-        if: always()
+  report:
+    if: ${{ always() }}
+    needs: [hold-gate, read-only-check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Report the actual gated result
         env:
-          JOB_STATUS: ${{ job.status }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          GATE_RESULT: ${{ needs.hold-gate.result }}
+          CHECK_RESULT: ${{ needs.read-only-check.result }}
         run: |
-          if [ "$JOB_STATUS" = "success" ]; then
-            echo "PASS: LOOP30 read-only syntax check succeeded."
-          else
-            echo "FAIL: LOOP30 read-only syntax check ended with status: $JOB_STATUS"
+          if [ "$RUN_ATTEMPT" != "1" ]; then
+            echo "::error::FAIL: Re-run attempt rejected; HOLD remains active."
             exit 1
           fi
+          if [ "$GATE_RESULT" != "success" ]; then
+            echo "::error::HOLD: gate result was $GATE_RESULT."
+            exit 1
+          fi
+          if [ "$CHECK_RESULT" != "success" ]; then
+            echo "::error::FAIL: syntax check result was $CHECK_RESULT."
+            exit 1
+          fi
+          echo "PASS: LOOP30 read-only syntax check succeeded."
           echo "Scope: no dispatch, patch, merge, or deploy."
