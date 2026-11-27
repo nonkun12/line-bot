@@ -535,6 +535,21 @@ def test_write_summary_drops_untrusted_failure_text(tmp_path, monkeypatch):
     assert "failure_code" not in json.loads(summary.read_text(encoding="utf-8"))
 
 
+def test_catalog_preapproval_blocks_missing_workflow_dispatch_event_file(tmp_path, monkeypatch):
+    task_id = "scheduler-dispatch-missing-event-file-fail-closed-20261127"
+    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_ACTOR", "github-actions[bot]")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "30m_scheduler")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(tmp_path / "missing-event.json"))
+    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))
+    result = guarded_runtime._verify_catalog_execution_approval("f" * 40, "tests/test_run_guarded_runtime.py のみに、新しい固有名の pytest 回帰テストを1件追加してください。workflow_dispatch で GITHUB_EVENT_PATH が存在しないファイルを指し、GITHUB_ACTOR=github-actions[bot]、GITHUB_REPOSITORY=nonkun12/line-bot、GITHUB_REF=refs/heads/main、AUTONOMOUS_POLICY_DISPATCH_SOURCE=30m_scheduler を設定しても、_verify_catalog_execution_approval() が gate=BLOCKED・execution_authorized=False を返すことを確認してください。既存テストを変更せず、実ネットワーク・シークレット・OS外部操作は禁止。変更は指定テストファイル1つだけ。マージ・デプロイは禁止。")
+    assert result["gate"] == "BLOCKED"
+    assert result["execution_authorized"] is False
+
+
 def test_common_runtime_blocks_without_independent_approval_even_if_env_claims_approval(monkeypatch, tmp_path):
     sha = "c" * 40
     rea = {"gate": "PASS", "target_sha": sha, "scanner_status": "PASS", "finding_count": 0, "critical_count": 0, "blocking_count": 0, "findings": [], "execution_authorized": False, "patch_authorized": False, "hold_clear_authorized": False, "merge_deploy_authorized": False}
