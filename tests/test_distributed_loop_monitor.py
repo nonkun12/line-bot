@@ -252,7 +252,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_schedule_slot_checker_correlates_child_run_by_scheduler_id(self):
         runs = [
-            {"workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
+            {"path": ".github/workflows/distributed-loop-30m-scheduler-v2.yml", "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
              "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z"},
             {"workflow_id": 369890295, "id": 222, "display_title": "Distributed Loop (request_id=111)",
              "status": "completed", "conclusion": "failure"},
@@ -274,7 +274,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_active_loop_skip_is_verified_and_not_counted_as_work(self):
         runs = [
-            {"workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
+            {"path": ".github/workflows/distributed-loop-30m-scheduler-v2.yml", "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
              "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z"},
             {"workflow_id": 369890295, "id": 333, "status": "completed",
              "created_at": "2026-11-26T10:48:00Z",
@@ -303,7 +303,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_kill_switch_skip_is_hold_not_dispatch_failure(self):
         runs = [{
-            "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
+            "path": ".github/workflows/distributed-loop-30m-scheduler-v2.yml", "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
             "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z",
         }]
         decision = {
@@ -323,7 +323,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_missing_decision_artifact_is_legacy_unverified_and_blocked(self):
         runs = [{
-            "workflow_id": 419124193, "id": 111, "event": "schedule",
+            "path": ".github/workflows/distributed-loop-30m-scheduler-v2.yml", "workflow_id": 419124193, "id": 111, "event": "schedule",
             "status": "completed", "created_at": "2026-11-26T10:50:00Z",
         }]
         report = evaluate_schedule_slots(runs, "2026-11-26T11:10:00Z")
@@ -332,7 +332,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_decision_artifact_run_id_or_head_mismatch_blocks(self):
         runs = [{
-            "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
+            "path": ".github/workflows/distributed-loop-30m-scheduler-v2.yml", "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
             "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z",
         }]
         decision = {
@@ -350,7 +350,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_dispatched_decision_without_matching_child_blocks(self):
         runs = [{
-            "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
+            "path": ".github/workflows/distributed-loop-30m-scheduler-v2.yml", "workflow_id": 419124193, "id": 111, "run_attempt": 1, "head_sha": "a" * 40,
             "event": "schedule", "status": "completed", "created_at": "2026-11-26T10:50:00Z",
         }]
         decision = {
@@ -414,7 +414,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_billing_guard_skip_is_hold_only_for_nonpublic_repository(self):
         runs = [{
-            "workflow_id": 419124193, "id": 111, "run_attempt": 1,
+            "path": ".github/workflows/distributed-loop-30m-scheduler-v2.yml", "workflow_id": 419124193, "id": 111, "run_attempt": 1,
             "head_sha": "a" * 40, "event": "schedule", "status": "completed",
             "created_at": "2026-11-26T10:50:00Z",
         }]
@@ -435,7 +435,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
 
     def test_billing_guard_claim_for_public_repository_blocks(self):
         runs = [{
-            "workflow_id": 419124193, "id": 111, "run_attempt": 1,
+            "path": ".github/workflows/distributed-loop-30m-scheduler-v2.yml", "workflow_id": 419124193, "id": 111, "run_attempt": 1,
             "head_sha": "a" * 40, "event": "schedule", "status": "completed",
             "created_at": "2026-11-26T10:50:00Z",
         }]
@@ -456,7 +456,7 @@ class DistributedLoopMonitorTests(unittest.TestCase):
     def test_active_loop_skip_for_run_completed_before_slot_blocks(self):
         runs = [
             {
-                "workflow_id": 419124193, "id": 111, "run_attempt": 1,
+                "path": ".github/workflows/distributed-loop-30m-scheduler-v2.yml", "workflow_id": 419124193, "id": 111, "run_attempt": 1,
                 "head_sha": "a" * 40, "event": "schedule", "status": "completed",
                 "created_at": "2026-11-26T10:50:00Z",
             },
