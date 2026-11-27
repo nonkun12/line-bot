@@ -313,6 +313,7 @@ _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS = {
     "review-coverage-gap-703fa3c06b": "tests/test_project_registry.py",
     "catalog-exhaustion-analyzer-main-fail-closed-20261105": "tests/test_catalog_exhaustion_analyzer.py",
     "proposal-generator-unknown-goal-status-exclusion-regression-20261125": "tests/test_autonomous_task_proposals.py",
+    "scheduler-dispatch-missing-event-file-fail-closed-20261127": "tests/test_run_guarded_runtime.py",
 }
 
 def _is_deterministic_autonomous_task(task_id: str, chosen: str | None) -> bool:
@@ -375,6 +376,45 @@ def _deterministic_autonomous_test_plan(chosen: str, task_id: str | None = None)
     expected_target = _DETERMINISTIC_AUTONOMOUS_TASK_TARGETS.get(task_id)
     if expected_target is not None and chosen != expected_target:
         return None, "deterministic_target_mismatch"
+
+    if task_id == "scheduler-dispatch-missing-event-file-fail-closed-20261127" and chosen == "tests/test_run_guarded_runtime.py":
+        target = worker.ROOT / chosen
+        source = target.read_text(encoding="utf-8")
+        name = "test_catalog_preapproval_blocks_missing_workflow_dispatch_event_file"
+        if f"def {name}(" in source:
+            return {"no_change": True, "source": "deterministic_autonomous_task"}, None
+        anchor = "def test_common_runtime_blocks_without_independent_approval_even_if_env_claims_approval"
+        if source.count(anchor) != 1:
+            return None, "deterministic_anchor_not_unique:scheduler_event_file"
+        addition = (
+            "def test_catalog_preapproval_blocks_missing_workflow_dispatch_event_file(tmp_path, monkeypatch):\\n"
+            '    task_id = "scheduler-dispatch-missing-event-file-fail-closed-20261127"\\n'
+            '    monkeypatch.setenv("AUTONOMOUS_TASK_ID", task_id)\\n'
+            '    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")\\n'
+            '    monkeypatch.setenv("GITHUB_ACTOR", "github-actions[bot]")\\n'
+            '    monkeypatch.setenv("GITHUB_REPOSITORY", "nonkun12/line-bot")\\n'
+            '    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")\\n'
+            '    monkeypatch.setenv("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "30m_scheduler")\\n'
+            '    monkeypatch.setenv("GITHUB_EVENT_PATH", str(tmp_path / "missing-event.json"))\\n'
+            '    monkeypatch.setenv("AUTONOMOUS_ALLOWED_PATHS", json.dumps(["tests/test_run_guarded_runtime.py"]))\\n'
+            '    result = guarded_runtime._verify_catalog_execution_approval("f" * 40, "bounded scheduler event-file regression")\\n'
+            '    assert result["gate"] == "BLOCKED"\\n'
+            '    assert result["execution_authorized"] is False\\n'
+            "\\n\\n"
+        )
+        replacement = addition + anchor
+        if len(anchor) > 1200 or len(replacement) > 1800:
+            return None, "deterministic_plan_too_large:scheduler_event_file"
+        candidate = source.replace(anchor, replacement, 1)
+        try:
+            compile(candidate, chosen, "exec")
+        except (SyntaxError, IndentationError) as exc:
+            return None, f"deterministic_plan_invalid:{type(exc).__name__}:{exc.msg}"
+        return {
+            "no_change": False,
+            "source": "deterministic_autonomous_task",
+            "changes": [{"file": chosen, "old": anchor, "new": replacement}],
+        }, None
 
     if task_id == "proposal-generator-unknown-goal-status-exclusion-regression-20261125" and chosen == "tests/test_autonomous_task_proposals.py":
         target = worker.ROOT / chosen
