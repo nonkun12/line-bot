@@ -77,7 +77,10 @@ def _reuse_prior_memory(
                 proposal,
                 task=replace(
                     proposal.task,
-                    instruction=(proposal.task.instruction + context)[:4000],
+                    instruction=(
+                        proposal.task.instruction[: max(0, 4000 - len(context))]
+                        + context
+                    ),
                 ),
             )
         )
