@@ -27,13 +27,6 @@ on:
         description: 'Exact base commit SHA shown by the prior BLOCKED run'
         required: false
         type: string
-  schedule:
-    - cron: '0 4 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '0 16 * * *'
-      timezone: 'Asia/Tokyo'
-    - cron: '0 22 * * *'
-      timezone: 'Asia/Tokyo'
 
 # Scheduled runs are intentionally on the default branch.
 # Autonomous changes are pushed to a dedicated branch and reviewed via PR.
