@@ -23,6 +23,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
       CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
+      AUTONOMOUS_LOOP_GLOBAL_HOLD: ${{ vars.AUTONOMOUS_LOOP_GLOBAL_HOLD || 'UNKNOWN' }}
     steps:
       - name: Checkout trusted main for stop-file check
         uses: actions/checkout@v4
@@ -48,9 +49,27 @@ jobs:
             echo "dispatch=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Require explicit Global HOLD clearance
+        id: global_hold
+        if: steps.kill.outputs.dispatch == 'true'
+        run: |
+          set -euo pipefail
+          state="${AUTONOMOUS_LOOP_GLOBAL_HOLD^^}"
+          if [ "$state" = "CLEAR" ]; then
+            echo "dispatch=true" >> "$GITHUB_OUTPUT"
+            echo "decision=GLOBAL_HOLD_CLEAR" >> "$GITHUB_OUTPUT"
+            echo "Global HOLD explicitly CLEAR; continuing to billing guard." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            echo "decision=SKIPPED_GLOBAL_HOLD_UNKNOWN_OR_ACTIVE" >> "$GITHUB_OUTPUT"
+            echo "global_hold_state=$state" >> "$GITHUB_OUTPUT"
+            echo "::warning::Global HOLD is not explicitly CLEAR; refusing dispatch."
+            echo "Global HOLD is $state (only explicit CLEAR permits dispatch)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Verify public repository and standard-runner billing scope
         id: budget
-        if: steps.kill.outputs.dispatch == 'true'
+        if: steps.kill.outputs.dispatch == 'true' && steps.global_hold.outputs.dispatch == 'true'
         run: |
           set -euo pipefail
           visibility="$(gh api "repos/$REPOSITORY" --jq '.visibility')"
@@ -67,7 +86,7 @@ jobs:
 
       - name: Avoid duplicate active distributed loops
         id: active
-        if: steps.kill.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true'
+        if: steps.kill.outputs.dispatch == 'true' && steps.global_hold.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true'
         run: |
           set -euo pipefail
           active_record="$(gh api --paginate "repos/$REPOSITORY/actions/workflows/distributed-autonomous-loop.yml/runs?per_page=100" | jq -s '[.[] | .workflow_runs[]? | select(.status == "queued" or .status == "in_progress")] | sort_by(.created_at) | first // {}')"
@@ -91,7 +110,7 @@ jobs:
 
       - name: Dispatch one-task distributed development cycle
         id: dispatch
-        if: steps.kill.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true' && steps.active.outputs.dispatch == 'true'
+        if: steps.kill.outputs.dispatch == 'true' && steps.global_hold.outputs.dispatch == 'true' && steps.budget.outputs.dispatch == 'true' && steps.active.outputs.dispatch == 'true'
         run: |
           set -euo pipefail
           request_id="$GITHUB_RUN_ID"
@@ -123,6 +142,8 @@ jobs:
         if: always()
         env:
           KILL_DECISION: ${{ steps.kill.outputs.decision }}
+          GLOBAL_HOLD_DECISION: ${{ steps.global_hold.outputs.decision }}
+          GLOBAL_HOLD_STATE: ${{ steps.global_hold.outputs.global_hold_state }}
           KILL_REASON: ${{ steps.kill.outputs.skip_reason }}
           BILLING_DECISION: ${{ steps.budget.outputs.decision }}
           REPOSITORY_VISIBILITY: ${{ steps.budget.outputs.repository_visibility }}
@@ -143,6 +164,7 @@ jobs:
 
           decision = (
               os.environ.get("KILL_DECISION")
+              or os.environ.get("GLOBAL_HOLD_DECISION")
               or os.environ.get("BILLING_DECISION")
               or os.environ.get("ACTIVE_DECISION")
           )
@@ -163,6 +185,7 @@ jobs:
               "active_loop_created_at": os.environ.get("ACTIVE_LOOP_CREATED_AT") or None,
               "active_loop_observed_at": os.environ.get("ACTIVE_LOOP_OBSERVED_AT") or None,
               "kill_switch_active": os.environ.get("KILL_SWITCH_ACTIVE") == "true",
+              "global_hold_state": os.environ.get("GLOBAL_HOLD_STATE") or ("CLEAR_CONFIGURED_NOT_INDEPENDENTLY_VERIFIED" if os.environ.get("GLOBAL_HOLD_DECISION") == "GLOBAL_HOLD_CLEAR" else "UNKNOWN"),
               "child_loop_run_id": os.environ.get("CHILD_LOOP_RUN_ID") or None,
               "skip_reason": os.environ.get("KILL_REASON") or None,
               "repository_visibility": os.environ.get("REPOSITORY_VISIBILITY") or None,
@@ -181,6 +204,7 @@ jobs:
             echo "- Trigger: ${GITHUB_EVENT_NAME}"
             echo "- Decision: $(python -c 'import json; print(json.load(open("scheduler-decision.json"))["decision"])')"
             echo "- Kill switch: ${CONTROL_TOWER_KILL_SWITCH}"
+            echo "- Global HOLD: ${AUTONOMOUS_LOOP_GLOBAL_HOLD} (only CLEAR permits dispatch)"
             echo "- Billing gate: public repository + standard ubuntu-latest runner required"
             echo "- Target task limit: 1"
             echo "- Execution approval: DENY"
