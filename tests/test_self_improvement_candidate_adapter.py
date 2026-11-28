@@ -59,3 +59,29 @@ def test_candidate_adapter_missing_state_fails_closed_without_writing_empty_pool
     output = tmp_path / "candidate-input.json"
     assert main(["--state", str(tmp_path / "missing.json"), "--output", str(output)]) == 2
     assert not output.exists()
+
+
+def test_candidate_adapter_uses_failure_code_category_without_raw_diagnostics():
+    history = sanitize_records([
+        {
+            "kind": "failure",
+            "task_id": "task-security",
+            "failure_code": "change_outside_selected_file",
+            "failure_reason": "private path /secret and token=hidden",
+        },
+        {
+            "kind": "failure",
+            "task_id": "task-provider",
+            "failure_code": "provider_rate_limited",
+        },
+    ])
+    rows = candidates_from_history(history)
+    assert len(rows) == 2
+    security = next(row for row in rows if row["source_id"].startswith("security_violation:"))
+    rate_limit = next(row for row in rows if row["source_id"].startswith("rate_limited:"))
+    assert security["title"] == "Review security boundary failures"
+    assert rate_limit["title"] == "Review provider rate limits"
+    serialized = json.dumps(rows)
+    assert "/secret" not in serialized
+    assert "hidden" not in serialized
+    assert "execution_authorized" not in serialized
