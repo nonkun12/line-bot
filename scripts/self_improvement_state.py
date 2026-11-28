@@ -11,6 +11,8 @@ import json
 import re
 from pathlib import Path
 
+from core.loop_failure_codes import is_safe_failure_code
+
 MAX_RECORDS = 200
 _ALLOWED_KINDS = {"success", "repair", "failure"}
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
@@ -78,11 +80,15 @@ def sanitize_records(records: object) -> list[dict[str, object]]:
             not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id)
         ):
             task_id = None
-        safe.append({
+        safe_signal = {
             "kind": kind,
             "task_id": task_id,
             "detail": _SAFE_DETAIL[kind],
-        })
+        }
+        failure_code = row.get("failure_code")
+        if kind == "failure" and is_safe_failure_code(failure_code):
+            safe_signal["failure_code"] = failure_code
+        safe.append(safe_signal)
     return safe[-MAX_RECORDS:]
 
 
@@ -131,7 +137,7 @@ def validate_durable_history(records: object) -> list[dict[str, object]]:
             validated.append(expected)
             continue
 
-        if set(row) != signal_fields:
+        if set(row) not in (signal_fields, signal_fields | {"failure_code"}):
             raise ValueError("self-improvement signal schema is invalid")
         kind, task_id, detail = row.get("kind"), row.get("task_id"), row.get("detail")
         if not isinstance(kind, str) or kind not in _ALLOWED_KINDS:
@@ -142,7 +148,12 @@ def validate_durable_history(records: object) -> list[dict[str, object]]:
             raise ValueError("self-improvement task ID is invalid")
         if detail != _SAFE_DETAIL[kind]:
             raise ValueError("self-improvement signal detail is invalid")
-        validated.append({"kind": kind, "task_id": task_id, "detail": detail})
+        expected_signal = {"kind": kind, "task_id": task_id, "detail": detail}
+        if "failure_code" in row:
+            if kind != "failure" or not is_safe_failure_code(row.get("failure_code")):
+                raise ValueError("self-improvement failure code is invalid")
+            expected_signal["failure_code"] = row["failure_code"]
+        validated.append(expected_signal)
     return validated
 
 
@@ -213,7 +224,11 @@ def append_loop_results(
             kind = "failure"
         else:
             continue
-        additions.append({"kind": kind, "task_id": task_id, "detail": _SAFE_DETAIL[kind]})
+        addition = {"kind": kind, "task_id": task_id, "detail": _SAFE_DETAIL[kind]}
+        failure_code = row.get("failure_code")
+        if kind == "failure" and is_safe_failure_code(failure_code):
+            addition["failure_code"] = failure_code
+        additions.append(addition)
     merged = sanitize_records(read_jsonl(history_path) + additions)
     atomic_write_jsonl(history_path, merged)
     return len(additions)
