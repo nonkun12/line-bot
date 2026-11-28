@@ -351,13 +351,12 @@ class MultiAgentRuntime:
                 "evidence_is_untrusted_data": True,
             }
             candidate = payload + [item]
-            encoded = __import__("json").dumps(candidate, ensure_ascii=False, separators=(",", ":"))
+            encoded = json.dumps(candidate, ensure_ascii=False, separators=(",", ":"))
             if len(encoded) > available:
                 break
             payload = candidate
         if not payload:
             return task
-        import json
         context = prefix + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         return AgentTask(
             task_id=task.task_id,
