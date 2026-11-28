@@ -72,7 +72,7 @@ def test_runtime_bounds_retrieved_evidence_and_preserves_task_contract(tmp_path)
     add_record(store, "long-evidence", claim="The scheduler has a documented recovery rule.",
                evidence="x" * 2000)
     executor = CapturingExecutor()
-    original = make_task("x" * 3000)
+    original = make_task("scheduler " + "x" * 2989)
     runtime = MultiAgentRuntime({AgentRole.REVIEWER: executor}, knowledge_store=store)
 
     report = runtime.run([original])
