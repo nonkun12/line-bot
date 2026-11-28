@@ -650,6 +650,91 @@ jobs:
           done < <(jq -c '.[]' /tmp/autonomous-loop-task-issue-drafts.json)
           echo "Created $count review-only task candidate issue(s); no execution approval was granted."
 
+      - name: Verify task-bound manual execution approval
+        if: >-
+          success() &&
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.mode == 'normal' &&
+          github.event.inputs.resume_task_id == ''
+        env:
+          EXECUTION_APPROVAL: ${{ github.event.inputs.execution_approval || 'DENY' }}
+          APPROVAL_TASK_ID: ${{ github.event.inputs.approval_task_id || '' }}
+          APPROVAL_ALLOWED_PATHS_SHA256: ${{ github.event.inputs.approval_allowed_paths_sha256 || '' }}
+          APPROVAL_INSTRUCTION_SHA256: ${{ github.event.inputs.approval_instruction_sha256 || '' }}
+          APPROVAL_BASE_SHA: ${{ github.event.inputs.approval_base_sha || '' }}
+          EXPECTED_BASE_SHA: ${{ github.sha }}
+          QUEUE_PATH: ${{ env.AUTONOMOUS_LOOP_TASK_QUEUE || '/tmp/autonomous-loop-runtime-queue.json' }}
+          CATALOG_PATH: .github/autonomous-loop-task-catalog.json
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          def reject(reason):
+              raise SystemExit("TASK_APPROVAL_BLOCKED: " + reason)
+
+          if os.environ.get("EXECUTION_APPROVAL") != "APPROVE_EXECUTION":
+              reject("explicit_approval_required")
+          task_id = os.environ.get("APPROVAL_TASK_ID", "")
+          if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", task_id):
+              reject("invalid_or_missing_task_id")
+          base_sha = os.environ.get("EXPECTED_BASE_SHA", "")
+          if not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+              reject("invalid_workflow_base_sha")
+          if os.environ.get("APPROVAL_BASE_SHA") != base_sha:
+              reject("base_sha_mismatch")
+
+          queue_path = Path(os.environ["QUEUE_PATH"])
+          catalog_path = Path(os.environ["CATALOG_PATH"])
+          try:
+              queue = json.loads(queue_path.read_text(encoding="utf-8"))
+              catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+          except (OSError, ValueError):
+              reject("queue_or_catalog_unreadable")
+          queued = queue.get("tasks") if isinstance(queue, dict) else None
+          registered = catalog.get("tasks") if isinstance(catalog, dict) else None
+          if not isinstance(queued, list) or not isinstance(registered, list):
+              reject("queue_or_catalog_invalid")
+          matches = [item for item in queued if isinstance(item, dict) and item.get("id") == task_id]
+          trusted = [item for item in registered if isinstance(item, dict) and item.get("id") == task_id]
+          if len(matches) != 1 or len(trusted) != 1:
+              reject("task_not_uniquely_present_in_queue_and_catalog")
+          selected, approved = matches[0], trusted[0]
+          if approved.get("execution_approved") is not True:
+              reject("catalog_execution_approval_missing")
+          for key in ("id", "instruction", "allowed_paths"):
+              if selected.get(key) != approved.get(key):
+                  reject("queue_catalog_definition_mismatch")
+          instruction = approved.get("instruction")
+          paths = approved.get("allowed_paths")
+          if not isinstance(instruction, str) or not instruction or not isinstance(paths, list) or not paths:
+              reject("task_definition_invalid")
+          if not all(isinstance(path, str) and path for path in paths) or len(paths) != len(set(paths)):
+              reject("allowed_paths_invalid")
+          canonical_paths = json.dumps(sorted(paths), ensure_ascii=False, separators=(",", ":"))
+          paths_digest = hashlib.sha256(canonical_paths.encode("utf-8")).hexdigest()
+          instruction_digest = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
+          if not re.fullmatch(r"[0-9a-f]{64}", os.environ.get("APPROVAL_ALLOWED_PATHS_SHA256", "")):
+              reject("allowed_paths_digest_missing_or_invalid")
+          if not re.fullmatch(r"[0-9a-f]{64}", os.environ.get("APPROVAL_INSTRUCTION_SHA256", "")):
+              reject("instruction_digest_missing_or_invalid")
+          if os.environ["APPROVAL_ALLOWED_PATHS_SHA256"] != paths_digest:
+              reject("allowed_paths_digest_mismatch")
+          if os.environ["APPROVAL_INSTRUCTION_SHA256"] != instruction_digest:
+              reject("instruction_digest_mismatch")
+
+          # Bind this manual approval to exactly one selected task; never allow
+          # the remaining queue to execute under the same approval.
+          queue["tasks"] = [selected]
+          queue["max_tasks_per_run"] = 1
+          queue_path.write_text(json.dumps(queue, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+          print("TASK_APPROVAL=PASS task_count=1 base_sha=" + base_sha)
+          PY
+
       - name: Run one bounded autonomous task
         id: run_task
         env:
