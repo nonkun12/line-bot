@@ -69,6 +69,37 @@ class SelfImprovementHistory:
         records.append({"record_type": "cycle_memory", **asdict(memory)})
         self._atomic_write(records)
 
+    def append_measurement(self, measurement: "SelfImprovementMeasurementRecord") -> None:
+        """Append one validated measurement without granting execution authority."""
+        from .self_improvement_measurement import SelfImprovementMeasurementRecord
+        if not isinstance(measurement, SelfImprovementMeasurementRecord):
+            raise TypeError("measurement must be SelfImprovementMeasurementRecord")
+        records = self._read_records()
+        serialized = measurement.to_record()
+        if any(
+            row.get("record_type") == "measurement"
+            and row.get("measurement_id") == serialized["measurement_id"]
+            for row in records
+        ):
+            return
+        records.append(serialized)
+        self._atomic_write(records)
+
+    def load_measurements(self, *, limit: int = 20) -> tuple["SelfImprovementMeasurementRecord", ...]:
+        """Load newest valid measurements; malformed records are ignored."""
+        from .self_improvement_measurement import SelfImprovementMeasurementRecord
+        if limit < 1 or limit > 50:
+            raise ValueError("limit must be between 1 and 50")
+        result = []
+        for row in self._read_records():
+            if row.get("record_type") != "measurement":
+                continue
+            try:
+                result.append(SelfImprovementMeasurementRecord.from_record(row))
+            except (KeyError, TypeError, ValueError):
+                continue
+        return tuple(result[-limit:])
+
     def load(self) -> tuple[ImprovementSignal, ...]:
         """Load valid signal history; malformed records fail closed."""
         result: list[ImprovementSignal] = []
