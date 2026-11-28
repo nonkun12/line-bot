@@ -55,17 +55,18 @@ jobs:
         run: |
           set -euo pipefail
           state="${AUTONOMOUS_LOOP_GLOBAL_HOLD^^}"
+          # A repository variable is operator configuration, not an independent
+          # read of the authoritative Global HOLD state. Keep the scheduler
+          # fail-closed until a trusted reader is implemented and verified.
+          echo "dispatch=false" >> "$GITHUB_OUTPUT"
+          echo "decision=SKIPPED_NO_TRUSTED_GLOBAL_HOLD_READER" >> "$GITHUB_OUTPUT"
           if [ "$state" = "CLEAR" ]; then
-            echo "dispatch=true" >> "$GITHUB_OUTPUT"
-            echo "decision=GLOBAL_HOLD_CLEAR" >> "$GITHUB_OUTPUT"
-            echo "Global HOLD explicitly CLEAR; continuing to billing guard." >> "$GITHUB_STEP_SUMMARY"
+            echo "global_hold_state=CLEAR_CONFIGURED_NOT_INDEPENDENTLY_VERIFIED" >> "$GITHUB_OUTPUT"
           else
-            echo "dispatch=false" >> "$GITHUB_OUTPUT"
-            echo "decision=SKIPPED_GLOBAL_HOLD_UNKNOWN_OR_ACTIVE" >> "$GITHUB_OUTPUT"
-            echo "global_hold_state=$state" >> "$GITHUB_OUTPUT"
-            echo "::warning::Global HOLD is not explicitly CLEAR; refusing dispatch."
-            echo "Global HOLD is $state (only explicit CLEAR permits dispatch)." >> "$GITHUB_STEP_SUMMARY"
+            echo "global_hold_state=UNKNOWN_BLOCKED" >> "$GITHUB_OUTPUT"
           fi
+          echo "::warning::No trusted Global HOLD reader is wired; refusing dispatch even when the repository variable says CLEAR."
+          echo "Global HOLD remains blocked: configured value=$state; independent verification unavailable." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify public repository and standard-runner billing scope
         id: budget
@@ -204,7 +205,7 @@ jobs:
             echo "- Trigger: ${GITHUB_EVENT_NAME}"
             echo "- Decision: $(python -c 'import json; print(json.load(open("scheduler-decision.json"))["decision"])')"
             echo "- Kill switch: ${CONTROL_TOWER_KILL_SWITCH}"
-            echo "- Global HOLD: ${AUTONOMOUS_LOOP_GLOBAL_HOLD} (only CLEAR permits dispatch)"
+            echo "- Global HOLD: ${AUTONOMOUS_LOOP_GLOBAL_HOLD} (blocked until independently verified)"
             echo "- Billing gate: public repository + standard ubuntu-latest runner required"
             echo "- Target task limit: 1"
             echo "- Execution approval: DENY"
