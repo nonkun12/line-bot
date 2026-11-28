@@ -69,9 +69,17 @@ def test_contradictions_and_supersession_are_explicit(tmp_path):
     store.add(make_record("new", claim="The LOOP scheduler runs every 30 minutes.",
                           contradicts=("old",), supersedes=("old",)))
     results = store.search("scheduler", now=datetime(2026, 11, 28, 1, tzinfo=timezone.utc))
-    newer = next(item for item in results if item["record_id"] == "new")
-    assert {"relation": "contradicts", "record_id": "old", "present": True} in newer["relations"]
-    assert {"relation": "supersedes", "record_id": "old", "present": True} in newer["relations"]
+    # Neither side of an unresolved contradiction may enter model context.
+    assert results == []
+
+
+def test_superseded_record_is_not_retrieved(tmp_path):
+    store = ASDIKnowledgeStore(tmp_path / "knowledge.jsonl")
+    store.add(make_record("old"))
+    store.add(make_record("new", claim="The LOOP scheduler runs every 30 minutes.",
+                          supersedes=("old",)))
+    results = store.search("scheduler", now=datetime(2026, 11, 28, 1, tzinfo=timezone.utc))
+    assert [item["record_id"] for item in results] == ["new"]
 
 
 def test_injection_like_evidence_is_returned_as_untrusted_data(tmp_path):
