@@ -65,6 +65,7 @@ def test_import_export_round_trip_is_sanitized_and_does_not_duplicate(tmp_path):
             "kind": "failure",
             "task_id": "task-1",
             "detail": "old token=secret",
+            "failure_code": "change_outside_selected_file",
         }],
     }), encoding="utf-8")
 
@@ -85,7 +86,7 @@ def test_import_export_round_trip_is_sanitized_and_does_not_duplicate(tmp_path):
 
     persisted = json.loads(state.read_text(encoding="utf-8"))["self_improvement_history"]
     assert persisted == [
-        {"kind": "failure", "task_id": "task-1", "detail": "development failure observed"},
+        {"kind": "failure", "task_id": "task-1", "detail": "development failure observed", "failure_code": "change_outside_selected_file"},
         {"kind": "repair", "task_id": "task-2", "detail": "development required repair attempts"},
     ]
     assert "secret" not in json.dumps(persisted)
