@@ -3,12 +3,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "overnight-development.yml"
 
-def test_autonomous_workflow_keeps_jst_schedule_slots():
+def test_autonomous_workflow_is_manual_only():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert 'cron: "5 3 * * *"' in text
-    assert 'cron: "5 15 * * *"' in text
-    assert 'cron: "5 21 * * *"' in text
-    assert 'timezone: "Asia/Tokyo"' in text
+    event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert "workflow_dispatch:" in event_block
+    assert "schedule:" not in event_block
+    assert "push:" not in event_block
 
 def test_autonomous_workflow_does_not_escape_github_or_shell_variables():
     text = WORKFLOW.read_text(encoding="utf-8")
@@ -52,15 +52,12 @@ def test_autonomous_workflow_reuses_the_worker_pushed_branch_for_pr_creation():
     assert 'git ls-remote --exit-code origin "refs/heads/${BRANCH}"' not in guard
 
 
-def test_nightly_autonomous_worker_has_automatic_schedule():
+def test_nightly_autonomous_worker_is_manual_only():
     worker = ROOT / ".github" / "workflows" / "nightly-autonomous-worker.yml"
     text = worker.read_text(encoding="utf-8")
-    schedule_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
-    assert "schedule:" in schedule_block
-    assert "cron: '0 4 * * *'" in schedule_block
-    assert "cron: '0 16 * * *'" in schedule_block
-    assert "cron: '0 22 * * *'" in schedule_block
-    assert "timezone: 'Asia/Tokyo'" in schedule_block
+    event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert "workflow_dispatch:" in event_block
+    assert "schedule:" not in event_block
 
 
 def test_autonomous_workflow_has_final_safety_gate_before_pr_creation():
@@ -100,13 +97,9 @@ def test_autonomous_workflow_persists_self_improvement_history_between_runs():
     assert "branch: main" not in restore
 
 
-def test_autonomous_workflow_supports_explicit_on_demand_push_trigger():
+def test_autonomous_workflow_is_not_triggered_by_push_or_schedule():
     text = WORKFLOW.read_text(encoding="utf-8")
     event_block = text.split("on:", 1)[1].split("permissions:", 1)[0]
-    assert "push:" in event_block
-    assert "branches:" in event_block
-    assert "- main" in event_block
-    assert "schedule:" in event_block
     assert "workflow_dispatch:" in event_block
-    assert "[run-autonomous-loop]" in text
-    assert "github.event_name != 'push'" in text
+    assert "push:" not in event_block
+    assert "schedule:" not in event_block
