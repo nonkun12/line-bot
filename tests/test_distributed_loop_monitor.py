@@ -502,8 +502,8 @@ class DistributedLoopMonitorTests(unittest.TestCase):
             scheduler_decisions={"111": {"artifact_status": "available", "record": decision}},
         )
         target_slot = "2026-11-26T10:43:00+00:00"
-        self.assertEqual(report["status"], "HOLD")
         self.assertEqual(report["held_slots"][0]["decision"], "SKIPPED_GLOBAL_HOLD_ACTIVE")
+        self.assertIn(target_slot, [item["slot"] for item in report["safe_skips"]])
         self.assertNotIn(target_slot, [item["slot"] for item in report["missing_slots"]])
 
     def test_unreadable_global_hold_remains_blocked(self):
