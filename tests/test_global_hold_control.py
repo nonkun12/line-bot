@@ -103,3 +103,15 @@ def test_missing_close_actor_or_timestamp_fails_closed():
     assert evaluate_global_hold_issue(payload)["dispatch"] == "false"
     payload["closed_by"] = {"login": "nonkun12"}
     assert evaluate_global_hold_issue(payload)["dispatch"] == "false"
+
+
+def test_scheduler_uses_read_only_owner_control_issue_before_dispatch():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github/workflows/distributed-loop-30m-scheduler-v2.yml").read_text(encoding="utf-8")
+    assert "issues: read" in workflow
+    assert 'repos/$REPOSITORY/issues/$GLOBAL_HOLD_CONTROL_ISSUE' in workflow
+    assert "evaluate_global_hold_issue" in workflow
+    assert "steps.global_hold.outputs.dispatch == 'true'" in workflow
+    assert "AUTONOMOUS_LOOP_GLOBAL_HOLD" not in workflow
