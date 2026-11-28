@@ -700,6 +700,20 @@ def _sanitized_execution_approval(value: object) -> dict[str, object] | None:
     return result
 
 
+def _advisory_history_enabled() -> bool:
+    """Keep catalog-preapproved scheduler instructions byte-for-byte stable.
+
+    The scheduler's approval gate binds the exact catalog instruction. Advisory
+    RAG text is useful for interactive runs, but appending it to a scheduler
+    task would invalidate that binding and must therefore be disabled there.
+    This helper only controls optional context; it grants no execution authority.
+    """
+    return (
+        os.environ.get("GITHUB_EVENT_NAME") != "schedule"
+        and os.environ.get("AUTONOMOUS_POLICY_DISPATCH_SOURCE", "").strip() != "30m_scheduler"
+    )
+
+
 def run_task(
     task: dict[str, object],
     run_index: int,
@@ -743,7 +757,7 @@ def run_task(
     instruction = str(task["instruction"])
     rag_db_path = os.environ.get("RECOVERY_RAG_DB_PATH", "").strip()
     rag_namespace = os.environ.get("RECOVERY_RAG_NAMESPACE", "distributed-loop").strip()
-    if rag_db_path and rag_namespace and os.environ.get("GITHUB_EVENT_NAME") != "schedule":
+    if rag_db_path and rag_namespace and _advisory_history_enabled():
         try:
             from scripts.recovery_rag import build_task_context
             rag_context = build_task_context(
@@ -769,7 +783,7 @@ def run_task(
             print("RECOVERY_RAG_CONTEXT attached=false", flush=True)
     # Attach only sanitized historical REA outcomes; never treat retrieved
     # records as instructions or authority to bypass current safety gates.
-    if rag_db_path and rag_namespace and os.environ.get("GITHUB_EVENT_NAME") != "schedule":
+    if rag_db_path and rag_namespace and _advisory_history_enabled():
         try:
             from scripts.rea_rag import (
                 build_rea_context,
