@@ -1,4 +1,5 @@
-from dataclasses import replace
+from dataclasses import asdict, replace
+import sqlite3
 
 import pytest
 
@@ -12,8 +13,11 @@ from core.ai_factory_stage164_adaptive_experiment_design import (
     AdaptiveExperimentDesignReport, AdaptiveExperimentRecipe, DesignAttestation,
 )
 from core.ai_factory_stage155_isolated_merge_experiments import MergeExperimentOutcome
+from core.rsi_executor import EvidenceLedger
+
 from core.ai_factory_stage165_recursive_evolution_feedback import (
     RecursiveEvolutionFeedbackError, RecursiveEvolutionFeedbackIntegrator,
+    _record_from_payload,
 )
 
 SUITE = "a" * 64
@@ -141,3 +145,74 @@ def test_rejects_acceptance_flag_that_disagrees_with_signed_metrics():
     d, a, x, p, e, b = fixtures(measured=fitness(.90, .89, .97, 95, 520), accepted=True)
     with pytest.raises(RecursiveEvolutionFeedbackError, match="acceptance flag"):
         ingest(design=d, design_attestation=a, execution=x, plan=p, evidence=e, baseline_fitness=b)
+
+
+def test_persistent_feedback_restores_after_restart_and_rejects_replay(tmp_path):
+    ledger = EvidenceLedger(tmp_path / "rsi.sqlite")
+    first = RecursiveEvolutionFeedbackIntegrator(ledger=ledger)
+    record = ingest(first)
+    restored = RecursiveEvolutionFeedbackIntegrator(ledger=EvidenceLedger(tmp_path / "rsi.sqlite"))
+    assert restored.snapshot().records == (record,)
+    assert restored.snapshot().digest == first.snapshot().digest
+    with pytest.raises(RecursiveEvolutionFeedbackError, match="replay"):
+        ingest(restored)
+    assert ledger.verify()
+
+
+def test_persistence_failure_does_not_advance_in_memory_feedback(tmp_path, monkeypatch):
+    ledger = EvidenceLedger(tmp_path / "rsi.sqlite")
+    loop = RecursiveEvolutionFeedbackIntegrator(ledger=ledger)
+    def fail_append(*args, **kwargs):
+        raise OSError("disk unavailable")
+    monkeypatch.setattr(ledger, "append", fail_append)
+    with pytest.raises(RecursiveEvolutionFeedbackError, match="persistence failed"):
+        ingest(loop)
+    assert loop.snapshot().records == ()
+    assert ledger.verify()
+
+
+def test_tampered_persisted_feedback_fails_closed_on_restore(tmp_path):
+    path = tmp_path / "rsi.sqlite"
+    ledger = EvidenceLedger(path)
+    ingest(RecursiveEvolutionFeedbackIntegrator(ledger=ledger))
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER rsi_evidence_no_update")
+        db.execute(
+            "UPDATE rsi_evidence SET payload=? WHERE event_type='stage165_recursive_trial'",
+            ('{"evaluation_suite_digest":"' + SUITE + '","record":{}}',),
+        )
+    with pytest.raises(RecursiveEvolutionFeedbackError, match="restore failed closed"):
+        RecursiveEvolutionFeedbackIntegrator(ledger=EvidenceLedger(path))
+
+
+def test_hold_rejection_does_not_write_stage165_event(tmp_path):
+    ledger = EvidenceLedger(tmp_path / "rsi.sqlite")
+    loop = RecursiveEvolutionFeedbackIntegrator(ledger=ledger)
+    with pytest.raises(RecursiveEvolutionFeedbackError, match="HOLD"):
+        ingest(loop, hold_active=True)
+    assert ledger.read_events("stage165_recursive_trial") == ()
+    assert ledger.verify()
+
+def test_persisted_record_rejects_boolean_string_and_unknown_metric_values():
+    record = ingest(RecursiveEvolutionFeedbackIntegrator())
+    payload = asdict(record)
+    payload["metrics"] = [list(item) for item in payload["metrics"]]
+    payload["metrics"][0][1] = True
+    with pytest.raises(RecursiveEvolutionFeedbackError, match="metrics are invalid"):
+        _record_from_payload(payload)
+
+    payload = asdict(record)
+    payload["baseline_metrics"] = [list(item) for item in payload["baseline_metrics"]]
+    payload["baseline_metrics"][0][1] = "1.0"
+    with pytest.raises(RecursiveEvolutionFeedbackError, match="metrics are invalid"):
+        _record_from_payload(payload)
+
+    payload = asdict(record)
+    payload["unexpected"] = "ignored fields must not be accepted"
+    with pytest.raises(RecursiveEvolutionFeedbackError, match="schema is invalid"):
+        _record_from_payload(payload)
+
+    payload = asdict(record)
+    payload["classification"] = []
+    with pytest.raises(RecursiveEvolutionFeedbackError, match="integrity validation"):
+        _record_from_payload(payload)
