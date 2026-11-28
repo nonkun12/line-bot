@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 from dataclasses import asdict, dataclass
@@ -75,13 +76,15 @@ class KnowledgeRecord:
             raise KnowledgeError("invalid evidence digest")
         if actual != self.evidence_sha256:
             raise KnowledgeError("evidence digest mismatch")
-        _timestamp(self.observed_at, "observed_at")
+        observed = _timestamp(self.observed_at, "observed_at")
+        object.__setattr__(self, "observed_at", observed)
         if self.expires_at is not None:
             expiry = _timestamp(self.expires_at, "expires_at")
-            if expiry <= _timestamp(self.observed_at, "observed_at"):
+            if expiry <= observed:
                 raise KnowledgeError("expires_at must be later than observed_at")
+            object.__setattr__(self, "expires_at", expiry)
         if (not isinstance(self.confidence, (int, float)) or isinstance(self.confidence, bool)
-                or not 0.0 <= self.confidence <= 1.0):
+                or not math.isfinite(self.confidence) or not 0.0 <= self.confidence <= 1.0):
             raise KnowledgeError("confidence must be between 0 and 1")
         if self.validation_status not in _STATUSES:
             raise KnowledgeError("invalid validation_status")
