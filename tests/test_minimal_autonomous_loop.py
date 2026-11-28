@@ -1638,3 +1638,20 @@ def test_valid_model_provider_block_remains_blocked(monkeypatch, tmp_path: Path)
     assert result["exit_code"] == 83
     assert result["failure_reason"] == "model_provider_gate:local_adapter_unavailable"
     assert result["gate_evidence"]["gate_name"] == "model_provider"
+
+
+@pytest.mark.parametrize(
+    ("event_name", "policy_dispatch", "expected"),
+    [
+        ("schedule", "", False),
+        ("workflow_dispatch", "30m_scheduler", False),
+        ("workflow_dispatch", "manual", True),
+    ],
+)
+def test_scheduler_dispatch_preserves_exact_catalog_instruction_for_approval(
+    monkeypatch, event_name, policy_dispatch, expected
+):
+    monkeypatch.setenv("GITHUB_EVENT_NAME", event_name)
+    monkeypatch.setenv("AUTONOMOUS_POLICY_DISPATCH_SOURCE", policy_dispatch)
+
+    assert loop._advisory_history_enabled() is expected
