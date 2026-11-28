@@ -185,7 +185,7 @@ jobs:
               "active_loop_created_at": os.environ.get("ACTIVE_LOOP_CREATED_AT") or None,
               "active_loop_observed_at": os.environ.get("ACTIVE_LOOP_OBSERVED_AT") or None,
               "kill_switch_active": os.environ.get("KILL_SWITCH_ACTIVE") == "true",
-              "global_hold_state": os.environ.get("GLOBAL_HOLD_STATE") or ("CLEAR" if os.environ.get("GLOBAL_HOLD_DECISION") == "GLOBAL_HOLD_CLEAR" else "UNKNOWN"),
+              "global_hold_state": os.environ.get("GLOBAL_HOLD_STATE") or ("CLEAR_CONFIGURED_NOT_INDEPENDENTLY_VERIFIED" if os.environ.get("GLOBAL_HOLD_DECISION") == "GLOBAL_HOLD_CLEAR" else "UNKNOWN"),
               "child_loop_run_id": os.environ.get("CHILD_LOOP_RUN_ID") or None,
               "skip_reason": os.environ.get("KILL_REASON") or None,
               "repository_visibility": os.environ.get("REPOSITORY_VISIBILITY") or None,
