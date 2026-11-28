@@ -146,8 +146,19 @@ class ASDIKnowledgeStore:
         terms = tuple(dict.fromkeys([query.strip(), *query.split()]))
         records = self._read()
         by_id = {record.record_id: record for record in records}
+        # Never promote either side of an unresolved contradiction. A record
+        # explicitly superseded by another record is also excluded.
+        conflicted_ids: set[str] = set()
+        superseded_ids: set[str] = set()
+        for record in records:
+            for target in record.contradicts:
+                conflicted_ids.add(record.record_id)
+                conflicted_ids.add(target)
+            superseded_ids.update(record.supersedes)
         matches: list[tuple[int, str, KnowledgeRecord]] = []
         for record in records:
+            if record.record_id in conflicted_ids or record.record_id in superseded_ids:
+                continue
             if record.validation_status == "rejected":
                 continue
             if record.validation_status != "verified" and not include_unverified:
