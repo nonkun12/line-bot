@@ -104,13 +104,28 @@ def evaluate_schedule_slots(
     decisions = scheduler_decisions if isinstance(scheduler_decisions, dict) else {}
     cursor = now.replace(second=0, microsecond=0)
     cursor -= timedelta(minutes=(cursor.minute - 13) % 30)
+    # A newly installed scheduler cannot be expected to have run in slots before
+    # its first observed scheduled execution. Keep the full 24h BLOCKED window
+    # when no scheduled execution has ever been observed.
+    schedule_starts = [
+        parsed for run in schedulers
+        if run.get("event") == "schedule"
+        and (parsed := parse_utc(run.get("created_at"))) is not None
+    ]
+    window_start = now - timedelta(hours=24)
+    if schedule_starts:
+        first_slot = min(schedule_starts).replace(second=0, microsecond=0)
+        first_slot -= timedelta(minutes=(first_slot.minute - 13) % 30)
+        window_start = max(window_start, first_slot)
     missing, pending, confirmed, safe_skips, held_slots = [], [], [], [], []
     allowed = {
         "DISPATCHED", "SKIPPED_ACTIVE_LOOP", "SKIPPED_KILL_SWITCH",
-        "SKIPPED_BILLING_GUARD", "DISPATCH_UNCONFIRMED",
+        "SKIPPED_BILLING_GUARD", "SKIPPED_GLOBAL_HOLD_ACTIVE",
+        "SKIPPED_GLOBAL_HOLD_UNVERIFIED", "SKIPPED_GLOBAL_HOLD_UNREADABLE",
+        "DISPATCH_UNCONFIRMED",
     }
 
-    while cursor >= now - timedelta(hours=24):
+    while cursor >= window_start:
         deadline = cursor + timedelta(minutes=grace_minutes)
         if now < deadline:
             pending.append(cursor.isoformat())
@@ -268,6 +283,26 @@ def evaluate_schedule_slots(
                             "slot": cursor.isoformat(), "status": "UNVERIFIED_BILLING_GUARD_SKIP",
                             "scheduler_run_id": scheduler.get("id"),
                         })
+                elif decision == "SKIPPED_GLOBAL_HOLD_ACTIVE":
+                    if record.get("global_hold_state") == "HOLD":
+                        safe_skips.append({
+                            "slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
+                            "decision": decision, "reason": "authoritative_global_hold_issue_open",
+                        })
+                        held_slots.append({
+                            "slot": cursor.isoformat(), "scheduler_run_id": scheduler.get("id"),
+                            "decision": decision,
+                        })
+                    else:
+                        missing.append({
+                            "slot": cursor.isoformat(), "status": "UNVERIFIED_GLOBAL_HOLD_SKIP",
+                            "scheduler_run_id": scheduler.get("id"),
+                        })
+                elif decision in {"SKIPPED_GLOBAL_HOLD_UNVERIFIED", "SKIPPED_GLOBAL_HOLD_UNREADABLE"}:
+                    missing.append({
+                        "slot": cursor.isoformat(), "status": "GLOBAL_HOLD_UNVERIFIED",
+                        "scheduler_run_id": scheduler.get("id"),
+                    })
                 else:
                     missing.append({
                         "slot": cursor.isoformat(), "status": "UNSUPPORTED_DECISION",
@@ -488,7 +523,7 @@ def evaluate(
         if slot_report["status"] == "BLOCKED":
             reasons.append("Expected 30-minute scheduler slot missing or scheduler decision evidence unverified")
         elif slot_report["status"] == "HOLD":
-            reasons.append("HOLD: scheduler intentionally stopped by kill switch or billing guard")
+            reasons.append("HOLD: scheduler intentionally stopped by Global HOLD, kill switch, or billing guard")
 
     # Queue eligibility and independent human approval require separate, authoritative
     # evidence. This monitor does not infer approval from task catalog fields or labels.
