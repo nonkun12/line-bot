@@ -1,8 +1,6 @@
 name: Free Deterministic LOOP Pilot
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       execute_task:
