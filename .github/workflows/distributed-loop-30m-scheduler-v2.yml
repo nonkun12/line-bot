@@ -224,7 +224,7 @@ jobs:
             echo "- Trigger: ${GITHUB_EVENT_NAME}"
             echo "- Decision: $(python -c 'import json; print(json.load(open("scheduler-decision.json"))["decision"])')"
             echo "- Kill switch: ${CONTROL_TOWER_KILL_SWITCH}"
-            echo "- Global HOLD: ${AUTONOMOUS_LOOP_GLOBAL_HOLD} (blocked until independently verified)"
+            echo "- Global HOLD: issue #${GLOBAL_HOLD_CONTROL_ISSUE}; decision=${GLOBAL_HOLD_STATE:-UNKNOWN_BLOCKED}"
             echo "- Billing gate: public repository + standard ubuntu-latest runner required"
             echo "- Target task limit: 1"
             echo "- Execution approval: DENY"
