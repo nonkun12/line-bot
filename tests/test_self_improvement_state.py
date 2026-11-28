@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from scripts.self_improvement_state import MAX_RECORDS, sanitize_records
 
 
@@ -63,6 +65,7 @@ def test_import_export_round_trip_is_sanitized_and_does_not_duplicate(tmp_path):
             "kind": "failure",
             "task_id": "task-1",
             "detail": "old token=secret",
+            "failure_code": "change_outside_selected_file",
         }],
     }), encoding="utf-8")
 
@@ -83,7 +86,7 @@ def test_import_export_round_trip_is_sanitized_and_does_not_duplicate(tmp_path):
 
     persisted = json.loads(state.read_text(encoding="utf-8"))["self_improvement_history"]
     assert persisted == [
-        {"kind": "failure", "task_id": "task-1", "detail": "development failure observed"},
+        {"kind": "failure", "task_id": "task-1", "detail": "development failure observed", "failure_code": "change_outside_selected_file"},
         {"kind": "repair", "task_id": "task-2", "detail": "development required repair attempts"},
     ]
     assert "secret" not in json.dumps(persisted)
@@ -410,3 +413,53 @@ def test_workflow_durable_validator_rejects_malformed_cycle_memory_and_signal_ro
     with pytest.raises(ValueError, match="cycle memory ID"):
         validate_durable_history([{**valid_memory, "cycle_id": "not-a-run-id"}])
 
+
+
+
+def test_failure_code_is_preserved_only_when_allowlisted_and_legacy_rows_still_work():
+    from scripts.self_improvement_state import validate_durable_history
+
+    rows = sanitize_records([
+        {"kind": "failure", "task_id": "task-safe", "failure_code": "change_outside_selected_file"},
+        {"kind": "failure", "task_id": "task-unknown", "failure_code": "token=secret traceback"},
+        {"kind": "success", "task_id": "legacy-task"},
+        {"kind": "failure", "task_id": "legacy-failure"},
+    ])
+    assert rows[0]["failure_code"] == "change_outside_selected_file"
+    assert "failure_code" not in rows[1]
+    assert "failure_code" not in rows[2]
+    assert "failure_code" not in rows[3]
+    assert validate_durable_history(rows) == rows
+    assert "secret" not in json.dumps(rows)
+
+
+def test_durable_validator_rejects_invalid_or_non_failure_codes():
+    from scripts.self_improvement_state import validate_durable_history
+
+    base = {"kind": "failure", "task_id": "task-1", "detail": "development failure observed"}
+    with pytest.raises(ValueError):
+        validate_durable_history([{**base, "failure_code": "raw traceback"}])
+    with pytest.raises(ValueError):
+        validate_durable_history([{
+            "kind": "success", "task_id": "task-1",
+            "detail": "task passed or verified no-change",
+            "failure_code": "change_outside_selected_file",
+        }])
+
+
+def test_append_loop_results_persists_only_allowlisted_failure_code(tmp_path):
+    from scripts.self_improvement_state import append_loop_results, validate_durable_history
+
+    history = tmp_path / "history.jsonl"
+    results = tmp_path / "results.jsonl"
+    catalog = tmp_path / "catalog.json"
+    catalog.write_text(json.dumps({"tasks": [{"id": "task-1"}, {"id": "task-2"}]}), encoding="utf-8")
+    results.write_text("\n".join([
+        json.dumps({"status": "FAIL", "task_id": "task-1", "failure_code": "change_outside_selected_file"}),
+        json.dumps({"status": "FAIL", "task_id": "task-2", "failure_code": "token=private"}),
+    ]) + "\n", encoding="utf-8")
+    assert append_loop_results(history, results, catalog, publish_outcome="success", state_outcome="success") == 2
+    rows = [json.loads(line) for line in history.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["failure_code"] == "change_outside_selected_file"
+    assert "failure_code" not in rows[1]
+    assert validate_durable_history(rows) == rows

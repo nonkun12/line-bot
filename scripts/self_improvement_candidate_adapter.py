@@ -1,73 +1,80 @@
 """Convert sanitized durable self-improvement history into review-only candidates.
 
-The adapter uses fixed templates only. It never treats stored history as executable
-instructions and never creates queue entries, issues, PRs, or authorization.
+The adapter uses fixed templates and categorical counts only. It never treats stored
+history as executable instructions and never creates queue entries, issues, PRs,
+or authorization.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from core.loop_failure_codes import failure_code_category
 from scripts.self_improvement_state import validate_durable_history
 
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
 _TEMPLATES = {
-    "success": (
-        "Preserve verified task outcomes",
-        "A verified task outcome was recorded; retain evidence-backed regression coverage.",
-    ),
-    "repair": (
-        "Review recurring repair attempts",
-        "A repair signal was recorded; inspect recurring causes before proposing changes.",
-    ),
-    "failure": (
-        "Review recurring development failures",
-        "A development failure signal was recorded; inspect evidence before proposing changes.",
-    ),
-    "PASS": (
-        "Preserve verified cycle outcomes",
-        "A cycle passed its evidence gates; retain the verified checks and regression coverage.",
-    ),
-    "FAIL": (
-        "Review failed development cycles",
-        "A cycle failure was recorded; review the failure evidence before another attempt.",
-    ),
-    "BLOCKED": (
-        "Resolve safety or evidence blocks",
-        "A cycle was blocked; resolve the safety or evidence gap before considering a retry.",
-    ),
+    "success": ("Preserve verified task outcomes", "retain evidence-backed regression coverage"),
+    "repair": ("Review recurring repair attempts", "inspect recurring repair signals before proposing changes"),
+    "failure": ("Review recurring development failures", "reproduce and review prior development failures before proposing changes"),
+    "invalid_task": ("Review invalid task construction", "inspect the bounded task definition and its validation evidence"),
+    "security_violation": ("Review security boundary failures", "inspect the violated safety boundary and verify the allowed-path controls"),
+    "invalid_evidence": ("Review invalid execution evidence", "inspect the evidence contract and reproduce the validation failure"),
+    "provider_error": ("Review provider configuration failures", "inspect provider request or authentication configuration without exposing credentials"),
+    "rate_limited": ("Review provider rate limits", "inspect bounded rate-limit recurrence and apply a conservative retry policy"),
+    "service_unavailable": ("Review provider availability failures", "inspect service availability evidence before a bounded retry"),
+    "network_transient": ("Review transient network failures", "inspect network failure recurrence and retain bounded retry limits"),
+    "PASS": ("Preserve verified cycle outcomes", "retain the checks that passed the cycle evidence gates"),
+    "FAIL": ("Review failed development cycles", "reproduce and review prior cycle failures before another attempt"),
+    "BLOCKED": ("Resolve safety or evidence blocks", "resolve the recorded safety or evidence gap before considering a retry"),
 }
 
 
+def _identity(row: dict[str, object]) -> tuple[str, str]:
+    if row.get("record_type") == "cycle_memory":
+        return str(row.get("outcome", "")), str(row.get("cycle_id") or "")
+    if row.get("kind") == "failure":
+        category = failure_code_category(row.get("failure_code"))
+        if category:
+            return category, str(row.get("task_id") or "")
+    return str(row.get("kind", "")), str(row.get("task_id") or "")
+
+
 def candidates_from_history(records: object) -> list[dict[str, Any]]:
-    """Validate history and emit fixed, bounded candidate records."""
+    """Validate history and emit candidates with bounded categorical evidence."""
     validated = validate_durable_history(records)
+    counts = Counter(category for category, _ in map(_identity, validated))
     candidates: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for row in validated:
-        if row.get("record_type") == "cycle_memory":
-            category = row.get("outcome")
-            source_id = row.get("cycle_id", "")
-        else:
-            category = row.get("kind")
-            source_id = row.get("task_id") or ""
-        if not isinstance(category, str) or category not in _TEMPLATES:
+        category, source_id = _identity(row)
+        if category not in _TEMPLATES:
             continue
-        if source_id and (not isinstance(source_id, str) or not _TASK_ID.fullmatch(source_id)):
+        if source_id and not _TASK_ID.fullmatch(source_id):
             continue
-        title, rationale = _TEMPLATES[category]
         dedupe_identity = (category, source_id)
         if dedupe_identity in seen:
             continue
         seen.add(dedupe_identity)
+        title, action = _TEMPLATES[category]
+        evidence_ref = f"task:{source_id}" if row.get("record_type") != "cycle_memory" and source_id else (
+            f"cycle:{source_id}" if source_id else "identifier unavailable"
+        )
+        rationale = (
+            f"{action}. The bounded durable history contains {counts[category]} "
+            f"sanitized {category} record(s); this candidate is linked to {evidence_ref}. "
+            "Use this count as review context only; reproduce the issue and inspect current evidence. "
+            "Stored free text is intentionally excluded."
+        )
         candidates.append({
             "source": "self_improvement",
             "source_id": f"{category}:{source_id}" if source_id else category,
             "title": title,
-            "rationale": rationale,
+            "rationale": rationale[:500],
             "status": "proposed",
         })
     return candidates[-200:]
