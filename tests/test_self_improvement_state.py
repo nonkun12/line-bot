@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from scripts.self_improvement_state import MAX_RECORDS, sanitize_records
 
 
