@@ -104,6 +104,19 @@ def evaluate_schedule_slots(
     decisions = scheduler_decisions if isinstance(scheduler_decisions, dict) else {}
     cursor = now.replace(second=0, microsecond=0)
     cursor -= timedelta(minutes=(cursor.minute - 13) % 30)
+    # A newly installed scheduler cannot be expected to have run in slots before
+    # its first observed scheduled execution. Keep the full 24h BLOCKED window
+    # when no scheduled execution has ever been observed.
+    schedule_starts = [
+        parsed for run in schedulers
+        if run.get("event") == "schedule"
+        and (parsed := parse_utc(run.get("created_at"))) is not None
+    ]
+    window_start = now - timedelta(hours=24)
+    if schedule_starts:
+        first_slot = min(schedule_starts).replace(second=0, microsecond=0)
+        first_slot -= timedelta(minutes=(first_slot.minute - 13) % 30)
+        window_start = max(window_start, first_slot)
     missing, pending, confirmed, safe_skips, held_slots = [], [], [], [], []
     allowed = {
         "DISPATCHED", "SKIPPED_ACTIVE_LOOP", "SKIPPED_KILL_SWITCH",
@@ -112,7 +125,7 @@ def evaluate_schedule_slots(
         "DISPATCH_UNCONFIRMED",
     }
 
-    while cursor >= now - timedelta(hours=24):
+    while cursor >= window_start:
         deadline = cursor + timedelta(minutes=grace_minutes)
         if now < deadline:
             pending.append(cursor.isoformat())
