@@ -19,6 +19,8 @@ jobs:
     name: Read-only health and budget observation
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    env:
+      AUTONOMOUS_LOOP_GLOBAL_HOLD: ${{ vars.AUTONOMOUS_LOOP_GLOBAL_HOLD || 'UNKNOWN' }}
     steps:
       - name: Observe repository Actions activity and report unknown controls
         env:
@@ -61,7 +63,8 @@ jobs:
           # No trusted account-wide budget collector or Global HOLD reader is
           # wired into Stage 1. Never infer CLEAR from missing evidence.
           budget_state = "UNKNOWN_BLOCKED"
-          global_hold_state = "UNKNOWN_BLOCKED"
+          global_hold_value = os.environ.get("AUTONOMOUS_LOOP_GLOBAL_HOLD", "UNKNOWN").strip().upper()
+          global_hold_state = "CLEAR" if global_hold_value == "CLEAR" else "UNKNOWN_BLOCKED"
           execution_authorized = False
 
           summary = [
@@ -73,7 +76,7 @@ jobs:
               f"- Queued runs (last 100): {queued if queued is not None else 'UNKNOWN'}",
               f"- Actions API error class: {api_error or 'none'}",
               f"- Budget Guardian: {budget_state}",
-              f"- Global HOLD: {global_hold_state}",
+              f"- Global HOLD: {global_hold_state} (configured value: {global_hold_value})",
               "- Task queue read: NOT PERFORMED",
               "- Task execution: DISABLED",
               "- Code/PR mutation: DISABLED",
