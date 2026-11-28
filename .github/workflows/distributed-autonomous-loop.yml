@@ -663,8 +663,6 @@ jobs:
           APPROVAL_INSTRUCTION_SHA256: ${{ github.event.inputs.approval_instruction_sha256 || '' }}
           APPROVAL_BASE_SHA: ${{ github.event.inputs.approval_base_sha || '' }}
           EXPECTED_BASE_SHA: ${{ github.sha }}
-          QUEUE_PATH: ${{ env.AUTONOMOUS_LOOP_TASK_QUEUE || '/tmp/autonomous-loop-runtime-queue.json' }}
-          CATALOG_PATH: .github/autonomous-loop-task-catalog.json
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -688,8 +686,8 @@ jobs:
           if os.environ.get("APPROVAL_BASE_SHA") != base_sha:
               reject("base_sha_mismatch")
 
-          queue_path = Path(os.environ["QUEUE_PATH"])
-          catalog_path = Path(os.environ["CATALOG_PATH"])
+          queue_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_QUEUE", "/tmp/autonomous-loop-runtime-queue.json"))
+          catalog_path = Path(os.environ.get("AUTONOMOUS_LOOP_TASK_CATALOG", ".github/autonomous-loop-task-catalog.json"))
           try:
               queue = json.loads(queue_path.read_text(encoding="utf-8"))
               catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
