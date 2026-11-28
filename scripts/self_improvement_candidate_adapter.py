@@ -13,6 +13,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from core.loop_failure_codes import failure_code_category
 from scripts.self_improvement_state import validate_durable_history
 
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
@@ -20,6 +21,13 @@ _TEMPLATES = {
     "success": ("Preserve verified task outcomes", "retain evidence-backed regression coverage"),
     "repair": ("Review recurring repair attempts", "inspect recurring repair signals before proposing changes"),
     "failure": ("Review recurring development failures", "reproduce and review prior development failures before proposing changes"),
+    "invalid_task": ("Review invalid task construction", "inspect the bounded task definition and its validation evidence"),
+    "security_violation": ("Review security boundary failures", "inspect the violated safety boundary and verify the allowed-path controls"),
+    "invalid_evidence": ("Review invalid execution evidence", "inspect the evidence contract and reproduce the validation failure"),
+    "provider_error": ("Review provider configuration failures", "inspect provider request or authentication configuration without exposing credentials"),
+    "rate_limited": ("Review provider rate limits", "inspect bounded rate-limit recurrence and apply a conservative retry policy"),
+    "service_unavailable": ("Review provider availability failures", "inspect service availability evidence before a bounded retry"),
+    "network_transient": ("Review transient network failures", "inspect network failure recurrence and retain bounded retry limits"),
     "PASS": ("Preserve verified cycle outcomes", "retain the checks that passed the cycle evidence gates"),
     "FAIL": ("Review failed development cycles", "reproduce and review prior cycle failures before another attempt"),
     "BLOCKED": ("Resolve safety or evidence blocks", "resolve the recorded safety or evidence gap before considering a retry"),
@@ -29,6 +37,10 @@ _TEMPLATES = {
 def _identity(row: dict[str, object]) -> tuple[str, str]:
     if row.get("record_type") == "cycle_memory":
         return str(row.get("outcome", "")), str(row.get("cycle_id") or "")
+    if row.get("kind") == "failure":
+        category = failure_code_category(row.get("failure_code"))
+        if category:
+            return category, str(row.get("task_id") or "")
     return str(row.get("kind", "")), str(row.get("task_id") or "")
 
 
