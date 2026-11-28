@@ -2,7 +2,7 @@ name: LOOP30 Minimal
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "7,37 * * * *"
   workflow_dispatch:
     inputs:
       resume_approval:
