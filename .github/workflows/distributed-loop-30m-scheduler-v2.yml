@@ -78,9 +78,9 @@ jobs:
               owner="nonkun12",
           )
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"dispatch={decision['dispatch']}\\n")
-              output.write(f"decision={decision['decision']}\\n")
-              output.write(f"global_hold_state={decision['state']}\\n")
+              output.write(f"dispatch={decision['dispatch']}\n")
+              output.write(f"decision={decision['decision']}\n")
+              output.write(f"global_hold_state={decision['state']}\n")
           if decision["dispatch"] != "true":
               print("::warning::Global HOLD is active or unverified; refusing dispatch.")
           print(f"Global HOLD decision: {decision['decision']} ({decision['state']})")
