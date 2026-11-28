@@ -9,6 +9,7 @@ on:
 permissions:
   actions: write
   contents: read
+  issues: read
 
 # Never accumulate a backlog of scheduled dispatchers.
 concurrency:
@@ -23,7 +24,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
       CONTROL_TOWER_KILL_SWITCH: ${{ vars.CONTROL_TOWER_KILL_SWITCH || 'false' }}
-      AUTONOMOUS_LOOP_GLOBAL_HOLD: ${{ vars.AUTONOMOUS_LOOP_GLOBAL_HOLD || 'UNKNOWN' }}
+      GLOBAL_HOLD_CONTROL_ISSUE: '1786'
     steps:
       - name: Checkout trusted main for stop-file check
         uses: actions/checkout@v4
@@ -49,24 +50,42 @@ jobs:
             echo "dispatch=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Require explicit Global HOLD clearance
+      - name: Read authoritative Global HOLD control issue
         id: global_hold
         if: steps.kill.outputs.dispatch == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          state="${AUTONOMOUS_LOOP_GLOBAL_HOLD^^}"
-          # A repository variable is operator configuration, not an independent
-          # read of the authoritative Global HOLD state. Keep the scheduler
-          # fail-closed until a trusted reader is implemented and verified.
-          echo "dispatch=false" >> "$GITHUB_OUTPUT"
-          echo "decision=SKIPPED_NO_TRUSTED_GLOBAL_HOLD_READER" >> "$GITHUB_OUTPUT"
-          if [ "$state" = "CLEAR" ]; then
-            echo "global_hold_state=CLEAR_CONFIGURED_NOT_INDEPENDENTLY_VERIFIED" >> "$GITHUB_OUTPUT"
-          else
+          issue_file=/tmp/global-hold-control-issue.json
+          if ! gh api "repos/$REPOSITORY/issues/$GLOBAL_HOLD_CONTROL_ISSUE" > "$issue_file"; then
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            echo "decision=SKIPPED_GLOBAL_HOLD_UNREADABLE" >> "$GITHUB_OUTPUT"
             echo "global_hold_state=UNKNOWN_BLOCKED" >> "$GITHUB_OUTPUT"
+            echo "::warning::Global HOLD control issue could not be read; refusing dispatch."
+            exit 0
           fi
-          echo "::warning::No trusted Global HOLD reader is wired; refusing dispatch even when the repository variable says CLEAR."
-          echo "Global HOLD remains blocked: configured value=$state; independent verification unavailable." >> "$GITHUB_STEP_SUMMARY"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from scripts.global_hold_control import evaluate_global_hold_issue
+
+          payload = json.loads(Path("/tmp/global-hold-control-issue.json").read_text(encoding="utf-8"))
+          decision = evaluate_global_hold_issue(
+              payload,
+              issue_number=int(os.environ["GLOBAL_HOLD_CONTROL_ISSUE"]),
+              owner="nonkun12",
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"dispatch={decision['dispatch']}\\n")
+              output.write(f"decision={decision['decision']}\\n")
+              output.write(f"global_hold_state={decision['state']}\\n")
+          if decision["dispatch"] != "true":
+              print("::warning::Global HOLD is active or unverified; refusing dispatch.")
+          print(f"Global HOLD decision: {decision['decision']} ({decision['state']})")
+          PY
+          echo "Global HOLD control: issue #$GLOBAL_HOLD_CONTROL_ISSUE; only owner-closed completed issue permits dispatch." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify public repository and standard-runner billing scope
         id: budget
